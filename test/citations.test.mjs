@@ -97,6 +97,14 @@ test('an unreadable artefact says so rather than reporting an empty resolution',
   assert.match(out.notes, /must locate the document's evidence itself/)
 })
 
+test('the payload says how long the artefact is, and zero when it could not be read', () => {
+  const dir = repo({ 'src/a.js': 'x\n' })
+  const body = numbered(37, 'para')
+  assert.equal(resolveCitations(dir, writeArtifact(dir, body), 3).artifact_lines,
+    body.split('\n').length)
+  assert.equal(resolveCitations(dir, join(dir, 'no-such-document.md'), 3).artifact_lines, 0)
+})
+
 test('a document citing nothing resolvable is a clean empty payload, not an error', () => {
   const dir = repo({ 'src/a.js': 'x\n' })
   const out = resolveCitations(dir, writeArtifact(dir, 'a design with no citations at all'), 3)

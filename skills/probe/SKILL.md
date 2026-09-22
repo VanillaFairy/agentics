@@ -33,8 +33,8 @@ premise defects, because the premises are the part not being questioned.
 - Reviewing a commit series against acceptance criteria — that is `develop`'s reviewer, on
   the code ladder.
 - Answering a question about the codebase — `investigate`.
-- A document nobody will act on. A probe costs several analysts; a note to self does not
-  earn one.
+- A document nobody will act on. A probe costs at least one analyst's full attack; a note to
+  self does not earn one.
 
 ## Step 1 — Invoke
 
@@ -61,6 +61,12 @@ analyst as evidence about the document, and a shared-ground read that fails cost
 rather than coverage, because each analyst then locates what it needs exactly as it did
 before.
 
+**How many analysts.** One, by default, holding every axis as a checklist. The workflow buys
+another for each 400 lines of document, never more than one per axis, and continues an analyst
+that stops short on exactly what it never reached. `result.analysts` says who held what. Pass
+`per_axis: true` only when the user asks for independent heads per axis; it multiplies the bill
+by the axis count.
+
 **`max_derived_axes`** caps the axes derived from the repository's guidance, at 8 by default.
 The standing four are never capped. Raising it buys more axes; it does not buy proportionally
 more coverage, because per-axis yield is flat and what bounds a probe is the document's claim
@@ -71,7 +77,8 @@ the coverage block, so a narrower probe never reads like a clean one.
 
 Measured on one 17-agent probe of a 120-line document: **36.5M tokens billed** to return about
 538k of evidence. The bill is turn count — every turn re-sends the accumulated context — and
-it is superlinear in turns, not in what anybody read.
+it is superlinear in turns, not in what anybody read. That is why one analyst is the default:
+the same document is now one reader's turns, not seventeen.
 
 The harness's own `subagent_tokens` field reported 1.31M for that run, low by a factor of 28.
 **Never quote it as what a probe cost**, and never let it stand as the basis for deciding

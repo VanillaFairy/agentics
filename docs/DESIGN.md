@@ -405,8 +405,14 @@ It runs in three phases:
    reinvention. Derived axes are capped at `max_derived_axes` (8 by default); the standing four
    are never capped.
 2. **Ground.** One script resolves the evidence the document cites, once, for every axis (see
-   [What a probe costs](#what-a-probe-costs)).
-3. **Probe.** One analyst per axis, all in parallel.
+   [What a probe costs](#what-a-probe-costs)). It also reports the document's length.
+3. **Probe.** One analyst holds every axis as a checklist. More are bought only when the
+   document is long enough to earn them: one per 400 lines, never more than one per axis, with
+   the axes dealt across them round-robin. An unknown length earns one. An analyst that stops
+   short is continued on exactly what it never reached, for as long as each pass gets further
+   than the last (IRON LAW §3); a pass that hands back the remainder it was given ends the
+   attack, and what it left stays unreached in the coverage block. `per_axis: true` restores one
+   analyst per axis for a caller who wants independent heads and says so.
 
 Findings sit on the **design severity ladder**, which is not the code ladder. The code ladder
 speaks in acceptance criteria, commit series and loci, and a document has none of those.
@@ -1306,6 +1312,13 @@ to nothing is itself a finding about the document, and it travels to every analy
 shared-ground read fails, it costs turns rather than coverage: each analyst locates what it needs
 as before.
 
+**The head count was the lever the per-axis shape never priced.** Every analyst pays its own
+locating and its own turns, so seventeen analysts on a 120-line document is seventeen readers of
+a document one reader holds whole. The axes are a checklist for a reader rather than a head
+count, so the default is one analyst, and length is what buys a second. What stops a single
+reader from quietly skimming is the same `stop_reason` every search in the plugin carries, plus
+the continuation that follows an `unfinished`.
+
 **The derived-axis cap is a dial, not a saving.** Yield per axis is flat, so capping buys less
 coverage rather than less waste, and the result says so: what the cap declined to buy is named in
 `axes_dropped`, `coverage.unreached` and `resumable.remaining`, so a re-run with a higher cap buys
@@ -1682,12 +1695,14 @@ What each workflow hands its caller. Every one also carries a `coverage` block.
   intelligence`. Returns `{capability, constraints, frame, already_present[{path, line, note}],
   candidates[{name, source_url, what_it_is, latest_version, license, maintenance, covers,
   does_not_cover, disqualifiers_hit}], viable, ruled_out[{name, why}], coverage}`.
-- **`vfa-probe`** — takes `artifact, roots, context, max_derived_axes, plugin_root`. Returns
-  `axes[{key, source}]`, `axes_dropped`, `shared_ground`, `guidance_read`,
+- **`vfa-probe`** — takes `artifact, roots, context, max_derived_axes, per_axis, plugin_root`.
+  Returns `axes[{key, source}]`, `axes_dropped`, `analysts` (the axis keys each analyst held),
+  `shared_ground`, `guidance_read`,
   `findings[{id, severity: ambiguity | gap | note, section, claim, evidence, axis}]`,
   `ambiguities`, `ratifiable` (no ambiguities and a complete coverage block) and `coverage`.
   `lib/citations.mjs` prints `{artifact, repo, read_error, files[{path, lines, cited_at,
-  excerpts}], unresolved[{path, why: missing | out_of_range, detail}], counts, notes}`.
+  excerpts}], unresolved[{path, why: missing | out_of_range, detail}], counts, artifact_lines,
+  notes}`.
 - **`vfa-develop`** — every exit goes through `developResult`: `{change, work_orders, coupled,
   deferred, blocked, implemented, escalations, integration, plan_path, checkpoint,
   survey_coverage, coverage}`. `checkpoint` is `null` unless the run stopped before dispatching

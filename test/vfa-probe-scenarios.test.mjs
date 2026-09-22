@@ -12,7 +12,9 @@ import { carriedEnvelope, runWorkflow, scriptedAgents } from './harness/workflow
 
 const WF = fileURLToPath(new URL('../workflows/vfa-probe.workflow.js', import.meta.url))
 
-const ARGS = { artifact: 'docs/proposal.md', roots: 'C:/repo' }
+// Most scenarios below pin per-axis arithmetic, so they ask for the per-axis shape by name; the
+// default, one analyst holding every axis, has its own section at the end.
+const ARGS = { artifact: 'docs/proposal.md', roots: 'C:/repo', per_axis: true }
 
 const STANDING = ['ambiguity', 'invariants', 'yagni', 'reinvention']
 
@@ -134,6 +136,9 @@ test('an axis that stopped halfway is not an axis that came back clean', async (
     args: ARGS,
     agent: probeAgents({
       'probe:yagni': stoppedShort({ not_reached: '§7 onward' }),
+      // Its continuation is handed '§7 onward' and hands the same remainder back: no progress,
+      // so no further pass, and the gap stays open.
+      'probe:yagni:continued': stoppedShort({ not_reached: '§7 onward' }),
     }),
   })
 
@@ -371,4 +376,103 @@ test('under the cap nothing is dropped and nothing is said about dropping', asyn
 
   assert.deepEqual(result.axes_dropped, [])
   assert.equal(result.coverage.unreached.length, 0)
+})
+
+// ------------------------------------------------------- the default: analysts earned by length
+//
+// The axes are a checklist for a reader, not a head count. What is pinned here is that one
+// analyst holds every axis unless the artefact is long enough to earn more, that the head count
+// never exceeds the axes, and that a reader who stops short is continued on exactly what it
+// never reached rather than written off.
+
+const DEFAULT_ARGS = { artifact: 'docs/proposal.md', roots: 'C:/repo' }
+const probeLabels = (prompts) =>
+  prompts.filter((p) => /^probe:/.test(p.opts.label)).map((p) => p.opts.label)
+const sized = (lines, over = {}) =>
+  probeAgents({ ground: groundPayload({ artifact_lines: lines }), ...over })
+
+test('one analyst holds every axis on a document one reader can hold', async () => {
+  const { result, prompts } = await runWorkflow(WF, {
+    args: DEFAULT_ARGS,
+    agent: sized(120, { axes: axesResult({ axes: manyAxes(3) }) }),
+  })
+
+  assert.equal(probeLabels(prompts).length, 1)
+  assert.deepEqual(result.analysts, [result.axes.map((a) => a.key)])
+  const prompt = prompts.find((p) => /^probe:/.test(p.opts.label)).prompt
+  for (const key of STANDING.concat(['repo1', 'repo2', 'repo3'])) {
+    assert.match(prompt, new RegExp('\\d+\\. ' + key), `${key} missing from the checklist`)
+  }
+  assert.equal(result.ratifiable, true)
+})
+
+test('an unknown length earns one analyst, not one per axis', async () => {
+  const { result } = await runWorkflow(WF, {
+    args: DEFAULT_ARGS,
+    agent: probeAgents({ ground: () => { throw new Error('node missing') } }),
+  })
+
+  assert.equal(result.analysts.length, 1)
+})
+
+test('length earns more analysts, the axes are dealt across them, and never past one each', async () => {
+  const lines = 900
+  const { result } = await runWorkflow(WF, { args: DEFAULT_ARGS, agent: sized(lines) })
+
+  assert.equal(result.analysts.length, Math.ceil(lines / 400))
+  assert.deepEqual(result.analysts.flat().sort(), [...STANDING].sort(), 'every axis held once')
+
+  const { result: huge } = await runWorkflow(WF, { args: DEFAULT_ARGS, agent: sized(50_000) })
+  assert.equal(huge.analysts.length, STANDING.length)
+})
+
+test('a shared analyst tags each finding with the axis it belongs to', async () => {
+  const { result } = await runWorkflow(WF, {
+    args: DEFAULT_ARGS,
+    agent: sized(100, {
+      'probe:': found([
+        finding({ axis: 'yagni', severity: 'gap' }),
+        finding({ axis: 'ambiguity', severity: 'ambiguity' }),
+      ]),
+    }),
+  })
+
+  assert.deepEqual(result.findings.map((f) => f.axis), ['yagni', 'ambiguity'])
+  assert.equal(result.ratifiable, false)
+})
+
+test('a reader that stops short is continued on what it never reached, and then counts as done', async () => {
+  const label = `probe:${STANDING.join('+')}`
+  const { result, prompts } = await runWorkflow(WF, {
+    args: DEFAULT_ARGS,
+    agent: sized(100, {
+      [label]: stoppedShort({
+        findings: [finding({ axis: 'invariants' })], not_reached: '§5-§9 on yagni',
+      }),
+      [label + ':continued']: found([finding({ axis: 'yagni', severity: 'gap' })]),
+    }),
+  })
+
+  const continued = prompts.find((p) => p.opts.label === label + ':continued')
+  assert.ok(continued, 'no continuation was dispatched')
+  assert.match(continued.prompt, /Attack ONLY what it never reached:\n§5-§9 on yagni/)
+  assert.deepEqual(result.findings.map((f) => f.axis), ['invariants', 'yagni'],
+    'both passes\' findings stand')
+  assert.equal(result.coverage.complete, true)
+  assert.equal(result.ratifiable, true)
+})
+
+test('a continuation that dies leaves its whole analyst\'s axes incomplete, not clean', async () => {
+  const label = `probe:${STANDING.join('+')}`
+  const { result } = await runWorkflow(WF, {
+    args: DEFAULT_ARGS,
+    agent: sized(100, {
+      [label]: stoppedShort({ not_reached: '§8' }),
+      [label + ':continued']: () => { throw new Error('model unavailable') },
+    }),
+  })
+
+  assert.deepEqual([...result.coverage.incomplete].sort(), [...STANDING].sort())
+  assert.equal(result.ratifiable, false)
+  assert.ok(result.coverage.unreached.some((u) => /§8/.test(u)))
 })

@@ -4,7 +4,7 @@ export const meta = {
   phases: [
     { title: 'Axes', detail: 'read the target repo\'s own review guidance for what to attack' },
     { title: 'Ground', detail: 'resolve the evidence the artefact cites, once, for every axis' },
-    { title: 'Probe', detail: 'one analyst per axis, in parallel, artefact-only handoff' },
+    { title: 'Probe', detail: 'one analyst holding every axis unless the artefact\'s length earns more; artefact-only handoff' },
   ],
 }
 
@@ -52,6 +52,16 @@ export const meta = {
 //
 // Trimming what analysts READ is worth almost nothing, and an earlier reading of this cost
 // that blamed large-file ingestion pointed straight at that lever. The transcripts refuted it.
+//
+// The third lever is the number of analysts, and it is the one the per-axis shape never priced.
+// Every analyst pays its own locating and its own turns, so twelve analysts on a 120-line
+// document is twelve readers of a document one reader holds whole. The axes are a CHECKLIST for
+// a reader, not a head count: by default one analyst carries every axis, and a second is bought
+// only when the artefact is long enough that one reader would not get through it on all of them
+// — `LINES_PER_ANALYST` below. A reader that still stops short is continued on exactly what it
+// never reached (IRON LAW §3), which is the fan-out earned by measurement rather than predicted.
+// `per_axis: true` restores one analyst per axis for a caller who wants the independent-heads
+// shape and says so.
 
 // ---------------------------------------------------------------- schemas
 //
@@ -86,26 +96,32 @@ const AXES = {
 // honestly found nothing — and an empty list on every axis computes `ratifiable: true`. That
 // is a partial attack minted into a clean bill of health on the one gate that decides whether
 // a design gets built.
-const PROBE_FINDINGS = {
-  type: 'object', additionalProperties: false,
-  required: ['findings', 'notes'],
-  properties: {
-    findings: { type: 'array', items: {
-      type: 'object', additionalProperties: false,
-      required: ['severity', 'section', 'claim', 'evidence'],
-      properties: {
-        severity: { type: 'string', enum: ['ambiguity', 'gap', 'note'] },
-        section: { type: 'string' },   // where in the artefact, as the artefact names it
-        claim: { type: 'string' },     // the defect, falsifiably stated
-        evidence: { type: 'string' },  // the text or code that makes it real
-      } } },
-    notes: { type: 'string' },
-    // Not `required`: an exhausted prober with nothing to say must never be deadlocked by a
-    // field it forgot (the 0.12.1 postmortem). Absent, it is normalized below — toward
-    // "unfinished", never toward "done".
-    stop_reason: { type: 'string', enum: ['exhausted', 'unfinished', 'artefact_unreadable'] },
-    not_reached: { type: 'string' },
-  },
+//
+// A prober holding several axes tags each finding with one of them, from a closed list built per
+// dispatch: an axis it was not given cannot be where a finding lands.
+function probeFindings(axisKeys) {
+  return {
+    type: 'object', additionalProperties: false,
+    required: ['findings', 'notes'],
+    properties: {
+      findings: { type: 'array', items: {
+        type: 'object', additionalProperties: false,
+        required: ['axis', 'severity', 'section', 'claim', 'evidence'],
+        properties: {
+          axis: { type: 'string', enum: axisKeys },
+          severity: { type: 'string', enum: ['ambiguity', 'gap', 'note'] },
+          section: { type: 'string' },   // where in the artefact, as the artefact names it
+          claim: { type: 'string' },     // the defect, falsifiably stated
+          evidence: { type: 'string' },  // the text or code that makes it real
+        } } },
+      notes: { type: 'string' },
+      // Not `required`: an exhausted prober with nothing to say must never be deadlocked by a
+      // field it forgot (the 0.12.1 postmortem). Absent, it is normalized below — toward
+      // "unfinished", never toward "done".
+      stop_reason: { type: 'string', enum: ['exhausted', 'unfinished', 'artefact_unreadable'] },
+      not_reached: { type: 'string' },
+    },
+  }
 }
 
 // What the citation courier hands back: one command's stdout, byte-exact, in one string.
@@ -146,6 +162,13 @@ const DEFAULT_DERIVED_AXES = 8
 const maxDerivedAxes = Number.isInteger(input.max_derived_axes) && input.max_derived_axes >= 0
   ? input.max_derived_axes
   : DEFAULT_DERIVED_AXES
+
+// How many lines of artefact one analyst is asked to attack on every axis it holds. The measured
+// probe that set this was 120 lines under seventeen analysts; one reader holds that whole. A
+// starting default to be revised against measurement, never a finding — and the continuation
+// below catches a reader it overestimated, so erring high costs a sequential round, not coverage.
+const LINES_PER_ANALYST = 400
+const perAxis = input.per_axis === true
 
 // Where `lib/citations.mjs` lives, resolved the way every other workflow here resolves a plugin
 // path: the caller's value, then the environment, then the shell form expanded in the agent's
@@ -346,11 +369,34 @@ function groundSection(ground) {
     `for to arrive at the same lines.\n\n`
 }
 
-function probePrompt(axis, ground) {
-  return `Attack this document on ONE axis. You are a probe, not a reviewer: your job is to ` +
+function axisBlock(bundle) {
+  const one = (a) => `${a.key}${a.source ? ' (from ' + a.source + ')' : ''}:\n${a.charge}`
+
+  if (bundle.length === 1) {
+    return `YOUR AXIS — ${one(bundle[0])}\n\n` +
+      `Stay on it. Other probes hold the other axes, and a probe that wanders reports what ` +
+      `three others already have while its own axis goes unexamined.\n\n`
+  }
+
+  return `YOUR AXES — you hold all ${bundle.length} of these, and nobody else does. Treat ` +
+    `them as a checklist: attack the whole document on each one in turn, and do not call ` +
+    `yourself exhausted until every axis has had its pass. Tag every finding with the ONE ` +
+    `axis it most belongs to; a defect two axes both notice is one finding, not two.\n\n` +
+    bundle.map((a, i) => `${i + 1}. ${one(a)}`).join('\n\n') + '\n\n'
+}
+
+function probePrompt(bundle, ground, remainder) {
+  const many = bundle.length > 1
+  return `Attack this document on ${many ? 'the axes below' : 'ONE axis'}. You are a probe, ` +
+    `not a reviewer: your job is to ` +
     `find where it is wrong, not to appraise it. A document that survives you is not thereby ` +
     `endorsed — you have no way to endorse anything, and your caller computes what your ` +
     `findings mean.\n\n` +
+    (remainder
+      ? `A CONTINUATION. An earlier probe held these same axes and stopped before it finished. ` +
+        `Its findings are already recorded. Attack ONLY what it never reached:\n${remainder}\n` +
+        `Read the rest of the document for context, but report only on that part.\n\n`
+      : '') +
     `THE ARTEFACT — read it in full before you write anything:\n${artifact}\n\n` +
     `REPOSITORY it will be implemented in: ${roots}\n` +
     `Read the code. A claim about what this document would do to this repository is worth ` +
@@ -358,10 +404,7 @@ function probePrompt(axis, ground) {
     `path and a line is not a finding.\n` +
     groundSection(ground) +
     (context ? `WHAT THIS DOCUMENT IS FOR:\n${context}\n\n` : '') +
-    `YOUR AXIS — ${axis.key}${axis.source ? ' (from ' + axis.source + ')' : ''}:\n` +
-    `${axis.charge}\n\n` +
-    `Stay on it. Other probes hold the other axes, and a probe that wanders reports what ` +
-    `three others already have while its own axis goes unexamined.\n\n` +
+    axisBlock(bundle) +
     ladderText +
     `Every finding is falsifiable: claim states the defect so it could be shown wrong, and ` +
     `evidence quotes the document or cites the code that makes it real. section names where ` +
@@ -374,8 +417,10 @@ function probePrompt(axis, ground) {
     `Finding nothing on your axis after an honest attack IS your report. Do not pad it — a ` +
     `manufactured ambiguity costs a person a real conversation about a non-problem.\n\n` +
     `ALWAYS set stop_reason, and set it honestly. "exhausted" means you read the whole ` +
-    `artefact and attacked all of it on your axis. "unfinished" means you did not get that ` +
-    `far, whatever the reason — then put what you never reached into not_reached, in enough ` +
+    `artefact and attacked all of it on ${many ? 'every one of your axes' : 'your axis'}. ` +
+    `"unfinished" means you did not get that ` +
+    `far, whatever the reason — then put what you never reached into not_reached, naming the ` +
+    `sections${many ? ' and the axes' : ''}, in enough ` +
     `detail that a later probe can pick it up. "artefact_unreadable" means you could not read ` +
     `it at all.\n\n` +
     `Your caller cannot tell a clean document from a half-read one by looking at an empty ` +
@@ -391,6 +436,7 @@ if (!artifact) {
     artifact: '',
     axes: [],
     axes_dropped: [],
+    analysts: [],
     shared_ground: null,
     findings: [],
     ambiguities: [],
@@ -479,43 +525,90 @@ if (!ground.payload) {
 }
 
 phase('Probe')
-log(`Probing ${artifact} on ${axes.length} axes: ${axes.map((a) => a.key).join(', ')}.`)
 
-// parallel(), not pipeline(): every probe is a leaf. There is no second stage to feed, and
+// How many analysts the artefact's length earns. An unknown length — the ground read failed —
+// earns one, because the continuation below is what a reader that stops short buys anyway.
+const artifactLines = ground.payload && Number.isInteger(ground.payload.artifact_lines)
+  ? ground.payload.artifact_lines
+  : 0
+const analysts = perAxis
+  ? axes.length
+  : Math.max(1, Math.min(axes.length, Math.ceil(artifactLines / LINES_PER_ANALYST)))
+
+// Dealt round-robin, so the standing four spread across analysts rather than all landing on one.
+const bundles = Array.from({ length: analysts }, () => [])
+axes.forEach((axis, i) => bundles[i % analysts].push(axis))
+
+const bundleLabel = (bundle) => `probe:${bundle.map((a) => a.key).join('+')}`
+
+log(`Probing ${artifact} on ${axes.length} axes with ${analysts} analyst(s) — ` +
+  (perAxis ? 'one per axis, as the caller asked'
+    : artifactLines ? `${artifactLines} line(s) earn ${analysts}`
+      : 'the artefact\'s length is unknown, so one') +
+  `: ${bundles.map((b) => b.map((a) => a.key).join('+')).join(', ')}.`)
+
+// One analyst's whole attack: a first pass, then continuations on exactly what it never
+// reached, for as long as each pass gets further than the last. No counter ends it (IRON LAW
+// §1). It ends when a pass is exhausted, or cannot say what it missed, or hands back the very
+// remainder it was given — a pass that made no progress buys no further pass, and what it
+// left stays in the coverage block as unreached.
+async function attack(bundle) {
+  const opts = {
+    agentType: 'vf-agentics:analyst', effort: 'high',
+    schema: probeFindings(bundle.map((a) => a.key)), phase: 'Probe', label: bundleLabel(bundle),
+  }
+  const passes = []
+  let remainder = ''
+
+  for (;;) {
+    const report = await agent(probePrompt(bundle, ground, remainder),
+      remainder ? { ...opts, label: opts.label + ':continued' } : opts).catch((e) => {
+      log(`WARNING: ${opts.label} did not report: ${e && e.message}`)
+      return null
+    })
+    if (!report) return { passes, remainder }
+
+    passes.push(report)
+    const next = (report.not_reached || '').trim()
+    if (report.stop_reason !== 'unfinished' || !next || next === remainder) {
+      return { passes, remainder: next }
+    }
+    remainder = next
+  }
+}
+
+// parallel(), not pipeline(): every analyst is a leaf. There is no second stage to feed, and
 // the barrier costs nothing because nothing waits on the slowest one but the report itself.
-const reports = await parallel(axes.map((axis) => () =>
-  agent(probePrompt(axis, ground), {
-    agentType: 'vf-agentics:analyst', effort: 'high', schema: PROBE_FINDINGS,
-    phase: 'Probe', label: `probe:${axis.key}`,
-  })))
+const outcomes = await parallel(bundles.map((bundle) => () => attack(bundle)))
 
-// Reconcile by index. An axis whose probe died is an axis nobody attacked, and it has to be
-// reported as unexamined rather than quietly counted among the ones that found nothing —
-// those two look identical in a findings list and mean opposite things.
+// Reconcile by bundle. An axis whose analyst never reported is an axis nobody attacked, and it
+// has to be reported as unexamined rather than quietly counted among the ones that found
+// nothing — those two look identical in a findings list and mean opposite things.
 const findings = []
 const unexamined = []
 const partiallyExamined = []
 
-axes.forEach((axis, i) => {
-  const report = reports[i]
+bundles.forEach((bundle, i) => {
+  const outcome = outcomes[i]
+  const passes = outcome ? outcome.passes : []
 
-  if (!report) {
-    unexamined.push(axis.key)
-  } else {
+  const keys = bundle.map((a) => a.key)
+  if (passes.length === 0) unexamined.push(...keys)
+  for (const report of passes) {
     for (const f of report.findings || []) {
-      findings.push({ ...f, axis: axis.key, id: `P${findings.length + 1}` })
+      const axis = keys.length === 1 ? keys[0] : keys.includes(f.axis) ? f.axis : keys.join('+')
+      findings.push({ ...f, axis, id: `P${findings.length + 1}` })
     }
+  }
 
-    // An axis that stopped short keeps whatever it found — the findings above are already in
-    // — but it is not an axis that came back clean. Anything other than an explicit
-    // "exhausted" counts as short, including an absent field: normalizing silence toward done
-    // is exactly how a half-read document earns a clean bill of health.
-    if (report.stop_reason !== 'exhausted') {
-      partiallyExamined.push({
-        key: axis.key,
-        why: report.stop_reason || 'unstated',
-        remainder: (report.not_reached || '').trim(),
-      })
+  // An axis that stopped short keeps whatever it found — the findings above are already in —
+  // but it is not an axis that came back clean. Anything other than an explicit "exhausted"
+  // counts as short, including an absent field: normalizing silence toward done is exactly how
+  // a half-read document earns a clean bill of health.
+  const last = passes[passes.length - 1]
+  if (last && last.stop_reason !== 'exhausted') {
+    for (const key of keys) {
+      partiallyExamined.push({ key, why: last.stop_reason || 'unstated', remainder: outcome.remainder })
     }
   }
 })
@@ -590,6 +683,8 @@ return {
   // What the cap declined to buy, beside what it bought. An axis list that showed only the
   // axes that ran would read identically whether the repository asked for four or forty.
   axes_dropped: axesDropped,
+  // Which analyst held which axes, so the head count is legible: one entry per analyst that ran.
+  analysts: bundles.map((b) => b.map((a) => a.key)),
   // The shared-ground read, as a fact rather than as evidence: no finding rests on it, and a
   // reader deciding whether this probe was cheap for a good reason or for a bad one needs to
   // see which.

@@ -67,15 +67,19 @@ Read it back when a later phase opens on the same effort, and pass what it holds
 node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" read <repo> <slug> --latest survey
 ```
 
-**The one rule: a stored survey never collapses a phase.** It is prior context and nothing
-more. Passed as `prior` it reaches a survey's planner alone, where it can only change how the
-ground is decomposed — it is never evidence, it never fills `ground`, and it never answers the
-triage's settled-shape question. The reason is mechanical rather than stylistic: the null
-survey's gate reads one field, an entry's computed freshness, and reads no kind and no
-provenance, so anything that reached it would be admitted on freshness alone with no grading
-whatsoever. The knowledge base at `.claude/vfa/kb/` is the only store whose entries are checked
-against the tree and admitted to that arithmetic. This one is durable scratch, and nothing in
-it is checked against anything.
+**Read back as `prior`, a stored return is context, never evidence.** Passed as `prior` it
+reaches a survey's planner alone, where it can only change how the ground is decomposed — it
+never fills `ground`, never reaches the knowledge base's null-survey gate, and never answers the
+triage's settled-shape question. That gate reads one field, an entry's computed freshness, and no
+provenance, so anything that reached it would be admitted with no grading at all.
+
+**One computed exception: a survey that still stands.** Recording a survey anchors it to the
+commit it was taken at and the ground its topics searched. `effort.mjs standing <repo> <slug>`
+then answers from git whether that survey reported complete coverage and whether any commit or
+uncommitted edit has reached its ground since. Hand `develop` the effort's name as `effort`,
+beside `settled_shape: true`, and the run asks that question itself: a standing survey is used
+instead of buying a second one, and one that does not stand is bought again in full. The session
+never decides that a survey stands; the program does.
 <!-- /vfa:verbatim -->
 
 ## Step 1 — Evidence before questions

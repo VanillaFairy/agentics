@@ -180,10 +180,14 @@ channels and neither can make a run incomplete.
 **What a phase produces outlives the phase.** An **effort** at `.claude/vfa/efforts/<effort>/` is the
 unit of work that spans design, survey, probe and runs, and every phase records its return there,
 verbatim, written by the session that ran it. Runs and designs are pointers rather than nested
-children, so nothing about the resume ladder's paths moved. It is **durable scratch and never
-evidence**: an effort's stored survey never collapses a phase, because the null survey's gate reads
-one computed freshness field and no provenance at all, so anything reaching it would be admitted
-with no grading whatsoever. Prior context reaches a survey's planner and nowhere else.
+children, so nothing about the resume ladder's paths moved. Read back as `prior`, a return is
+**durable scratch and never evidence**: it reaches a survey's planner and nowhere else, and never
+the knowledge base's null-survey gate, which reads one computed freshness field and no provenance
+at all. **One exception, and it is computed:** a recorded survey is anchored to its commit and the
+ground its topics searched, and `lib/effort.mjs standing` answers from git whether it reported
+complete coverage and whether anything has touched that ground since. Beside the caller's
+`settled_shape`, a standing survey stands in for `develop`'s, so a design pass's survey is not
+bought twice. Design: `docs/DESIGN.md#efforts`.
 
 **The survey consumes it too, and the order matters.** Its Plan phase receives the tree *index* —
 node paths, entry counts, kinds, no state at all — because before a decomposition exists the only

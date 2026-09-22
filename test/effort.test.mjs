@@ -14,13 +14,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
   EFFORTS_DIR, linkTo, listEfforts, openEffort, readEffort, recordReturn, safeSlug, slugFor,
+  standingSurvey,
 } from '../lib/effort.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/effort.mjs', import.meta.url))
@@ -164,4 +165,131 @@ test('the slug command needs no repository', () => {
   const out = run('slug', 'Efforts and what a probe should cost')
   assert.equal(out.ok, true)
   assert.match(out.slug, /^\d{4}-\d{2}-\d{2}-efforts-and-what-a-probe-should$/)
+})
+
+// ------------------------------------------------------------------ standing
+//
+// A recorded survey is anchored to the commit it was taken at and the ground its topics searched,
+// and stands in for a later survey only while git says nothing reached that ground. Real repos,
+// because the whole claim is about what git answers.
+
+const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8' }).trim()
+
+function put(dir, files) {
+  for (const [path, content] of Object.entries(files)) {
+    const full = join(dir, ...path.split('/'))
+    mkdirSync(dirname(full), { recursive: true })
+    writeFileSync(full, content)
+  }
+}
+
+function gitRepo() {
+  const dir = fresh()
+  git(dir, 'init', '-q', '.')
+  git(dir, 'config', 'user.email', 't@t')
+  git(dir, 'config', 'user.name', 't')
+  put(dir, { 'src/a/x.js': 'x\n', 'src/b/y.js': 'y\n' })
+  git(dir, 'add', '-A')
+  git(dir, 'commit', '-qm', 'init')
+  return dir
+}
+
+const commitIn = (dir, files) => {
+  put(dir, files)
+  git(dir, 'add', '-A')
+  git(dir, 'commit', '-qm', 'change')
+}
+
+const SURVEY = (over = {}) => ({
+  question: 'q', topics: ['a'], ground: ['src/a'], verdicts: [], history: null, docs: null,
+  coverage: { complete: true, dropped: [], incomplete: [], failed_channels: [], unreached: [], from_kb: [] },
+  ...over,
+})
+
+function surveyed(dir, payload = SURVEY()) {
+  openEffort(dir, { slug: 'e', about: 'a change', roots: dir })
+  return recordReturn(dir, 'e', 'survey', payload)
+}
+
+test('recording a survey anchors it to HEAD and its ground, beside the verbatim return', () => {
+  const dir = gitRepo()
+  const out = surveyed(dir)
+
+  assert.equal(out.anchor.observed_at, git(dir, 'rev-parse', 'HEAD'))
+  assert.deepEqual(out.anchor.ground, ['src/a'])
+  assert.deepEqual(JSON.parse(readFileSync(out.path, 'utf8')), SURVEY(), 'the return stays verbatim')
+  assert.equal(readEffort(dir, 'e').surveys.length, 1, 'the anchor is not listed as a survey')
+})
+
+test('an untouched ground stands, and says why', () => {
+  const dir = gitRepo()
+  surveyed(dir)
+  commitIn(dir, { 'src/b/y.js': 'elsewhere\n' })
+
+  const out = standingSurvey(dir, 'e')
+  assert.equal(out.standing, true, out.why)
+  assert.match(out.survey_path, /surveys\/.+\.json$/)
+})
+
+test('a commit on the ground un-stands it and names the commit', () => {
+  const dir = gitRepo()
+  surveyed(dir)
+  commitIn(dir, { 'src/a/x.js': 'moved\n' })
+
+  const out = standingSurvey(dir, 'e')
+  assert.equal(out.standing, false)
+  assert.equal(out.commits_since.length, 1)
+  assert.equal(out.commits_since[0], git(dir, 'rev-parse', 'HEAD'))
+})
+
+test('an uncommitted edit on the ground un-stands it; one elsewhere does not', () => {
+  const dir = gitRepo()
+  surveyed(dir)
+
+  put(dir, { 'src/b/new.js': 'n\n' })
+  assert.equal(standingSurvey(dir, 'e').standing, true)
+
+  put(dir, { 'src/a/new.js': 'n\n' })
+  const out = standingSurvey(dir, 'e')
+  assert.equal(out.standing, false)
+  assert.deepEqual(out.dirty, ['src/a/new.js'])
+})
+
+test('a repository-wide survey is not un-stood by the pipeline\'s own state under .claude/vfa', () => {
+  const dir = gitRepo()
+  surveyed(dir, SURVEY({ ground: ['.'] }))
+  put(dir, { '.claude/vfa/runs/r1/state.jsonl': '{}\n' })
+
+  assert.equal(standingSurvey(dir, 'e').standing, true)
+
+  put(dir, { '.claude/notes.md': 'mine\n' })
+  assert.equal(standingSurvey(dir, 'e').standing, false, 'anything else under .claude is ground')
+})
+
+test('a survey that did not complete, or names no ground, never stands', () => {
+  const partial = gitRepo()
+  surveyed(partial, SURVEY({ coverage: { ...SURVEY().coverage, complete: false } }))
+  assert.match(standingSurvey(partial, 'e').why, /complete coverage/)
+
+  const groundless = gitRepo()
+  surveyed(groundless, SURVEY({ ground: undefined }))
+  assert.match(standingSurvey(groundless, 'e').why, /names no ground/)
+})
+
+test('no survey, or an unanchored one, never stands', () => {
+  const dir = gitRepo()
+  openEffort(dir, { slug: 'e', about: 'a change', roots: dir })
+  assert.match(standingSurvey(dir, 'e').why, /no recorded survey/)
+
+  const bare = fresh()
+  surveyed(bare)
+  assert.match(standingSurvey(bare, 'e').why, /no anchor commit/, 'no git, no anchor, no standing')
+})
+
+test('the CLI prints standing under its own digest', () => {
+  const dir = gitRepo()
+  surveyed(dir)
+  const out = run('standing', dir, 'e')
+  assert.equal(out.payload.standing, true)
+  assert.equal(typeof out.payload_digest, 'string')
 })

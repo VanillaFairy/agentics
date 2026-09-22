@@ -265,7 +265,9 @@ Every refusal surveys in full and says which path refused, and why.
 
 `prior` is what an earlier phase of the same [effort](#efforts) stored. It reaches the survey's
 planner and nowhere else, where it can only change how the ground is decomposed. It is never
-evidence, it never fills `ground`, and it never answers the settled-shape question.
+evidence, it never fills `ground`, and it never answers the settled-shape question. (A whole
+survey can stand in for a later one, but only through the computed `standing` check described
+under Efforts, never as `prior`.)
 
 ---
 
@@ -1289,11 +1291,26 @@ resume ladder reads it, and a design stays in the source tree, because it is sou
 the **session** that ran the phase, through `lib/effort.mjs`, and a return is stored exactly as it
 was returned. Opening is idempotent, and a later phase adopts the identity the first one recorded.
 
-**An effort's stored survey never collapses a phase.** That rule is mechanical, not stylistic. The
-null survey's gate reads one field, an entry's computed freshness, and reads no kind and no
-provenance. Anything that reached it would be admitted on freshness alone. Prior context has no
-freshness to check, so it reaches exactly one place: a survey's planner. **The knowledge base is
-claims a program can check; the effort store is durable scratch, and it proves nothing.**
+**Read back as prior context, a stored return proves nothing.** The knowledge base's null-survey
+gate reads one field, an entry's computed freshness, and no kind and no provenance, so anything
+that reached it would be admitted on freshness alone. Prior context has no freshness to check, so
+it reaches exactly one place: a survey's planner.
+
+**A survey that still stands is the one computed exception.** Recording a survey writes an
+anchor beside it: the commit it was taken at, and its `ground`, the subtrees its topics searched.
+`standing` then answers from git, never from anybody's account:
+
+- the survey reported `coverage.complete`;
+- its commit is still an ancestor of HEAD;
+- no commit since reaches its ground (the pipeline's own `.claude/vfa/` is excluded);
+- no uncommitted edit sits on its ground.
+
+`develop` asks when the caller passes `effort` beside `settled_shape: true`. A standing survey is
+the run's evidence base, read by the planner from disk, and `from_kb` says so; one that does not
+stand is bought again in full, and the log says which check refused. This is the git-event half
+of a knowledge-base entry's freshness applied to a whole survey, and it exists because the
+design → develop hand-off otherwise buys the same 400–500k-token survey twice. It answers only
+whether the ground moved. Whether the shape is settled stays the caller's judgment.
 
 The wording every phase uses is pinned as the verbatim block `effort-store`.
 
@@ -1636,10 +1653,15 @@ The pieces:
   `opened_at`.
 - `surveys/<stamp>.json`, `probes/<stamp>.json` — a phase's return, verbatim. A stamp is UTC
   `YYYYMMDD-HHMMSS`, suffixed `-2`, `-3` on a collision.
+- `surveys/<stamp>.anchor` — written beside each survey when it is recorded:
+  `{observed_at: <HEAD sha, '' when git could not answer>, ground: [<repo-relative path | '.'>]}`.
+  A ground path that fails the path guard empties `ground`, which refuses standing.
 - `links.jsonl` — `{kind: run | design, value, at}`. Readers skip malformed lines and dedupe.
 
 The CLI: `slug`, `open`, `record … survey|probe --file`, `link … run|design --value`, `read
-[--latest survey|probe]`, and `list`.
+[--latest survey|probe]`, `standing`, and `list`. `standing` prints, under a digest,
+`{standing, why, effort, survey_path, stamp, observed_at, head, ground, commits_since, dirty}`.
+The `effort` input of `vfa-develop` restates the slug rule.
 
 ### Programme graph and events
 

@@ -220,6 +220,12 @@ a commit series: there is no mechanical re-verification to converge against, so 
 iterate on taste. There is no author-rebuttal round either — the author is the party the
 probe exists to check.
 
+**A second probe round is earned, never routine.** A finding the user ruled on, with the
+disposition written into the document, is cleared; re-probing to watch it clear buys nothing.
+Probe again only when a round returned an `ambiguity` whose resolution reshaped the design —
+a new system or interface, a data shape, which component owns a decision — and say which
+ambiguity earned it. Otherwise one round is the probe.
+
 ## If the probe cannot dispatch
 
 Some sessions run under a standing rule that subagents and workflows are not dispatched

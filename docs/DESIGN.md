@@ -414,6 +414,12 @@ It runs in three phases:
    attack, and what it left stays unreached in the coverage block. `per_axis: true` restores one
    analyst per axis for a caller who wants independent heads and says so.
 
+**Rounds are earned too.** Resolving a finding with the user and writing the disposition into
+the document is what clears it; that needs no second probe. A second round is bought only when
+round N returned an ambiguity whose resolution reshaped the design (a new system or interface,
+a data shape, which component owns a decision), and it attacks the revised document as a whole
+document, not the author's account of what changed.
+
 Findings sit on the **design severity ladder**, which is not the code ladder. The code ladder
 speaks in acceptance criteria, commit series and loci, and a document has none of those.
 

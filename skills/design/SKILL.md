@@ -289,6 +289,11 @@ Every `ambiguity` is resolved with the user before the design can be ratified. E
 either designed away or accepted out loud, in the document, in the user's words. Notes are
 written down and left alone.
 
+A gate closed by ambiguities is opened by their written dispositions, not by probing again.
+Buy a second round only under the probe skill's rule: an ambiguity whose resolution reshaped
+the design. A gate closed by incomplete coverage is different. Nobody looked, so re-run the
+probe for what `coverage.resumable.remaining` names.
+
 <!-- vfa:verbatim probe-disposition -->
 **Summarise before you ask anything.** A probe returns findings per axis and the axes
 overlap, so handed over raw it is a wall of text that costs more attention than the artefact

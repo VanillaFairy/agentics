@@ -261,6 +261,10 @@ whether the survey phase is earned at all (the **null survey**).
 - **`ground: ['src/…', …]`** — pass the paths the first property established. This is not a
   new judgment: you already had to know the locus to answer the triage question. It is what
   makes the other half computable.
+- **`effort: '<slug>'`** — pass it whenever this change belongs to an effort, which a design
+  hand-off always does. With `settled_shape: true` beside it, the run checks whether the survey
+  the design pass recorded still stands, and uses it instead of buying a second one. The check is
+  the program's; you only name the effort.
 
 **When the change came from a design document, do not re-derive either of them.** If the
 document carries a `ground` marker, read it out rather than retyping it:
@@ -371,7 +375,7 @@ if the session dies in the middle.
    resolve:
 
    ```
-   Workflow({ name: 'vf-agentics:vfa-develop', args: { change, roots, notes, prior, intelligence, plugin_root, base_ref, programme, slice, settled_shape, ground } })
+   Workflow({ name: 'vf-agentics:vfa-develop', args: { change, roots, notes, prior, intelligence, plugin_root, base_ref, programme, slice, settled_shape, ground, effort } })
    ```
 
    `plugin_root` is this plugin's absolute root (`${CLAUDE_PLUGIN_ROOT}`); the workflow

@@ -960,6 +960,15 @@ let notes = input.notes || ''
 // arithmetic, `ground`, or any verdict here. Nothing in this file reads it but the forward.
 const prior = typeof input.prior === 'string' ? input.prior.trim() : ''
 
+// The effort this change belongs to, by name. It buys exactly one thing: a computed check of
+// whether the survey an earlier pass of the same effort recorded still stands — anchored, complete,
+// and on ground no commit or edit has touched since. Only that program's answer can stand the
+// survey in for this run's, and only beside the caller's `settled_shape`. Nothing else here
+// reads it.
+const effortName = typeof input.effort === 'string' && /^[a-z0-9][a-z0-9._-]*$/.test(input.effort.trim())
+  ? input.effort.trim()
+  : ''
+
 // Resume by reference, not by echo. The predecessor of this field was `preplanned`: the
 // planner's whole output, ~55KB, which a caller had to transcribe back byte-exact to say
 // "go". A one-bit confirmation cost a 15k-token retype or a from-scratch re-plan. Now the
@@ -2184,6 +2193,21 @@ function kbChainPrompt(paths) {
     `A repository with no knowledge base prints a chain holding nothing, and that IS the good ` +
     `case: this run then opens exactly as every run before it did. Return stop_reason failed ` +
     `ONLY when the command could not be run at all, with what the shell reported in notes.`
+}
+
+function standingPrompt() {
+  return `READ MODE. Ask whether the survey this change's effort already recorded still stands, and ` +
+    `return the answer verbatim. You run one command and paste its output; you decide nothing and ` +
+    `you interpret nothing.\n\n` +
+    `REPOSITORY: ${kbRepo()}\n\n` +
+    `Run exactly this:\n\n` +
+    `   node "${pluginRoot}/lib/effort.mjs" standing "${kbRepo()}" "${effortName}"\n` +
+    rootWarning +
+    `Put its ENTIRE stdout into payload_raw, byte for byte, as one string. It is one line of JSON ` +
+    `carrying its own digest, and your caller recomputes that digest over what arrives. The ` +
+    `answer — standing or not, and why — was computed from git by the program. You do not agree ` +
+    `or disagree with it. Return stop_reason failed ONLY when the command could not be run at ` +
+    `all, with what the shell reported in notes.`
 }
 
 // What this run learned, deposited where the next run will find it. One batch, one digest, one
@@ -4961,6 +4985,31 @@ try {
       }
     }
 
+    // The other computed collapse: a survey this effort's design pass already bought, on ground
+    // nothing has touched since. Same two halves as the null survey — the caller's settled shape,
+    // and a program's answer about the tree — and a different store: the effort's anchored
+    // survey rather than knowledge-base entries. It never reaches the knowledge-base gate above.
+    let standingSurvey = null
+    if (!fixLane && !nullSurvey && settledShape && effortName) {
+      const carried = carriedVerify(await agent(standingPrompt(), {
+        agentType: 'vf-agentics:kb', effort: 'low', model: 'haiku', schema: CARRIED,
+        phase: 'Survey', label: 'effort-standing',
+      }).catch((e) => {
+        log(`WARNING: the effort's standing check failed to run: ${e && e.message}`)
+        return null
+      }), 'the effort reader')
+
+      if (!carried.payload) {
+        log(`The effort's recorded survey could not be checked (${carried.why}); surveying in full.`)
+      } else if (carried.payload.standing !== true) {
+        log(`Surveying in full: the effort's recorded survey does not stand — ${carried.payload.why}.`)
+      } else {
+        standingSurvey = carried.payload
+        log(`No survey: the effort's recorded survey (${standingSurvey.survey_path}) stands — ` +
+          `${standingSurvey.why}. It is this run's evidence base.`)
+      }
+    }
+
     // Registered workflows are plugin-namespaced, so the qualified name is tried first and
     // the bare name second — the reference then survives a runtime that resolves siblings
     // either way. The two failure classes are deliberately kept apart. A LOOKUP failure on
@@ -4983,7 +5032,7 @@ try {
     let surveyUnresolved = false
     let surveyFailure = ''
 
-    if (!nullSurvey && !fixLane) {
+    if (!nullSurvey && !fixLane && !standingSurvey) {
       try {
         survey = await workflow('vf-agentics:vfa-survey', surveyArgs)
       } catch (e) {
@@ -5078,6 +5127,28 @@ try {
           return `${path}: ${fresh.length} fresh entr${fresh.length === 1 ? 'y' : 'ies'}, ` +
             `observed at ${shas.join(', ')}`
         })),
+        resumable: { runId: RUN_ID, remaining: [] },
+      }
+    } else if (standingSurvey) {
+      // Like the null survey, this phase did not run, and this is the only account of that. What
+      // stands in is a SEARCH somebody ran, not a recollection: the effort's design pass bought it,
+      // it reported complete coverage, and a program just checked that no commit and no edit has
+      // reached its ground since. What it did not do is look for anything this change needs that
+      // the design pass's question did not ask — and the planner is told so.
+      surveyCoverage = {
+        complete: true,
+        dropped: [],
+        incomplete: [],
+        failed_channels: [],
+        unreached: [],
+        from_kb: [
+          'no survey phase ran: the caller reported the shape settled and named effort ' +
+          effortName + ', whose recorded survey STANDS — it reported complete coverage, and no ' +
+          'commit and no uncommitted edit has reached its ground since it was taken. NOTHING WAS ' +
+          'RE-SEARCHED BY THIS RUN; the evidence base is that survey, read from disk.',
+          'survey: ' + standingSurvey.survey_path + ', taken at ' + standingSurvey.observed_at +
+          ', ground: ' + (standingSurvey.ground || []).join(', '),
+        ],
         resumable: { runId: RUN_ID, remaining: [] },
       }
     } else if (!survey || !survey.coverage) {
@@ -5186,6 +5257,18 @@ ${history}
           `SHAPE. It is not a search: anything this change needs that these entries do not ` +
           `name was not looked for by anybody. Where a locus you are about to declare rests on ` +
           `that gap, say so in notes and in blocking_gaps rather than declaring it confidently.`
+        : standingSurvey
+        ? `EVIDENCE BASE: A SURVEY THIS CHANGE'S DESIGN PASS ALREADY RAN, NOT ONE RUN TODAY. It ` +
+          `is on disk, and it still stands: it reported complete coverage, and a program has just ` +
+          `checked that no commit and no uncommitted edit reached its ground since ` +
+          `${standingSurvey.observed_at}.\n\n` +
+          `Read it in full before you plan — it is the survey's own return, verbatim:\n` +
+          `   ${standingSurvey.survey_path}\n` +
+          `Its \`verdicts\` are your per-topic findings; \`history\` and \`docs\` are its side ` +
+          `channels. Its ground was: ${(standingSurvey.ground || []).join(', ')}.\n\n` +
+          `It answered the design's question, which is not quite this one. Anything this change ` +
+          `needs outside that ground was not looked for by anybody: confirm those loci against the ` +
+          `repository yourself, and name what that leaves uncertain in notes and blocking_gaps.`
         : `WARNING: no survey evidence was gathered. Confirm every locus against the ` +
           `repository yourself before declaring it, and say in notes what that leaves uncertain.`
 

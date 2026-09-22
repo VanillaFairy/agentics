@@ -19,7 +19,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
-import { carriedChain, carriedPayload, recordedLine, runWorkflow, scriptedAgents } from './harness/workflow-host.mjs'
+import { carriedChain, carriedEnvelope, carriedPayload, recordedLine, runWorkflow, scriptedAgents } from './harness/workflow-host.mjs'
 
 const WF = fileURLToPath(new URL('../workflows/vfa-develop.workflow.js', import.meta.url))
 
@@ -667,4 +667,73 @@ test('a deposit that cannot be written is reported, not swallowed', async () => 
   assert.ok(result.coverage.failed_channels.includes('kb'))
   assert.equal(result.coverage.complete, true,
     'the run did the work; what failed is the record of what it learned while doing it')
+})
+
+// ── the standing survey: a design pass's survey, not bought twice ────────────────────────────
+//
+// Same two halves as the null survey, a different store. The caller's settled shape, and
+// lib/effort.mjs's computed answer that the effort's anchored survey reported complete coverage
+// and that nothing has touched its ground since. The program decides; the courier carries; the
+// planner reads the survey from disk, so its bytes never ride a model.
+
+const EFFORT = { ...ARGS, settled_shape: true, effort: '2026-09-22-a-change' }
+
+const standing = (over = {}) => carriedEnvelope({
+  standing: true, why: 'no commit since abc123 reaches the survey\'s ground',
+  effort: '2026-09-22-a-change', survey_path: 'C:/repo/.claude/vfa/efforts/e/surveys/s.json',
+  stamp: 's', observed_at: 'abc123', head: 'def456', ground: ['src/a', 'src/b'],
+  commits_since: [], dirty: [], ...over,
+})
+
+test('a standing effort survey collapses the survey, and the planner reads it from disk', async () => {
+  const { result, prompts, logs } = await runWorkflow(WF, {
+    args: EFFORT,
+    workflow: () => { throw new Error('the survey was invoked') },
+    agent: cast({ 'effort-standing': standing() }),
+  })
+
+  assert.match(logs.join(' '), /No survey: the effort's recorded survey .* stands/)
+  const plan = promptFor(prompts, 'plan')
+  assert.match(plan, /A SURVEY THIS CHANGE'S DESIGN PASS ALREADY RAN/)
+  assert.match(plan, /efforts\/e\/surveys\/s\.json/)
+  assert.match(plan, /Anything this change needs outside that ground was not looked for by anybody/)
+
+  const from = result.coverage.from_kb
+  assert.match(from[0], /NOTHING WAS RE-SEARCHED BY THIS RUN/)
+  assert.match(from[1], /taken at abc123, ground: src\/a, src\/b/)
+  assert.equal(result.coverage.complete, true)
+})
+
+test('a survey that does not stand is surveyed in full, with the program\'s reason', async () => {
+  const { logs, prompts } = await runWorkflow(WF, {
+    args: EFFORT,
+    workflow: () => surveyResult(),
+    agent: cast({
+      'effort-standing': standing({ standing: false, why: '2 commit(s) since the survey touch its ground' }),
+    }),
+  })
+
+  assert.match(logs.join(' '), /does not stand — 2 commit\(s\) since the survey touch its ground/)
+  assert.ok(!/DESIGN PASS ALREADY RAN/.test(promptFor(prompts, 'plan')))
+})
+
+test('an effort without the settled-shape judgment is never asked about', async () => {
+  const { prompts } = await runWorkflow(WF, {
+    args: { ...ARGS, effort: '2026-09-22-a-change' },
+    workflow: () => surveyResult(),
+    agent: cast(),
+  })
+
+  assert.ok(!labelsOf(prompts).includes('effort-standing'),
+    'the shape is the caller\'s judgment; the tree check alone never skips a phase')
+})
+
+test('an unreadable standing answer surveys in full rather than assuming either way', async () => {
+  const { logs } = await runWorkflow(WF, {
+    args: EFFORT,
+    workflow: () => surveyResult(),
+    agent: cast({ 'effort-standing': { stop_reason: 'failed', payload_raw: '', notes: 'no node' } }),
+  })
+
+  assert.match(logs.join(' '), /could not be checked .*surveying in full/)
 })

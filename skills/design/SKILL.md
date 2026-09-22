@@ -463,8 +463,10 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/programme.mjs" --section change --file <the desi
 ```
 
 `--section settled-evidence` prints the planner's payload the same way, and
-`--section ground` prints the ground block when the document carries one. Those strings are
-the whole handoff — `develop` surveys, plans, partitions and implements from them.
+`--section ground` prints the ground block when the document carries one. Those strings, plus
+the effort's name, are the whole handoff — `develop` surveys, plans, partitions and implements
+from them. The effort's name is what lets `develop` use this pass's survey instead of buying a
+second one, when nothing has touched its ground in between.
 
 ### Say how much pipeline the change needs — as advice, not as an argument
 

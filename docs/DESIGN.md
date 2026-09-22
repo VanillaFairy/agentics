@@ -1691,8 +1691,8 @@ The CLI: render (`--json`, `--write-view`, `--watch`), `--notes <slice>`, `--cha
 What each workflow hands its caller. Every one also carries a `coverage` block.
 
 - **`vfa-survey`** — takes `question, roots, notes, max_topics, prior, intelligence, plugin_root`.
-  Returns `{question, topics, verdicts[{topic, conclusion, evidence, risks}], history, docs,
-  coverage}`. Search agents report `stop_reason` as `exhausted | unfinished | stuck`.
+  Returns `{question, topics, ground, verdicts[{topic, conclusion, evidence, risks}], history,
+  docs, coverage}`, where `ground` is the topics' subtrees (`.` for a repository-wide topic). Search agents report `stop_reason` as `exhausted | unfinished | stuck`.
 - **`vfa-investigate`** — takes `question, roots, notes, as_tasks, intelligence`. Returns
   `{question, mode, tasks{summary, gaps, tasks[{ref, subject, description, activeForm,
   blocked_by}]} | null, report | null, evidence | null, coverage}`. Tasks are capped at 12;

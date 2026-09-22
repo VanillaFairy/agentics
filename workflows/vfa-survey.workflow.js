@@ -487,8 +487,11 @@ function coverageOf(dropped, incomplete, failedChannels, unreached, fromKb = [])
 // The parameter is named `coverageBlock` so the key can be written out as `coverage:` without
 // reading as a redundant `coverage: coverage`. Style only — `coverage-block` understands ES
 // shorthand in every position, so `{ …, coverage }` would lint clean too.
-function surveyResult(topics, verdicts, history, docs, coverageBlock) {
-  return { question, topics, verdicts, history, docs, coverage: coverageBlock }
+// `ground` is the subtrees the topics searched, repo-relative, `.` for a repository-wide topic. It
+// is what a later phase anchors this survey to: the survey stays sound evidence exactly as long as
+// no commit touches that ground (lib/effort.mjs, `standing`).
+function surveyResult(topics, verdicts, history, docs, coverageBlock, ground = []) {
+  return { question, topics, ground, verdicts, history, docs, coverage: coverageBlock }
 }
 
 if (!question) {
@@ -1337,4 +1340,5 @@ return surveyResult(
   channelEvidence(history),
   channelEvidence(docs),
   coverageOf(dropped, incomplete, failedChannels, unreached, fromKb),
+  [...new Set(plan.topics.map((t) => kbArg(t.kb_path)))],
 )

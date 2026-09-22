@@ -872,3 +872,20 @@ test('a deposit that does not land costs the result nothing and is said out loud
   assert.equal(result.coverage.complete, true, 'a deposit is written for the NEXT run')
   assert.match(result.coverage.from_kb.join(' '), /pays\s+for the same empty searches again/)
 })
+
+test('the result names the ground its topics searched, repository-wide as "."', async () => {
+  const { result } = await run({
+    plan: PLAN({
+      topics: [
+        { key: 'a', find: 'find a', kb_path: 'src/a/' },
+        { key: 'b', find: 'find b', kb_path: '' },
+        { key: 'c', find: 'find c', kb_path: 'src/a' },
+      ],
+    }),
+    'scout:': HITS(),
+    'analyze:': VERDICT('a'),
+  })
+
+  assert.deepEqual([...result.ground].sort(), ['.', 'src/a'],
+    'one entry per subtree, so a later freshness check asks git once per path')
+})

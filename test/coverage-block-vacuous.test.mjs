@@ -1,6 +1,6 @@
 // test/coverage-block-vacuous.test.mjs — pins the self-audit deepening of the
 // `coverage-block` rule: a coverage KEY whose value is decidably empty no longer
-// satisfies IRON LAW §4. The rule's message demands six named fields; before this,
+// satisfies IL2. The rule's message demands six named fields; before this,
 // `coverage: {}` and `coverage: null` both linted clean — a partial result wearing the
 // label of a whole one, waved through by the very rule built to stop that.
 //

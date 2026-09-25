@@ -1,0 +1,27 @@
+{
+  "unit": "lines",
+  "why": "docs/DESIGN.md#gp4--scripts-do-the-deterministic-work-each-agent-gets-only-what-it-needs — a definition is sized to its role; raising a budget is a reviewed diff, not a drift",
+  "files": {
+    "agents/analyst.md": 95,
+    "agents/auditor.md": 65,
+    "agents/courier.md": 25,
+    "agents/doc-researcher.md": 105,
+    "agents/historian.md": 95,
+    "agents/implementer.md": 125,
+    "agents/investigator.md": 45,
+    "agents/planner.md": 120,
+    "agents/reviewer.md": 100,
+    "agents/scout.md": 90,
+    "agents/test-author.md": 105,
+    "skills/design/SKILL.md": 200,
+    "skills/design/probe.md": 95,
+    "skills/design/writing.md": 90,
+    "skills/develop/SKILL.md": 250,
+    "skills/develop/landing.md": 65,
+    "skills/find-existing-solutions/SKILL.md": 140,
+    "skills/investigate/SKILL.md": 150,
+    "skills/probe/SKILL.md": 235,
+    "skills/status/SKILL.md": 80,
+    "skills/task/SKILL.md": 170
+  }
+}

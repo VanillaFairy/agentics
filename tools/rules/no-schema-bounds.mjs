@@ -1,4 +1,4 @@
-// tools/rules/no-schema-bounds.mjs — IRON LAW support rule.
+// tools/rules/no-schema-bounds.mjs — IL2 support rule.
 //
 // Structured outputs do not support minItems/maxItems/minLength/maxLength: they are
 // stripped before the request or validated client-side, so they silently do nothing or

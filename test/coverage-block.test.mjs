@@ -1,4 +1,4 @@
-// test/coverage-block.test.mjs — pins IRON LAW §4 at the workflow boundary: a partial
+// test/coverage-block.test.mjs — pins IL2 at the workflow boundary: a partial
 // result must never be indistinguishable from a whole one. An agentics-* workflow that returns
 // nothing, or returns a result with no coverage block, hands its caller an answer that
 // looks exactly like a complete one.
@@ -73,7 +73,7 @@ const noReturn = [
 ].join('\n')
 
 test('a workflow that never returns is flagged once, at file level', () => {
-  // undefined reaching the caller is indistinguishable from a crash. IRON LAW §4.
+  // undefined reaching the caller is indistinguishable from a crash. IL2.
   const found = check(noReturn, WF)
 
   assert.equal(found.length, 1)

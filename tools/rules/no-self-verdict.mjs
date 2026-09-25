@@ -1,4 +1,4 @@
-// tools/rules/no-self-verdict.mjs — IRON LAW §2 support rule, extended from coverage to review.
+// tools/rules/no-self-verdict.mjs — IL3 support rule, extended from coverage to review.
 //
 // A workflow schema that offers a verdict-named boolean (`approved: { type: 'boolean' }`)
 // invites a prompt to ask a model to set it — and the moment that happens, the review loop's
@@ -65,7 +65,7 @@ export function check(source, filePath) {
       line,
       message:
         `schema declares self-reported verdict boolean '${key}' — return findings/facts ` +
-        `and derive the verdict in JS (IRON LAW §2)`,
+        `and derive the verdict in JS (IL3)`,
     })
   }
 

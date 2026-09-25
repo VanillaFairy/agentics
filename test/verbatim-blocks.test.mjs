@@ -27,27 +27,25 @@ const SKIP_DIRS = new Set(['.git', 'node_modules', '.claude', 'superpowers'])
 
 /** Ids that must exist somewhere; a refactor that deletes the markers fails loudly. */
 const REQUIRED_IDS = [
-  'review-loop-exit', 'severity-ladder', 'merge-result',
-  // The design phase rules on its own ladder. The code one above speaks entirely in
-  // acceptance criteria, commit series and declared loci, none of which a design document
-  // has — so a probe holding it would invent a mapping and rule badly in both directions.
+  // The reviewer rules on the ladder the design states; a copy that drifts is a reviewer ruling
+  // by a ladder nobody reviewed.
+  'severity-ladder',
+  // The design phase rules on its own ladder. The code one above speaks in acceptance criteria,
+  // commit series and declared loci, none of which a design document has.
   'design-severity-ladder',
   // Four skills pass `intelligence`, and a session reads exactly one of them. A copy that
-  // drifts back to "default normal" lets that skill's session pick the tier by taste again,
-  // which is the failure this rule was written for.
+  // drifts back to "default normal" lets that skill's session pick the tier by taste again.
   'intelligence-tier',
-  // The two agents that write files and the one that judges them must be held to the same
-  // comment law, or the reviewer's minor is an opinion about a rule the coder never had.
+  // The agents that write files and the one that judges them are held to the same comment law,
+  // or the reviewer's minor is an opinion about a rule the author never had.
   'comment-policy',
   // Probe and design both dispose of the same findings, and a disposition described twice
-  // drifts toward whichever copy was edited last. The failure it guards is a field report:
-  // 46 blocking ambiguities delivered as prose, one question per turn, and a user who ruled
-  // past a computed gate because reading the findings cost more than the design did.
+  // drifts toward whichever copy was edited last.
   'probe-disposition',
-  // Two halves of one cost model: what a dispatcher owes, and what a dispatched agent owes. A
-  // constitution whose copy drifts leaves that one agent paging whole files while the rest work
-  // from the excerpts they were handed, and nothing else would notice.
+  // Two halves of one cost model: what a dispatcher owes, and what a dispatched agent owes.
   'dispatch-economy', 'dispatched-economy',
+  // Every phase that records into an effort says the same thing about what a record is worth.
+  'effort-store',
 ]
 
 const OPEN = /<!--\s*agentics:verbatim\s+([a-z0-9-]+)\s*-->/g

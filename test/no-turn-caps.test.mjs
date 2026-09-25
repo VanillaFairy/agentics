@@ -1,4 +1,4 @@
-// test/no-turn-caps.test.mjs — pins IRON LAW §1: completion is defined by the goal,
+// test/no-turn-caps.test.mjs — pins IL1: completion is defined by the goal,
 // never by a counter.
 //
 // The hard part is not detecting `maxTurns`. It is NOT detecting the three legitimate
@@ -16,7 +16,7 @@ const SKILL = 'skills/investigate/SKILL.md'
 
 test('it applies to workflow scripts, SKILL.md, and agent charters — not to tools', () => {
   // Agent charters were originally out of scope; the self-audit widened the rule, since
-  // CLAUDE.md's clause table assigns IRON LAW §1 to this rule alone and a cap written
+  // CLAUDE.md's clause table assigns IL1 to this rule alone and a cap written
   // into a charter reaches every dispatch of that agent.
   assert.ok(applies.test(WF))
   assert.ok(applies.test(SKILL))
@@ -31,7 +31,7 @@ test('flags maxTurns and reports its line', () => {
   const found = check(src, WF)
   assert.equal(found.length, 1)
   assert.equal(found[0].line, 2)
-  assert.match(found[0].message, /IRON LAW/)
+  assert.match(found[0].message, /IL1/)
 })
 
 test('flags every identifier spelling of a turn or tool-call cap', () => {

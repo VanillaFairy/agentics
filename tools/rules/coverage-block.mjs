@@ -1,4 +1,4 @@
-// tools/rules/coverage-block.mjs — enforces IRON LAW §4.
+// tools/rules/coverage-block.mjs — enforces IL2.
 //
 // "A partial result must never be indistinguishable from a whole one." The coverage block
 // is the only thing that tells them apart, so a workflow that returns
@@ -25,7 +25,7 @@
 // an empty array would turn the safe default into a lint failure. What a change to that field list
 // must cite is docs/DESIGN.md#coverage-block, and the question it must answer is: does this
 // field let a reader tell a partial result from a whole one? A field that does not is
-// decoration on the one structure IRON LAW §4 rests on.
+// decoration on the one structure IL2 rests on.
 //
 // Both spellings of the key count: `coverage:` and ES shorthand `coverage`, the latter in
 // every position it can occupy — first key, last key, somewhere in the middle, with or
@@ -64,7 +64,7 @@ export function check(source) {
       line: 0,
       message:
         `This workflow never returns a result object, so its caller receives undefined — ` +
-        `indistinguishable from a crash, and from a complete answer. IRON LAW §4: a ` +
+        `indistinguishable from a crash, and from a complete answer. IL2: a ` +
         `partial result must never be indistinguishable from a whole one.`,
     })
   } else {
@@ -74,7 +74,7 @@ export function check(source) {
       violations.push({
         line: 0,
         message:
-          `No returned object carries a "coverage" key. IRON LAW §4: a partial result must ` +
+          `No returned object carries a "coverage" key. IL2: a partial result must ` +
           `never be indistinguishable from a whole one, and the coverage block is the only ` +
           `thing that tells them apart. Return coverage: { complete, dropped, incomplete, ` +
           `failed_channels, unreached, resumable }.`,
@@ -86,7 +86,7 @@ export function check(source) {
           `Every returned "coverage" is an empty object literal or null — a key with ` +
           `nothing behind it satisfies the letter of the rule while carrying none of ` +
           `{ complete, dropped, incomplete, failed_channels, unreached, resumable }. ` +
-          `IRON LAW §4: an empty coverage block is a partial result wearing the label.`,
+          `IL2: an empty coverage block is a partial result wearing the label.`,
       })
     }
   }
@@ -99,7 +99,7 @@ export function check(source) {
       line: index + 1,
       message:
         `Bare "return": this path exits with no result and no coverage block, so the ` +
-        `caller cannot tell an early abort from a finished answer. IRON LAW §4 — return a ` +
+        `caller cannot tell an early abort from a finished answer. IL2 — return a ` +
         `result whose coverage block says what was not reached.`,
     })
   })

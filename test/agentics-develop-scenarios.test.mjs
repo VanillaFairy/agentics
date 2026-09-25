@@ -235,3 +235,14 @@ test('bad input returns a coverage block, never undefined', async () => {
   assert.equal(result.checkpoint.reason, 'bad_input')
   assert.equal(result.coverage.complete, false)
 })
+
+test('contract drift parks the consumer until the user rules, and the rest keeps running', async () => {
+  const sim = simulate([composite('.'), row('a'), row('b', { deps: ['a'], consumes: [{ name: 'api', paths: ['src/api.js'] }] }), row('c')], {
+    merge: (args) => (args.children.some((ch) => ch.id === 'a') ? { drift: [{ node: 'b', contract: 'api', files: ['src/api.js'] }] } : {}),
+  })
+  const { result } = await run(sim)
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['b', 'contract_drift']])
+  assert.ok(!sim.opens.includes('b'))
+  assert.ok(result.implemented.some((i) => i.id === 'c'))
+  assert.deepEqual(result.drift, [{ node: 'b', contract: 'api', files: ['src/api.js'] }])
+})

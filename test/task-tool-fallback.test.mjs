@@ -1,5 +1,5 @@
 // test/task-tool-fallback.test.mjs — pins the rule that a skill depending on the host's
-// optional Task tools must name a fallback (IRON LAW §4, applied to the landing step).
+// optional Task tools must name a fallback (IL2, applied to the landing step).
 //
 // The failure this guards is quiet by construction: on a host with no Task tools the session
 // improvises into TodoWrite, `blocked_by` has nowhere to go, and the user gets an unordered

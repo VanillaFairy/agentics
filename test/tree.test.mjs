@@ -145,7 +145,7 @@ test('atomicity: fit is computed from file sizes against the model budget', () =
 
 test('addNodes validates against the tree on disk, all or nothing, and logs planned/replanned', () => {
   const r = repo()
-  const first = addNodes(r, 'e1', [root(), leaf('a')])
+  const first = addNodes(r, 'e1', [root(), leaf('a')], { by: 'session' })
   assert.equal(first.ok, true, JSON.stringify(first.problems))
   const refused = addNodes(r, 'e1', [leaf('b', { deps: ['nope'] })])
   assert.equal(refused.ok, false)
@@ -166,7 +166,31 @@ test('addNodes validates against the tree on disk, all or nothing, and logs plan
 
 test('addNodes returns traceability and atomicity as warnings, not refusals', () => {
   const r = repo()
-  const out = addNodes(r, 'e1', [root({ defines: [{ id: 'D1', text: 'x' }, { id: 'D2', text: 'y' }] }), leaf('a')])
+  const out = addNodes(r, 'e1', [root({ defines: [{ id: 'D1', text: 'x' }, { id: 'D2', text: 'y' }] }), leaf('a')], { by: 'session' })
   assert.equal(out.ok, true)
   assert.deepEqual(out.warnings.gaps.map((g) => g.decision), ['D2'])
+})
+
+test('an autonomous replan preserves decisions: no new or changed defines, no changed contract, no dropped decision', () => {
+  const r = repo()
+  assert.equal(addNodes(r, 'e1', [root(), leaf('a', { provides: [{ name: 'api', paths: ['src/a.js'] }] })], { by: 'session' }).ok, true)
+
+  const defines = addNodes(r, 'e1', [root({ defines: [{ id: 'D1', text: 'do it differently' }] })], { by: 'planner' })
+  assert.equal(defines.ok, false)
+  assert.match(defines.problems.map((p) => p.problem).join(), /may not state or change a decision/)
+
+  const contract = addNodes(r, 'e1', [leaf('a', { provides: [{ name: 'api', paths: ['src/other.js'] }] })], { by: 'planner' })
+  assert.match(contract.problems.map((p) => p.problem).join(), /contract/)
+
+  const dropped = addNodes(r, 'e1', [leaf('a', { decisions: [], acceptance: [{ text: 'x', check: 'y', decisions: [] }], provides: [{ name: 'api', paths: ['src/a.js'] }] })], { by: 'planner' })
+  assert.match(dropped.problems.map((p) => p.problem).join(), /decision D1 was realised before this replan/)
+
+  const split = addNodes(r, 'e1', [
+    { id: 'a', kind: 'composite', title: 'do a', decisions: ['D1'], provides: [{ name: 'api', paths: ['src/a.js'] }] },
+    leaf('a/x', { locus: ['src/a.js'] }), leaf('a/y', { locus: ['src/b.js'] }),
+  ], { by: 'planner', reason: 'decompose' })
+  assert.equal(split.ok, true, JSON.stringify(split.problems))
+
+  const answered = addNodes(r, 'e1', [root({ defines: [{ id: 'D1', text: 'do it' }, { id: 'D2', text: 'the user said so' }] })], { by: 'session', reason: 'answered' })
+  assert.equal(answered.ok, true, 'the session writes the user\'s decisions')
 })

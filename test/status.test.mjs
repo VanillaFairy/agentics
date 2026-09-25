@@ -164,8 +164,8 @@ test('the efforts list derives root status, counts, executions and the last seq'
   assert.equal(e.counts.planned, 9)
   assert.equal(e.counts.active, 3, 'a/impl, a and the root')
   assert.deepEqual(e.executions, [
-    { stamp: X1, root: '.', closed: true, status: 'done' },
-    { stamp: X2, root: 'b', closed: false, status: 'checkpoint' },
+    { stamp: X1, root: '.', closed: true, status: 'done', batches: 0, merged: 0, bisected: 0 },
+    { stamp: X2, root: 'b', closed: false, status: 'checkpoint', batches: 0, merged: 0, bisected: 0 },
   ])
   assert.equal(e.seq_max, TREE.length + 3, 'node lines, one event, two state lines — one counter across every log')
 
@@ -225,4 +225,17 @@ test('the CLI prints an envelope with --json and a readable view without it', ()
 
   assert.throws(() => execFileSync(process.execPath, [CLI, 'todos', '--repo', repo, '--effort', E], { stdio: 'pipe' }),
     'todos without an execution is refused')
+})
+
+test('an execution summary counts its merge-batches, what they landed and which were bisected', () => {
+  const repo = effortWith(TREE)
+  mkdirSync(executionDir(repo, E, X1), { recursive: true })
+  writeFileSync(join(executionDir(repo, E, X1), 'execution.json'), JSON.stringify({ root: '.' }))
+  append(repo, E, 'state:' + X1, [
+    { kind: 'batch', target: 'a', merged: ['a/impl', 'a/tests'], verified: true },
+    { kind: 'batch', target: '.', merged: ['a'], verified: false },
+  ])
+  const [e] = efforts(repo).efforts
+  const [x] = e.executions
+  assert.deepEqual([x.batches, x.merged, x.bisected], [2, 3, 1])
 })

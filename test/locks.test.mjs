@@ -44,7 +44,7 @@ function effortRepo(ids, { max } = {}) {
   const out = addNodes(repo, E, [
     { id: '.', kind: 'composite', title: 'the change', defines: [{ id: 'D1', text: 'do it' }] },
     ...ids.map(leaf),
-  ])
+  ], { by: 'session' })
   assert.ok(out.ok, JSON.stringify(out.problems))
   for (const id of ids) event(repo, 'dispatched', id, { role: 'implementer', round: 1, model: 'sonnet', effort: 'medium' })
   if (max !== undefined) setMax(repo, max)
@@ -95,7 +95,7 @@ test('the pool limit is respected: the leaf past max_parallel gets no_slot and n
 
 test('a planned holder (slot taken, dispatched not yet appended) still occupies its slot', () => {
   const repo = newRepo()
-  addNodes(repo, E, [{ id: '.', kind: 'composite', title: 't', defines: [{ id: 'D1', text: 'x' }] }, leaf('a'), leaf('b')])
+  addNodes(repo, E, [{ id: '.', kind: 'composite', title: 't', defines: [{ id: 'D1', text: 'x' }] }, leaf('a'), leaf('b')], { by: 'session' })
   setMax(repo, 1)
   assert.equal(take(repo, 'a').ok, true)
   assert.equal(take(repo, 'b').reason, 'no_slot')

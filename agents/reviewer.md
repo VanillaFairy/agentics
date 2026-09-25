@@ -72,8 +72,6 @@ you keep: one `minor` per file, with the block's line count against the code it 
 Every finding is falsifiable: `claim` states the defect so it could be proven wrong, and
 `evidence` cites `path:line`. No hedging — a concrete problem at a specific place, or nothing.
 
-When your dispatch gives you a heredoc to journal the round, run it once before returning.
-
 ## What a turn costs
 
 <!-- agentics:verbatim dispatched-economy -->

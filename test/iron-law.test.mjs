@@ -1,36 +1,39 @@
-// test/iron-law.test.mjs — pins that CLAUDE.md still carries the law, intact.
+// test/iron-law.test.mjs — pins that the design still carries the Iron Laws, intact.
 //
-// Every agent in this plugin inherits CLAUDE.md. If a clause is silently dropped or
-// softened, nothing else in the repo fails — the plugin just quietly stops being
-// governed. This test is the only thing standing between the law and slow erosion.
+// If a law is silently dropped or softened, nothing else in the repo fails — the plugin just
+// quietly stops being governed. This test is the only thing standing between the laws and slow
+// erosion.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 
+const design = (await readFile(new URL('../docs/DESIGN.md', import.meta.url), 'utf8')).replace(/\r\n/g, '\n')
 const claudeMd = await readFile(new URL('../CLAUDE.md', import.meta.url), 'utf8')
 
-test('the ratified law section matches its pinned hash', () => {
-  // Pins the whole ratified span byte-for-byte, not just clause openers. A substring check
-  // would miss a clause that keeps its bolded first sentence while its body is gutted, or
-  // gains a trailing qualifier that negates it ("Escalate, never abandon. Unless the
-  // reviewer says otherwise.") — this catches both.
+test('the Iron Laws section matches its pinned hash', () => {
+  // The whole span byte for byte, not clause openers: a substring check would miss a law that
+  // keeps its heading while its body is gutted, or gains a trailing qualifier that negates it.
   //
-  // A legitimate amendment to the law is expected to update this hash. That is the point:
-  // it forces the change to appear in the diff as a deliberate act rather than a drive-by.
-  // Recompute with:
-  //   node -e "const f=require('fs'),c=require('crypto');const r=f.readFileSync('CLAUDE.md','utf8');
-  //   console.log(c.createHash('sha256').update(r.slice(r.indexOf('# §0')).replace(/\r\n/g,'\n')).digest('hex'))"
-  //
-  // Normalized to LF first: core.autocrlf rewrites this file's line endings on checkout, so
-  // hashing the raw bytes would make the pin depend on which platform cloned the repo.
-  const law = claudeMd.slice(claudeMd.indexOf('# §0 — THE IRON LAW')).replace(/\r\n/g, '\n')
+  // A legitimate amendment is expected to update this hash; that is the point — it makes the
+  // change appear in the diff as a deliberate act. Recompute with:
+  //   node -e "const f=require('fs'),c=require('crypto');const r=f.readFileSync('docs/DESIGN.md','utf8').replace(/\r\n/g,'\n');
+  //   console.log(c.createHash('sha256').update(r.slice(r.indexOf('## Iron Laws'),r.indexOf('## Guiding Principles'))).digest('hex'))"
+  const law = design.slice(design.indexOf('## Iron Laws'), design.indexOf('## Guiding Principles'))
+  assert.equal(createHash('sha256').update(law).digest('hex'),
+    '4a9b7f2eeea79e86eda6f40533b173de0e7e0a46c9e1c37c3d57ceb503c4cc69')
+})
 
-  assert.equal(
-    createHash('sha256').update(law).digest('hex'),
-    // Amended 2026-09-25: the enforcement table follows the vfa → agentics rename of the
-    // workflows. The eight clauses are unchanged.
-    '1adf61774afc027f55d0efd11488ce47b0ec1f4cb573825f1b051d1412b77f85',
-  )
+test('each law names its enforcement', () => {
+  for (const law of ['IL1', 'IL2', 'IL3', 'IL4']) {
+    const at = design.indexOf('### ' + law)
+    assert.ok(at > -1, law + ' is missing')
+    const body = design.slice(at, design.indexOf('\n### ', at + 5))
+    assert.match(body, /\*Enforced by:\*/, law + ' names no enforcing mechanism — a law without one is a defect')
+  }
+})
+
+test('CLAUDE.md maps every law to the rule that enforces it', () => {
+  for (const law of ['IL1', 'IL2', 'IL3', 'IL4']) assert.match(claudeMd, new RegExp('\\| ' + law + ' '), law + ' has no row')
 })

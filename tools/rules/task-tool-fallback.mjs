@@ -1,4 +1,4 @@
-// tools/rules/task-tool-fallback.mjs — IRON LAW §4 support rule, applied to skills.
+// tools/rules/task-tool-fallback.mjs — IL2 support rule, applied to skills.
 //
 // The Task tools (`TaskCreate` / `TaskList` / `TaskUpdate`) are host-provided and OPTIONAL.
 // Some hosts do not expose them at all — the VS Code extension is the one you will actually
@@ -8,7 +8,7 @@
 // this plugin exists to prevent. The session improvises, most likely into `TodoWrite`, which
 // has no dependency edges: `blocked_by` is silently dropped, and a task list that lost its
 // ordering looks exactly like one that never had any. The user is handed a partial result
-// wearing the shape of a whole one, with nothing saying so — IRON LAW §4.
+// wearing the shape of a whole one, with nothing saying so — IL2.
 //
 // So: name the fallback in the skill, or do not depend on the tool. What the fallback must
 // actually do is written where it belongs, in the skill itself — carry the graph in the list
@@ -66,7 +66,7 @@ export function check(source, filePath) {
       `This skill routes its result through the host's Task tools ("${first[0]}") but names ` +
       `no fallback for a host that does not expose them. Say what to do instead — fall back ` +
       `to TodoWrite, carry the blocked_by graph in the list itself, and state that you fell ` +
-      `back. IRON LAW §4: a task list that silently lost its dependency edges is ` +
+      `back. IL2: a task list that silently lost its dependency edges is ` +
       `indistinguishable from one that never had any.`,
   }]
 }

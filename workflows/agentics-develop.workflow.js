@@ -255,6 +255,7 @@ let leavesFinished = 0
 let mergedSinceStart = 0
 let stopping = ''
 let commands = null
+let taskToolsMissing = false
 
 const note = (text) => {
   notes.push(text)
@@ -371,6 +372,10 @@ async function boundary(name, a, ctx) {
     const c = carried(held)
     if (c.payload) {
       for (const t of (held.task_ids || [])) if (t && t.key) taskIds[t.key] = t.id
+      if (progress && held.task_tools === 'unavailable' && !taskToolsMissing) {
+        taskToolsMissing = true
+        note('the couriers had no task tools: the todo list did not move — derive it with lib/status.mjs todos')
+      }
       if (c.payload.error && c.payload.error.kind === 'digest_mismatch' && i === 0) {
         // The argument token was damaged on its way in; the program wrote nothing.
         why = c.payload.error.message
@@ -440,11 +445,7 @@ function reviewerPrompt(id, st, round, prior) {
     (prior.length
       ? 'Prior blockers — rule on each in fix_verdicts, and re-report under its id any you rule not_fixed or regressed:\n' +
         prior.map((f) => '- ' + f.id + ' [' + f.severity + '] ' + f.claim).join('\n') + '\n'
-      : '') +
-    '\nJournal the round once before returning:\nnode "' + pluginRoot + '/lib/ledger.mjs" append --repo "' + repo +
-    '" --effort "' + effort + '" --file journal:' + execution + " --stdin <<'AGENTICS_EOF'\n" +
-    JSON.stringify({ kind: 'review-observed', node: id, round, head_sha: st.head, findings: [{ id: '<id>', severity: '<severity>' }] }) +
-    '\nAGENTICS_EOF'
+      : '')
 }
 
 function integrationPrompt(id, where, children, missing) {
@@ -625,6 +626,8 @@ async function planNode(id, why) {
     }, id)
     if (!res) throw new Error('the planner returned nothing')
     if (res.status === 'written') {
+      log('plan:' + id + ' wrote ' + (res.written || []).length + ' node(s): ' + (res.written || []).join(', '))
+      if ((res.accepted_warnings || []).length) note('planner for ' + id + ' accepted: ' + res.accepted_warnings.join('; '))
       if ((res.uncovered || []).length) note('planner for ' + id + ' did not cover: ' + res.uncovered.join('; '))
       await reload('reload:' + id)
       if (childrenOf(id).length === 0 && rows.get(id) && rows.get(id).kind !== 'leaf') {
@@ -656,6 +659,7 @@ function establishCommands(worktree) {
       { agentType: 'agentics:investigator', schema: ESTABLISHED, phase: 'Execute', label: 'establish-commands', model: 'sonnet', effort: 'medium' },
       '',
     ).then((res) => {
+      if (res) note('commands established: ' + (res.commands || []).map((c) => c.name + (c.absent ? ' (absent)' : ' exit ' + c.exit_status)).join(', '))
       if (res && res.unresolved && res.unresolved.length) note('commands not established: ' + res.unresolved.join('; '))
       return res
     })
@@ -948,6 +952,14 @@ async function mergeInto(target, batch) {
       escalate(out.conflict.node, 'merge_conflict', 'conflicting paths: ' + (out.conflict.paths || []).join(', ') + ' — loci were declared disjoint; this is a planner defect')
     }
     for (const id of out.combination || []) escalate(id, 'combination_failure', 'passes alone, fails merged with ' + (out.combination || []).filter((x) => x !== id).join(', '))
+    for (const d of out.drift || []) {
+      drift.push(d)
+      if (!['parked', 'escalated', 'merged'].includes(statusOf(d.node))) {
+        park(d.node, 'contract_drift', 'merged work touched ' + d.files.join(', ') + ' under contract ' + d.contract +
+          ', which ' + d.node + ' consumes: rule it unaffected, re-design it or re-slice it')
+      }
+    }
+    if ((out.unexamined || []).length) note('undesigned nodes not examined for drift: ' + out.unexamined.join(', '))
     for (const f of out.failed_alone || []) {
       note(f.id + ': fails on the integration head alone — a fix round on the refreshed branch')
       status.set(f.id, 'active')
@@ -1010,7 +1022,7 @@ async function reviewComposite(id) {
     return null
   })
   const findings = res ? res.findings || [] : []
-  reviews.push({ target: id, findings, reviewed: Boolean(res) })
+  reviews.push({ target: id, findings, notes: res ? res.notes : '', reviewed: Boolean(res) })
   const criticals = findings.filter((f) => f.severity === 'critical')
   if (criticals.length) {
     composite.set(id, 'held')

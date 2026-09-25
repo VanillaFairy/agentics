@@ -4,7 +4,7 @@
 // The defect this pins away: `parseLog` used to `continue` past a record with no field
 // separator, so a corrupt or truncated `git log` stream yielded a SHORT series that
 // `analyzeSeries` then judged as if it were the whole one — a measurement failure wearing
-// the shape of a clean answer, the exact laundering IRON LAW §2 forbids. The CLI's
+// the shape of a clean answer, the exact laundering IL2 forbids. The CLI's
 // existing catch turns the throw into `{"error": ...}`, which the verifier maps to
 // `stop_reason: 'environment_broken'` — unmeasurable, not failed.
 //

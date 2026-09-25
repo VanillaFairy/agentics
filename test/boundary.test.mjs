@@ -285,3 +285,19 @@ test('the CLI refuses a damaged argument token and prints an envelope either way
   assert.equal(env.payload.error.kind, 'digest_mismatch')
   assert.equal(existsSync(join(executionDir(r, 'e1', STAMP), 'execution.json')), false)
 })
+
+test('drift: a landed diff under a contract a pending node consumes is flagged; its own provider is not', async () => {
+  const { driftOf } = await import('../lib/boundary.mjs')
+  const r = repo()
+  addNodes(r, 'e1', [root(),
+    leaf('p', { rigor: 'trivial', locus: ['src/api.mjs'], provides: [{ name: 'api', paths: ['src/api.mjs'] }] }),
+    leaf('c', { rigor: 'trivial', locus: ['src/use.mjs'], consumes: [{ name: 'api', paths: ['src/api.mjs'] }], deps: ['p'] }),
+    leaf('x', { rigor: 'trivial', locus: ['src/other.mjs'] }),
+    leaf('d', { rigor: 'trivial', locus: ['src/d.mjs'], consumes: [{ name: 'shape', paths: ['src/shape/'] }] }),
+    { id: 'later', kind: 'design', level: 'component', title: 'later part' }], { by: 'session' })
+  const tree = readTree(r, 'e1')
+  const out = driftOf(tree, ['x'], ['src/other.mjs', 'src/shape/one.mjs', 'src/api.mjs'])
+  assert.deepEqual(out.drift.map((d) => [d.node, d.contract]).sort(), [['c', 'api'], ['d', 'shape']])
+  assert.deepEqual(out.unexamined, ['later'])
+  assert.deepEqual(driftOf(tree, ['p'], ['src/api.mjs']).drift, [], 'the provider landing its own contract is expected work')
+})

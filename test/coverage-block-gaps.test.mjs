@@ -12,7 +12,7 @@
 // Every fixture below puts them INSIDE. That one word is the whole bug.
 //
 // The consequence is the worst kind: a workflow with no coverage block at all lints clean.
-// The rule that exists to stop a partial result from passing as a whole one (IRON LAW §4)
+// The rule that exists to stop a partial result from passing as a whole one (IL2)
 // quietly hands out a pass.
 //
 // DEFECT 2 (medium) — ES shorthand `coverage` is not recognized. This was written down as an

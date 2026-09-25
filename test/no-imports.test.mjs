@@ -62,8 +62,8 @@ test('flags a multi-line static import', () => {
 })
 
 test('flags a re-export, which loads the module exactly like an import', () => {
-  assert.equal(check("export { partition } from './lib/independence.mjs'", WF).length, 1)
-  assert.equal(check("export * from './lib/independence.mjs'", WF).length, 1)
+  assert.equal(check("export { partition } from './lib/partition.mjs'", WF).length, 1)
+  assert.equal(check("export * from './lib/partition.mjs'", WF).length, 1)
 })
 
 test('does NOT flag the meta export — no from, no module load', () => {

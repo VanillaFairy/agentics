@@ -27,11 +27,9 @@ Invoking this skill **is** the user's opt-in for the `Workflow` tool. Do not ask
 
 <!-- vfa:verbatim effort-store -->
 **Efforts — one directory for everything this piece of work produces.** A change moves through
-design, survey, probe and one or more runs, and each phase used to write its output somewhere
-different or nowhere at all. A survey's findings and a probe's findings went nowhere: the only
-record of a probe was a harness temp file, session-scoped and swept. Since design and develop
-are separate sessions by recommendation, everything the first learned that did not reach the
-document was gone before the second opened.
+design, survey, probe and one or more runs, and every phase records what it returned in the
+effort's directory. Design and develop are separate sessions by recommendation, so this is how
+the second reads what the first learned beyond the design document.
 
 Open one at the start. The user may name it; if they do not, derive the name and use it:
 

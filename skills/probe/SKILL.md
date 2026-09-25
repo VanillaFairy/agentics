@@ -78,7 +78,7 @@ the coverage block, so a narrower probe never reads like a clean one.
 Measured on one 17-agent probe of a 120-line document: **36.5M tokens billed** to return about
 538k of evidence. The bill is turn count — every turn re-sends the accumulated context — and
 it is superlinear in turns, not in what anybody read. That is why one analyst is the default:
-the same document is now one reader's turns, not seventeen.
+every extra analyst pays the same locating turns over the same document.
 
 The harness's own `subagent_tokens` field reported 1.31M for that run, low by a factor of 28.
 **Never quote it as what a probe cost**, and never let it stand as the basis for deciding
@@ -90,11 +90,9 @@ transcripts.
 
 <!-- vfa:verbatim effort-store -->
 **Efforts — one directory for everything this piece of work produces.** A change moves through
-design, survey, probe and one or more runs, and each phase used to write its output somewhere
-different or nowhere at all. A survey's findings and a probe's findings went nowhere: the only
-record of a probe was a harness temp file, session-scoped and swept. Since design and develop
-are separate sessions by recommendation, everything the first learned that did not reach the
-document was gone before the second opened.
+design, survey, probe and one or more runs, and every phase records what it returned in the
+effort's directory. Design and develop are separate sessions by recommendation, so this is how
+the second reads what the first learned beyond the design document.
 
 Open one at the start. The user may name it; if they do not, derive the name and use it:
 

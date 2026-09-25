@@ -236,8 +236,9 @@ and "run it anyway" ends the discussion; inside the tree it is the planner's, sh
 
 ### Atomicity: when to stop splitting
 
-A **leaf** is the smallest unit that deserves its own commit series. A node is a leaf when **every**
-condition holds, and is split while any fails:
+A **leaf** is the smallest unit of work: one commit series, or — for a `verify` leaf, which writes
+nothing — one recorded check. A node is a leaf when **every** condition holds, and is split while
+any fails:
 
 1. **One concern.** Its change can be stated as one commit subject without a conjunction.
 2. **One rigor and one role.** A single [rigor](#rigor) applies to all of it, and it is authored
@@ -291,13 +292,14 @@ events; nothing is rewritten, and merged work stays.
 
 | mode | earned when | what runs |
 |---|---|---|
-| **inline** | every leaf is `verify`, `tests-only` or `tdd`, the locus is known, the intent settled, nothing is irreversible, and the leaves' summed fit (condition 7's computation) is within the session model's budget | the session does it — see [The simple task](#the-simple-task) |
+| **inline** | every leaf is `verify`, `trivial`, `tests-only` or `tdd`, the locus is known, the intent settled, nothing is irreversible, and the leaves' summed fit (condition 7's computation) is within the session model's budget | the session does it — see [The simple task](#the-simple-task) |
 | **dispatched** | anything else | an execution: worktrees, executors per rigor, boundary couriers, review per rigor, dynamic merge |
 
-A composite may run inline when all its leaves qualify. Every mode keeps two things for any
-behaviour change: the check that each new test fails without the change, and an independent reader
-(on the inline mode, one fresh reviewer over the diff when a leaf is `tdd`; `verify` needs none,
-because its check is that no test outcome changes).
+A composite may run inline when all its leaves qualify. What stands behind a leaf follows its
+rigor, in every mode: from `tdd` up, the check that each new test fails without the change and an
+independent reader (inline, one fresh reviewer over the diff); a `trivial` leaf, its named check
+and — when dispatched — the integration review; a `verify` leaf writes nothing, and its recorded
+check is its product.
 
 ### The simple task
 
@@ -307,7 +309,7 @@ The inline mode has its own entry skill, `task`. Its rules:
   the code; surface a mismatch before any plan.
 - **Split within-scope from auxiliary.** Within-scope is what was asked, including the tests its
   rigor requires. Auxiliary is what the change makes desirable: stale docs, neighbouring cleanups.
-  The rigor decides the tests: a `tdd` leaf writes them, a `verify` leaf writes none, and the
+  The rigor decides the tests: a `tdd` leaf writes them, a `trivial` or `verify` leaf writes none, and the
   inline mode never adds or drops one on its own. Auxiliary items are proposed as a separate list the user accepts or rejects; a rejected item does
   not exist. A consequence ("skipping this leaves the build red") is stated as information, never
   used to bypass the choice.
@@ -332,19 +334,21 @@ Every leaf carries a `rigor`, set by its author. Walk the table top-down; the fi
 
 | rigor | the work… | leaves | verification |
 |---|---|---|---|
-| `verify` | adds no logic: only literal values and user-visible text (a window title, a label, a message), config values, docs and comments, assets, renames or moves behind an unchanged interface, dependency versions, wiring of existing parts | one implementer leaf | the named check passes (build, typecheck, the existing suite, a command, or a `HUMAN:` look); no test outcome changes except a test that asserts the changed literal, updated in the same leaf |
+| `verify` | writes nothing: confirms a premise, proves a criterion already holds, measures | no producer; the named checks run at leaf-close | the checks' results, recorded; a failure is a finding for the parent, not a fix round |
+| `trivial` | writes a change a test would only restate: literal values and user-visible text (a window title, a label, a message), config values, docs, assets, renames behind an unchanged interface, dependency versions, wiring of existing parts | one implementer leaf | the named check, when the leaf needs one to show it works (build, typecheck, the existing suite, running it, a `HUMAN:` look); a test asserting the changed value is updated in the same leaf |
 | `tests-only` | only adds tests to code that is already correct | one test-author leaf | each new test passes now and fails under a mutation the test-author declared |
 | `tdd` | adds behaviour whose expected results the criteria state exactly | one implementer leaf, test first | at least one new test; each fails at base and passes now |
-| `pair` | adds behaviour where a wrong reading of the criteria would pass its author's own tests: edge-case rules, parsers, state machines, concurrency, contracts other nodes consume | a `red` test-author leaf, then a `green` implementer leaf | red: its tests fail for want of the implementation; green: they pass, tests untouched |
-| `triad` | as `pair`, and a miss ships silently into durable state or is costly to find: persistence formats, migrations, data loss, security, money | red, green, then an `audit` leaf | as `pair`, plus the auditor's declared mutations are killed |
+| `tdd-pair` | adds behaviour where a wrong reading of the criteria would pass its author's own tests: edge-case rules, parsers, state machines, concurrency, contracts other nodes consume | a `red` test-author leaf, then a `green` implementer leaf | red: its tests fail for want of the implementation; green: they pass, tests untouched |
+| `tdd-triad` | as `tdd-pair`, and a miss ships silently into durable state or is costly to find: persistence formats, migrations, data loss, security, money | red, green, then an `audit` leaf | as `tdd-pair`, plus the auditor's declared mutations are killed |
 
-**Adds no logic** means the diff introduces no new branch, loop, computation, state or error path.
-A literal whose value decides a branch elsewhere is still `verify`; a new branch on that literal is
-not. Unsure between `verify` and `tdd`: `tdd`.
+**Would a test only restate the diff?** A test of a `trivial` change asserts that the value
+written is the value written. A `tdd` change has a result the diff does not state literally — a
+computed value, a branch taken, an error raised — and that result is what its test pins. Unsure
+between `trivial` and `tdd`: `tdd`.
 
-Unsure between `tdd` and `pair`: `tdd` when the leaf is small, `pair` when it is not.
+Unsure between `tdd` and `tdd-pair`: `tdd` when the leaf is small, `tdd-pair` when it is not.
 
-- **`pair` and `triad` are separate leaves** with `deps` (green on red, audit on green), each with
+- **`tdd-pair` and `tdd-triad` are separate leaves** with `deps` (green on red, audit on green), each with
   its own branch, todo, review and resume action. Green is cut from red's branch and receives red's
   committed tests as artifacts, never red's report. No agent authors both a behaviour's tests and
   its code; the declared loci are the separation, checked by the commit-series check.
@@ -352,9 +356,10 @@ Unsure between `tdd` and `pair`: `tdd` when the leaf is small, `pair` when it is
   member is approved, so the effort branch is never red.
 - **Mutations are declarations.** A test-author or auditor declares `{file, find, replace,
   expect_failing}`; leaf-close applies them by script and restores the file. Audit gaps return as
-  `decompose` with new `tests-only` or `pair` children.
-- **Review follows rigor.** `pair`, `triad` and any leaf that `provides` a contract get a review
-  loop of their own; `verify`, `tests-only` and `tdd` leaves are reviewed at integration.
+  `decompose` with new `tests-only` or `tdd-pair` children.
+- **Review follows rigor.** `tdd-pair`, `tdd-triad` and any leaf that `provides` a contract get a
+  review loop of their own; `trivial`, `tests-only` and `tdd` leaves are reviewed at integration;
+  `verify` leaves write nothing to review.
 - **A fix round** on a test finding goes to a fresh test-author; on an implementation finding, to a
   fresh implementer.
 

@@ -23,7 +23,7 @@ check.
 
 ## When not to use it
 
-- The user already picked the library and wants it wired in. Use `develop`.
+- The user already picked the library and wants it wired in. Use `task` or `develop`.
 - The question is about how something you have works. Use `investigate`.
 - It is a language primitive or a five-line function. Write it.
 
@@ -123,7 +123,7 @@ The decision is the user's, and it rests on things no agent can see — dependen
 licence policy, whether they want to own this code. Present the evidence and let them rule.
 
 When this ran inside a `design` session, the settled facts — the candidate chosen or the
-`no_match` lines that justify building — go into the design document's settled-evidence block,
-which is what `develop` later consumes as `notes`. That is how the decision survives: written
-down with the evidence behind it, rather than re-argued three weeks later when somebody asks
-why this was not just a library.
+`no_match` lines that justify building — go into the design document's Evidence section, and the
+choice itself is a decision with an id, in the user's words. That is how the decision survives:
+written down with the evidence behind it, rather than re-argued three weeks later when somebody
+asks why this was not just a library.

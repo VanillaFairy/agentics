@@ -1,29 +1,18 @@
 // tools/rules/design-gate.mjs — pins the clauses that make a gated skill a gate.
 //
-// Two skills in this plugin end by moving something the user owns, and each carries a small
-// number of sentences that are the whole of that contract. All of them are the kind of thing
-// an edit softens without meaning to, and none of them fails loudly when it goes: the skill
-// still reads well, still runs, and has quietly stopped doing the one thing it existed for.
+// Two skills in this plugin carry a small number of sentences that are the whole of their
+// contract: design, which ends by handing a ratified design to develop, and
+// find-existing-solutions, whose one output is whether to build at all. All of them are the kind
+// of thing an edit softens without meaning to, and none fails loudly when it goes: the skill still
+// reads well, still runs, and has quietly stopped doing the one thing it existed for.
 //
-// A MAP rather than one list, keyed by file. When this rule was written it was scoped to
-// `skills/design/SKILL.md` alone, and its own header said so: "widening this rule is a
-// decision to make when a second gated skill exists, not before." The programme skill is that
-// second skill, and it settles the question the same way — by widening the shape rather than
-// by generalising the clauses. Most skills have no terminal handoff and no gate; asking every
-// SKILL.md for one would be noise, and a rule that produces noise gets ignored wholesale.
-//
-// The clause sets are DIFFERENT on purpose, and the difference is the interesting part. The
-// design skill has a HARD GATE because ratification is a human act at a moment where a wrong
-// shape still costs one paragraph. The programme skill has none, because the programme design
-// abolishes per-leaf ratification outright: authorization there flows from
-// the plan artifact existing at all, and that artifact can only come into being through a
-// session with the user. Forcing design's clauses onto it would pin a ceremony the design
-// deliberately removed — which is to say the rule would enforce a bug.
+// A MAP rather than one list, keyed by file: most skills have no terminal handoff and no gate,
+// and asking every SKILL.md for one would be noise that gets ignored wholesale.
 //
 // DECIDABLE HALF ONLY, deliberately — the same split `tools/rules/task-tool-fallback.mjs`
 // and `tools/rules/coverage-block.mjs` make. This rule checks that each clause is NAMED. It
 // cannot check that the surrounding prose still means it; that is review's half, and a rule
-// pretending otherwise would be the laundering the IRON LAW forbids.
+// pretending otherwise would be the laundering IL2 forbids.
 //
 // Known limit, accepted: each check is satisfied by the token appearing anywhere, including
 // inside a sentence that rules it out ("this skill has no HARD GATE"). Naming the clause is
@@ -35,7 +24,7 @@
 
 export const id = 'design-gate'
 
-export const applies = /^skills\/(design|programme|find-existing-solutions)\/SKILL\.md$/
+export const applies = /^skills\/(design|find-existing-solutions)\/SKILL\.md$/
 
 const DESIGN_CLAUSES = [
   {
@@ -75,35 +64,7 @@ const DESIGN_CLAUSES = [
   },
 ]
 
-const PROGRAMME_CLAUSES = [
-  {
-    // Tolerant of inflection and of case. A rule that fails on "merges" rather than "merge",
-    // or on a sentence that happens to open a paragraph, is a rule people phrase around — and
-    // phrasing around a rule costs more than the rule ever caught.
-    pattern: /\bmerges?\s+the\s+programme\s+branch\b/i,
-    message:
-      `The programme skill never names the act that ends a programme. Slices accumulate on a ` +
-      `branch this layer owns, and if nothing says "merge the programme branch" the work ` +
-      `never reaches the user at all — a programme that reports itself complete while every ` +
-      `deliverable sits on a branch nobody asked about.`,
-  },
-  {
-    // Case-insensitive: the sentence naturally opens a paragraph, and a rule that fires on a
-    // capital letter teaches people to phrase around it rather than to mean it.
-    pattern: /the user's checkout is untouched/i,
-    message:
-      `The programme skill does not state that the user's checkout is untouched. That is the ` +
-      `invariant the whole branch-and-worktree arrangement exists to hold — the layer runs ` +
-      `for days across many runs, and the moment it is unstated, one slice's convenience ` +
-      `merge lands in the tree the user is sitting in.`,
-  },
-  // Deliberately NOT here: HARD GATE. The programme design abolished per-leaf ratification —
-  // authorization flows from the plan artifact existing, and a leaf is dispatchable when the
-  // plan exists and its markers are present. A rule demanding a gate here would pin a
-  // ceremony the design removed on purpose.
-]
-
-// A third skill whose whole purpose is one sentence. It does not end by moving something the
+// A skill whose whole purpose is one sentence. It does not end by moving something the
 // user owns — it ends by telling them whether to build — but the failure shape is the same:
 // soften the sentence and the skill still reads well, still runs, and has stopped doing the
 // one thing it existed for. The cost is not a fix round; it is weeks spent building what was
@@ -130,7 +91,6 @@ const EXISTING_SOLUTIONS_CLAUSES = [
 
 const CLAUSES = {
   'skills/design/SKILL.md': DESIGN_CLAUSES,
-  'skills/programme/SKILL.md': PROGRAMME_CLAUSES,
   'skills/find-existing-solutions/SKILL.md': EXISTING_SOLUTIONS_CLAUSES,
 }
 

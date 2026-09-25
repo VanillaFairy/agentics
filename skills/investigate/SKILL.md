@@ -13,11 +13,11 @@ Invoking this skill **is** the user's opt-in for the `Workflow` tool. Do not ask
 ## When not to use it
 
 - The answer fits in one or two file reads. Just answer.
-- The user wants the work done, not investigated. Do the work.
+- The user wants the work done, not investigated: `task`, `design` or `develop`.
 - The work is an iterative loop — run, observe, adjust. This plugin has no pipeline for that:
   a survey reads, it does not execute, so a hypothesis that only a test run can settle is
   outside what the evidence phase can reach. Drive that loop in the session, then bring the
-  established cause back here or to `develop`.
+  established cause back here, or to `task` or `develop`.
 - The topics are not independent: what track A finds determines what track B should look for.
   Run two passes, seeding the second with the first's findings, rather than forcing one plan.
 

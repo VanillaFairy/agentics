@@ -89,10 +89,10 @@ transcripts.
 ## Where the findings go
 
 <!-- agentics:verbatim effort-store -->
-**Efforts — one directory for everything this piece of work produces.** A change moves through
-design, survey, probe and one or more runs, and every phase records what it returned in the
-effort's directory. Design and develop are separate sessions by recommendation, so this is how
-the second reads what the first learned beyond the design document.
+**Efforts — one directory for everything a piece of work produces.** An effort is a subtree of
+the execution tree: its nodes, their events, its evidence and its executions all live under
+`.claude/agentics/efforts/<effort>/`. Design, probe and develop are separate sessions by
+recommendation, and this directory is how a later one reads what an earlier one established.
 
 Open one at the start. The user may name it; if they do not, derive the name and use it:
 
@@ -101,46 +101,24 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" slug "<the change or question, in th
 node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" open <repo> <slug> --about "<the change or question>" --roots <roots>
 ```
 
-Opening is idempotent, and a later phase of the same effort adopts the identity the first one
-recorded rather than restating it in its own words.
+Opening is idempotent: a later phase adopts the identity the first one recorded.
 
-Record a survey's or a probe's return by writing the workflow's result object to a file and
-passing the path — **verbatim, never summarised.** The point of the store is what the phase
-actually returned, and a command line is finite while a survey's return is as large as the
-survey was interesting:
+Record a survey's or a probe's return into the effort's `evidence/` by writing the workflow's
+result object to a file and passing the path — **verbatim, never summarised** — as soon as it
+returns, before anything spends it:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" record <repo> <slug> survey|probe --file <path.json>
 ```
 
-Link a run and the design document as each comes into being. These are **pointers**: run state
-stays at `.claude/agentics/runs/<runstamp>/` where every other part of this pipeline reads and writes
-it, and a design stays in the source tree, because it is source:
+`effort.mjs read <repo> <slug> [--latest survey|probe]` reads the effort back.
 
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" link <repo> <slug> run --value <runstamp>
-node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" link <repo> <slug> design --value <path>
-```
-
-Read it back when a later phase opens on the same effort, and pass what it holds as `prior`:
-
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" read <repo> <slug> --latest survey
-```
-
-**Read back as `prior`, a stored return is context, never evidence.** Passed as `prior` it
-reaches a survey's planner alone, where it can only change how the ground is decomposed — it
-never fills `ground`, never reaches the knowledge base's null-survey gate, and never answers the
-triage's settled-shape question. That gate reads one field, an entry's computed freshness, and no
-provenance, so anything that reached it would be admitted with no grading at all.
-
-**One computed exception: a survey that still stands.** Recording a survey anchors it to the
-commit it was taken at and the ground its topics searched. `effort.mjs standing <repo> <slug>`
-then answers from git whether that survey reported complete coverage and whether any commit or
-uncommitted edit has reached its ground since. Hand `develop` the effort's name as `effort`,
-beside `settled_shape: true`, and the run asks that question itself: a standing survey is used
-instead of buying a second one, and one that does not stand is bought again in full. The session
-never decides that a survey stands; the program does.
+**A recorded return is context, never evidence — with one computed exception.** Recording a
+survey anchors it to its commit and the ground its topics searched, and
+`effort.mjs standing <repo> <slug>` answers from git whether it reported complete coverage and
+whether any commit or uncommitted edit has touched that ground since. A standing survey is reused
+instead of bought again; one that does not stand is bought again in full. The program decides that
+a survey stands, never the session.
 <!-- /agentics:verbatim -->
 
 Record the probe's whole return before the disposition below, not after. A disposition

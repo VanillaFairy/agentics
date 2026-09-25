@@ -531,6 +531,14 @@ leaf-open. A slot is free when its holder's derived status is no longer active (
 merged or escalated), so release needs no write of its own; a slot whose holder belongs to an
 execution that is no longer running is freed by that execution's next preflight, or by the user.
 
+**Who controls what.** The workflow script decides *which* leaves are ready and in what order —
+arithmetic over the plan and the events, in the script. It cannot touch the pool, which is on
+disk, so *admission* is decided by `lib/` inside leaf-open: the entry point takes a slot and the
+locus locks atomically, or waits for them in-process (polling the lock files locally, costing no
+tokens) until they come free. A wait that reaches the host's shell-call limit returns `no_slot`,
+and the script re-dispatches leaf-open for that leaf; nothing else stalls, because every other
+ready leaf and every merge-batch proceed independently. The user controls the limit.
+
 When the session set a token target, the scheduler does not start a leaf that the remaining budget
 cannot cover at the effort's measured cost per leaf; it stops at the next merge-batch instead.
 `pause` is a launch flag with the same effect after the next merge-batch.

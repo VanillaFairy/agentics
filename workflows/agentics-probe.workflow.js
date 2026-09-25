@@ -2,8 +2,9 @@ export const meta = {
   name: 'agentics-probe',
   description: 'Adversarially probe a written artefact — a design, a proposal, a spec — with independent analysts who receive the document and the target repository\'s own guidance and nothing from its author. Rules on the design severity ladder; the gate is computed.',
   phases: [
-    { title: 'Axes', detail: 'read the target repo\'s own review guidance for what to attack' },
-    { title: 'Ground', detail: 'resolve the evidence the artefact cites, once, for every axis' },
+    { title: 'Locate', detail: 'one scout finds the repo\'s review guidance and the ground the artefact talks about' },
+    { title: 'Ground', detail: 'resolve the artefact\'s citations and the located ground, once, for every axis' },
+    { title: 'Axes', detail: 'derive what to attack from the repo\'s own review guidance' },
     { title: 'Probe', detail: 'one analyst holding every axis unless the artefact\'s length earns more; artefact-only handoff' },
   ],
 }
@@ -44,8 +45,10 @@ export const meta = {
 // the turns bought was LOCATING: 248 Reads, 148 Greps and 16 Globs, sixteen analysts
 // independently finding the same lines.
 //
-// Two levers follow, and they are of different sizes. The Ground phase below removes the
-// duplicated locating and is the one worth having. The derived-axis cap is a dial: 110 findings
+// Two levers follow, and they are of different sizes. The Locate and Ground phases below remove
+// the duplicated locating and are the ones worth having: one scout finds what the document talks
+// about and what the repository asks reviewers to check, one script reads it all, and the
+// analysts — who carry `Read` and nothing that searches — judge what they are handed. The derived-axis cap is a dial: 110 findings
 // landed on 21 sections of a four-claim document, fourteen axes independently attacked the same
 // finding, and yield per axis is flat (3–10, mean 6.9) — so cutting axes buys less coverage
 // rather than less waste, and it says so in the result instead of in a log line.
@@ -82,8 +85,61 @@ const AXES = {
         charge: { type: 'string' },   // what to attack, in the repository's own vocabulary
         source: { type: 'string' },   // the file that asked for it — '' for the standing axes
       } } },
-    guidance_read: { type: 'array', items: { type: 'string' } },  // files actually opened
+    guidance_read: { type: 'array', items: { type: 'string' } },  // files the axes rest on
     notes: { type: 'string' },
+  },
+}
+
+// What the locating scout returns. One scout holds both charges because both are a search of the
+// same repository by the same reader, and neither needs the other's answer: `guidance` is what
+// this project asks a reviewer to check, `ground` is what the artefact talks about without citing
+// it by line — the modules it would change, and whatever already does what it proposes to build.
+//
+// The coverage fields answer the contract every search in this plugin answers to (IRON LAW §2),
+// and only `hits` is required, so a finished search is never deadlocked on a field it had
+// nothing for.
+const LOCATED = {
+  type: 'object', additionalProperties: false,
+  required: ['hits'],
+  properties: {
+    hits: {
+      type: 'array',
+      description: 'One entry per location found. Locations only — no analysis, no verdicts.',
+      items: {
+        type: 'object', additionalProperties: false,
+        required: ['path', 'line', 'note', 'kind'],
+        properties: {
+          path: { type: 'string', description: 'Path to the file, relative to the repository.' },
+          line: { type: 'integer', description: 'Line number of the hit.' },
+          note: { type: 'string', description: 'What is at that line, in one line.' },
+          kind: {
+            type: 'string', enum: ['guidance', 'ground'],
+            description: '"guidance" for a passage of this repository\'s own review or design ' +
+              'guidance; "ground" for code or docs the artefact talks about.',
+          },
+        },
+      },
+    },
+    searched: {
+      type: 'array', items: { type: 'string' },
+      description: 'Every pattern, glob and path you actually searched. Always include this field.',
+    },
+    stop_reason: {
+      type: 'string', enum: ['exhausted', 'unfinished', 'stuck'],
+      description: 'Always include this field. "exhausted" only when both charges are covered and ' +
+        'you can name the surface; "unfinished" hands back an honest partial and you will be ' +
+        'resumed; "stuck" when you found no way forward. The size of the work is never a reason.',
+    },
+    no_match: {
+      type: 'string',
+      description: 'What you searched for and genuinely did not find — a finding, not a gap. ' +
+        'Send an empty string, never omit the field, when there is none.',
+    },
+    not_reached: {
+      type: 'string',
+      description: 'What you never searched, named so someone else can pick it up. An empty ' +
+        'string when exhausted; never merged with no_match.',
+    },
   },
 }
 
@@ -124,9 +180,9 @@ function probeFindings(axisKeys) {
   }
 }
 
-// What the citation courier hands back: one command's stdout, byte-exact, in one string.
-// Copied from `agentics-survey`'s CARRIED rather than shared, because a workflow script cannot
-// import — the copies are diffed against each other and against the library's output.
+// What a courier hands back: one command's stdout, byte-exact, in one string. The shape of
+// `agentics-develop`'s CARRIED, copied rather than shared because a workflow script cannot
+// import. This workflow moves no todos, so the two todo fields are left out of its shape.
 //
 // `failed` is the courier unable to run the command AT ALL. An artefact that cites nothing is
 // not that: it resolves to an empty payload, which is a real answer about the document.
@@ -147,9 +203,8 @@ const artifact = typeof input.artifact === 'string' ? input.artifact.trim() : ''
 const roots = input.roots || '.'
 const context = typeof input.context === 'string' ? input.context : ''
 
-// The repository the artefact's citations are resolved against — the first root, on the same
-// rule the knowledge base follows: a citation is repo-relative and there is one repository it
-// is relative TO.
+// The repository the artefact's citations and the located ground are resolved against — the
+// first root: a citation is repo-relative and there is one repository it is relative TO.
 const groundRepo = String(roots).split(/[,;\n]/)[0].trim() || '.'
 
 // How many DERIVED axes run. The standing four are never capped: each names a defect class that
@@ -215,23 +270,58 @@ function fnv1a(text) {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
-/** @returns {{payload: object|null, why: string|null}} */
+function utf8Bytes(text) {
+  const out = []
+
+  for (const ch of String(text)) {
+    const c = ch.codePointAt(0)
+    if (c < 0x80) out.push(c)
+    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63))
+    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+  }
+
+  return out
+}
+
+const B64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+/** Standard base64, padded — how the located ground travels to the excerpt reader. */
+function base64(text) {
+  const bytes = utf8Bytes(text)
+  let out = ''
+
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i]
+    const b1 = i + 1 < bytes.length ? bytes[i + 1] : -1
+    const b2 = i + 2 < bytes.length ? bytes[i + 2] : -1
+
+    out += B64_ALPHABET[b0 >> 2]
+    out += B64_ALPHABET[((b0 & 3) << 4) | (b1 < 0 ? 0 : b1 >> 4)]
+    out += b1 < 0 ? '=' : B64_ALPHABET[((b1 & 15) << 2) | (b2 < 0 ? 0 : b2 >> 6)]
+    out += b2 < 0 ? '=' : B64_ALPHABET[b2 & 63]
+  }
+
+  return out
+}
+
+/** What a courier carried back: the payload, or why it cannot be believed and how to retry. */
 function carriedRead(held) {
-  if (!held) return { payload: null, why: 'the dispatch returned nothing' }
+  if (!held) return { payload: null, why: 'the dispatch returned nothing', retry: 'again' }
   if (held.stop_reason !== 'carried') {
-    return { payload: null, why: held.notes || 'the courier could not run the command' }
+    return { payload: null, why: held.notes || 'the courier could not run the command', retry: 'again' }
   }
 
   let parsed = null
   try {
     parsed = JSON.parse(held.payload_raw)
   } catch (e) {
-    return { payload: null, why: 'it did not survive transcription: ' + (e && e.message) }
+    return { payload: null, why: 'it did not survive transcription: ' + (e && e.message), retry: 'stronger' }
   }
 
-  if (parsed && parsed.error) return { payload: null, why: 'the reader refused: ' + parsed.error }
+  if (parsed && parsed.error) return { payload: null, why: 'the reader refused: ' + parsed.error, retry: '' }
   if (!parsed || !parsed.payload || typeof parsed.payload_digest !== 'string') {
-    return { payload: null, why: 'what came back is not a digest-covered envelope' }
+    return { payload: null, why: 'what came back is not a digest-covered envelope', retry: 'stronger' }
   }
 
   const actual = fnv1a(canonical(parsed.payload))
@@ -240,10 +330,63 @@ function carriedRead(held) {
       payload: null,
       why: 'digest mismatch: it was computed as ' + parsed.payload_digest +
         ', what arrived digests to ' + actual,
+      retry: 'stronger',
     }
   }
 
-  return { payload: parsed.payload, why: null }
+  return { payload: parsed.payload, why: '', retry: '' }
+}
+
+const COURIER = { model: 'haiku', effort: 'low' }
+const COURIER_UP = { model: 'sonnet', effort: 'low' }
+
+function courierPrompt(command) {
+  return 'Run exactly this one command, unchanged, and put its entire stdout in payload_raw:\n\n' +
+    command + '\n\n' +
+    'Move no todos.' +
+    (pluginRoot === SHELL_ROOT
+      ? '\nIf ' + SHELL_ROOT + ' is empty in your shell, do not guess a path: set stop_reason ' +
+        '"failed" and say so.'
+      : '')
+}
+
+/**
+ * Carry one command's payload, believed only after its digest. The ladder is `agentics-develop`'s:
+ * nothing back or a courier that could not run it is run again once; a payload damaged in transit
+ * buys one refetch on a stronger model; a token the program refused as damaged on its way in is
+ * sent again. Every carry here has a fallback, so none of them throws: `{payload: null, why}`.
+ */
+async function carry(command, label, phaseName) {
+  const ladder = [COURIER]
+  let why = ''
+
+  for (let i = 0; i < ladder.length; i++) {
+    const held = await agent(courierPrompt(command), {
+      agentType: 'agentics:courier', schema: CARRIED, phase: phaseName,
+      label: label + (i ? '#' + (i + 1) : ''), ...ladder[i],
+    }).catch((e) => {
+      why = 'the courier threw: ' + (e && e.message)
+      return null
+    })
+
+    const c = carriedRead(held)
+    if (c.payload) {
+      const refused = c.payload.ok === false && c.payload.error
+      if (refused && c.payload.error.kind === 'digest_mismatch' && i === 0) {
+        why = c.payload.error.message || 'the argument token was damaged on its way in'
+        ladder.push(COURIER)
+        continue
+      }
+      if (refused) return { payload: null, why: 'the program refused: ' + (c.payload.error.message || c.payload.error.kind) }
+      return { payload: c.payload, why: '' }
+    }
+
+    why = c.why || why
+    if (c.retry === 'again' && ladder.length < 2) ladder.push(COURIER)
+    else if (c.retry === 'stronger' && !ladder.includes(COURIER_UP)) ladder.push(COURIER_UP)
+  }
+
+  return { payload: null, why }
 }
 
 // The four axes that run whatever the repository asks for. They are not a house style: each
@@ -270,7 +413,7 @@ const STANDING = [
   { key: 'reinvention', source: '', charge:
     'Reinvention. Is anything here rebuilding something that already exists — in this ' +
     'repository, in its declared dependencies, in the language\'s standard library, or as a ' +
-    'well-known tool? Read the repository to answer, do not reason from memory. YAGNI ' +
+    'well-known tool? Answer from the repository ground located for you, not from memory. YAGNI ' +
     'catches building what nobody asked for; it will never catch building what everybody ' +
     'asked for and somebody already shipped.' },
 ]
@@ -286,65 +429,227 @@ const ladderText =
   `ratified, so calling a preference an ambiguity spends a person's afternoon; calling a ` +
   `genuine double-definition a note ships it into every consumer.\n\n`
 
-function axesPrompt() {
-  return `Read this repository's own guidance and report what a design review here must ` +
-    `attack. You are not reviewing anything yet.\n\n` +
+function locatePrompt(prev) {
+  const charge =
+    `Locate two kinds of ground for a probe of a written artefact. You find locations; you judge ` +
+    `nothing, and you do not review the artefact.\n\n` +
+    `REPOSITORY: ${roots}\n` +
+    `THE ARTEFACT: ${artifact}\n\n` +
+    `1. GUIDANCE (kind "guidance"). This repository's own review and design guidance: its ` +
+    `CLAUDE.md, AGENTS.md, specs or architecture notes under docs/, and any contributing or ` +
+    `review guide. Report one hit per passage that asks a reviewer or a design to check ` +
+    `something — the line where that ask starts. A repository with no such guidance is a real ` +
+    `finding: say so in no_match.\n\n` +
+    `2. GROUND (kind "ground"). Read the artefact, then locate in the repository what it talks ` +
+    `about WITHOUT citing it by path and line: the modules, files and contracts it names or ` +
+    `would change, and anything that already exists here — in the code, the declared ` +
+    `dependencies, the tooling — that does what the artefact proposes to build. Lines the ` +
+    `artefact already cites as path:line are read separately; do not report them again.\n\n` +
+    `The analysts that attack this artefact cannot search: what you locate is what they get to ` +
+    `read. Search to exhaustion — stop when both charges are covered or you are genuinely stuck, ` +
+    `never because the list is getting long. If one pass cannot cover it, report what you have, ` +
+    `set stop_reason "unfinished" and name exactly what remains in not_reached.`
+
+  if (!prev) return charge
+  return `Continue an unfinished search — do not start over.\n\nORIGINAL REQUEST:\n${charge}\n\n` +
+    `ALREADY SEARCHED (do not repeat these):\n${prev.searched.join('\n')}\n\n` +
+    `ALREADY FOUND (do not report these again):\n` +
+    prev.hits.map((h) => `${h.path}:${h.line}`).join('\n') +
+    `\n\nSTILL NOT REACHED — this is your job now:\n${prev.remainder}`
+}
+
+/**
+ * The locating scout, driven to exhaustion (IRON LAW §3): continued on exactly what it names as
+ * unreached for as long as a round brings back a new location or narrows the remainder. No
+ * counter ends it (§1). Null when not one round reported — nothing was located at all.
+ */
+async function locate() {
+  const hits = []
+  const searched = []
+  const noMatch = []
+  const seen = new Set()
+  let remainder = ''
+  let prevKey = null
+  let round = 0
+
+  const result = (complete, notReached) =>
+    ({ hits, searched, noMatch: noMatch.join('\n'), complete, notReached })
+
+  for (;;) {
+    round++
+    const out = await agent(locatePrompt(round > 1 ? { hits, searched, remainder } : null), {
+      agentType: 'agentics:scout', effort: 'low', schema: LOCATED,
+      phase: 'Locate', label: 'locate' + (round > 1 ? '#' + round : ''),
+    }).catch((e) => {
+      log(`WARNING: locating round ${round} failed: ${e && e.message}`)
+      return null
+    })
+    if (!out) return round === 1 ? null : result(false, remainder || `round ${round} produced no result`)
+
+    let gained = false
+    for (const h of out.hits || []) {
+      const k = `${h.path}:${h.line}`
+      if (!seen.has(k)) { seen.add(k); hits.push(h); gained = true }
+    }
+    for (const q of out.searched || []) if (String(q).trim()) searched.push(q)
+    if ((out.no_match || '').trim()) noMatch.push(out.no_match.trim())
+
+    if (out.stop_reason === 'exhausted') return result(true, '')
+
+    const next = (out.not_reached || '').trim()
+    if (!next) {
+      return result(false, `the search stopped as "${out.stop_reason || 'unstated'}" without naming what was missed`)
+    }
+    const key = next.replace(/\s+/g, ' ').toLowerCase()
+    if (!gained && key === prevKey) {
+      log('locate: a round brought back nothing new and left the same ground unreached — stopping as stuck.')
+      return result(false, next)
+    }
+    prevKey = key
+    remainder = next
+    log(`locate: unfinished after round ${round}, resuming.`)
+  }
+}
+
+// One argv slot holds a finite token (cmd.exe caps a whole command line at 8191 characters), so
+// the located ground travels in batches under this many base64 characters, every location of one
+// file in the same batch so no two batches hold overlapping windows.
+const COMMAND_BUDGET = 6000
+
+function batchesOf(locations) {
+  const byPath = new Map()
+  for (const loc of locations) {
+    if (!byPath.has(loc.path)) byPath.set(loc.path, [])
+    byPath.get(loc.path).push(loc)
+  }
+
+  const batches = []
+  let current = []
+  for (const group of byPath.values()) {
+    const grown = current.concat(group)
+    if (current.length > 0 && base64(JSON.stringify(grown)).length > COMMAND_BUDGET) {
+      batches.push(current)
+      current = group
+    } else {
+      current = grown
+    }
+  }
+  if (current.length > 0) batches.push(current)
+  return batches
+}
+
+/** Every location, read once by `lib/citations.mjs excerpts`; what could not be carried is named. */
+async function resolveLocated(hits) {
+  const locations = []
+  const seen = new Set()
+  for (const h of hits) {
+    const loc = { path: String(h.path), line: Number.isInteger(h.line) ? h.line : 0 }
+    const k = loc.path + ':' + loc.line
+    if (!seen.has(k)) { seen.add(k); locations.push(loc) }
+  }
+  if (locations.length === 0) return { files: [], failures: [] }
+
+  const batches = batchesOf(locations)
+  const carried = await Promise.all(batches.map((batch, i) => carry(
+    `node "${pluginRoot}/lib/citations.mjs" excerpts --repo "${groundRepo}" ` +
+    `--digest ${fnv1a(canonical(batch))} --b64 ${base64(JSON.stringify(batch))}`,
+    batches.length === 1 ? 'excerpts' : `excerpts:${i + 1}`, 'Ground')))
+
+  const files = []
+  const failures = []
+  carried.forEach((held, i) => {
+    if (held.payload) files.push(...(held.payload.files || []))
+    else failures.push(`${batches[i].length} location(s): ${held.why}`)
+  })
+  return { files, failures }
+}
+
+/** The windows a set of hits falls in, and the hits that fall in none. */
+function coverOf(hits, files) {
+  const windows = new Map()
+  const bare = []
+  for (const h of hits) {
+    const reported = String(h.path).split('\\').join('/').replace(/^\.\//, '')
+    let hit = null
+    for (const file of files) {
+      if (reported !== file.path && !reported.endsWith('/' + file.path)) continue
+      const excerpt = (file.excerpts || []).find((e) => h.line >= e.from && h.line <= e.to)
+      if (excerpt) { hit = { file, excerpt }; break }
+    }
+    if (hit) windows.set(hit.file.path + '#' + hit.excerpt.from, hit)
+    else bare.push(h)
+  }
+  return { windows, bare }
+}
+
+function excerptBlock(windows) {
+  const byFile = new Map()
+  for (const w of windows.values()) {
+    if (!byFile.has(w.file.path)) byFile.set(w.file.path, { file: w.file, excerpts: [] })
+    byFile.get(w.file.path).excerpts.push(w.excerpt)
+  }
+  return [...byFile.values()]
+    .map(({ file, excerpts }) => `--- ${file.path} (${file.lines} line(s))\n` +
+      excerpts.sort((a, b) => a.from - b.from).map((e) => e.text).join('\n     …\n'))
+    .join('\n\n')
+}
+
+const hitLine = (h) => `  ${h.path}:${h.line} — ${h.note || ''}`
+
+/** Located evidence as an analyst reads it: the excerpts, then whatever it must open itself. */
+function locatedBlock(cover) {
+  return (cover.windows.size > 0
+    ? `Read once for you by a script — do not open these files again to find these lines:\n\n` +
+      excerptBlock(cover.windows)
+    : '') +
+    (cover.bare.length > 0
+      ? `\n\nLOCATIONS NOT EXCERPTED — the script could not read these for you. Read each one ` +
+        `yourself, in a line range around it, and nothing else:\n` + cover.bare.map(hitLine).join('\n')
+      : '')
+}
+
+function axesPrompt(cover) {
+  return `Derive, from this repository's own guidance, what a design review here must attack. ` +
+    `You are not reviewing anything yet.\n\n` +
     `REPOSITORY: ${roots}\n\n` +
-    `Read its CLAUDE.md, AGENTS.md, any specs or architecture notes under docs/, and any ` +
-    `contributing or review guidance you find. Report the files you actually opened in ` +
-    `guidance_read — a list of what you looked at is what tells your caller whether the axes ` +
-    `below rest on anything.\n\n` +
+    `THE GUIDANCE a scout located — its CLAUDE.md, AGENTS.md, specs and architecture notes, ` +
+    `contributing and review guides:\n\n` + locatedBlock(cover) + `\n\n` +
+    `You have no search tools: judge from what is above. Report the files your axes rest on in ` +
+    `guidance_read — that list is what tells your caller whether the axes below rest on ` +
+    `anything.\n\n` +
     `Return one axis per distinct thing this project asks reviewers to check, phrased as a ` +
     `charge to an agent that will attack the document on that axis alone, IN THIS ` +
     `REPOSITORY'S OWN VOCABULARY. A project that mandates its own review style is satisfied ` +
     `by this probe rather than double-probed, and a project whose vocabulary nobody here has ` +
     `heard of gets probed in that vocabulary anyway — which is the entire reason this step ` +
     `exists instead of a hardcoded list.\n\n` +
-    `Name the file each axis came from in source. An axis you cannot trace to a file in this ` +
-    `repository is an axis you invented; do not return it. Four standing axes (contract ` +
-    `ambiguity, unnamed invariants, YAGNI, reinvention) are added by your caller — do not ` +
-    `repeat them, and do not omit a repo axis because it looks similar to one of them.\n\n` +
-    `A repository with no review guidance at all is a real finding: return ` +
-    `no_guidance_found with what you looked for. Never invent axes to fill the list.`
+    `Name the file each axis came from in source. An axis you cannot trace to a passage above ` +
+    `is an axis you invented; do not return it. Four standing axes (contract ambiguity, ` +
+    `unnamed invariants, YAGNI, reinvention) are added by your caller — do not repeat them, ` +
+    `and do not omit a repo axis because it looks similar to one of them.\n\n` +
+    `Guidance that asks reviewers to check nothing is a real finding: return no_guidance_found ` +
+    `with what you read. Never invent axes to fill the list. Return unreadable only when you ` +
+    `could not read what you were handed at all.`
 }
 
-function groundPrompt() {
-  return `READ MODE. Resolve the evidence this document cites, and return what the command ` +
-    `printed — verbatim. You run one command and paste its output; you decide nothing, you ` +
-    `search for nothing, and you interpret nothing.\n\n` +
-    `Run exactly this:\n\n` +
-    `   node "${pluginRoot}/lib/citations.mjs" "${groundRepo}" "${artifact}"\n` +
-    (pluginRoot === SHELL_ROOT
-      ? `\n   If ${SHELL_ROOT} is empty in your shell that path cannot resolve. Stop and say ` +
-        `so in the way your result shape allows — never substitute a relative path or a guess.\n\n`
-      : '\n') +
-    `Put its ENTIRE stdout into payload_raw, byte for byte, as one string. Do not parse it, do ` +
-    `not reformat it, do not summarise it, and do not drop an excerpt that looks uninteresting ` +
-    `to you. It is one line of JSON carrying its own digest: your caller recomputes that digest ` +
-    `over what arrives, so a copy that drifted by a single character is detected rather than ` +
-    `believed.\n\n` +
-    `Citations that resolve to NOTHING come back in an "unresolved" list. Those are findings ` +
-    `about the document and they travel exactly as they are — do not go looking for what the ` +
-    `author probably meant, do not correct a path, and do not drop one because you can see the ` +
-    `file was renamed.\n\n` +
-    `A document that cites nothing resolvable prints an empty file list, and that IS the good ` +
-    `case. Return stop_reason failed ONLY when the command could not be run at all, with what ` +
-    `the shell reported in notes.`
+function citationsCommand() {
+  return `node "${pluginRoot}/lib/citations.mjs" "${groundRepo}" "${artifact}"`
 }
 
 /**
- * The resolved excerpts, as every analyst reads them.
+ * The resolved citations, as every analyst reads them.
  *
- * This is the whole of 4a: the document's own citations, resolved once, so an analyst spends its
- * turns ATTACKING rather than locating. The framing matters as much as the payload — an analyst
- * that reads this as "the evidence" stops looking, and an axis whose ground the document never
- * cites is exactly the axis that most needs to go and look.
+ * The document's own citations, resolved once, so an analyst spends its turns ATTACKING rather
+ * than locating. The framing matters as much as the payload — an analyst that reads this as "the
+ * evidence" stops looking, and an axis whose ground the document never cites is exactly the axis
+ * that most needs the located ground below it.
  */
 function groundSection(ground) {
   if (!ground || !ground.payload) {
     return `\n\nNOTE: the evidence this document cites was NOT resolved for you` +
       (ground && ground.why ? ` (${ground.why})` : '') +
-      `, so locating it is yours to do, as it always was. Nothing about your axis changes.\n\n`
+      `, so reading it is yours to do: open each path:line the artefact cites, in a line range ` +
+      `around it. Nothing about your axis changes.\n\n`
   }
 
   const p = ground.payload
@@ -364,9 +669,28 @@ function groundSection(ground) {
     (excerpts || '(the document cites no location in this repository)') +
     broken +
     `\n\nThis is what the document POINTS AT and it is NOT the repository. Ground it never ` +
-    `cites is not here, and on your axis that silence may be the finding — go and read whatever ` +
-    `you need. What this removes is the twenty-six searches every other axis was also paying ` +
-    `for to arrive at the same lines.\n\n`
+    `cites is not here, and on your axis that silence may be the finding — the ground located ` +
+    `below is where to look for it.\n\n`
+}
+
+/** The repository ground the scout located beyond the document's own citations. */
+function repoGroundSection() {
+  if (!located) {
+    return `REPOSITORY GROUND: NOT LOCATED — the search for what this document talks about ` +
+      `failed, so you hold the document and its own citations only. A finding that needs ground ` +
+      `beyond them states that it could not be checked, in its evidence; never present it as ` +
+      `checked.\n\n`
+  }
+  const cover = groundCover
+  return `REPOSITORY GROUND — what a scout located as the code and docs this document talks ` +
+    `about, and whatever already exists here that does what it proposes:\n\n` +
+    (cover.windows.size + cover.bare.length > 0 ? locatedBlock(cover) : '(nothing located)') +
+    (located.noMatch ? `\n\nSEARCHED AND NOT FOUND (evidence of absence):\n${located.noMatch}` : '') +
+    (located.complete
+      ? ''
+      : `\n\nWARNING: this search did NOT finish; it never reached: ${located.notReached}. A ` +
+        `finding resting on unlocated ground says so.`) +
+    `\n\n`
 }
 
 function axisBlock(bundle) {
@@ -399,10 +723,12 @@ function probePrompt(bundle, ground, remainder) {
       : '') +
     `THE ARTEFACT — read it in full before you write anything:\n${artifact}\n\n` +
     `REPOSITORY it will be implemented in: ${roots}\n` +
-    `Read the code. A claim about what this document would do to this repository is worth ` +
-    `something only if you looked; "this may conflict with the existing design" without a ` +
-    `path and a line is not a finding.\n` +
+    `You carry Read and nothing that searches: the repository's ground was located and read ` +
+    `for you, below. A claim about what this document would do to this repository is worth ` +
+    `something only if it rests on a line you were handed or opened; "this may conflict with ` +
+    `the existing design" without a path and a line is not a finding.\n` +
     groundSection(ground) +
+    repoGroundSection() +
     (context ? `WHAT THIS DOCUMENT IS FOR:\n${context}\n\n` : '') +
     axisBlock(bundle) +
     ladderText +
@@ -452,50 +778,90 @@ if (!artifact) {
   }
 }
 
-phase('Axes')
+phase('Locate')
 
-// Launched BEFORE the axes are awaited, because the two are independent: what the repository
-// asks reviewers to check and what this document points at are different questions, and paying
-// for them one after the other would add the slower one's wall-clock to the faster one's for
-// nothing.
-const groundHeld = agent(groundPrompt(), {
-  agentType: 'agentics:ground', effort: 'low', model: 'haiku', schema: CARRIED,
-  phase: 'Ground', label: 'ground',
-}).catch((e) => {
-  log(`WARNING: resolving the document's cited evidence failed: ${e && e.message}`)
-  return null
-})
-
-const discovered = await agent(axesPrompt(), {
-  agentType: 'agentics:analyst', effort: 'low', schema: AXES,
-  phase: 'Axes', label: 'axes',
-}).catch((e) => {
-  log(`WARNING: reading the repository's review guidance failed: ${e && e.message}`)
-  return null
-})
+// Launched together, because the two are independent: what this document cites is resolved from
+// the document alone, and what it talks about is found by a search that does not need that
+// resolution. Paying for them one after the other would add the slower one's wall-clock to the
+// faster one's for nothing.
+const groundHeld = carry(citationsCommand(), 'ground', 'Ground')
+const located = await locate()
 
 const failedChannels = []
+const guidanceHits = located ? located.hits.filter((h) => h.kind === 'guidance') : []
+const groundHits = located ? located.hits.filter((h) => h.kind !== 'guidance') : []
+
+if (!located) {
+  // The analysts cannot search, so a scout that never reported leaves them the document and its
+  // own citations. Both halves are coverage failures: the project's review standard was never
+  // read, and nothing the document talks about without citing was located (IRON LAW §5).
+  failedChannels.push('repo-axes', 'repo-ground')
+  log('WARNING: nothing was located — the repository\'s guidance and the ground this document ' +
+    'talks about are both unread; probing on the standing axes over the document alone.')
+} else {
+  log(`Located ${guidanceHits.length} guidance passage(s) and ${groundHits.length} ground ` +
+    `location(s)${located.complete ? '' : ' — the search did NOT finish'}.`)
+}
+
+phase('Ground')
+
+const resolved = await resolveLocated(guidanceHits.concat(groundHits))
+if (resolved.failures.length > 0) {
+  log(`The located ground was not all resolved (${resolved.failures.join('; ')}); the analysts ` +
+    `read those locations themselves. More turns, not less evidence.`)
+}
+const guidanceCover = coverOf(guidanceHits, resolved.files)
+const groundCover = coverOf(groundHits, resolved.files)
+
+const ground = await groundHeld
+
+if (!ground.payload) {
+  // Degraded, and deliberately NOT a failed channel. The analysts read the artefact and can open
+  // every path:line it cites themselves: more turns, not less evidence.
+  log(`The document's cited evidence was not resolved (${ground.why}); every analyst reads the ` +
+    `citations itself. More turns, not less evidence.`)
+} else {
+  const c = ground.payload.counts || {}
+  log(`Shared ground: ${c.excerpts || 0} excerpt(s) across ${c.files || 0} file(s) from ` +
+    `${c.cited || 0} citation(s)` +
+    (c.unresolved ? `, and ${c.unresolved} citation(s) that resolve to nothing — a finding ` +
+      `about the document, handed to every axis` : '') + '.')
+}
+
+phase('Axes')
+
+// No guidance located after an exhausted search is the repository stating none; no analyst is
+// bought to say so. A search that did not finish is its own incompleteness, recorded below.
+const discovered = guidanceHits.length === 0
+  ? (located ? { stop_reason: 'no_guidance_found', axes: [], guidance_read: [], notes: located.noMatch } : null)
+  : await agent(axesPrompt(guidanceCover), {
+    agentType: 'agentics:analyst', effort: 'low', schema: AXES,
+    phase: 'Axes', label: 'axes',
+  }).catch((e) => {
+    log(`WARNING: deriving axes from the repository's review guidance failed: ${e && e.message}`)
+    return null
+  })
+
 const repoAxes = discovered && discovered.stop_reason === 'completed'
   ? (discovered.axes || []).filter((a) => a && a.key && a.charge)
   : []
 
-if (!discovered || discovered.stop_reason === 'unreadable') {
+if (located && (!discovered || discovered.stop_reason === 'unreadable')) {
   // Degraded, not fatal: the four standing axes still run. But a probe that never read the
   // project's own rules is a narrower probe than the one that was asked for, and IRON LAW §5
   // says a failed side channel travels in the result rather than in a log line.
   failedChannels.push('repo-axes')
   log('WARNING: probing on the standing axes only — this repository\'s own guidance was not read.')
-} else if (discovered.stop_reason === 'no_guidance_found') {
+} else if (discovered && discovered.stop_reason === 'no_guidance_found') {
   log('This repository states no review guidance; probing on the standing axes.')
 }
 
 // The cap, applied to the DERIVED axes only. What it drops is a declared narrowing rather than
-// a coverage failure — the same distinction `agentics-develop`'s fix lane draws when a caller names a
-// locus instead of buying a survey — so it does not flip `coverage.complete`, which stays what it
-// has always been: axes this probe COMMISSIONED and did not get a report from. It is named in
-// `unreached` and in `resumable.remaining` all the same, because "an axis nobody ran" and "an
-// axis that found nothing" are the same empty list, and a caller who wants them can re-run with a
-// higher cap and get exactly them.
+// a coverage failure, so it does not flip `coverage.complete`, which stays what it has always
+// been: axes this probe COMMISSIONED and did not get a report from. It is named in `unreached`
+// and in `resumable.remaining` all the same, because "an axis nobody ran" and "an axis that
+// found nothing" are the same empty list, and a caller who wants them can re-run with a higher
+// cap and get exactly them.
 const derived = repoAxes.slice(0, maxDerivedAxes)
 const axesDropped = repoAxes.slice(maxDerivedAxes).map((a) => a.key)
 
@@ -505,24 +871,6 @@ if (axesDropped.length > 0) {
 }
 
 const axes = STANDING.concat(derived)
-
-phase('Ground')
-const ground = carriedRead(await groundHeld)
-
-if (!ground.payload) {
-  // Degraded, and deliberately NOT a failed channel. A shared-ground read that does not happen
-  // costs this probe nothing it was going to have: every analyst locates the document's evidence
-  // itself, exactly as it did before this dispatch existed. More work, not less evidence — the
-  // same stance `agentics-survey` takes toward an unreadable knowledge base.
-  log(`The document's cited evidence was not resolved (${ground.why}); every analyst locates it ` +
-    `itself, as it did before. More work, not less evidence.`)
-} else {
-  const c = ground.payload.counts || {}
-  log(`Shared ground: ${c.excerpts || 0} excerpt(s) across ${c.files || 0} file(s) from ` +
-    `${c.cited || 0} citation(s)` +
-    (c.unresolved ? `, and ${c.unresolved} citation(s) that resolve to nothing — a finding ` +
-      `about the document, handed to every axis` : '') + '.')
-}
 
 phase('Probe')
 
@@ -629,7 +977,10 @@ const gaps = findings.filter((f) => f.severity === 'gap')
 log(`${findings.length} finding(s): ${ambiguities.length} ambiguity, ${gaps.length} gap, ` +
   `${findings.length - ambiguities.length - gaps.length} note.`)
 
+// A locating search that stopped short left the analysts less repository than there is. It is
+// not an axis, but it is incomplete work every axis rested on, and resumable as such.
 const incomplete = partiallyExamined.map((a) => a.key)
+  .concat(located && !located.complete ? ['locate'] : [])
 
 const coverage = {
   complete: unexamined.length === 0 && incomplete.length === 0 && failedChannels.length === 0,
@@ -651,9 +1002,21 @@ const coverage = {
       key + ': this axis was derived from the repository\'s own guidance and then not run, ' +
       'because derived axes are capped at ' + maxDerivedAxes + '. Nothing was examined for it ' +
       '— re-run with a higher max_derived_axes to buy it'))
+    .concat(failedChannels.includes('repo-ground')
+      ? ['nothing the document talks about without citing it was located in the repository, so ' +
+         'the analysts — who cannot search — attacked the document and its own citations only']
+      : [])
+    .concat(located && !located.complete
+      ? ['locate: the search for the repository\'s guidance and the ground this document talks ' +
+         'about stopped before it was exhausted, never reaching: ' + located.notReached]
+      : [])
+    .concat(resolved.failures.length > 0
+      ? ['some located ground was not resolved for the analysts (' + resolved.failures.join('; ') +
+         '), so they read those locations themselves — this cost turns, not coverage']
+      : [])
     .concat(!ground.payload
       ? ['the evidence this document cites was not resolved for the analysts (' + ground.why +
-         '), so each located it itself — this cost turns, not coverage, and no finding above ' +
+         '), so each read it itself — this cost turns, not coverage, and no finding above ' +
          'rests on it']
       : (ground.payload.unresolved || []).length > 0
         ? ['the document cites ' + ground.payload.unresolved.length + ' location(s) that ' +
@@ -691,7 +1054,14 @@ return {
   shared_ground: ground.payload
     ? { resolved: true, ...ground.payload.counts, unresolved: ground.payload.unresolved }
     : { resolved: false, why: ground.why },
-  guidance_read: discovered ? (discovered.guidance_read || []) : [],
+  // What the repository's ground rested on: the guidance the axes were derived from, and how
+  // much of what the document talks about was located and handed over.
+  guidance_read: discovered && (discovered.guidance_read || []).length > 0
+    ? discovered.guidance_read
+    : [...new Set(guidanceHits.map((h) => String(h.path)))],
+  repo_ground: located
+    ? { located: groundHits.length, complete: located.complete, unresolved_batches: resolved.failures.length }
+    : { located: 0, complete: false, unresolved_batches: 0 },
   findings,
   ambiguities,
   ratifiable,

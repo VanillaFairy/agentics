@@ -74,3 +74,29 @@ test('report mode hands back the synthesis verbatim with the survey coverage', a
   assert.equal(result.report, 'The answer, with path:line receipts.')
   assert.equal(result.coverage.complete, true)
 })
+
+test('the survey is handed the pace and the plugin root, and the synthesis is told it cannot search', async () => {
+  let handed = null
+  const { prompts, result } = await runWorkflow(WF, {
+    args: { question: 'how does X work', pace: 'fast', plugin_root: 'C:/plugin' },
+    agent: scriptedAgents({ synthesize: 'the answer' }),
+    workflow: (name, a) => { handed = a; return surveyResult() },
+  })
+
+  assert.equal(handed.pace, 'fast')
+  assert.equal(handed.plugin_root, 'C:/plugin')
+  assert.match(prompts.find((p) => p.opts.label === 'synthesize').prompt, /You have no search tools/)
+  assert.equal(result.coverage.resumable.args.pace, 'fast', 'a resume re-passes what the survey was given')
+})
+
+test('a survey that stood in for itself passes its coverage through untouched', async () => {
+  const standing = { stamp: '20260920-101500', observed_at: 'abc1234' }
+  const { result } = await runWorkflow(WF, {
+    args: { question: 'how does X work' },
+    agent: scriptedAgents({ synthesize: 'the answer' }),
+    workflow: () => surveyResult({ coverage: { ...surveyResult().coverage, standing } }),
+  })
+
+  assert.deepEqual(result.coverage.standing, standing)
+  assert.ok(!('from_kb' in result.coverage))
+})

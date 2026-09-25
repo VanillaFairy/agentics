@@ -6,8 +6,10 @@
 //   merging      overlapping windows in one file collapse into the fewest that cover them
 //   the three    resolved / out_of_range / missing, kept apart
 //   discipline   nothing outside the repository is read, and a dead citation is a FINDING
+//   locations    the survey's Resolve step: scout locations in, merged excerpts out, under a
+//                digest on both sides of the courier
 //
-// Design: docs/DESIGN.md#what-a-probe-costs.
+// Design: docs/DESIGN.md#what-a-probe-costs, docs/DESIGN.md#survey.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -17,7 +19,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { citationsIn, mergeRanges, resolveCitations, safePath } from '../lib/citations.mjs'
+import { citationsIn, mergeRanges, resolveCitations, resolveLocations, safePath } from '../lib/citations.mjs'
+import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/citations.mjs', import.meta.url))
 
@@ -121,6 +124,80 @@ test('the CLI prints the payload under its own digest', () => {
 
   assert.match(out.payload_digest, /^[0-9a-f]{8}$/)
   assert.deepEqual(out.payload.files[0].excerpts.map((e) => [e.from, e.to]), [[8, 12]])
+})
+
+// ------------------------------------------------------------------ scout locations
+
+test('locations in one file merge into the fewest windows, whichever scout reported them', () => {
+  const dir = repo({ 'src/a.js': numbered(200, 'line'), 'src/b.js': numbered(10, 'b') })
+  const out = resolveLocations(dir, [
+    { path: 'src/a.js', line: 100 }, { path: 'src/a.js', line: 104 },
+    { path: 'src/a.js', line: 100 }, { path: 'src/a.js', line: 180 },
+    { path: 'src/b.js', line: 2 },
+  ], 10)
+
+  assert.deepEqual(out.files.map((f) => f.path), ['src/a.js', 'src/b.js'])
+  assert.deepEqual(out.files[0].excerpts.map((e) => [e.from, e.to]), [[90, 114], [170, 190]])
+  assert.deepEqual(out.files[1].excerpts.map((e) => [e.from, e.to]), [[1, 10]])
+  assert.match(out.files[1].excerpts[0].text, /^\s+1\tb1\n/)
+  assert.equal(out.counts.excerpts, 3)
+  assert.equal(out.counts.locations, 5)
+  assert.ok(out.counts.bytes > 0, 'the judge split is earned by bytes too, so they are counted')
+  assert.deepEqual(Object.keys(out).sort(), ['counts', 'files', 'notes', 'repo', 'unresolved'])
+})
+
+test('a location that cannot be read is reported per location, in three kinds', () => {
+  const dir = repo({ 'src/a.js': numbered(5, 'line') })
+  const out = resolveLocations(dir, [
+    { path: 'src/a.js', line: 99 },
+    { path: 'src/ghost.js', line: 1 },
+    { path: '../../etc/passwd', line: 1 },
+    { path: '/somewhere/else/entirely.js', line: 1 },
+  ], 3)
+
+  assert.deepEqual(out.unresolved.map((u) => [u.path, u.why]).sort(), [
+    ['../../etc/passwd', 'outside'],
+    ['/somewhere/else/entirely.js', 'outside'],
+    ['src/a.js', 'out_of_range'],
+    ['src/ghost.js', 'missing'],
+  ])
+  assert.deepEqual(out.files, [], 'a file whose only location is past its end yields no window')
+  assert.match(out.notes, /4 location\(s\) could not be read/)
+})
+
+test('an absolute path inside the repository is read as the relative one it is', () => {
+  const dir = repo({ 'src/a.js': numbered(5, 'line') })
+  const out = resolveLocations(dir, [{ path: dir + '/src/a.js', line: 2 }], 1)
+  assert.deepEqual(out.files.map((f) => [f.path, f.excerpts[0].from, f.excerpts[0].to]), [['src/a.js', 1, 3]])
+  assert.deepEqual(out.unresolved, [])
+})
+
+const b64 = (value) => Buffer.from(JSON.stringify(value), 'utf8').toString('base64')
+const excerptsCli = (args) => JSON.parse(execFileSync(process.execPath, [CLI, 'excerpts', ...args], { encoding: 'utf8' }))
+
+test('the excerpts CLI decodes the minted locations, checks their digest, and prints an envelope', () => {
+  const dir = repo({ 'src/a.js': numbered(20, 'line') })
+  const locations = [{ path: 'src/a.js', line: 10 }]
+  const out = excerptsCli(['--repo', dir, '--b64', b64(locations), '--digest', fnv1a(canonical(locations)), '--context', '2'])
+
+  assert.equal(out.payload_digest, fnv1a(canonical(out.payload)))
+  assert.deepEqual(out.payload.files[0].excerpts.map((e) => [e.from, e.to]), [[8, 12]])
+})
+
+test('the excerpts CLI refuses a token that changed in transit, and reads nothing', () => {
+  const dir = repo({ 'src/a.js': numbered(20, 'line') })
+  const out = excerptsCli(['--repo', dir, '--b64', b64([{ path: 'src/a.js', line: 10 }]), '--digest', 'deadbeef'])
+
+  assert.equal(out.payload.ok, false)
+  assert.equal(out.payload.error.kind, 'digest_mismatch')
+  assert.equal(out.payload_digest, fnv1a(canonical(out.payload)), 'a refusal is a payload, carried like any other')
+})
+
+test('the excerpts CLI refuses an argument that is not a list of locations', () => {
+  const dir = repo({ 'src/a.js': 'x\n' })
+  const value = { path: 'src/a.js', line: 1 }
+  const out = excerptsCli(['--repo', dir, '--b64', b64(value), '--digest', fnv1a(canonical(value))])
+  assert.equal(out.payload.error.kind, 'bad_args')
 })
 
 function writeArtifact(dir, text) {

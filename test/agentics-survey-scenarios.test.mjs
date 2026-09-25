@@ -3,37 +3,26 @@
 // Lint judges form and cannot reach any of this: whether a channel nobody ran is recorded,
 // whether a verdict is matched to its topic by position or by a string the model retyped,
 // whether a half-finished channel still reports complete. Each test below pins a way a
-// PARTIAL result could come back wearing the shape of a WHOLE one (IRON LAW §4) — three of
+// PARTIAL result could come back wearing the shape of a WHOLE one (IL2) — three of
 // them were live defects, found by diffing against the sibling `investigate` plugin that had
 // already been through a field run.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
-import { carriedChain, carriedEnvelope, runWorkflow, scriptedAgents } from './harness/workflow-host.mjs'
+import {
+  carriedEnvelope, carriedExcerpts, excerptLocations, excerptsPayload, runWorkflow, scriptedAgents,
+} from './harness/workflow-host.mjs'
+import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 
 const WF = fileURLToPath(new URL('../workflows/agentics-survey.workflow.js', import.meta.url))
 
 const PLAN = (over = {}) => ({
-  topics: [{ key: 'a', find: 'find a', kb_path: 'src/a' }],
+  topics: [{ key: 'a', find: 'find a', subtree: 'src/a' }],
   docs_needed: false, docs_question: '',
   history_needed: false, history_question: '',
   ...over,
 })
-
-/** `lib/kb.mjs index`'s payload, carried: `{ '<node>': { <kind>: <count> } }`. */
-const INDEX = (byNode = {}, damage) => {
-  const nodes = Object.entries(byNode).map(([node, kinds]) => ({
-    node, entries: Object.values(kinds).reduce((a, b) => a + b, 0), kinds,
-  }))
-  return carriedEnvelope({
-    repo: 'C:/repo',
-    nodes,
-    counts: { nodes: nodes.length, entries: nodes.reduce((n, x) => n + x.entries, 0) },
-    malformed: 0,
-    notes: 'indexed ' + nodes.length + ' node(s)',
-  }, damage)
-}
 
 const HITS = (over = {}) => ({
   hits: [{ path: 'src/x.js', line: 1, note: 'the thing' }],
@@ -49,13 +38,24 @@ const EVIDENCE = (over = {}) => ({
 
 const VERDICT = (topic) => ({ topic, conclusion: 'c', evidence: ['src/x.js:1'], risks: [] })
 
-// Every survey reads the knowledge base, so every scenario scripts the two couriers. The
-// defaults are the ordinary state of a repository nobody has surveyed twice — an index holding
-// nothing, and no chain bought over it — which is what keeps the tests below about the thing
-// each one is testing.
+/** The topic keys a judge dispatch was given — its schema's closed enum. */
+const keysOf = (opts) => opts.schema.properties.verdicts.items.properties.topic.enum
+
+/** A judge that rules on every topic it holds. */
+const judgeAll = (prompt, opts) => ({ verdicts: keysOf(opts).map(VERDICT) })
+
+const resolveAll = carriedExcerpts
+const locationsIn = excerptLocations
+const resolvePayload = excerptsPayload
+
+// Every survey that finds a location resolves it and judges it, so every scenario scripts the
+// courier and the judge with the ordinary case — every location read, every topic ruled on —
+// which is what keeps the tests below about the thing each one is testing.
 const run = (script, over = {}) => runWorkflow(WF, {
   args: { question: 'how does X work', plugin_root: 'C:/plugin', ...over },
-  agent: scriptedAgents({ 'kb-index': INDEX(), 'kb-chain': carriedChain(), ...script }),
+  agent: scriptedAgents({
+    resolve: resolveAll, 'resolve:': resolveAll, judge: judgeAll, 'judge:': judgeAll, ...script,
+  }),
 })
 
 const promptFor = (prompts, label) => (prompts.find((p) => p.opts.label === label) || {}).prompt || ''
@@ -67,31 +67,31 @@ const labelsOf = (prompts) => prompts.map((p) => p.opts.label || '')
 // its analysis here and nowhere else. The dial is only real where it reaches an `opts.model`.
 test('`low` puts the analysts on sonnet and leaves the search tier alone', async () => {
   const { prompts } = await run(
-    { plan: PLAN(), 'scout:': HITS(), 'analyze:': VERDICT('a') },
+    { plan: PLAN(), 'scout:': HITS() },
     { intelligence: 'low' },
   )
   const modelOf = (label) => prompts.find((p) => p.opts.label === label).opts.model
 
   assert.equal(modelOf('plan'), 'sonnet', 'the analyst that plans the topics is a judging agent')
-  assert.equal(modelOf('analyze:a'), 'sonnet', 'and so is the one that rules on each')
+  assert.equal(modelOf('judge'), 'sonnet', 'and so is the one that rules on each')
   assert.equal(modelOf('scout:a'), undefined, 'search never moves with the dial')
 })
 
 test('`normal` names opus rather than inheriting it', async () => {
   const { prompts } = await run(
-    { plan: PLAN(), 'scout:': HITS(), 'analyze:': VERDICT('a') },
+    { plan: PLAN(), 'scout:': HITS() },
     { intelligence: 'normal' },
   )
   const modelOf = (label) => prompts.find((p) => p.opts.label === label).opts.model
 
   assert.equal(modelOf('plan'), 'opus')
-  assert.equal(modelOf('analyze:a'), 'opus')
+  assert.equal(modelOf('judge'), 'opus')
   assert.equal(modelOf('scout:a'), undefined, 'the search tier is not on the dial')
 })
 
 test('a tier this script does not define is served as normal, not as itself', async () => {
   const { prompts } = await run(
-    { plan: PLAN(), 'scout:': HITS(), 'analyze:': VERDICT('a') },
+    { plan: PLAN(), 'scout:': HITS() },
     { intelligence: 'cheap' },
   )
 
@@ -106,7 +106,6 @@ test('a channel marked necessary with no question is a failure, not a silent ski
   const { result, logs } = await run({
     plan: PLAN({ history_needed: true, history_question: '   ' }),
     'scout:': HITS(),
-    'analyze:': VERDICT('a'),
   })
 
   // The planner asked for history and then named no question, so nothing was searched. If
@@ -123,7 +122,6 @@ test('a channel that throws is recorded without discarding the work already paid
   const { result } = await run({
     plan: PLAN({ docs_needed: true, docs_question: 'what does the vendor say' }),
     'scout:': HITS(),
-    'analyze:': VERDICT('a'),
     docs: () => { throw new Error('network is down') },
   })
 
@@ -134,28 +132,41 @@ test('a channel that throws is recorded without discarding the work already paid
 
 // ---------------------------------------------------------------- reconciliation
 
-test('a verdict is matched to its topic by position, not by the key the analyst echoed', async () => {
+test('a lone topic\'s verdict is that topic\'s, whatever key the judge echoed', async () => {
   const { result } = await run({
     plan: PLAN({ topics: [{ key: 'a', find: 'find a' }, { key: 'b', find: 'find b' }] }),
     'scout:': HITS(),
-    'analyze:a': VERDICT('typo-not-a'),
-    'analyze:b': VERDICT('b'),
-  })
+    'judge:a': { verdicts: [VERDICT('typo-not-a')] },
+  }, { pace: 'fast' })
 
   // Matching on the echoed string counted this verdict as evidence AND its topic as dropped,
   // at the same time: the answer was built on both topics while reporting one as missing.
   assert.equal(result.verdicts.length, 2)
+  assert.equal(result.verdicts[0].topic, 'a')
   assert.deepEqual(result.coverage.dropped, [])
   assert.equal(result.coverage.complete, true)
 })
 
-test('a topic whose analysis fails is dropped exactly once and fails coverage', async () => {
+test('a verdict under a key the judge was not given is evidence for nothing', async () => {
+  const { result, prompts } = await run({
+    plan: PLAN({ topics: [{ key: 'a', find: 'find a' }, { key: 'b', find: 'find b' }] }),
+    'scout:': HITS(),
+    judge: { verdicts: [VERDICT('b'), VERDICT('invented')] },
+    'judge#2': { verdicts: [] },
+  })
+
+  assert.deepEqual(result.verdicts.map((v) => v.topic), ['b'])
+  assert.deepEqual(result.coverage.dropped, ['a'])
+  assert.equal(result.coverage.complete, false)
+  assert.ok(prompts.some((p) => p.opts.label === 'judge#2'), 'the unruled topic is continued first')
+})
+
+test('a topic whose judge fails is dropped exactly once and fails coverage', async () => {
   const { result } = await run({
     plan: PLAN({ topics: [{ key: 'a', find: 'find a' }, { key: 'b', find: 'find b' }] }),
     'scout:': HITS(),
-    'analyze:a': () => { throw new Error('analyst died') },
-    'analyze:b': VERDICT('b'),
-  })
+    'judge:a': () => { throw new Error('analyst died') },
+  }, { pace: 'fast' })
 
   assert.equal(result.verdicts.length, 1)
   assert.deepEqual(result.coverage.dropped, ['a'])
@@ -174,7 +185,6 @@ test('the resume round is handed what was never reached, not what was proven abs
       no_match: 'nothing under tests/',
       not_reached: 'src/legacy/ was never opened',
     }),
-    'analyze:': VERDICT('a'),
   })
 
   const resume = prompts.find((p) => p.opts.label === 'scout:a#2')
@@ -191,12 +201,11 @@ test('what a scout proved absent reaches the analyst as evidence of absence', as
   const { prompts } = await run({
     plan: PLAN(),
     'scout:a': HITS({ no_match: 'nothing under tests/' }),
-    'analyze:': VERDICT('a'),
   })
 
-  const analyze = prompts.find((p) => p.opts.label === 'analyze:a')
-  assert.match(analyze.prompt, /SEARCHED AND NOT FOUND \(this is evidence of absence\)/)
-  assert.match(analyze.prompt, /nothing under tests\//)
+  const judged = promptFor(prompts, 'judge')
+  assert.match(judged, /SEARCHED AND NOT FOUND \(this is evidence of absence\)/)
+  assert.match(judged, /nothing under tests\//)
 })
 
 test('a search still finding new ground is resumed past any round count', async () => {
@@ -211,12 +220,11 @@ test('a search still finding new ground is resumed past any round count', async 
         ? HITS({ searched: [`grep pass ${r}`], stop_reason: 'unfinished', not_reached: `surface ${r + 1}` })
         : HITS({ searched: [`grep pass ${r}`] })
     },
-    'analyze:': VERDICT('a'),
   })
 
   // The old loop cut this search off after 3 rounds and reported the topic incomplete —
   // a budget wearing the name of a threshold. Progress is the only licence to continue,
-  // and while it holds, no counter may end the search (IRON LAW §1).
+  // and while it holds, no counter may end the search (IL1).
   const scoutCalls = prompts.filter((p) => String(p.opts.label).startsWith('scout:'))
   assert.equal(scoutCalls.length, rounds)
   assert.equal(result.coverage.complete, true)
@@ -226,7 +234,6 @@ test('a resumed round that covers no new ground ends the loop as stuck, not anot
   const { result, prompts, logs } = await run({
     plan: PLAN(),
     'scout:': HITS({ stop_reason: 'unfinished', not_reached: 'src/legacy/ was never opened' }),
-    'analyze:': VERDICT('a'),
   })
 
   // Every round returns the identical hits and searched surface, so round 2 gains nothing.
@@ -255,7 +262,6 @@ test('a scout that rewords its account of the same ground is stuck, not progress
         not_reached: 'src/legacy/ was never opened',
       })
     },
-    'analyze:': VERDICT('a'),
   })
 
   assert.equal(prompts.filter((p) => String(p.opts.label).startsWith('scout:')).length, 2,
@@ -280,7 +286,6 @@ test('a round that narrows the remainder keeps going even with no new hits', asy
         not_reached,
       })
     },
-    'analyze:': VERDICT('a'),
   })
 
   assert.equal(prompts.filter((p) => String(p.opts.label).startsWith('scout:')).length, 3,
@@ -292,9 +297,6 @@ test('every planned topic is searched — the topic cap guides the planner, it n
   const { result, prompts, logs } = await run({
     plan: PLAN({ topics }),
     'scout:': HITS(),
-    'analyze:a': VERDICT('a'),
-    'analyze:b': VERDICT('b'),
-    'analyze:c': VERDICT('c'),
   }, { max_topics: 2 })
 
   // Slicing the overflow off left planned topics unsearched while every later stage read
@@ -310,7 +312,6 @@ test('a scout that stops without naming what it missed is a dead end, not a resu
   const { result, prompts } = await run({
     plan: PLAN(),
     'scout:a': HITS({ stop_reason: 'stuck', not_reached: '   ' }),
-    'analyze:': VERDICT('a'),
   })
 
   // Another round would be handed an empty task and would return "exhausted" having done
@@ -333,7 +334,6 @@ test('an exhausted report missing the empty coverage fields is complete, not dro
   const { result } = await run({
     plan: PLAN(),
     'scout:': { hits: [{ path: 'src/x.js', line: 1, note: 'the thing' }], stop_reason: 'exhausted' },
-    'analyze:': VERDICT('a'),
   })
 
   assert.equal(result.verdicts.length, 1)
@@ -345,7 +345,6 @@ test('a report with no stop_reason at all reads as incomplete, never as exhauste
   const { result } = await run({
     plan: PLAN(),
     'scout:': { hits: [{ path: 'src/x.js', line: 1, note: 'the thing' }] },
-    'analyze:': VERDICT('a'),
   })
 
   assert.equal(result.verdicts.length, 1, 'the evidence gathered is kept and analyzed')
@@ -357,7 +356,6 @@ test('a channel that returns only findings keeps its evidence and reads as incom
   const { result } = await run({
     plan: PLAN({ history_needed: true, history_question: 'when did X change' }),
     'scout:': HITS(),
-    'analyze:': VERDICT('a'),
     history: { findings: 'the vendor moved the API in 2024' },
   })
 
@@ -377,7 +375,6 @@ test('a channel that cannot finish makes coverage incomplete, after the resume i
   const { result, prompts } = await run({
     plan: PLAN({ history_needed: true, history_question: 'when did X change' }),
     'scout:': HITS(),
-    'analyze:': VERDICT('a'),
     history: stalled,
     'history#2': stalled,
   })
@@ -399,7 +396,6 @@ test('an unfinished evidence channel is resumed to exhaustion like a scout', asy
   const { result, prompts } = await run({
     plan: PLAN({ history_needed: true, history_question: 'when did X change' }),
     'scout:': HITS(),
-    'analyze:': VERDICT('a'),
     history: EVIDENCE({ stop_reason: 'unfinished', not_reached: 'refs older than 2024' }),
     'history#2': EVIDENCE({ findings: 'the 2023 refactor moved it', searched: ['git log --before 2024'] }),
   })
@@ -432,8 +428,6 @@ test('shared ground is scouted once, kept out of the topic scouts, and reaches e
     }),
     'scout:common-ground': HITS({ hits: [{ path: 'src/main.ts', line: 12, note: 'the game config' }] }),
     'scout:': HITS(),
-    'analyze:a': VERDICT('a'),
-    'analyze:b': VERDICT('b'),
   })
 
   const common = prompts.filter((p) => String(p.opts.label).startsWith('scout:common-ground'))
@@ -446,14 +440,15 @@ test('shared ground is scouted once, kept out of the topic scouts, and reaches e
     assert.match(scout.prompt, /A separate scout covers this shared ground — do not search it/)
     assert.match(scout.prompt, /the Phaser game config in src\/main\.ts/)
 
-    const analyze = prompts.find((p) => p.opts.label === `analyze:${key}`)
-    assert.match(analyze.prompt,
-      /SHARED GROUND \(scouted once for every topic — treat it as part of your evidence\):/)
-    assert.match(analyze.prompt, /src\/main\.ts/,
-      'excluding the shared ground from a scout only works if the analyst is handed it')
-    assert.ok(analyze.prompt.indexOf('SHARED GROUND') < analyze.prompt.indexOf('Do not search yourself'),
-      'the shared ground is evidence, so it belongs before the closing instructions')
   }
+
+  const judged = promptFor(prompts, 'judge')
+  assert.match(judged, /SHARED GROUND \(scouted once for every topic — treat it as part of your evidence\):/)
+  assert.match(judged, /src\/main\.ts:12 — the game config/,
+    'excluding the shared ground from a scout only works if the judge is handed it')
+  assert.match(judged, /text of src\/main\.ts:12/, 'and its lines are excerpted with the rest')
+  assert.ok(judged.indexOf('SHARED GROUND') < judged.indexOf('You have no search tools'),
+    'the shared ground is evidence, so it belongs before the closing instructions')
 
   // The shared scout exhausted, so it is not resumable work and must not appear as any.
   assert.equal(result.coverage.complete, true)
@@ -468,14 +463,13 @@ test('an empty common_ground changes nothing about the run', async () => {
   const { result, prompts } = await run({
     plan: PLAN({ common_ground: '' }),
     'scout:': HITS(),
-    'analyze:': VERDICT('a'),
   })
 
   assert.equal(prompts.filter((p) => String(p.opts.label).startsWith('scout:common-ground')).length, 0,
     'no shared ground means no shared scout to pay for')
   assert.doesNotMatch(prompts.find((p) => p.opts.label === 'scout:a').prompt,
     /A separate scout covers this shared ground/)
-  assert.doesNotMatch(prompts.find((p) => p.opts.label === 'analyze:a').prompt, /SHARED GROUND/)
+  assert.doesNotMatch(promptFor(prompts, 'judge'), /SHARED GROUND/)
   assert.equal(result.coverage.complete, true)
 })
 
@@ -488,21 +482,20 @@ test('a shared scout that cannot finish is incomplete work and warns every analy
     'scout:common-ground': stalled,
     'scout:common-ground#2': stalled,
     'scout:': HITS(),
-    'analyze:': VERDICT('a'),
   })
 
   assert.equal(prompts.filter((p) => String(p.opts.label).startsWith('scout:common-ground')).length, 2,
     'the shared scout is resumed before it may be reported, then stops as stuck')
 
   // Evidence shared by every topic is the worst place for a half-done search to go quiet:
-  // one unfinished scout would otherwise leave every verdict resting on it (IRON LAW §4).
+  // one unfinished scout would otherwise leave every verdict resting on it (IL2).
   assert.ok(result.coverage.incomplete.includes('common-ground'))
   assert.equal(result.coverage.complete, false)
   assert.ok(result.coverage.resumable.remaining.includes('common-ground'))
 
-  const analyze = prompts.find((p) => p.opts.label === 'analyze:a')
-  assert.match(analyze.prompt, /WARNING: the shared-ground search did NOT finish/)
-  assert.match(analyze.prompt, /src\/scenes\/ was never opened/)
+  const judged = promptFor(prompts, 'judge')
+  assert.match(judged, /WARNING: the shared-ground search did NOT finish/)
+  assert.match(judged, /src\/scenes\/ was never opened/)
 })
 
 test('a plan from before common_ground existed reads as no shared ground, not as a crash', async () => {
@@ -516,235 +509,10 @@ test('a plan from before common_ground existed reads as no shared ground, not as
   const { result, prompts } = await run({
     plan: legacy,
     'scout:': HITS(),
-    'analyze:': VERDICT('a'),
   })
 
   assert.equal(prompts.filter((p) => String(p.opts.label).startsWith('scout:common-ground')).length, 0)
-  assert.doesNotMatch(prompts.find((p) => p.opts.label === 'analyze:a').prompt, /SHARED GROUND/)
-  assert.equal(result.coverage.complete, true)
-})
-
-// ------------------------------------------------------ the knowledge base, consumed
-//
-// The Plan phase receives the tree INDEX — where
-// this repository knows anything, and of what kind — because before a decomposition exists the
-// only known paths are the roots, whose chain is the repository-wide node alone. Chains are then
-// bought per topic, at the subtree each topic named.
-//
-// Everything below is about who receives what, and in which of the two grades. Fresh entries are
-// EVIDENCE and turn their topic into a verification; stale ones are LEADS for the search and
-// reach no analyst; and a finding resting on either kind is distinguishable from one this run
-// searched for, because `from_kb` says so and is computed here rather than claimed by a model.
-//
-// Design: docs/DESIGN.md#knowledge-base-consumption.
-
-test('the index is read before the decomposition, at courier grade, and reaches the planner', async () => {
-  const { prompts } = await run({
-    'kb-index': INDEX({ 'src/game': { gotcha: 3 }, 'src/game/ui/Gate.ts': { gotcha: 1, command: 1 } }),
-    plan: PLAN(),
-    'scout:': HITS(),
-    'analyze:': VERDICT('a'),
-  })
-
-  const at = labelsOf(prompts).indexOf('kb-index')
-  assert.equal(at, 0, 'an index read after the decomposition informs no decomposition')
-
-  const index = prompts[at]
-  assert.equal(index.opts.agentType, 'agentics:kb')
-  assert.equal(index.opts.model, 'haiku', 'pasting a payload back is not judgment')
-  assert.match(index.prompt, /node "C:\/plugin\/lib\/kb\.mjs" index "\."/)
-
-  const plan = promptFor(prompts, 'plan')
-  assert.match(plan, /WHAT THIS REPOSITORY ALREADY KNOWS, AND WHERE/)
-  assert.match(plan, /src\/game — 3 entries \(gotcha: 3\)/)
-  assert.match(plan, /src\/game\/ui\/Gate\.ts — 2 entries \(gotcha: 1, command: 1\)/)
-  assert.match(plan, /Give every topic a kb_path/)
-})
-
-test('the chain is fetched at the subtree the topic named, not at the roots', async () => {
-  // The probe's finding, pinned. A chain at the roots reaches the repository-wide node alone,
-  // so a deep entry — the kind a mature base is mostly made of — would never reach anybody.
-  const { prompts } = await run({
-    'kb-index': INDEX({ 'src/game/ui/Gate.ts': { gotcha: 1 } }),
-    plan: PLAN({ topics: [{ key: 'a', find: 'find a', kb_path: 'src/game/ui/Gate.ts' }] }),
-    'kb-chain': carriedChain({
-      'src/game/ui/Gate.ts': [{ claim: 'the gate swallows pointer events while a tween runs' }],
-    }),
-    'scout:': HITS(),
-    'analyze:': VERDICT('a'),
-  })
-
-  const chain = promptFor(prompts, 'kb-chain')
-  assert.match(chain, /node "C:\/plugin\/lib\/kb\.mjs" chain "\." "src\/game\/ui\/Gate\.ts"/)
-  assert.match(promptFor(prompts, 'scout:a'), /the gate swallows pointer events while a tween runs/)
-})
-
-test('a fresh entry makes its topic a verification and reaches the analyst as cached evidence', async () => {
-  const { result, prompts } = await run({
-    'kb-index': INDEX({ 'src/a': { gotcha: 1 } }),
-    'kb-chain': carriedChain({
-      'src/a': [{ claim: 'the loader is registered in src/a/boot.ts', observed_at: 'abc1234' }],
-    }),
-    plan: PLAN(),
-    'scout:': HITS(),
-    'analyze:': VERDICT('a'),
-  })
-
-  const scout = promptFor(prompts, 'scout:a')
-  assert.match(scout, /ALREADY RECORDED ABOUT THIS GROUND/)
-  assert.match(scout, /They are EVIDENCE, not a search you have to redo/)
-  assert.match(scout, /this topic is a VERIFICATION rather than a rediscovery/)
-  assert.match(scout, /the loader is registered in src\/a\/boot\.ts/)
-
-  const analyze = promptFor(prompts, 'analyze:a')
-  assert.match(analyze, /KNOWN BEFORE THIS RUN/)
-  assert.match(analyze, /this run did not go and see it again/)
-  assert.match(analyze, /from the knowledge base, observed at <commit>/,
-    'a conclusion resting on cache has to be sayable as one')
-
-  assert.equal(result.coverage.complete, true)
-  assert.equal(result.coverage.from_kb.length, 2)
-  assert.match(result.coverage.from_kb[0], /^a: 1 fresh knowledge-base entry for src\/a/)
-  assert.match(result.coverage.from_kb[0], /observed at abc1234/)
-  assert.match(result.coverage.from_kb[0], /did not re-establish what they carry/)
-})
-
-test('a stale entry is a lead for the search and reaches no analyst', async () => {
-  const { result, prompts } = await run({
-    'kb-index': INDEX({ 'src/a': { gotcha: 2 } }),
-    'kb-chain': carriedChain({
-      'src/a': [
-        { claim: 'the loader used to be registered in src/a/boot.ts', state: 'stale' },
-        { claim: 'a claim about ground that is gone', state: 'orphaned' },
-      ],
-    }),
-    plan: PLAN(),
-    'scout:': HITS(),
-    'analyze:': VERDICT('a'),
-  })
-
-  const scout = promptFor(prompts, 'scout:a')
-  assert.match(scout, /LEADS — the base held these and the ground has moved since/)
-  assert.match(scout, /never report a location you have not seen for yourself/)
-  assert.match(scout, /the loader used to be registered/)
-  assert.ok(!/ground that is gone/.test(scout), 'orphaned ground is not a place to look')
-  assert.ok(!/ALREADY RECORDED ABOUT THIS GROUND/.test(scout),
-    'a lead is not evidence, and a scout told otherwise reports a claim as a location')
-
-  const analyze = promptFor(prompts, 'analyze:a')
-  assert.ok(!/KNOWN BEFORE THIS RUN/.test(analyze))
-  assert.ok(!/the loader used to be registered/.test(analyze),
-    'an analyst judges what was found; a lead is for somebody going looking')
-
-  assert.deepEqual(result.coverage.from_kb, [],
-    'no verdict rests on a lead, so claiming provenance for one would make the field mean less')
-})
-
-test('a topic on ground the base knows nothing about is planned and searched exactly as before', async () => {
-  const { result, prompts } = await run({
-    'kb-index': INDEX({ 'src/a': { gotcha: 1 } }),
-    plan: PLAN({
-      topics: [{ key: 'a', find: 'find a', kb_path: 'src/a' }, { key: 'b', find: 'find b', kb_path: 'src/b' }],
-    }),
-    'kb-chain': carriedChain({ 'src/a': [{ claim: 'a fact about a ground' }], 'src/b': [] }),
-    'scout:': HITS(),
-    'analyze:a': VERDICT('a'),
-    'analyze:b': VERDICT('b'),
-  })
-
-  assert.ok(!/ALREADY RECORDED|LEADS —/.test(promptFor(prompts, 'scout:b')))
-  assert.ok(!/a fact about a ground/.test(promptFor(prompts, 'scout:b')),
-    'chains are bounded by path, and so is what a search is taxed with reading')
-  assert.equal(result.coverage.from_kb.length, 1)
-  assert.match(result.coverage.from_kb[0], /^a: /)
-})
-
-test('every topic on fresh ground is stated as a verification pass, not left to be inferred', async () => {
-  const { result, logs } = await run({
-    'kb-index': INDEX({ 'src/a': { gotcha: 1 } }),
-    'kb-chain': carriedChain({ 'src/a': [{ claim: 'a fact about a ground' }] }),
-    plan: PLAN(),
-    'scout:': HITS(),
-    'analyze:': VERDICT('a'),
-  })
-
-  // The degenerate case of the topology rule: a phase that shrank must say it shrank, or the
-  // leanness is invisible and re-maximalizes the moment nobody is watching.
-  assert.ok(result.coverage.from_kb.some((l) => /verification pass rather than a discovery survey/.test(l)))
-  assert.ok(logs.some((l) => /ran as a verification pass/.test(l)))
-  assert.equal(result.coverage.complete, true)
-})
-
-test('an empty index buys no chain at all', async () => {
-  const { result, prompts } = await run({ plan: PLAN(), 'scout:': HITS(), 'analyze:': VERDICT('a') })
-
-  assert.ok(!labelsOf(prompts).includes('kb-chain'),
-    'a chain over a tree holding nothing is a dispatch bought for nothing')
-  assert.deepEqual(result.coverage.from_kb, [])
-  assert.equal(result.coverage.complete, true)
-})
-
-test('a knowledge base that cannot be read costs the survey nothing it was going to have', async () => {
-  const { result, prompts, logs } = await run({
-    'kb-index': { stop_reason: 'failed', payload_raw: '', notes: 'node is not on the PATH' },
-    plan: PLAN(),
-    'scout:': HITS(),
-    'analyze:': VERDICT('a'),
-  })
-
-  assert.match(logs.join(' '), /the knowledge base could not be read/)
-  assert.ok(!labelsOf(prompts).includes('kb-chain'))
-
-  // An unreadable base means MORE searching, not less evidence: every topic is searched from
-  // scratch, exactly as a survey with no knowledge base runs. So it is not a failed channel
-  // here — `failed_channels` is a conjunct of `complete` in this workflow — and the loss is
-  // recorded where a reader looks for provenance.
-  assert.deepEqual(result.coverage.failed_channels, [])
-  assert.equal(result.coverage.complete, true)
-  assert.ok(result.coverage.from_kb.some((l) => /could not be read/.test(l)))
-  assert.ok(result.coverage.from_kb.some((l) => /searched from scratch/.test(l)))
-  assert.ok(!/ALREADY RECORDED|LEADS —/.test(promptFor(prompts, 'scout:a')))
-})
-
-test('a chain damaged in transit is refused rather than believed', async () => {
-  const { result, prompts, logs } = await run({
-    'kb-index': INDEX({ 'src/a': { gotcha: 1 } }),
-    'kb-chain': carriedChain(
-      { 'src/a': [{ claim: 'a fact about a ground' }] },
-      (env) => { env.payload.chains[0].entries[0].claim = 'a claim nobody wrote' },
-    ),
-    plan: PLAN(),
-    'scout:': HITS(),
-    'analyze:': VERDICT('a'),
-  })
-
-  assert.match(logs.join(' '), /digest mismatch/)
-  assert.ok(!/a claim nobody wrote/.test(promptFor(prompts, 'scout:a')))
-  assert.deepEqual(result.coverage.failed_channels, [])
-  assert.equal(result.coverage.complete, true)
-  assert.ok(result.coverage.from_kb.some((l) => /chains could not be read/.test(l)))
-})
-
-test('a plan from before kb_path existed reads as repository-wide, not as a crash', async () => {
-  const legacy = {
-    topics: [{ key: 'a', find: 'find a' }],
-    docs_needed: false, docs_question: '',
-    history_needed: false, history_question: '',
-  }
-  assert.ok(!('kb_path' in legacy.topics[0]), 'the legacy topic shape genuinely omits the field')
-
-  const { result, prompts } = await run({
-    'kb-index': INDEX({ '': { gotcha: 1 } }),
-    plan: legacy,
-    'kb-chain': carriedChain({ '': [{ claim: 'this repository builds with npm' }] }),
-    'scout:': HITS(),
-    'analyze:': VERDICT('a'),
-  })
-
-  assert.match(promptFor(prompts, 'kb-chain'), /chain "\." "\."/,
-    'the repository-wide level travels as ".", because an empty argv slot is unreadable')
-  assert.match(promptFor(prompts, 'scout:a'), /this repository builds with npm/)
-  assert.match(result.coverage.from_kb[0], /\(repository-wide\)/)
+  assert.doesNotMatch(promptFor(prompts, 'judge'), /SHARED GROUND/)
   assert.equal(result.coverage.complete, true)
 })
 
@@ -752,7 +520,6 @@ test("a channel's evidence of absence travels with its findings", async () => {
   const { result } = await run({
     plan: PLAN({ history_needed: true, history_question: 'when did X change' }),
     'scout:': HITS(),
-    'analyze:': VERDICT('a'),
     history: EVIDENCE({ no_match: 'no commit ever touched the timer path' }),
   })
 
@@ -770,7 +537,7 @@ test("a channel's evidence of absence travels with its findings", async () => {
 
 test('prior context reaches the planner and no searching agent', async () => {
   const { prompts } = await run(
-    { plan: PLAN(), 'scout:': HITS(), 'analyze:': VERDICT('a') },
+    { plan: PLAN(), 'scout:': HITS() },
     { prior: 'an earlier pass concluded the loader lives in src/boot' },
   )
 
@@ -778,7 +545,7 @@ test('prior context reaches the planner and no searching agent', async () => {
   assert.match(promptFor(prompts, 'plan'), /somebody's notes, not\s+evidence/)
   assert.match(promptFor(prompts, 'plan'), /NEVER to decide a topic does not need searching/)
 
-  for (const label of ['scout:a', 'analyze:a']) {
+  for (const label of ['scout:a', 'judge']) {
     assert.doesNotMatch(promptFor(prompts, label), /an earlier pass concluded/,
       `${label} was handed unverified prior context`)
   }
@@ -787,9 +554,9 @@ test('prior context reaches the planner and no searching agent', async () => {
 test('prior context changes no count: every topic is still searched', async () => {
   const { result } = await run(
     { plan: PLAN({ topics: [
-      { key: 'a', find: 'find a', kb_path: 'src/a' },
-      { key: 'b', find: 'find b', kb_path: 'src/b' },
-    ] }), 'scout:': HITS(), 'analyze:': (p) => VERDICT(/THIS TOPIC: find b/.test(p) ? 'b' : 'a') },
+      { key: 'a', find: 'find a', subtree: 'src/a' },
+      { key: 'b', find: 'find b', subtree: 'src/b' },
+    ] }), 'scout:': HITS() },
     { prior: 'both of these were answered last week' },
   )
 
@@ -797,95 +564,330 @@ test('prior context changes no count: every topic is still searched', async () =
   assert.equal(result.coverage.complete, true)
 })
 
-// ------------------------------------------------------------- absence deposits
-
-const recorded = { stop_reason: 'recorded', path: '.claude/agentics/kb', notes: 'written' }
-const EMPTY = (over = {}) => HITS({ hits: [], no_match: 'no retry helper anywhere under src/a', ...over })
-
-test('an exhausted search that found nothing is deposited as an absence', async () => {
-  const { prompts, result } = await run({
-    plan: PLAN(), 'scout:': EMPTY(), 'analyze:': VERDICT('a'), 'kb-deposit': recorded,
-  })
-
-  const deposit = promptFor(prompts, 'kb-deposit')
-  assert.match(deposit, /DEPOSIT MODE/)
-  assert.match(deposit, /lib\/kb\.mjs" append "\."/)
-  assert.match(result.coverage.from_kb.join(' '), /deposited to\s+the project knowledge base/)
-  assert.match(result.coverage.from_kb.join(' '), /Nothing in THIS result came from them/)
-})
-
-test('a search that found something deposits nothing — absence is not "we are done here"', async () => {
-  const { prompts } = await run({
-    plan: PLAN(), 'scout:': HITS(), 'analyze:': VERDICT('a'),
-  })
-
-  assert.equal(labelsOf(prompts).includes('kb-deposit'), false)
-})
-
-test('a search that stopped short deposits nothing, whatever it did not find', async () => {
-  const { prompts } = await run({
-    plan: PLAN(),
-    'scout:': EMPTY({ stop_reason: 'unfinished', not_reached: 'the whole of src/a/deep' }),
-    'analyze:': VERDICT('a'),
-  })
-
-  assert.equal(labelsOf(prompts).includes('kb-deposit'), false,
-    'an absence from a search that never finished is a false negative filed as evidence')
-})
-
-test('a repository-wide topic deposits nothing — an absence about everything says nothing', async () => {
-  const { prompts } = await run({
-    plan: PLAN({ topics: [{ key: 'a', find: 'find a', kb_path: '' }] }),
-    'scout:': EMPTY(), 'analyze:': VERDICT('a'),
-  })
-
-  assert.equal(labelsOf(prompts).includes('kb-deposit'), false)
-})
-
-test('the id is minted from the subtree and the key, so a reworded claim shadows rather than piles up', async () => {
-  const idOf = async (noMatch) => {
-    const { prompts } = await run({
-      plan: PLAN(), 'scout:': EMPTY({ no_match: noMatch }), 'analyze:': VERDICT('a'),
-      'kb-deposit': recorded,
-    })
-    const token = promptFor(prompts, 'kb-deposit').match(/--b64 ([A-Za-z0-9+/=]+)/)[1]
-    return JSON.parse(Buffer.from(token, 'base64').toString('utf8')).entries[0]
-  }
-
-  const first = await idOf('no retry helper anywhere under src/a')
-  const second = await idOf('searched src/a for a retry helper; there is none')
-
-  assert.equal(first.id, second.id, 'the same ground searched twice mints the same id')
-  assert.notEqual(first.claim, second.claim, 'the prose still carries what was actually looked for')
-  assert.equal(first.kind, 'absence')
-  assert.deepEqual(first.about, ['src/a'])
-  assert.equal(first.observed_at, 'HEAD', 'the commit is measured by the writer, not guessed here')
-  assert.equal(first.source.via, 'survey-absence')
-})
-
-test('a deposit that does not land costs the result nothing and is said out loud', async () => {
-  const { result } = await run({
-    plan: PLAN(), 'scout:': EMPTY(), 'analyze:': VERDICT('a'),
-    'kb-deposit': { stop_reason: 'unwritable', path: '', notes: 'the writer refused' },
-  })
-
-  assert.equal(result.coverage.complete, true, 'a deposit is written for the NEXT run')
-  assert.match(result.coverage.from_kb.join(' '), /pays\s+for the same empty searches again/)
-})
-
 test('the result names the ground its topics searched, repository-wide as "."', async () => {
   const { result } = await run({
     plan: PLAN({
       topics: [
-        { key: 'a', find: 'find a', kb_path: 'src/a/' },
-        { key: 'b', find: 'find b', kb_path: '' },
-        { key: 'c', find: 'find c', kb_path: 'src/a' },
+        { key: 'a', find: 'find a', subtree: 'src/a/' },
+        { key: 'b', find: 'find b', subtree: '' },
+        { key: 'c', find: 'find c', subtree: 'src/a' },
       ],
     }),
     'scout:': HITS(),
-    'analyze:': VERDICT('a'),
   })
 
   assert.deepEqual([...result.ground].sort(), ['.', 'src/a'],
     'one entry per subtree, so a later freshness check asks git once per path')
+})
+
+test('nothing about the knowledge base survives in the coverage block', async () => {
+  const { result, prompts } = await run({ plan: PLAN(), 'scout:': HITS() })
+  assert.ok(!('from_kb' in result.coverage))
+  assert.ok(!labelsOf(prompts).some((l) => /^kb-/.test(l)))
+})
+
+// ------------------------------------------------------------------ resolve
+//
+// Every location the scouts found is read ONCE, by a script, and handed to the judge as merged
+// excerpts under a digest. The workflow mints the locations whole, base64 on one argv slot with
+// their digest beside them, and believes what comes back only after recomputing its digest.
+
+test('every location, the shared ground included, is resolved once by a courier', async () => {
+  const { prompts } = await run({
+    plan: PLAN({
+      topics: [{ key: 'a', find: 'find a' }, { key: 'b', find: 'find b' }],
+      common_ground: 'the config',
+    }),
+    'scout:common-ground': HITS({ hits: [{ path: 'src/config.js', line: 7, note: 'config' }] }),
+    'scout:a': HITS({ hits: [{ path: 'src/a.js', line: 10, note: 'a' }, { path: 'src/x.js', line: 1, note: 'x' }] }),
+    'scout:b': HITS({ hits: [{ path: 'src/x.js', line: 1, note: 'x again' }] }),
+  })
+
+  const resolves = prompts.filter((p) => /^resolve/.test(p.opts.label))
+  assert.equal(resolves.length, 1, 'one read for every topic, not one per topic')
+  assert.equal(resolves[0].opts.agentType, 'agentics:courier')
+  assert.equal(resolves[0].opts.model, 'haiku', 'pasting stdout back is not judgment')
+  assert.match(resolves[0].prompt, /node "C:\/plugin\/lib\/citations\.mjs" excerpts --repo "\." --digest/)
+
+  const { digest, locations } = locationsIn(resolves[0].prompt)
+  assert.equal(digest, fnv1a(canonical(locations)), 'the digest is taken over exactly what was minted')
+  assert.deepEqual(locations.map((l) => l.path + ':' + l.line).sort(),
+    ['src/a.js:10', 'src/config.js:7', 'src/x.js:1'], 'a location two scouts found is read once')
+
+  const judged = promptFor(prompts, 'judge')
+  assert.match(judged, /EXCERPTS — every location above, read once for you by a script/)
+  assert.match(judged, /text of src\/a\.js:10/)
+  assert.match(judged, /text of src\/config\.js:7/)
+  assert.doesNotMatch(judged, /LOCATIONS NOT EXCERPTED/)
+})
+
+test('a search that found nothing resolves nothing and is still judged', async () => {
+  const { result, prompts, logs } = await run({
+    plan: PLAN(), 'scout:': HITS({ hits: [], no_match: 'no retry helper anywhere' }),
+  })
+
+  assert.ok(!labelsOf(prompts).some((l) => /^resolve/.test(l)), 'no locations, no courier')
+  assert.ok(logs.some((l) => /Nothing to resolve/.test(l)))
+  assert.match(promptFor(prompts, 'judge'), /no retry helper anywhere/, 'absence is evidence to judge')
+  assert.equal(result.coverage.complete, true)
+})
+
+test('excerpts damaged in transit are refetched on a stronger courier, then believed', async () => {
+  const { result, prompts } = await run({
+    plan: PLAN(), 'scout:': HITS(),
+    resolve: (p) => carriedEnvelope(resolvePayload(p), (env) => { env.payload.files[0].excerpts[0].text = 'forged' }),
+    'resolve#2': resolveAll,
+  })
+
+  const retry = prompts.find((p) => p.opts.label === 'resolve#2')
+  assert.ok(retry, 'a digest mismatch buys a refetch')
+  assert.equal(retry.opts.model, 'sonnet')
+  assert.doesNotMatch(promptFor(prompts, 'judge'), /forged/)
+  assert.match(promptFor(prompts, 'judge'), /text of src\/x\.js:1/)
+  assert.equal(result.coverage.complete, true)
+})
+
+test('a token the program refused as damaged on its way in is sent again', async () => {
+  const { prompts } = await run({
+    plan: PLAN(), 'scout:': HITS(),
+    resolve: carriedEnvelope({ ok: false, error: { kind: 'digest_mismatch', message: 'the token changed' } }),
+    'resolve#2': resolveAll,
+  })
+
+  assert.equal(prompts.find((p) => p.opts.label === 'resolve#2').opts.model, 'haiku')
+  assert.match(promptFor(prompts, 'judge'), /EXCERPTS/)
+})
+
+test('a resolve that cannot be carried is a side channel: the judge reads the locations itself', async () => {
+  const failed = { stop_reason: 'failed', payload_raw: '', task_ids: [], task_tools: 'skipped', notes: 'node is not on the PATH' }
+  const { result, prompts, logs } = await run({
+    plan: PLAN(), 'scout:': HITS({ hits: [{ path: 'src/x.js', line: 42, note: 'the thing' }] }),
+    resolve: failed, 'resolve#2': failed,
+  })
+
+  assert.equal(prompts.filter((p) => /^resolve/.test(p.opts.label)).length, 2, 'retried once, then let go')
+  assert.ok(logs.some((l) => /not resolved[\s\S]*node is not on the PATH/.test(l)))
+
+  const judged = promptFor(prompts, 'judge')
+  assert.match(judged, /LOCATIONS NOT EXCERPTED[\s\S]*src\/x\.js:42 — the thing/)
+  assert.doesNotMatch(judged, /EXCERPTS —/)
+
+  // More turns for the judge, not less evidence: nothing was lost that a reader cannot get back.
+  assert.deepEqual(result.coverage.failed_channels, [])
+  assert.equal(result.coverage.complete, true)
+  assert.equal(result.verdicts.length, 1)
+})
+
+test('a location the script could not read reaches the judge as a location, beside the excerpts', async () => {
+  const { prompts } = await run({
+    plan: PLAN(),
+    'scout:': HITS({ hits: [{ path: 'src/x.js', line: 3, note: 'here' }, { path: 'other-repo/y.js', line: 9, note: 'there' }] }),
+    resolve: (p) => {
+      const payload = resolvePayload(p)
+      payload.files = payload.files.filter((f) => f.path === 'src/x.js')
+      payload.unresolved = [{ path: 'other-repo/y.js', why: 'missing', detail: 'no such file' }]
+      return carriedEnvelope(payload)
+    },
+  })
+
+  const judged = promptFor(prompts, 'judge')
+  assert.match(judged, /text of src\/x\.js:3/)
+  assert.match(judged, /LOCATIONS NOT EXCERPTED[\s\S]*other-repo\/y\.js:9 — there/)
+})
+
+test('locations too many for one argv slot travel in batches, one file never split across two', async () => {
+  const hits = Array.from({ length: 400 }, (_, i) => ({ path: `src/dir-${i % 40}/file-${i % 40}.js`, line: 10 * i + 1, note: 'n' }))
+  const { prompts } = await run({ plan: PLAN(), 'scout:': HITS({ hits }) })
+
+  const resolves = prompts.filter((p) => /^resolve/.test(p.opts.label))
+  assert.ok(resolves.length > 1)
+  const pathsPer = resolves.map((p) => new Set(locationsIn(p.prompt).locations.map((l) => l.path)))
+  const all = pathsPer.flatMap((set) => [...set])
+  assert.equal(all.length, new Set(all).size, 'every location of one file rides the same batch')
+  assert.equal(resolves.reduce((n, p) => n + locationsIn(p.prompt).locations.length, 0), 400)
+  for (const p of resolves) assert.ok(/--b64 (\S+)/.exec(p.prompt)[1].length <= 6000)
+})
+
+// ------------------------------------------------------------------ judge
+//
+// One analyst without search tools judges every topic, unless volume or pace earns more.
+
+const topicsOf = (n) => Array.from({ length: n }, (_, i) => ({ key: `t${i + 1}`, find: `find ${i + 1}` }))
+
+test('one judge holds every topic by default, and says so', async () => {
+  const { result, prompts, logs } = await run({ plan: PLAN({ topics: topicsOf(3) }), 'scout:': HITS() })
+
+  const judges = prompts.filter((p) => /^judge/.test(p.opts.label))
+  assert.equal(judges.length, 1)
+  assert.equal(judges[0].opts.agentType, 'agentics:analyst')
+  assert.deepEqual(keysOf(judges[0].opts), ['t1', 't2', 't3'])
+  assert.ok(logs.some((l) => /one analyst holds all 3 topic\(s\)/.test(l)))
+  assert.deepEqual(result.verdicts.map((v) => v.topic), ['t1', 't2', 't3'])
+  assert.equal(result.coverage.complete, true)
+})
+
+test('more than sixty windows earn a second judge, and every topic is still ruled on', async () => {
+  // Each topic's scout reports forty separate locations, so eighty windows across two topics.
+  const spread = (key) => HITS({ hits: Array.from({ length: 40 }, (_, i) => ({ path: `src/${key}.js`, line: 100 * i + 50, note: 'n' })) })
+  const { result, prompts, logs } = await run({
+    plan: PLAN({ topics: topicsOf(3) }),
+    'scout:t1': spread('t1'), 'scout:t2': spread('t2'), 'scout:t3': HITS(),
+  })
+
+  const judges = prompts.filter((p) => /^judge/.test(p.opts.label))
+  assert.equal(judges.length, 2)
+  assert.deepEqual(judges.map((j) => keysOf(j.opts)).flat().sort(), ['t1', 't2', 't3'],
+    'the topics are dealt across the judges, each exactly once')
+  assert.ok(judges.every((j) => /^judge:/.test(j.opts.label)))
+  assert.ok(logs.some((l) => /81 window\(s\).*earn 2 analysts/.test(l)))
+  assert.equal(result.verdicts.length, 3)
+  assert.equal(result.coverage.complete, true)
+
+  // A judge is handed the windows of its own topics, not every judge's.
+  const holdsT1 = judges.find((j) => keysOf(j.opts).includes('t1'))
+  assert.ok(!keysOf(holdsT1.opts).includes('t2'), 'the two heavy topics land on different judges')
+  assert.doesNotMatch(holdsT1.prompt, /text of src\/t2\.js/)
+})
+
+test('excerpt bytes earn judges too, not only windows', async () => {
+  const long = 'x'.repeat(8000)
+  const { prompts, logs } = await run({
+    plan: PLAN({ topics: topicsOf(2) }),
+    'scout:t1': HITS({ hits: Array.from({ length: 10 }, (_, i) => ({ path: 'src/big1.js', line: 100 * i + 50, note: 'n' })) }),
+    'scout:t2': HITS({ hits: Array.from({ length: 10 }, (_, i) => ({ path: 'src/big2.js', line: 100 * i + 50, note: 'n' })) }),
+    resolve: (p) => carriedEnvelope(resolvePayload(p, { lineText: () => long })),
+  })
+
+  assert.equal(prompts.filter((p) => /^judge/.test(p.opts.label)).length, 2)
+  assert.ok(logs.some((l) => /KB of excerpts earn 2 analysts/.test(l)))
+})
+
+test('pace fast buys one judge per topic, and says it bought them for wall-clock', async () => {
+  const { prompts, logs } = await run({ plan: PLAN({ topics: topicsOf(3) }), 'scout:': HITS() }, { pace: 'fast' })
+
+  assert.deepEqual(prompts.filter((p) => /^judge/.test(p.opts.label)).map((p) => p.opts.label),
+    ['judge:t1', 'judge:t2', 'judge:t3'])
+  assert.ok(logs.some((l) => /pace is fast/.test(l)))
+})
+
+test('a judge that skips a topic is continued on exactly that topic until it adds none', async () => {
+  const { result, prompts } = await run({
+    plan: PLAN({ topics: topicsOf(3) }),
+    'scout:': HITS(),
+    judge: { verdicts: [VERDICT('t1')] },
+    'judge#2': { verdicts: [VERDICT('t3')] },
+    'judge#3': { verdicts: [] },
+  })
+
+  assert.deepEqual(keysOf(prompts.find((p) => p.opts.label === 'judge#2').opts), ['t2', 't3'])
+  assert.match(promptFor(prompts, 'judge#2'), /A CONTINUATION/)
+  assert.deepEqual(keysOf(prompts.find((p) => p.opts.label === 'judge#3').opts), ['t2'])
+  assert.ok(!labelsOf(prompts).includes('judge#4'), 'a pass that rules on nothing ends the charge')
+
+  assert.deepEqual(result.verdicts.map((v) => v.topic), ['t1', 't3'])
+  assert.deepEqual(result.coverage.dropped, ['t2'])
+  assert.equal(result.coverage.complete, false)
+})
+
+// ------------------------------------------------------------------ a standing survey
+//
+// A settled shape (the caller's judgment) over ground a recorded survey covers and git says is
+// untouched (computed by lib/effort.mjs) buys no survey. Every refusal surveys in full.
+
+const RECORDED = {
+  question: 'how does X work (last week)',
+  topics: ['loader'],
+  ground: ['src/boot'],
+  verdicts: [{ topic: 'loader', conclusion: 'the loader lives in src/boot/load.js', evidence: ['src/boot/load.js:3'], risks: [] }],
+  history: null,
+  docs: null,
+  coverage: { complete: true, dropped: [], incomplete: [], failed_channels: [], unreached: [], resumable: {} },
+}
+
+const STANDS = (over = {}) => carriedEnvelope({
+  standing: true, why: 'nothing touched it', effort: 'boot', survey_path: 'x', stamp: '20260920-101500',
+  observed_at: 'abc1234', head: 'def5678', ground: ['src/boot'], commits_since: [], dirty: [], ...over,
+})
+
+const READS = (over = {}) => carriedEnvelope({
+  effort: 'boot', exists: true, evidence: [], nodes_n: 0, executions: [],
+  latest: { kind: 'survey', stamp: '20260920-101500', path: 'x', payload: RECORDED, ...over },
+})
+
+const settled = { settled_shape: true, effort: 'boot', ground: ['src/boot/load.js', 'src/boot'] }
+
+test('a standing survey that covers the ground stands in, and the coverage block says so', async () => {
+  const { result, prompts, logs } = await run({ standing: STANDS(), 'standing-read': READS() }, settled)
+
+  assert.deepEqual(labelsOf(prompts), ['standing', 'standing-read'], 'nothing else is bought')
+  assert.match(promptFor(prompts, 'standing'), /node "C:\/plugin\/lib\/effort\.mjs" standing "\." "boot"/)
+  assert.match(promptFor(prompts, 'standing-read'), /node "C:\/plugin\/lib\/effort\.mjs" read "\." "boot" --latest survey/)
+  assert.ok(prompts.every((p) => p.opts.agentType === 'agentics:courier'))
+
+  assert.deepEqual(result.verdicts, RECORDED.verdicts)
+  assert.deepEqual(result.topics, ['loader'])
+  assert.deepEqual(result.ground, ['src/boot'])
+  assert.equal(result.question, 'how does X work')
+  assert.deepEqual(result.coverage.standing, { stamp: '20260920-101500', observed_at: 'abc1234' })
+  assert.equal(result.coverage.complete, true)
+  assert.ok(logs.some((l) => /nothing was\s+re-searched/.test(l)))
+})
+
+test('a survey that does not stand is refused, said out loud, and the survey runs in full', async () => {
+  const { result, prompts, logs } = await run({
+    standing: STANDS({ standing: false, why: '2 commit(s) since the survey touch its ground' }),
+    plan: PLAN(), 'scout:': HITS(),
+  }, settled)
+
+  assert.ok(!labelsOf(prompts).includes('standing-read'))
+  assert.ok(labelsOf(prompts).includes('plan'))
+  assert.ok(logs.some((l) => /does not stand — 2 commit\(s\) since the survey touch its ground/.test(l)))
+  assert.ok(!('standing' in result.coverage))
+})
+
+test('a standing survey whose ground misses a caller path is refused, naming the path', async () => {
+  const { prompts, logs } = await run({
+    standing: STANDS(), plan: PLAN(), 'scout:': HITS(),
+  }, { ...settled, ground: ['src/boot', 'src/render/'] })
+
+  assert.ok(!labelsOf(prompts).includes('standing-read'))
+  assert.ok(logs.some((l) => /does not cover src\/render/.test(l)))
+})
+
+test('a repository-wide survey covers any ground', async () => {
+  const { result } = await run({ standing: STANDS({ ground: ['.'] }), 'standing-read': READS() },
+    { ...settled, ground: ['anything/at/all.js'] })
+  assert.ok(result.coverage.standing)
+})
+
+test('a survey read back that is not the one that stood is refused', async () => {
+  const { result, logs } = await run({
+    standing: STANDS(), 'standing-read': READS({ stamp: '20260921-090000' }), plan: PLAN(), 'scout:': HITS(),
+  }, settled)
+
+  assert.ok(logs.some((l) => /is not the one that stood/.test(l)))
+  assert.ok(!('standing' in result.coverage))
+})
+
+test('a standing check that cannot be carried costs a survey, never a skipped one', async () => {
+  const failed = { stop_reason: 'failed', payload_raw: '', task_ids: [], task_tools: 'skipped', notes: 'no node' }
+  const { result, prompts } = await run({
+    standing: failed, 'standing#2': failed, plan: PLAN(), 'scout:': HITS(),
+  }, settled)
+
+  assert.ok(labelsOf(prompts).includes('plan'))
+  assert.equal(result.coverage.complete, true)
+  assert.ok(!('standing' in result.coverage))
+})
+
+test('no standing check without a settled shape, an effort, and ground to cover', async () => {
+  for (const over of [
+    { ...settled, settled_shape: false },
+    { ...settled, effort: '' },
+    { ...settled, ground: [] },
+    { ...settled, effort: 'boot"; rm -rf ~; echo "' },
+  ]) {
+    const { prompts } = await run({ plan: PLAN(), 'scout:': HITS() }, over)
+    assert.ok(!labelsOf(prompts).includes('standing'), JSON.stringify(over))
+  }
 })

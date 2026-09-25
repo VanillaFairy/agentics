@@ -82,6 +82,13 @@ const tiered = (tier, base) => ({
   effort: tier.model === 'sonnet' ? SONNET_STEP[base] : intelligence === 'max' ? 'high' : 'medium',
 })
 
+// Passed through to the survey, which is where both are read: `pace` decides how many readers
+// share its excerpts, and `plugin_root` is where its couriers find `lib/`. The survey resolves an
+// absent root from the environment itself, so neither is required here.
+const PACES = ['frugal', 'balanced', 'fast']
+const pace = PACES.includes(input.pace) ? input.pace : 'balanced'
+const pluginRoot = typeof input.plugin_root === 'string' ? input.plugin_root.trim() : ''
+
 const MAX_TASKS = 12
 
 // The runtime does not expose a workflow's own run id to its script, so it cannot be
@@ -99,7 +106,7 @@ const RUN_ID = 'unknown-to-script: pair `remaining` with the runId from the Work
 // Field-observed 2026-08-27. The args are not secret and not large, so the fix is to make
 // them travel with the thing a caller reads when deciding how to resume, instead of living
 // only in a launch result the session may no longer have.
-const LAUNCH_ARGS = { question, roots, notes, as_tasks: asTasks, intelligence }
+const LAUNCH_ARGS = { question, roots, notes, as_tasks: asTasks, intelligence, pace, plugin_root: pluginRoot }
 
 const RESUME_NOTE = 'a resume must re-pass `args` alongside resumeFromRunId — the script is ' +
   're-executed and reads nothing from the prior run; `args` here is that object'
@@ -134,7 +141,7 @@ phase('Survey')
 // unconditional on every machine — and it is reported as exactly that rather than as an
 // environmental survey failure: the two must stay distinguishable, or the defect hides in
 // a degrade path forever.
-const surveyArgs = { question, roots, notes, intelligence }
+const surveyArgs = { question, roots, notes, intelligence, pace, ...(pluginRoot ? { plugin_root: pluginRoot } : {}) }
 const notFound = (e) => /not found/i.test((e && e.message) || '')
 let survey = null
 let surveyUnresolved = false
@@ -214,11 +221,15 @@ const caveats =
   (c.unreached.length > 0
     ? `NOTE: not reached at all: ${c.unreached.join('; ')}.\n\n` : '')
 
+// The synthesizing analyst carries `Read` and nothing that searches, so everything it rules on is
+// in this block: the survey's verdicts already carry their path:line receipts.
 const evidence =
   `PER-TOPIC FINDINGS:\n${JSON.stringify(survey.verdicts, null, 1)}\n\n` +
   (survey.history ? `GIT HISTORY:\n${survey.history}\n\n` : '') +
   (survey.docs ? `EXTERNAL DOCUMENTATION:\n${survey.docs}\n\n` : '') +
-  caveats
+  caveats +
+  `You have no search tools: work from the evidence above. What it cannot settle is a gap, ` +
+  `never something to go and look up.\n\n`
 
 // What the survey established, handed back when synthesis dies.
 //
@@ -280,6 +291,7 @@ if (asTasks) {
     coverage = { ...c, complete: false, unreached: c.unreached.concat(cut) }
   }
 
+  log('Synthesis: ' + result.summary)
   return investigateResult('tasks', result, null, coverage)
 }
 

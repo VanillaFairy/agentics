@@ -113,8 +113,8 @@ const FRAME = {
       description:
         'What any candidate must satisfy to be usable here at all: language and runtime, ' +
         'platform, licence tolerance, offline or air-gapped operation, existing framework it ' +
-        'must sit inside. Take these from the caller notes and from what the repository ' +
-        'plainly is. Do not invent preferences the caller never stated.',
+        'must sit inside. Take these from the caller notes and from a manifest at a repository ' +
+        'root. Do not invent preferences the caller never stated.',
     },
     disqualifiers: {
       type: 'array',
@@ -392,7 +392,11 @@ const frame = await agent(
   `repository to find a dependency, vendored copy, or half-built version that already ` +
   `provides some of this. Something already on the dependency list beats every candidate ` +
   `the search will turn up, and it costs one scout to check.\n\n` +
-  `Do not search anything yourself. Frame only.`,
+  `You carry Read and nothing that searches, and the searching is the scouts' and the ` +
+  `researchers' after you. Where the constraints turn on what the repository is — its ` +
+  `language, its runtime — you may Read a manifest at a repository root (package.json, ` +
+  `pyproject.toml, Cargo.toml, go.mod) and nothing further; what you cannot tell from that ` +
+  `and the caller's words stays out of hard_constraints. Frame only.`,
   { agentType: 'agentics:analyst', schema: FRAME, label: 'frame', ...tiered(judge, 'medium') },
 ).catch((e) => {
   log(`WARNING: framing failed: ${e && e.message}`)
@@ -659,7 +663,8 @@ if (gathered.length > 0) {
     `you.\n\n` +
     `Never invent a disqualifier that is not on the list, and never rule out a candidate on a ` +
     `fact nobody reported — if you think something disqualifies it and you cannot point at ` +
-    `the fact, that belongs in notes as an open question. Whether the remaining candidates ` +
+    `the fact, that belongs in notes as an open question — you have no search tools, and a ` +
+    `fact you would have to go and find is exactly such a question. Whether the remaining candidates ` +
     `are worth adopting is the caller's decision and rests on things you cannot see: their ` +
     `dependency appetite, their licence policy, whether they want to own this code.`,
     { agentType: 'agentics:analyst', schema: ASSESSMENT, label: 'assess', ...tiered(judge, 'high') },

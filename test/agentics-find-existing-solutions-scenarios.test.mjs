@@ -142,6 +142,19 @@ test('the prompts carry the clauses that keep the search honest', async () => {
   assert.match(byLabel('assess'), /caller's decision/)
 })
 
+// The analysts carry `Read` and nothing that searches, so neither the framer nor the assessor may
+// be charged with finding anything: the locating is the scout's and the researchers'.
+test('no analyst here is asked to search, and none is dispatched with a search agent type', async () => {
+  const { prompts } = await run({ agent: happy() })
+  const byLabel = (l) => prompts.find((p) => p.opts.label === l)
+
+  assert.match(byLabel('frame').prompt, /nothing that searches/)
+  assert.match(byLabel('assess').prompt, /you have no search tools/)
+  for (const label of ['frame', 'assess']) assert.equal(byLabel(label).opts.agentType, 'agentics:analyst')
+  assert.equal(byLabel('repo').opts.agentType, 'agentics:scout', 'the repository is searched by a scout')
+  assert.ok(!prompts.some((p) => /agentics:(ground|kb|verifier)/.test(p.opts.agentType || '')))
+})
+
 test('every angle and the repo scan are searched, not just the first', async () => {
   const { prompts } = await run({ agent: happy() })
   const labels = prompts.map((p) => p.opts.label)
@@ -242,7 +255,7 @@ test('an unexhausted angle is resumed rather than reported', async () => {
     }),
   })
 
-  assert.equal(rounds, 2, 'IRON LAW §3: an incomplete search is resumed, not reported')
+  assert.equal(rounds, 2, 'IL1: an incomplete search is resumed, not reported')
   const resumed = prompts.find((p) => p.opts.label === 'find:registry#2')
   assert.match(resumed.prompt, /do not start over/)
   assert.match(resumed.prompt, /crates\.io/)
@@ -293,7 +306,7 @@ test('a failed repo scan degrades the run and says the claim is unsupported', as
   assert.ok(result.coverage.failed_channels.includes('repo'))
   assert.ok(result.coverage.unreached.some((u) => /already depend on something that does this/.test(u)))
   assert.equal(result.coverage.complete, false)
-  assert.equal(result.candidates.length, 1, 'IRON LAW §5: the external search already paid for is kept')
+  assert.equal(result.candidates.length, 1, 'IL2: the external search already paid for is kept')
 })
 
 // --- framing failures ------------------------------------------------------------------------

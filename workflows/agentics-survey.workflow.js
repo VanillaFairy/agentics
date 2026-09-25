@@ -3,11 +3,13 @@ export const meta = {
   description: 'Gather evidence about a question across the local repos, git history, and vendor documentation. Returns structured findings plus a coverage block — never a conclusion.',
   whenToUse: 'The shared evidence phase for investigate, develop, find-existing-solutions and design. Call it via workflow("agentics-survey", args) as a nested step; it is rarely invoked directly.',
   phases: [
+    { title: 'Standing', detail: 'whether a recorded survey of this effort still covers the ground' },
     { title: 'Plan' },
     { title: 'Scout' },
     { title: 'History' },
     { title: 'Docs' },
-    { title: 'Analyze' },
+    { title: 'Resolve', detail: 'one script reads every location once and merges the windows' },
+    { title: 'Judge', detail: 'one analyst without search tools, unless volume or pace earns more' },
   ],
 }
 
@@ -32,10 +34,10 @@ export const meta = {
 // resume loop: the next round is handed things already established as absent and pays to
 // re-search them.
 // Every coverage field is ALWAYS present — an empty string is the correct value for "nothing
-// to carry", and each description says so outright. The earlier wording ("must be non-empty
-// whenever stop_reason is not exhausted") read to an exhausted agent as "must be non-empty",
-// so it omitted the field it had nothing for, tripped required-field validation, re-submitted
-// the same shape until the platform killed it, and a finished search was dropped whole.
+// to carry", and each description says so outright. Conditional wording ("must be non-empty
+// whenever stop_reason is not exhausted") reads to an exhausted agent as "must be non-empty",
+// so it omits the field it has nothing for, trips required-field validation, re-submits the
+// same shape until the platform kills it, and a finished search is dropped whole.
 const coverageFields = (searchedDescription) => ({
   searched: {
     type: 'array',
@@ -77,12 +79,11 @@ const coverageFields = (searchedDescription) => ({
 
 // Only the payload field goes in `required`. The coverage fields are demanded by their
 // descriptions and normalized in JS after the call — never by the validator: a required
-// field whose semantics are conditional is a deadlock, observed in the field. An agent
-// with nothing to put in it omits it, validation rejects the whole report, the agent
-// re-submits the same shape until the platform kills it, and evidence already gathered is
-// dropped — the exact trade this file's header forbids for minItems-style bounds. Absence
-// is normalized in the safe direction: a missing stop_reason never reads as "exhausted",
-// so sloppiness degrades toward incomplete, never toward false completeness.
+// field whose semantics are conditional is a deadlock. An agent with nothing to put in it
+// omits it, validation rejects the whole report, the agent re-submits the same shape until
+// the platform kills it, and evidence already gathered is dropped. Absence is normalized in
+// the safe direction: a missing stop_reason never reads as "exhausted", so sloppiness
+// degrades toward incomplete, never toward false completeness.
 
 const PLAN = {
   type: 'object',
@@ -98,23 +99,22 @@ const PLAN = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['key', 'find', 'kb_path'],
+        required: ['key', 'find', 'subtree'],
         properties: {
           key: { type: 'string', description: 'Short kebab-case identifier, unique within the plan.' },
           find: {
             type: 'string',
             description: 'A precise instruction for a read-only search agent: what to find and where to look.',
           },
-          kb_path: {
+          subtree: {
             type: 'string',
             description:
               'The one subtree this topic is about, as a repo-relative POSIX path — a directory ' +
-              'or a single file. The project knowledge base is read at exactly this path before ' +
-              'the search runs, so a path naming the topic\'s real ground is what decides whether ' +
-              'anything already known reaches it. Take it from the index you were shown where a ' +
-              'node covers the topic; otherwise name where you expect the topic to live. Send an ' +
-              'empty string — never omit the field — when the topic is genuinely repository-wide; ' +
-              'the repository-wide level is then what it gets.',
+              'or a single file. It is what this survey is anchored to afterwards: the survey ' +
+              'stays evidence exactly as long as no commit touches the subtrees its topics ' +
+              'named, so a path naming the topic\'s real ground is what lets a later pass reuse ' +
+              'this one instead of buying it again. Send an empty string — never omit the ' +
+              'field — when the topic is genuinely repository-wide.',
           },
         },
       },
@@ -124,10 +124,10 @@ const PLAN = {
       description:
         'A precise search instruction, in the same form as a topic\'s, for ground several ' +
         'topics would each need to read — a shared configuration object, a subsystem they all ' +
-        'touch. It is scouted ONCE and what it finds is handed to every analyst alongside its ' +
-        'own topic, so naming it here replaces the same files being searched and read once per ' +
-        'topic. Send an empty string — never omit the field — when the topics genuinely share ' +
-        'no ground.',
+        'touch. It is scouted ONCE and what it finds is handed to every judge alongside the ' +
+        'topics, so naming it here replaces the same files being searched once per topic. ' +
+        'Send an empty string — never omit the field — when the topics genuinely share no ' +
+        'ground.',
     },
     docs_needed: {
       type: 'boolean',
@@ -161,7 +161,7 @@ const HITS = {
         additionalProperties: false,
         required: ['path', 'line', 'note'],
         properties: {
-          path: { type: 'string', description: 'Path to the file containing the hit.' },
+          path: { type: 'string', description: 'Path to the file containing the hit, relative to the repository it is in.' },
           line: { type: 'integer', description: 'Line number of the hit.' },
           note: { type: 'string', description: 'What is at that line, in one line.' },
         },
@@ -173,9 +173,7 @@ const HITS = {
 
 // History and docs return narrative evidence, so `findings` stays prose. They answer the same
 // coverage contract as the scouts anyway: without it, a channel that stalled halfway is
-// indistinguishable from one that finished, because both arrive as a confident essay, and
-// completeness reported only as prose is read by nothing in JS: a truncated-but-returned
-// channel would still leave coverage.complete true.
+// indistinguishable from one that finished, because both arrive as a confident essay.
 const evidenceSchema = (findingsDescription, searchedDescription) => ({
   type: 'object',
   additionalProperties: false,
@@ -199,17 +197,15 @@ const DOCS = evidenceSchema(
   'Every search query and URL you actually read.',
 )
 
-// What a knowledge-base courier hands back: one command's stdout, byte-exact, in one string.
-// Copied from `agentics-develop`'s CARRIED rather than shared, because a workflow script cannot
-// import — the two are diffed against each other and against `lib/kb.mjs`'s output, never
-// re-derived from memory.
+// What a courier hands back: one command's stdout, byte-exact, in one string. The shape of
+// `agentics-develop`'s CARRIED, copied rather than shared because a workflow script cannot
+// import. This workflow moves no todos, so the two todo fields are left out of its shape.
 //
 // `failed` is the courier unable to run the command AT ALL — node missing, the path unreadable,
-// the shell refusing. A knowledge base that ran and holds nothing is not that: it prints an empty
-// payload, which is the ordinary state of a repository nobody has surveyed twice.
+// the shell refusing. A program that ran and refused prints a payload saying so, which is read
+// as the program's answer rather than as a transport failure.
 const CARRIED = {
-  type: 'object',
-  additionalProperties: false,
+  type: 'object', additionalProperties: false,
   required: ['stop_reason', 'payload_raw', 'notes'],
   properties: {
     stop_reason: { type: 'string', enum: ['carried', 'failed'] },
@@ -218,40 +214,39 @@ const CARRIED = {
   },
 }
 
-// What the knowledge-base courier hands back after a DEPOSIT. Copied from `agentics-develop`'s
-// RECORDED, for the same reason every other copy here is one: a workflow script cannot import.
-//
-// `unwritable` is the writer refusing, or the shell truncating the command — either way what the
-// survey learned is not durable, which is a fact its caller is told rather than a failure of the
-// survey.
-const DEPOSIT = {
-  type: 'object', additionalProperties: false,
-  required: ['stop_reason', 'path', 'notes'],
-  properties: {
-    stop_reason: { type: 'string', enum: ['recorded', 'unwritable'] },
-    path: { type: 'string' },
-    notes: { type: 'string' },
-  },
-}
-
-const VERDICT = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['topic', 'conclusion', 'evidence', 'risks'],
-  properties: {
-    topic: { type: 'string', description: 'The topic key you were given, copied exactly.' },
-    conclusion: { type: 'string', description: 'The answer to this topic, in one or two sentences, stated first.' },
-    evidence: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'The two to four facts that decide the conclusion, each carrying a path:line, a commit, or a URL.',
+// One judge may hold several topics, so its verdicts come back as a list whose `topic` is a
+// closed enum built per dispatch: a key it was not given cannot be where a verdict lands.
+function verdictsSchema(keys) {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['verdicts'],
+    properties: {
+      verdicts: {
+        type: 'array',
+        description: 'One verdict per topic you were given — every one of them.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['topic', 'conclusion', 'evidence', 'risks'],
+          properties: {
+            topic: { type: 'string', enum: keys, description: 'The topic key, copied exactly.' },
+            conclusion: { type: 'string', description: 'The answer to this topic, in one or two sentences, stated first.' },
+            evidence: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'The two to four facts that decide the conclusion, each carrying a path:line, a commit, or a URL.',
+            },
+            risks: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Risks and unknowns, only where they change the decision. Put an inadequate search surface here rather than accepting it silently.',
+            },
+          },
+        },
+      },
     },
-    risks: {
-      type: 'array',
-      items: { type: 'string' },
-      description: 'Risks and unknowns, only where they change the decision. Put an inadequate search surface here rather than accepting it silently.',
-    },
-  },
+  }
 }
 
 // ---------------------------------------------------------------- inputs
@@ -264,27 +259,19 @@ const roots = input.roots || '.'
 const notes = input.notes || ''
 const maxTopics = input.max_topics || 8
 
-// What an earlier phase of the same effort found, read out of `.claude/agentics/efforts/<effort>/` by
-// the session that invoked this survey. It is DURABLE SCRATCH and it reaches exactly one place:
-// the planner's prompt, where it can only change how the ground is decomposed.
-//
-// It reaches no scout, no analyst and no gate, and that is the whole of the rule. The null
-// survey's collapse arithmetic reads one field — an entry's computed `state` — and reads no kind
-// and no provenance, so anything admitted near it is admitted on freshness alone with no grading
-// whatsoever. Prior context has no freshness to be checked and nothing anchoring it; if it could
-// reach a gate it would be an unverified note laundered into a skipped phase. It cannot, because
-// it is interpolated into one prompt and nowhere else.
+// What an earlier phase of the same effort found, read out of the effort's evidence by the
+// session that invoked this survey. It is DURABLE SCRATCH and it reaches exactly one place: the
+// planner's prompt, where it can only change how the ground is decomposed. It reaches no scout,
+// no judge and no gate — prior context has no anchor and nothing checked it, so admitted near a
+// gate it would be an unverified note laundered into a skipped phase. What CAN stand in for a
+// survey is a recorded one whose ground git says is untouched, and that is computed below.
 const prior = typeof input.prior === 'string' ? input.prior.trim() : ''
 
 // The intelligence dial. Three positions, each naming the judging tier rather than inheriting
 // it: `low` is sonnet, `normal` is opus, `max` is opus one effort step deeper. The judging tier
 // in this workflow is the analysts — the one that plans the topics and the ones that rule on them.
-//
-// Every caller derives the position from the model it is running (fable → max, opus → normal,
-// sonnet and below → low), and `develop` forwards its own dial into this nested call, so a run
-// dialled to `low` reaches its analysis through this line and nowhere else. A position this
-// script did not recognise is served as `normal`: dispatching at one tier while the caller
-// reports the one it typed bills a run at one price and describes it at another.
+// A position this script did not recognise is served as `normal`: dispatching at one tier while
+// the caller reports the one it typed bills a run at one price and describes it at another.
 const JUDGE_TIER = { low: { model: 'sonnet' }, normal: { model: 'opus' }, max: { model: 'opus' } }
 const intelligence = Object.hasOwn(JUDGE_TIER, input.intelligence) ? input.intelligence : 'normal'
 const judge = JUDGE_TIER[intelligence]
@@ -297,12 +284,29 @@ const tiered = (tier, base) => ({
   effort: tier.model === 'sonnet' ? SONNET_STEP[base] : intelligence === 'max' ? 'high' : 'medium',
 })
 
-// ---------------------------------------------------------------- the knowledge base
-//
-// Where `lib/kb.mjs` lives, resolved the way `agentics-develop` resolves it: the caller's value, then
-// the environment, then the shell form expanded in the agent's own shell. A script's cwd is not
-// the agent's, so a relative path is never guessed at — and when the shell form is used, the
-// dispatch carries an instruction to halt loudly rather than substitute one.
+// `pace` decides how many readers share one body of evidence. Parallel readers over the same
+// excerpts multiply cost, so they are bought for speed only when the caller says `fast`.
+const PACES = ['frugal', 'balanced', 'fast']
+const pace = PACES.includes(input.pace) ? input.pace : 'balanced'
+
+// A repo-relative path as the ground is spelled everywhere: forward slashes, no leading `./`, no
+// trailing slash, and `.` for the repository as a whole.
+const groundPath = (p) => {
+  const norm = String(p == null ? '' : p).split('\\').join('/').trim()
+    .replace(/^\.\//, '').replace(/\/+$/, '')
+  return norm === '' ? '.' : norm
+}
+
+// The standing-survey inputs. Whether the change's shape is settled is JUDGMENT and stays with the
+// caller; whether a recorded survey still covers the ground is arithmetic and is computed here.
+const effort = typeof input.effort === 'string' ? input.effort.trim() : ''
+const settledShape = input.settled_shape === true
+const callerGround = [...new Set((Array.isArray(input.ground) ? input.ground
+  : typeof input.ground === 'string' && input.ground.trim() ? input.ground.split(/[,;\n]/) : [])
+  .map(groundPath))]
+
+// Where `lib/` lives: the caller's value, then the environment, then the shell form expanded in
+// the courier's own shell. A script's cwd is not the agent's, so a relative path is never guessed.
 const SHELL_ROOT = '$CLAUDE_PLUGIN_ROOT'
 
 function resolvePluginRoot() {
@@ -320,30 +324,17 @@ function resolvePluginRoot() {
 
 const pluginRoot = resolvePluginRoot()
 
-const rootWarning = pluginRoot === SHELL_ROOT
-  ? '\n   If ' + SHELL_ROOT + ' is empty in your shell that path cannot resolve. Stop and say ' +
-    'so in the way your result shape allows — never substitute a relative path or a guess.\n'
-  : '\n'
+// Excerpts and efforts are per repository, so a question spanning several roots resolves against
+// the first — the repository it is anchored in. A location in another root is not excerpted; the
+// judge is handed it as a location to read.
+const repo = String(roots).split(/[,;\n]/)[0].trim() || '.'
 
-// A knowledge base is PER REPOSITORY — no sharing and no merging across roots — so a question
-// spanning several reads the first, which is the repository the question is anchored in.
-const kbRepo = String(roots).split(/[,;\n]/)[0].trim() || '.'
-
-// The normalization `lib/kb.mjs` performs on every path it is handed, written here so the key a
-// chain comes back under is the key this side looks it up by. `.` and `` are the same node — the
-// repository-wide level — and `.` is what travels on a command line, because an empty argv slot
-// is a shell argument nobody can read.
-const kbKey = (p) => {
-  const norm = String(p == null ? '' : p).split('\\').join('/').trim()
-    .replace(/^\.\//, '').replace(/\/+$/, '')
-  return norm === '.' ? '' : norm
-}
-const kbArg = (p) => kbKey(p) || '.'
-
-// The digest transport, in the one direction this workflow uses it. A payload computed on disk
-// arrives through a model, so it is re-digested here before a field of it is believed — a copy
-// that drifted by one character is refused rather than read. Both functions are copies of
-// `lib/plan-digest.mjs`'s: scripts cannot import, and the suite pins them together.
+// ---------------------------------------------------------------- the transport
+//
+// A payload computed on disk arrives through a model, so it is re-digested here before a field of
+// it is believed; a line this script mints whole travels base64 on one argv slot with its digest
+// beside it. The functions are copies of `lib/plan-digest.mjs`'s and `agentics-develop`'s:
+// scripts cannot import, and the suite pins them together.
 function canonical(value) {
   if (value === undefined) return 'null'
   if (value === null || typeof value !== 'object') return JSON.stringify(value)
@@ -365,10 +356,6 @@ function fnv1a(text) {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
-// The other direction of the same transport. A line this script mints whole travels base64 on one
-// argv slot — no path to escape, no apostrophe to close, no heredoc delimiter to indent — and the
-// writer recomputes the digest after decoding. Copies of `agentics-develop`'s, for the same reason
-// every other copy in this file is one: a workflow script cannot import.
 function utf8Bytes(text) {
   const out = []
 
@@ -404,23 +391,23 @@ function base64(text) {
   return out
 }
 
-/** @returns {{payload: object|null, why: string|null}} */
+/** What a courier carried back: the payload, or why it cannot be believed and how to retry. */
 function carriedRead(held) {
-  if (!held) return { payload: null, why: 'the dispatch returned nothing' }
+  if (!held) return { payload: null, why: 'the dispatch returned nothing', retry: 'again' }
   if (held.stop_reason !== 'carried') {
-    return { payload: null, why: held.notes || 'the courier could not run the command' }
+    return { payload: null, why: held.notes || 'the courier could not run the command', retry: 'again' }
   }
 
   let parsed = null
   try {
     parsed = JSON.parse(held.payload_raw)
   } catch (e) {
-    return { payload: null, why: 'it did not survive transcription: ' + (e && e.message) }
+    return { payload: null, why: 'it did not survive transcription: ' + (e && e.message), retry: 'stronger' }
   }
 
-  if (parsed && parsed.error) return { payload: null, why: 'the reader refused: ' + parsed.error }
+  if (parsed && parsed.error) return { payload: null, why: 'the program failed: ' + parsed.error, retry: '' }
   if (!parsed || !parsed.payload || typeof parsed.payload_digest !== 'string') {
-    return { payload: null, why: 'what came back is not a digest-covered envelope' }
+    return { payload: null, why: 'what came back is not a digest-covered envelope', retry: 'stronger' }
   }
 
   const actual = fnv1a(canonical(parsed.payload))
@@ -429,10 +416,67 @@ function carriedRead(held) {
       payload: null,
       why: 'digest mismatch: it was computed as ' + parsed.payload_digest +
         ', what arrived digests to ' + actual,
+      retry: 'stronger',
     }
   }
 
-  return { payload: parsed.payload, why: null }
+  return { payload: parsed.payload, why: '', retry: '' }
+}
+
+const COURIER = { model: 'haiku', effort: 'low' }
+const COURIER_UP = { model: 'sonnet', effort: 'low' }
+
+function courierPrompt(command) {
+  return 'Run exactly this one command, unchanged, and put its entire stdout in payload_raw:\n\n' +
+    command + '\n\n' +
+    'Move no todos.' +
+    (pluginRoot === SHELL_ROOT
+      ? '\nIf ' + SHELL_ROOT + ' is empty in your shell, do not guess a path: set stop_reason ' +
+        '"failed" and say so.'
+      : '')
+}
+
+/**
+ * Carry one command's payload, believed only after its digest.
+ *
+ * Retries are sized to what was observed, as `agentics-develop`'s boundaries size them: a courier
+ * that returned nothing or could not run the command is run again once; a payload damaged in
+ * transit buys one refetch on a stronger model; a token the program refused as damaged on its way
+ * IN is sent again; a program failure is not retried. What stays unbelievable comes back as
+ * `{payload: null, why}` — every carry in this workflow is a side channel with a fallback, so
+ * none of them may throw.
+ */
+async function carry(command, label, phaseName) {
+  const ladder = [COURIER]
+  let why = ''
+
+  for (let i = 0; i < ladder.length; i++) {
+    const held = await agent(courierPrompt(command), {
+      agentType: 'agentics:courier', schema: CARRIED, phase: phaseName,
+      label: label + (i ? '#' + (i + 1) : ''), ...ladder[i],
+    }).catch((e) => {
+      why = 'the courier threw: ' + (e && e.message)
+      return null
+    })
+
+    const c = carriedRead(held)
+    if (c.payload) {
+      const refused = c.payload.ok === false && c.payload.error
+      if (refused && c.payload.error.kind === 'digest_mismatch' && i === 0) {
+        why = c.payload.error.message || 'the argument token was damaged on its way in'
+        ladder.push(COURIER)
+        continue
+      }
+      if (refused) return { payload: null, why: 'the program refused: ' + (c.payload.error.message || c.payload.error.kind) }
+      return { payload: c.payload, why: '' }
+    }
+
+    why = c.why || why
+    if (c.retry === 'again' && ladder.length < 2) ladder.push(COURIER)
+    else if (c.retry === 'stronger' && !ladder.includes(COURIER_UP)) ladder.push(COURIER_UP)
+  }
+
+  return { payload: null, why }
 }
 
 // ---------------------------------------------------------------- coverage
@@ -449,30 +493,18 @@ const RUN_ID = 'unknown-to-script: pair `remaining` with the runId from the Work
 
 // The launch arguments, echoed into every coverage block. A resume re-executes this script
 // and reads nothing from the prior run, so a caller who resumes without re-passing them gets
-// a survey with no question: it returns a coverage-honest empty result in milliseconds and
-// the interrupted run's cached agents become unreachable. Field-observed 2026-08-27. They
-// travel with the block a caller actually reads when deciding how to resume.
-const LAUNCH_ARGS = { question, roots, notes, prior, max_topics: maxTopics, intelligence,
-                      plugin_root: pluginRoot }
+// a survey with no question: a coverage-honest empty result in milliseconds, and the
+// interrupted run's cached agents unreachable. They travel with the block a caller actually
+// reads when deciding how to resume.
+const LAUNCH_ARGS = {
+  question, roots, notes, prior, max_topics: maxTopics, intelligence, pace, plugin_root: pluginRoot,
+  effort, settled_shape: settledShape, ground: callerGround,
+}
 
 const RESUME_NOTE = 'a resume must re-pass `args` alongside resumeFromRunId — the script is ' +
   're-executed and reads nothing from the prior run; `args` here is that object'
 
-// `from_kb` is the seventh field, and it exists for the same reason the other six do: a result
-// built partly on what a previous run recorded looks exactly like one built entirely on this
-// run's own search. It names, per topic, what came out of the project knowledge base and at which
-// commit it was observed, so a reader can tell the two apart (IRON LAW §2 and §4).
-//
-// It is DERIVED from what this script actually handed to a dispatch, never from an agent's
-// account of what it used — the same stance `complete` takes. Absence therefore degrades in the
-// safe direction: no line means nothing came from cache, which is the reading that under-claims
-// rather than over-claims, and it is what an older result with no field at all must be read as.
-//
-// A knowledge base that could not be read leaves a line here rather than in `failed_channels`,
-// and that is deliberate: `failed_channels` is a conjunct of `complete` in this workflow, and an
-// unreadable base costs a survey nothing it was going to have. It searches every topic from
-// scratch, exactly as a survey with no knowledge base does. More work, not less evidence.
-function coverageOf(dropped, incomplete, failedChannels, unreached, fromKb = []) {
+function coverageOf(dropped, incomplete, failedChannels, unreached) {
   return {
     complete:
       dropped.length === 0 &&
@@ -483,7 +515,6 @@ function coverageOf(dropped, incomplete, failedChannels, unreached, fromKb = [])
     incomplete,
     failed_channels: failedChannels,
     unreached,
-    from_kb: fromKb,
     resumable: { runId: RUN_ID, remaining: dropped.concat(incomplete),
                  args: LAUNCH_ARGS, note: RESUME_NOTE },
   }
@@ -492,12 +523,9 @@ function coverageOf(dropped, incomplete, failedChannels, unreached, fromKb = [])
 // Every exit path below returns this shape. A caller that receives `undefined` cannot tell
 // "nothing found" from "nothing ran", and that is the failure this plugin exists to prevent.
 //
-// The parameter is named `coverageBlock` so the key can be written out as `coverage:` without
-// reading as a redundant `coverage: coverage`. Style only — `coverage-block` understands ES
-// shorthand in every position, so `{ …, coverage }` would lint clean too.
-// `ground` is the subtrees the topics searched, repo-relative, `.` for a repository-wide topic. It
-// is what a later phase anchors this survey to: the survey stays sound evidence exactly as long as
-// no commit touches that ground (lib/effort.mjs, `standing`).
+// `ground` is the subtrees the topics searched, `.` for a repository-wide topic. It is what a
+// later phase anchors this survey to: the survey stays sound evidence exactly as long as no
+// commit touches that ground (`lib/effort.mjs standing`).
 function surveyResult(topics, verdicts, history, docs, coverageBlock, ground = []) {
   return { question, topics, ground, verdicts, history, docs, coverage: coverageBlock }
 }
@@ -509,90 +537,91 @@ if (!question) {
 
 log(`Question: ${question}`)
 
+// ---------------------------------------------------------------- 0. a standing survey
+//
+// A node whose shape is settled and whose ground a standing survey covers buys no survey. The
+// caller answers the first half; `lib/effort.mjs standing` answers the second from git — the
+// recorded survey's commit is an ancestor of HEAD, nothing has touched its ground since, and it
+// reported complete coverage — and this script checks only that its ground covers the ground the
+// caller named. Every refusal surveys in full and says why, because a phase skipped on anything
+// less than that arithmetic is exactly the laundering §2 forbids.
+
+// A caller path is covered by a surveyed subtree that is the repository, the path itself, or one
+// of its ancestors.
+const covers = (surveyed, path) => surveyed.some((g) => {
+  const s = groundPath(g)
+  return s === '.' || s === path || path.startsWith(s + '/')
+})
+
+async function standingSurvey() {
+  if (!settledShape || !effort) return null
+  const refuse = (why) => {
+    log(`No standing survey stands in: ${why}. Surveying in full.`)
+    return null
+  }
+  if (callerGround.length === 0) {
+    return refuse('the caller named no ground, so there is nothing a recorded survey could be shown to cover')
+  }
+  // The slug travels inside a shell command, so only a name `lib/store.mjs` would accept goes.
+  if (!/^[a-z0-9][a-z0-9._-]*$/.test(effort) || effort.includes('--') || effort.length > 120) {
+    return refuse('"' + effort + '" is not an effort name')
+  }
+
+  phase('Standing')
+
+  const held = await carry(`node "${pluginRoot}/lib/effort.mjs" standing "${repo}" "${effort}"`,
+    'standing', 'Standing')
+  if (!held.payload) return refuse('whether effort ' + effort + '\'s survey stands could not be read (' + held.why + ')')
+
+  const st = held.payload
+  if (st.standing !== true) return refuse('effort ' + effort + '\'s newest survey does not stand — ' + (st.why || 'no reason given'))
+
+  const uncovered = callerGround.filter((p) => !covers(Array.isArray(st.ground) ? st.ground : [], p))
+  if (uncovered.length > 0) {
+    return refuse('the standing survey ' + st.stamp + ' searched ' + (st.ground || []).join(', ') +
+      ' and does not cover ' + uncovered.join(', '))
+  }
+
+  // The verdicts themselves are a second read: the standing check prints the arithmetic, not the
+  // survey, and the stamp both reads name is what proves they are about the same file.
+  const read = await carry(`node "${pluginRoot}/lib/effort.mjs" read "${repo}" "${effort}" --latest survey`,
+    'standing-read', 'Standing')
+  const latest = read.payload && read.payload.latest
+  if (!latest) return refuse('the standing survey could not be read (' + (read.why || 'no survey came back') + ')')
+  if (latest.stamp !== st.stamp) {
+    return refuse('the survey read back (' + latest.stamp + ') is not the one that stood (' + st.stamp + ')')
+  }
+  const recorded = latest.payload
+  if (!recorded || !Array.isArray(recorded.verdicts) || !recorded.coverage || recorded.coverage.complete !== true) {
+    return refuse('the recorded survey ' + st.stamp + ' is not a complete survey result')
+  }
+
+  log(`Standing survey ${st.stamp} (observed at ${st.observed_at}) covers ${callerGround.join(', ')} ` +
+    `and nothing has touched its ground since: its verdicts are this survey's, and nothing was ` +
+    `re-searched.`)
+  return { recorded, stamp: st.stamp, observedAt: st.observed_at, ground: st.ground }
+}
+
+const standing = await standingSurvey()
+
+if (standing) {
+  // The recorded survey's own coverage was complete, so the block is complete too — and it says
+  // where the evidence came from, so a reused result is never mistaken for one bought today.
+  const reused = coverageOf([], [], [], [])
+  return {
+    question,
+    topics: standing.recorded.topics || [],
+    ground: standing.recorded.ground || standing.ground || [],
+    verdicts: standing.recorded.verdicts,
+    history: standing.recorded.history == null ? null : standing.recorded.history,
+    docs: standing.recorded.docs == null ? null : standing.recorded.docs,
+    coverage: { ...reused, standing: { stamp: standing.stamp, observed_at: standing.observedAt } },
+  }
+}
+
 // ---------------------------------------------------------------- 1. plan
 
 phase('Plan')
-
-// What this repository already knows, and where — read BEFORE the decomposition, because the
-// decomposition is what turns it into paths.
-//
-// The obvious design was chains at the question's roots, and it is the one the probe killed:
-// before any scout runs the only known paths ARE the roots, and a chain at a root is the
-// repository-wide node alone, so a planner handed it is handed almost nothing. The index is
-// cheap for the opposite reason — it computes no state, only where entries sit and of what kind
-// — and it is exactly what a decomposition can aim at. Chains come after, per topic, at the
-// subtree each topic names.
-//
-// A side channel with IRON LAW §5 treatment: a base that cannot be read costs this survey
-// nothing it was going to have. Every topic is then searched from scratch, which is how a
-// survey with no knowledge base runs.
-const kbNotes = []
-
-const kbIndex = await (async () => {
-  const held = await agent(
-    `READ MODE. Report what this repository's knowledge base holds, and where — verbatim. You ` +
-    `run one command and paste its output; you decide nothing and you interpret nothing.\n\n` +
-    `REPOSITORY: ${kbRepo}\n\n` +
-    `Run exactly this:\n\n` +
-    `   node "${pluginRoot}/lib/kb.mjs" index "${kbRepo}"\n` +
-    rootWarning +
-    `Put its ENTIRE stdout into payload_raw, byte for byte, as one string. Do not parse it, do ` +
-    `not reformat it, do not summarise it, and do not drop a node that looks unimportant to ` +
-    `you. It is one line of JSON carrying its own digest: your caller recomputes that digest ` +
-    `over what arrives, so a copy that drifted by a single character is detected rather than ` +
-    `believed.\n\n` +
-    `The index carries node paths, entry counts and kinds, and NO freshness — that is worked ` +
-    `out per path later, and there is nothing here for you to add.\n\n` +
-    `A repository with no knowledge base prints an index holding nothing, and that IS the good ` +
-    `case. Return stop_reason failed ONLY when the command could not be run at all, with what ` +
-    `the shell reported in notes.`,
-    { agentType: 'agentics:kb', effort: 'low', model: 'haiku', schema: CARRIED,
-      phase: 'Plan', label: 'kb-index' },
-  ).catch((e) => {
-    log(`WARNING: the knowledge-base index failed to run: ${e && e.message}`)
-    return null
-  })
-
-  const carried = carriedRead(held)
-  if (!carried.payload) {
-    log(`WARNING: the knowledge base could not be read (${carried.why}); every topic is ` +
-      `searched from scratch.`)
-    kbNotes.push('the project knowledge base could not be read (' + carried.why + '), so ' +
-      'nothing in this result came from it: every topic was searched from scratch, exactly as ' +
-      'every survey before the base existed')
-    return null
-  }
-
-  const counts = carried.payload.counts || {}
-  log(`Knowledge base: ${counts.entries || 0} entr(ies) across ${counts.nodes || 0} node(s).`)
-  return carried.payload
-})()
-
-// The index, as the planner reads it: one line per node that holds something. Bounded by how many
-// nodes hold anything rather than by how much any of them holds, so it does not grow with the
-// base the way a chain dump would.
-function indexSection() {
-  const nodes = (kbIndex && kbIndex.nodes) || []
-  if (nodes.length === 0) {
-    return `\nThis repository's knowledge base holds nothing yet, so every topic is a topic ` +
-      `nobody has searched before. Set kb_path to where you expect each topic to live anyway — ` +
-      `it costs nothing and it is what a later run reads.\n`
-  }
-
-  return `\nWHAT THIS REPOSITORY ALREADY KNOWS, AND WHERE. The project knowledge base holds ` +
-    `observations from earlier runs, filed under the narrowest directory each one is about. ` +
-    `This is the SHAPE of it — paths, how many entries, of which kinds — and it says nothing ` +
-    `about whether any of them is still true; that is checked per path, after you decompose.\n` +
-    nodes.map((n) => `  ${n.node === '' ? '(repository-wide)' : n.node} — ${n.entries} ` +
-      `entr${n.entries === 1 ? 'y' : 'ies'} (${Object.entries(n.kinds || {})
-        .map(([kind, count]) => kind + ': ' + count).join(', ') || 'none'})`).join('\n') +
-    `\n\nDecompose against this. Where a node covers a topic, set that topic's kb_path to the ` +
-    `node's path and what is known there will be checked and handed to the search — a topic on ` +
-    `covered ground becomes a VERIFICATION rather than a rediscovery, which is the whole reason ` +
-    `this list is in front of you. Where nothing is recorded, plan the topic exactly as you ` +
-    `would have anyway: the base is a saving where it applies and never a reason to search ` +
-    `less.\n`
-}
 
 const plan = await agent(
   `Break this investigation into at most ${maxTopics} independent search topics.\n\n` +
@@ -609,17 +638,21 @@ const plan = await agent(
     : '') +
   `\nEach topic must be answerable by searching the current code on its own, with no ` +
   `dependency on the other topics — the shared ground below is the one exception to that, ` +
-  `because it reaches every topic's analyst. Give each a short kebab-case key and a precise ` +
+  `because it reaches every judge. Give each a short kebab-case key and a precise ` +
   `instruction for a read-only search agent: what to find, and where to look. Size each ` +
   `topic so a single search agent can exhaust it in one pass — one subsystem, one named ` +
   `concern. Prefer more, smaller topics over one merged catch-all: a kitchen-sink topic ` +
   `forces a partial first pass, and everything later is built on what these searches ` +
   `return.\n\n` +
+  `Give every topic a subtree: the one directory or file it is about, repo-relative, or an ` +
+  `empty string when the topic is genuinely repository-wide. The survey is anchored to these ` +
+  `paths afterwards, so a path that names the topic's real ground is what lets a later pass ` +
+  `reuse this survey instead of buying it again.\n\n` +
   `When several topics would each need to read the same files, do NOT fold that surface ` +
   `into each of them. Name it once in common_ground, as a precise instruction for a single ` +
-  `search agent: it is searched once, and every analyst receives what it finds alongside ` +
-  `its own topic's locations. Then confine each topic's instruction to what is unique to ` +
-  `that topic. Send an empty string when the topics genuinely share no ground.\n\n` +
+  `search agent: it is searched once, and every judge receives what it finds alongside the ` +
+  `topics. Then confine each topic's instruction to what is unique to that topic. Send an ` +
+  `empty string when the topics genuinely share no ground.\n\n` +
   `Set history_needed if answering the question requires git history rather than the ` +
   `current tree: when a behaviour changed, which commit introduced or removed something, ` +
   `why code is the way it is, or any regression. Put that question in history_question. ` +
@@ -627,16 +660,11 @@ const plan = await agent(
   `a confident wrong answer.\n\n` +
   `Set docs_needed only if answering the question requires vendor or standards ` +
   `documentation that is not in these repositories. Put that question in docs_question.\n\n` +
-  indexSection() +
-  `\nGive every topic a kb_path: the one subtree it is about, repo-relative, or an empty ` +
-  `string when the topic is genuinely repository-wide. It is read before the search runs, so a ` +
-  `path that names the topic's real ground is what decides whether anything already known ` +
-  `reaches it.\n\n` +
   `Leave a question field as an empty string when its flag is false. When a flag is true ` +
   `the matching question must be non-empty — a true flag with no question skips the track ` +
   `entirely and the answer silently loses that evidence.\n` +
   `Do not search anything yourself. Plan only.`,
-  { agentType: 'agentics:analyst', schema: PLAN, label: 'plan', ...tiered(judge, 'medium') },
+  { agentType: 'agentics:analyst', schema: PLAN, phase: 'Plan', label: 'plan', ...tiered(judge, 'medium') },
 ).catch((e) => {
   log(`WARNING: planning failed: ${e && e.message}`)
   return null
@@ -644,111 +672,25 @@ const plan = await agent(
 
 if (!plan || !plan.topics || plan.topics.length === 0) {
   return surveyResult([], [], null, null,
-    coverageOf([], [], [], ['planning produced no topics, so nothing was searched'], kbNotes))
+    coverageOf([], [], [], ['planning produced no topics, so nothing was searched']))
 }
 
 // The cap in the prompt is sizing guidance to the planner, never a licence to drop work:
-// every topic the planner decided the question needs gets searched. Cutting the list here
-// would undersurvey the one stage everything else is built on — the earlier behaviour of
-// slicing the overflow off produced runs whose plans rested on evidence nobody gathered.
-// Cost is controlled by method — cheap scouts, tight schemas — not by cutting work (§8).
+// every topic the planner decided the question needs gets searched. Slicing the overflow off
+// produced runs whose plans rested on evidence nobody gathered. Cost is controlled by method —
+// cheap scouts, tight schemas — not by cutting work (§8).
 if (plan.topics.length > maxTopics) {
   log(`Planner returned ${plan.topics.length} topics (asked for at most ${maxTopics}); searching all of them.`)
 }
 
-// The ground the planner says several topics would each have to read. Read defensively: a
-// plan from before this field existed is not a broken plan, it is a plan with no shared
-// ground, and it must degrade to exactly that rather than throwing on the way past.
+const topics = plan.topics
+// Read defensively: a plan that omits the field is a plan with no shared ground.
 const commonFind = (plan.common_ground || '').trim()
 
-log(`Plan: ${plan.topics.length} topic(s)` +
+log(`Plan: ${topics.length} topic(s)` +
     `${commonFind ? ' + common ground' : ''}` +
     `${plan.history_needed ? ' + git history' : ''}` +
     `${plan.docs_needed ? ' + documentation' : ''}`)
-
-// ------------------------------------------------- 1b. the chains, one per topic's subtree
-//
-// Now that the topics exist, their ground has names — so the chains are fetched at those names
-// rather than at the roots. One courier carries all of them: a chain is bounded by depth, the
-// chains are independent of each other, and buying one dispatch per topic would buy the same
-// courier N times for a payload that arrives once.
-//
-// A topic with no path named is chained at the repository-wide level, which is what `.` resolves
-// to inside the reader. Nothing is chained at all when the index already said the base holds
-// nothing: a chain over an empty tree is a dispatch bought for nothing.
-const kbChains = new Map()
-
-// Keyed per topic, not per path, because two topics may name the same subtree and each still has
-// its own account to give.
-const topicPath = (topic) => kbKey(topic && topic.kb_path)
-
-const kbFetch = kbIndex && (kbIndex.counts || {}).entries > 0
-  ? [...new Set(plan.topics.map((t) => kbArg(topicPath(t))))]
-  : []
-
-if (kbFetch.length > 0) {
-  const held = await agent(
-    `READ MODE. Read what this repository's knowledge base already holds about the ground ` +
-    `these searches are about to cover, and return it verbatim. You run one command and paste ` +
-    `its output; you decide nothing and you interpret nothing.\n\n` +
-    `REPOSITORY: ${kbRepo}\n\n` +
-    `Run exactly this:\n\n` +
-    `   node "${pluginRoot}/lib/kb.mjs" chain "${kbRepo}" ` +
-    kbFetch.map((p) => '"' + p + '"').join(' ') + `\n` +
-    rootWarning +
-    `Put its ENTIRE stdout into payload_raw, byte for byte, as one string. Do not parse it, do ` +
-    `not reformat it, do not summarise it, and do not drop an entry that reads stale or ` +
-    `redundant to you. It is one line of JSON carrying its own digest: your caller recomputes ` +
-    `that digest over what arrives, so a copy that drifted by a single character is detected ` +
-    `rather than believed.\n\n` +
-    `Every entry in it arrives with a state the program COMPUTED — fresh, stale or orphaned — ` +
-    `from git and from the bytes of the files each entry is anchored to. You do not agree or ` +
-    `disagree with those and you never re-check one.\n\n` +
-    `Return stop_reason failed ONLY when the command could not be run at all, with what the ` +
-    `shell reported in notes.`,
-    { agentType: 'agentics:kb', effort: 'low', model: 'haiku', schema: CARRIED,
-      phase: 'Plan', label: 'kb-chain' },
-  ).catch((e) => {
-    log(`WARNING: the knowledge-base chain read failed to run: ${e && e.message}`)
-    return null
-  })
-
-  const carried = carriedRead(held)
-  if (!carried.payload) {
-    log(`WARNING: the chains could not be read (${carried.why}); every topic is searched from ` +
-      `scratch.`)
-    kbNotes.push('the knowledge base was indexed but its chains could not be read (' +
-      carried.why + '), so nothing in this result came from it: every topic was searched from ' +
-      'scratch')
-  } else {
-    for (const chain of carried.payload.chains || []) {
-      kbChains.set(kbKey(chain.path), chain.entries || [])
-    }
-    const counts = carried.payload.counts || {}
-    log(`Chains: ${counts.fresh || 0} fresh, ${counts.stale || 0} stale, ` +
-      `${counts.orphaned || 0} orphaned across ${kbFetch.length} subtree(s). Fresh entries are ` +
-      `evidence and turn their topic into a verification; stale ones are leads for the search.`)
-  }
-}
-
-/**
- * What the base holds for one topic, split by what each state is worth.
- *
- * Fresh is EVIDENCE: a program checked the ground it is about and found it untouched since the
- * observation. Stale is a LEAD: the ground moved, so the claim is a place to look and never a
- * fact to report — which is exactly what a search can use and a coder mid-order cannot.
- * Orphaned is about ground that is gone and rides nothing.
- */
-function kbForTopic(topic) {
-  const entries = kbChains.get(topicPath(topic)) || []
-  return {
-    fresh: entries.filter((e) => e && e.state === 'fresh'),
-    leads: entries.filter((e) => e && e.state === 'stale'),
-  }
-}
-
-const entryLine = (e) => '- [' + e.kind + ', seen at ' + (e.observed_at || 'an unrecorded commit') +
-  '] ' + e.claim
 
 // ---------------------------------------------------------- 2. the resume engine
 //
@@ -762,11 +704,10 @@ const entryLine = (e) => '- [' + e.kind + ', seen at ' + (e.observed_at || 'an u
 //
 // `absorb(found)` folds one round into the caller's accumulators and returns true when the
 // round gained new ground. Progress is judged on evidence actually gained, never on the
-// agent's account of itself: a round that re-treads old ground while naming the same
-// remainder would otherwise be resumed forever.
-// A remainder, normalized for comparison. Whitespace and case only: two roundsly-worded
-// descriptions of the same unreached surface are the same surface, and the question here is
-// whether the search advanced, not how it was phrased.
+// agent's account of itself.
+
+// A remainder, normalized for comparison. Whitespace and case only: two differently-worded
+// descriptions of the same unreached surface are the same surface.
 const remainderKey = (text) => String(text || '').replace(/\s+/g, ' ').trim().toLowerCase()
 
 async function resumeToExhaustion({ key, prompt, launch, absorb }) {
@@ -804,15 +745,9 @@ async function resumeToExhaustion({ key, prompt, launch, absorb }) {
     }
 
     // Two independent ways a round can advance: it brought back evidence nobody had, or it
-    // narrowed the surface still to cover. Neither means the round achieved nothing, whatever
-    // it says about itself.
-    //
-    // The remainder half is what closes the paraphrase loop. `absorb` used to judge progress
-    // by counting new `searched` lines, and an agent obediently told not to repeat itself
-    // rewords its account of the same ground every round — new lines, no new knowledge, the
-    // same remainder, forever. That is not a search that needs more time; it is a search that
-    // has stopped moving, and left alone it runs until something outside the workflow kills
-    // it, which in the field means a usage limit taking every parallel agent with it.
+    // narrowed the surface still to cover. An agent told not to repeat itself rewords its
+    // account of the same ground every round — new lines, no new knowledge, the same remainder
+    // — and left alone that runs until something outside the workflow kills it.
     const remainder = remainderKey(found.not_reached)
     const narrowed = prevRemainder === null || remainder !== prevRemainder
     prevRemainder = remainder
@@ -829,15 +764,10 @@ async function resumeToExhaustion({ key, prompt, launch, absorb }) {
 
 // ------------------------------------------------- 3. history and docs
 //
-// Both run alongside the scouts, and both are driven through the same resume engine: a
-// historian that hands back an honest partial is resumed until the search is done, exactly
-// like a scout — before this, the channels were single-shot and a truncated one was merely
-// recorded. IRON LAW §5 still holds: a side-channel failure must not discard the scout and
-// analyst work already paid for, so nothing here rejects.
-//
-// Every outcome is recorded, including the one that used to vanish: a track the planner
-// marked necessary and then gave no question for. That case reported as neither researched
-// nor failed — the channel silently never ran, and coverage still came back complete.
+// Both run alongside the scouts, through the same resume engine. IRON LAW §5: a side-channel
+// failure must not discard the scout and judge work already paid for, so nothing here rejects.
+// Every outcome is recorded, including a track the planner marked necessary and then gave no
+// question for — that one otherwise reports as neither researched nor failed.
 
 function sideChannel(name, needed, ask, launch) {
   if (!needed) {
@@ -862,10 +792,9 @@ function sideChannel(name, needed, ask, launch) {
   )
 }
 
-// A channel's rounds accumulate prose findings rather than hit lists, so the engine's
-// progress measure is the searched surface — the one part of the contract that is
-// deduplicable — and the merged rounds keep the shape every consumer already reads:
-// findings plus the coverage fields. Returns null when no round ever produced a result,
+// A channel's rounds accumulate prose findings rather than hit lists, so the engine's progress
+// measure is new findings text, and the merged rounds keep the shape every consumer already
+// reads: findings plus the coverage fields. Returns null when no round ever produced a result,
 // which sideChannel records as the failed channel it is.
 async function channelToExhaustion({ key, first, launch }) {
   const findings = []
@@ -875,11 +804,6 @@ async function channelToExhaustion({ key, first, launch }) {
   const seenFindings = new Set()
   let sawResult = false
 
-  // Returns whether the round brought back EVIDENCE nobody had. Deliberately not "wrote a
-  // line nobody had written": `searched` is an account of where the agent went, and an agent
-  // told not to repeat itself will describe the same ground in fresh words indefinitely. The
-  // accumulator still collects those lines — the resume prompt needs them — but they no
-  // longer testify to progress.
   const absorb = (found) => {
     sawResult = true
     let gained = false
@@ -937,14 +861,11 @@ const docsChannel = sideChannel(
   }),
 )
 
-// -------------------------------------------------- 4. scout -> 5. analyze
+// -------------------------------------------------------------- 4. scout
+
+phase('Scout')
 
 const partial = []
-
-// What each scout actually covered, kept for the deposit at the end. The verdict pipeline
-// consumes a scout's result and returns an analyst's, so without this the one fact the deposit
-// turns on — an exhausted search that found nothing — would be gone by the time it is needed.
-const scouted = new Map()
 
 // Search to exhaustion. IRON LAW §3: an incomplete scout is RESUMED, never reported as a
 // result. The engine owns the stop conditions; this wrapper owns what a scout accumulates —
@@ -955,9 +876,8 @@ async function scoutUntilComplete(topic) {
   const noMatch = []
   const seen = new Set()
 
-  // Progress is HITS, not lines of self-report. A scout told not to repeat itself will keep
-  // producing fresh descriptions of ground it has already covered, and counting those as
-  // progress resumed such a scout forever — see the engine's stuck exit for what that costs.
+  // Progress is HITS, not lines of self-report: a scout told not to repeat itself keeps
+  // producing fresh descriptions of ground it has already covered.
   const absorb = (found) => {
     let gained = false
 
@@ -974,44 +894,20 @@ async function scoutUntilComplete(topic) {
   }
 
   // The shared ground is searched once, by its own scout, so every other scout is told to
-  // leave it alone. Without this the topics that share a surface each re-read it, and each
-  // of their analysts then pays to read the same code again — the redundancy this field
-  // exists to remove. The common scout itself is never handed the exclusion.
+  // leave it alone. The common scout itself is never handed the exclusion.
   const exclude = commonFind && topic.key !== 'common-ground'
     ? `\n\nA separate scout covers this shared ground — do not search it:\n${commonFind}`
     : ''
 
-  // What the base holds about this topic's ground, said in the two ways the two states are
-  // worth. The distinction is stated verbatim-clearly rather than left for a scout to infer:
-  // fresh entries make this topic a
-  // VERIFICATION, and stale ones are places to look that no report may rest on.
-  const known = kbForTopic(topic)
-
-  const kbBrief =
-    (known.fresh.length === 0 ? '' :
-      `\n\nALREADY RECORDED ABOUT THIS GROUND — a program checked each of these against the ` +
-      `current tree just now and found the ground it is about untouched since it was observed. ` +
-      `They are EVIDENCE, not a search you have to redo:\n` +
-      known.fresh.map(entryLine).join('\n') +
-      `\n\nSo this topic is a VERIFICATION rather than a rediscovery. Confirm the locations ` +
-      `these name still exist and report them as hits, and spend the rest of your pass on what ` +
-      `they do NOT cover. If one of them turns out to be wrong about the current tree, that is ` +
-      `a finding: say so in no_match rather than reporting the claim as a location.`) +
-    (known.leads.length === 0 ? '' :
-      `\n\nLEADS — the base held these and the ground has moved since, so nothing attests them. ` +
-      `They are places to look and never facts to report: confirm anything you use against the ` +
-      `current tree, and never report a location you have not seen for yourself:\n` +
-      known.leads.map(entryLine).join('\n'))
-
   const prompt = (round, prev) => round === 1
-    ? `${topic.find}${exclude}${kbBrief}\n\nRepositories: ${roots}\n\n` +
+    ? `${topic.find}${exclude}\n\nRepositories: ${roots}\n\n` +
       `Report every location you find, and search to exhaustion: you stop when the surface ` +
       `is covered or you are genuinely stuck, never because the list is getting long or ` +
       `the work feels large. If one pass truly cannot cover the request, report what you ` +
       `have, set stop_reason to "unfinished", and name exactly what remains in ` +
       `not_reached — you will be resumed until the search is done.`
     : `Continue an unfinished search — do not start over.\n\n` +
-      `ORIGINAL REQUEST: ${topic.find}${exclude}${kbBrief}\n` +
+      `ORIGINAL REQUEST: ${topic.find}${exclude}\n` +
       `Repositories: ${roots}\n\n` +
       `ALREADY SEARCHED (do not repeat these):\n${searched.join('\n')}\n\n` +
       `ALREADY FOUND (do not report these again):\n` +
@@ -1026,121 +922,338 @@ async function scoutUntilComplete(topic) {
   const end = await resumeToExhaustion({ key: topic.key, prompt, launch, absorb })
   if (!end.exhausted) partial.push(topic.key)
 
-  const found = {
+  return {
     hits, searched, complete: end.exhausted, noMatch: noMatch.join('\n'), notReached: end.notReached,
   }
-  scouted.set(topic.key, found)
-  return found
 }
 
-// Launched before the pipeline rather than inside it: it is one search whose result every
-// topic's analyst reads, so it runs alongside the topic scouts instead of after them. It is
-// an ordinary scout in every other respect — same labels, same phase, same resume to
-// exhaustion, and the same entry in `partial` when it does not get there.
+// The shared scout runs alongside the topic scouts. It is an ordinary scout in every other
+// respect — same labels, same phase, same resume to exhaustion, and the same entry in `partial`
+// when it does not get there.
 const commonGround = commonFind
-  ? scoutUntilComplete({ key: 'common-ground', find: commonFind })
+  ? scoutUntilComplete({ key: 'common-ground', find: commonFind }).catch((e) => {
+    log(`WARNING: the shared-ground scout failed: ${e && e.message}`)
+    partial.push('common-ground')
+    return null
+  })
   : Promise.resolve(null)
 
-// What the shared scout found, written into every analyst's evidence. The warning is the
-// load-bearing half: an analyst reasoning over a shared surface nobody finished searching
-// must be able to say what its conclusion rests on (IRON LAW §4).
-function sharedGroundSection(common) {
+const scouted = await parallel(topics.map((topic) => () => scoutUntilComplete(topic)))
+const common = await commonGround
+
+// ------------------------------------------------------------ 5. resolve
+//
+// Every location the scouts found, read ONCE by a script, overlapping windows merged, and handed
+// to the judges as excerpts under a digest. A judge that is handed the lines spends its turns
+// judging; one handed paths spends them opening files, and several judges handed the same paths
+// open the same files each.
+//
+// A side channel with IRON LAW §5 treatment: a location that could not be resolved — its batch
+// was lost in transport, or the file is not in the first root — reaches the judge as a location
+// to read itself, which its constitution permits. That costs turns, not evidence.
+
+phase('Resolve')
+
+const locKey = (path, line) => String(path) + ':' + String(line)
+
+function locationsOf(found) {
+  return found ? found.hits.map((h) => ({ path: String(h.path), line: Number.isInteger(h.line) ? h.line : 0 })) : []
+}
+
+const allLocations = []
+{
+  const seen = new Set()
+  for (const loc of scouted.flatMap(locationsOf).concat(locationsOf(common))) {
+    const k = locKey(loc.path, loc.line)
+    if (!seen.has(k)) { seen.add(k); allLocations.push(loc) }
+  }
+}
+
+// One argv slot holds a finite token (cmd.exe caps a whole command line at 8191 characters), so
+// the locations travel in batches under this many base64 characters. Every location of one file
+// goes in the same batch, so no two batches ever hold overlapping windows.
+const COMMAND_BUDGET = 6000
+
+function batchesOf(locations) {
+  const byPath = new Map()
+  for (const loc of locations) {
+    if (!byPath.has(loc.path)) byPath.set(loc.path, [])
+    byPath.get(loc.path).push(loc)
+  }
+
+  const batches = []
+  let current = []
+  for (const group of byPath.values()) {
+    const grown = current.concat(group)
+    if (current.length > 0 && base64(JSON.stringify(grown)).length > COMMAND_BUDGET) {
+      batches.push(current)
+      current = group
+    } else {
+      current = grown
+    }
+  }
+  if (current.length > 0) batches.push(current)
+  return batches
+}
+
+const excerptCommand = (batch) =>
+  `node "${pluginRoot}/lib/citations.mjs" excerpts --repo "${repo}" ` +
+  `--digest ${fnv1a(canonical(batch))} --b64 ${base64(JSON.stringify(batch))}`
+
+const resolvedFiles = []
+const resolveFailures = []
+
+if (allLocations.length === 0) {
+  log('Nothing to resolve: no scout reported a location.')
+} else {
+  const batches = batchesOf(allLocations)
+  const carried = await Promise.all(batches.map((batch, i) =>
+    carry(excerptCommand(batch), batches.length === 1 ? 'resolve' : `resolve:${i + 1}`, 'Resolve')))
+
+  carried.forEach((held, i) => {
+    if (held.payload) resolvedFiles.push(...(held.payload.files || []))
+    else resolveFailures.push(`${batches[i].length} location(s): ${held.why}`)
+  })
+
+  if (resolveFailures.length > 0) {
+    log(`WARNING: some locations were not resolved (${resolveFailures.join('; ')}); the judges ` +
+      `read those themselves. More turns, not less evidence.`)
+  }
+}
+
+// The window a location falls in. A scout may report an absolute path, or one relative to a
+// directory above the repository; the script resolved it relative to the repository, so a
+// reported path that ends in a resolved one is the same file.
+function windowOf(hit) {
+  const reported = String(hit.path).split('\\').join('/').replace(/^\.\//, '')
+  for (const file of resolvedFiles) {
+    if (reported !== file.path && !reported.endsWith('/' + file.path)) continue
+    const excerpt = (file.excerpts || []).find((e) => hit.line >= e.from && hit.line <= e.to)
+    if (excerpt) return { file, excerpt }
+  }
+  return null
+}
+
+const windowId = (w) => w.file.path + '#' + w.excerpt.from
+
+/** The windows a set of hits falls in, and the hits that fall in none. */
+function coverOf(hits) {
+  const windows = new Map()
+  const bare = []
+  for (const h of hits) {
+    const w = windowOf(h)
+    if (w) windows.set(windowId(w), w)
+    else bare.push(h)
+  }
+  return { windows, bare }
+}
+
+// ------------------------------------------------------------ 6. judge
+//
+// One analyst without search tools judges every topic from the excerpts — one reader per body of
+// evidence. More are bought only when the volume would not fit one reader's attention, or when
+// the caller set `pace: fast` and pays for wall-clock with parallel readers.
+
+phase('Judge')
+
+const WINDOWS_PER_JUDGE = 60
+const BYTES_PER_JUDGE = 150000
+
+const scoutOf = (topic) => scouted[topics.indexOf(topic)]
+const volumeOf = (hits) => {
+  const cover = coverOf(hits)
+  const bytes = [...cover.windows.values()].reduce((n, w) => n + String(w.excerpt.text || '').length, 0)
+  return { windows: cover.windows.size + cover.bare.length, bytes }
+}
+
+const commonHits = common ? common.hits : []
+const judged = topics.filter((t) => scoutOf(t))
+const total = volumeOf(judged.flatMap((t) => scoutOf(t).hits).concat(commonHits))
+
+let groups
+if (judged.length === 0) {
+  groups = []
+} else if (pace === 'fast') {
+  groups = judged.map((t) => [t])
+  log(`Judge: pace is fast, so ${groups.length} analyst(s), one per topic, over ${total.windows} ` +
+    `window(s) — readers bought for wall-clock, each paying for the shared ground.`)
+} else {
+  const earned = Math.max(1, Math.ceil(total.windows / WINDOWS_PER_JUDGE), Math.ceil(total.bytes / BYTES_PER_JUDGE))
+  const readers = Math.min(judged.length, earned)
+
+  // Heaviest topic first onto the lightest reader, then each reader's topics back in plan order.
+  const loads = Array.from({ length: readers }, () => ({ weight: 0, topics: [] }))
+  const weighed = judged.map((t) => ({ t, v: volumeOf(scoutOf(t).hits) }))
+    .sort((a, b) => (b.v.windows - a.v.windows) || (b.v.bytes - a.v.bytes))
+  for (const { t, v } of weighed) {
+    const lightest = loads.reduce((a, b) => (b.weight < a.weight ? b : a))
+    lightest.weight += v.windows + v.bytes / 2500
+    lightest.topics.push(t)
+  }
+  groups = loads.map((l) => l.topics.sort((a, b) => topics.indexOf(a) - topics.indexOf(b)))
+
+  log(readers === 1
+    ? `Judge: one analyst holds all ${judged.length} topic(s) over ${total.windows} window(s), ` +
+      `~${Math.round(total.bytes / 1000)}KB of excerpts.`
+    : `Judge: ${total.windows} window(s), ~${Math.round(total.bytes / 1000)}KB of excerpts earn ` +
+      `${readers} analysts (one per ${WINDOWS_PER_JUDGE} windows or ${BYTES_PER_JUDGE / 1000}KB): ` +
+      groups.map((g) => g.map((t) => t.key).join('+')).join(', ') + '.')
+}
+
+function excerptBlock(windows) {
+  const byFile = new Map()
+  for (const w of windows.values()) {
+    if (!byFile.has(w.file.path)) byFile.set(w.file.path, { file: w.file, excerpts: [] })
+    byFile.get(w.file.path).excerpts.push(w.excerpt)
+  }
+  return [...byFile.values()]
+    .map(({ file, excerpts }) => `--- ${file.path} (${file.lines} line(s))\n` +
+      excerpts.sort((a, b) => a.from - b.from).map((e) => e.text).join('\n     …\n'))
+    .join('\n\n')
+}
+
+const hitLine = (h) => `  ${h.path}:${h.line} — ${h.note || ''}`
+
+function topicSection(topic) {
+  const f = scoutOf(topic)
+  return `[${topic.key}] ${topic.find}\n` +
+    `LOCATIONS FOUND:\n${f.hits.length ? f.hits.map(hitLine).join('\n') : '  (none)'}\n` +
+    `SEARCH SURFACE ACTUALLY COVERED:\n${f.searched.join('\n') || '(none reported)'}` +
+    (f.noMatch ? `\nSEARCHED AND NOT FOUND (this is evidence of absence):\n${f.noMatch}` : '') +
+    (f.notReached ? `\nNEVER SEARCHED: ${f.notReached}` : '') +
+    (f.complete
+      ? `\nThe search was exhausted. Judge the surface above for yourself: if it does not ` +
+        `actually cover the topic, say so in risks rather than accepting it.`
+      : `\nWARNING: this search did NOT finish and is not exhaustive. Your conclusion inherits ` +
+        `that limit — state what it rests on and what would change it.`)
+}
+
+// The shared ground, and the load-bearing warning when it did not finish: a judge reasoning over
+// a shared surface nobody finished searching must be able to say what its conclusion rests on.
+function sharedGroundSection() {
   if (!common) return ''
   return `\n\nSHARED GROUND (scouted once for every topic — treat it as part of your evidence):\n` +
-    JSON.stringify(common.hits, null, 1) +
-    `\n\nSHARED GROUND SEARCH SURFACE COVERED:\n${common.searched.join('\n')}` +
+    (common.hits.length ? common.hits.map(hitLine).join('\n') : '  (no locations)') +
+    `\nSHARED GROUND SEARCH SURFACE COVERED:\n${common.searched.join('\n')}` +
     (common.noMatch
-      ? `\n\nSHARED GROUND SEARCHED AND NOT FOUND (this is evidence of absence):\n${common.noMatch}`
+      ? `\nSHARED GROUND SEARCHED AND NOT FOUND (this is evidence of absence):\n${common.noMatch}`
       : '') +
     (common.complete
       ? ''
-      : `\n\nWARNING: the shared-ground search did NOT finish. It never reached: ` +
+      : `\nWARNING: the shared-ground search did NOT finish. It never reached: ` +
         `${common.notReached}. Anything you conclude from the shared ground inherits that ` +
         `limit — state what your conclusion rests on.`)
 }
 
-// The fresh entries this topic's analyst reasons over, and the one instruction that makes them
-// distinguishable in the verdict. Leads are deliberately NOT here: a lead is for somebody going
-// looking, and this agent is judging what was found rather than going anywhere.
-function cachedEvidenceSection(topic) {
-  const fresh = kbForTopic(topic).fresh
-  if (fresh.length === 0) return ''
+function judgePrompt(group, continued) {
+  const cover = coverOf(group.flatMap((t) => scoutOf(t).hits).concat(commonHits))
+  const many = group.length > 1
 
-  return `\n\nKNOWN BEFORE THIS RUN (the project knowledge base, checked against the current ` +
-    `tree just now and still standing) — this is CACHED evidence: an earlier run observed it, ` +
-    `and this run did not go and see it again:\n` +
-    fresh.map(entryLine).join('\n') +
-    `\n\nWhere your conclusion rests on one of these rather than on a location above, say so in ` +
-    `the evidence line itself — "from the knowledge base, observed at <commit>". A conclusion ` +
-    `that cannot be told apart from one built on a search this run actually performed is the ` +
-    `one failure this whole workflow exists to prevent.`
+  return `Judge ${many ? `these ${group.length} topics` : 'this topic'} of a larger question from ` +
+    `the evidence below.\n\n` +
+    (continued
+      ? `A CONTINUATION: an earlier pass returned no verdict for ` +
+        `${many ? 'these topics' : 'this topic'}. Judge ${many ? 'them' : 'it'} now.\n\n`
+      : '') +
+    `OVERALL QUESTION: ${question}\n\n` +
+    `TOPICS — return exactly one verdict for each, with topic set to its key:\n\n` +
+    group.map(topicSection).join('\n\n') +
+    sharedGroundSection() +
+    (cover.windows.size > 0
+      ? `\n\nEXCERPTS — every location above, read once for you by a script, overlapping windows ` +
+        `merged. Do not open these files again to find these lines:\n\n` + excerptBlock(cover.windows)
+      : '') +
+    (cover.bare.length > 0
+      ? `\n\nLOCATIONS NOT EXCERPTED — the script could not read these for you (another ` +
+        `repository, a lost transport, or a line past the end of its file). Read each one ` +
+        `yourself, in a line range around it, and nothing else; a location that does not exist ` +
+        `is itself worth a line in risks:\n` + cover.bare.map(hitLine).join('\n')
+      : '') +
+    `\n\nYou have no search tools. Judge what these show; where they are not enough to decide ` +
+    `a topic, say what is missing in its risks rather than guessing.` +
+    (many ? ` Every topic gets its own verdict — a verdict for one does not answer another.` : '')
 }
 
-const findings = await pipeline(
-  plan.topics,
+/**
+ * One judge's whole charge: a first pass, then a continuation on exactly the topics it returned
+ * no verdict for, for as long as each pass rules on at least one more. No counter ends it
+ * (IRON LAW §1); a pass that adds nothing ends it, and what it left is dropped, loudly.
+ */
+async function judgeGroup(group) {
+  const label = groups.length === 1 ? 'judge' : `judge:${group.map((t) => t.key).join('+')}`
+  const ruled = new Map()
+  let remaining = group
+  let pass = 0
 
-  (topic) => scoutUntilComplete(topic),
+  while (remaining.length > 0) {
+    pass++
+    const keys = remaining.map((t) => t.key)
+    const out = await agent(judgePrompt(remaining, pass > 1), {
+      agentType: 'agentics:analyst', schema: verdictsSchema(keys),
+      phase: 'Judge', label: label + (pass > 1 ? `#${pass}` : ''), ...tiered(judge, 'high'),
+    }).catch((e) => {
+      log(`${label}: the judge failed (${e && e.message}); its unruled topics are dropped.`)
+      return null
+    })
+    if (!out) break
 
-  async (found, topic) => agent(
-    `Answer this part of a larger question, using the locations below as your starting point.\n\n` +
-    `OVERALL QUESTION: ${question}\n` +
-    `THIS TOPIC: ${topic.find}\n\n` +
-    `LOCATIONS FOUND (read only what you need, in line ranges):\n` +
-    JSON.stringify(found.hits, null, 1) +
-    `\n\nSEARCH SURFACE ACTUALLY COVERED:\n${found.searched.join('\n')}` +
-    (found.noMatch ? `\n\nSEARCHED AND NOT FOUND (this is evidence of absence):\n${found.noMatch}` : '') +
-    (found.notReached ? `\n\nNEVER SEARCHED: ${found.notReached}` : '') +
-    cachedEvidenceSection(topic) +
-    sharedGroundSection(await commonGround) +
-    (found.complete
-      ? `\n\nThe search was exhausted. Judge the search surface above for yourself: if it ` +
-        `does not actually cover the topic, say so in risks rather than accepting it.`
-      : `\n\nWARNING: the search did NOT finish and is not exhaustive. Your conclusion ` +
-        `inherits that limit — state what it rests on and what would change it.`) +
-    `\n\nDo not search yourself. Judge what these show. Set topic to exactly "${topic.key}".`,
-    { agentType: 'agentics:analyst', schema: VERDICT,
-      phase: 'Analyze', label: `analyze:${topic.key}`, ...tiered(judge, 'high') },
-  ).catch((e) => {
-    // The only unguarded agent call would be this one. The reconciliation below already
-    // assumes a failed item arrives as falsy; catching here makes that true whatever
-    // pipeline() does with a rejection, and keeps the promise that survey never throws.
-    // The topic then falls into `dropped`, so coverage.complete goes false rather than the
-    // whole run dying and the caller getting nothing it can reason about.
-    log(`${topic.key}: analysis failed (${e && e.message}); reporting the topic as dropped.`)
-    return null
-  }),
-)
+    const got = Array.isArray(out.verdicts) ? out.verdicts.filter(Boolean) : []
+    let gained = 0
 
-// ---------------------------------------------------------- 6. account
+    // A judge holding one topic has one verdict to give: it is that topic's whatever key the
+    // model typed, so a mistyped echo cannot turn a ruled topic into a dropped one.
+    if (remaining.length === 1 && got.length > 0 && !got.some((v) => v.topic === keys[0])) {
+      got[0] = { ...got[0], topic: keys[0] }
+    }
+    for (const v of got) {
+      if (keys.includes(v.topic) && !ruled.has(v.topic)) {
+        ruled.set(v.topic, v)
+        gained++
+      }
+    }
 
-// Reconcile by pipeline index, not by the topic string the analyst echoed back. pipeline()
-// preserves order, so this is exact and needs no cooperation from the model — a verdict that
-// came back under a mistyped key used to be counted as dropped and included as evidence at
-// the same time.
+    if (gained === 0) {
+      log(`${label}: pass ${pass} ruled on none of ${keys.join(', ')} — stopping rather than looping.`)
+      break
+    }
+    remaining = remaining.filter((t) => !ruled.has(t.key))
+    if (remaining.length > 0) {
+      log(`${label}: no verdict yet for ${remaining.map((t) => t.key).join(', ')}; continuing on those.`)
+    }
+  }
+
+  return ruled
+}
+
+const rulings = await Promise.all(groups.map((group) => judgeGroup(group)))
+const ruledBy = new Map()
+for (const r of rulings) for (const [k, v] of r) ruledBy.set(k, v)
+
+// ---------------------------------------------------------------- 7. account
+
 const verdicts = []
 const dropped = []
-plan.topics.forEach((topic, i) => {
-  if (findings[i]) verdicts.push(findings[i])
+for (const topic of topics) {
+  if (ruledBy.has(topic.key)) verdicts.push(ruledBy.get(topic.key))
   else dropped.push(topic.key)
-})
+}
 
-if (dropped.length > 0) log(`WARNING: no result for topic(s): ${dropped.join(', ')}`)
+if (dropped.length > 0) log(`WARNING: no verdict for topic(s): ${dropped.join(', ')}`)
 if (partial.length > 0) log(`WARNING: could not search to exhaustion: ${partial.join(', ')}`)
 
 const history = await historyChannel
 const docs = await docsChannel
 
 // A requested channel that produced nothing — it threw, it returned nothing, or the planner
-// asked for it and then gave it no question. All three mean the same thing downstream: the
-// evidence is not there, and any claim resting on it is unsupported.
+// asked for it and then gave it no question. All three mean the evidence is not there, and any
+// claim resting on it is unsupported.
 const failedChannels = []
 if (history.requested && !history.result) failedChannels.push('history')
 if (docs.requested && !docs.result) failedChannels.push('docs')
 
 // A channel that RETURNED but did not exhaust its search is not a failure and not a success.
 // It belongs with the partially-searched topics: real evidence, known to be incomplete, and
-// resumable. Before the channels carried a stop_reason this case was invisible, and a
-// half-read history left coverage.complete true.
+// resumable.
 const truncatedChannels = []
 if (history.result && history.result.stop_reason !== 'exhausted') truncatedChannels.push('history')
 if (docs.result && docs.result.stop_reason !== 'exhausted') truncatedChannels.push('docs')
@@ -1164,189 +1277,16 @@ function channelEvidence(channel) {
         `as settled.`)
 }
 
-const unreached = []
-
-// A topic that produced a verdict but never exhausted its search is still incomplete. One
-// that produced nothing at all is already in `dropped`, so this filter prevents it being
-// counted twice.
+// A topic that produced a verdict but never exhausted its search is still incomplete. One that
+// produced nothing at all is already in `dropped`, so it is not counted twice.
 const droppedKeys = new Set(dropped)
-const incomplete = partial.filter((k) => !droppedKeys.has(k)).concat(truncatedChannels)
-
-// ---------------------------------------------------------- 5b. what this survey can deposit
-//
-// One kind, and it is the only one a survey can honestly mint: `absence`. A search that was
-// EXHAUSTED and came back with nothing is the one thing a scout establishes that no later run can
-// cheaply re-establish — it costs a full search to learn that a full search finds nothing.
-//
-// Two rules make it safe, and both were forced rather than chosen.
-//
-// ONLY FROM AN EXHAUSTED SEARCH. An absence from a scout that stopped early is a false negative
-// written into the base as evidence, and the collapse arithmetic would then skip a survey on the
-// strength of a search that never finished. `complete` here is `stop_reason === 'exhausted'`,
-// derived by the resume engine and never claimed by an agent.
-//
-// THE ID IS MINTED FROM STABLE INPUTS. Shadowing works because re-observing a fact mints the same
-// id from the same bytes, which is what makes newest-id-wins do any work at all. So the id hashes
-// the topic's SUBTREE and its KEY — a path and a kebab slug, short and stable across passes that
-// search the same ground — and never the claim's prose. The prose then carries what the scout
-// looked for and did not find, and a later pass that phrases it differently SHADOWS its
-// predecessor with better wording instead of appending a near-duplicate beside it. That is
-// precisely the failure that keeps `structural` unwritten: a model-authored sentence rehashes
-// every time, so the base grows without ever consolidating.
-//
-// This is an addition, not the relocation an earlier draft proposed: `agentics-develop`'s run-end
-// deposit is untouched, and its two producers — `gotcha` from an approved order's discovered set,
-// `command` from a verification — keep working exactly as they do, because both are built from
-// run-time material that does not exist when a survey runs.
-const COMMAND_BUDGET = 5000
-
-function absenceDeposits() {
-  const entries = []
-
-  for (const topic of plan.topics) {
-    const path = topicPath(topic)
-    const found = scouted.get(topic.key)
-
-    // A repository-wide absence is too broad to mean anything, and `about` cannot be empty.
-    if (!path || !found || !found.complete || found.hits.length > 0) continue
-
-    const surface = String(found.noMatch || '').replace(/\s+/g, ' ').trim()
-    entries.push({
-      id: 'absence:' + fnv1a(path + '\u0000' + topic.key),
-      claim: 'an exhausted search of ' + path + ' for ' + topic.key + ' found nothing' +
-        (surface ? ': ' + surface : ''),
-      kind: 'absence',
-      about: [path],
-      // The script has no filesystem and no git, so the commit is measured by the writer in the
-      // repository rather than guessed at here or asked of a model.
-      observed_at: 'HEAD',
-      source: { via: 'survey-absence', topic: topic.key },
-    })
-  }
-
-  return entries
-}
-
-function absencePrompt(entries) {
-  const batches = []
-  let current = []
-  for (const entry of entries) {
-    const grown = current.concat([entry])
-    if (current.length > 0 && base64(JSON.stringify({ entries: grown })).length > COMMAND_BUDGET) {
-      batches.push(current)
-      current = [entry]
-    } else {
-      current = grown
-    }
-  }
-  if (current.length > 0) batches.push(current)
-
-  const commands = batches.map((batch) =>
-    `node "${pluginRoot}/lib/kb.mjs" append "${kbRepo}" ` +
-    `--digest ${fnv1a(canonical({ entries: batch }))} ` +
-    `--b64 ${base64(JSON.stringify({ entries: batch }))}`).join('\n\n')
-
-  return `DEPOSIT MODE. Append what these searches established to the project knowledge base.\n\n` +
-    `REPOSITORY: ${kbRepo}\n\n` +
-    (batches.length === 1
-      ? `Run exactly this, as ONE line:\n\n`
-      : `Run these ${batches.length} commands, each as ONE line, in this order. They are ` +
-        `separate batches of the same deposit and each is written on its own — a later one ` +
-        `failing does not undo an earlier one:\n\n`) +
-    commands + `\n\n` +
-    rootWarning +
-    `The long token is a batch of entries, base64-encoded. Copy it as one unbroken string — do ` +
-    `not wrap it, do not insert a newline or a backslash continuation, and do not quote it. It ` +
-    `contains only letters, digits, +, / and = , so there is nothing in it for a shell to ` +
-    `interpret. The writer decodes it and recomputes the digest above over what came out; a ` +
-    `token that changed by one character is REFUSED and NOTHING is written.\n\n` +
-    `Every entry here says the same kind of thing: a search of a named subtree was run to ` +
-    `exhaustion and found nothing. You do not choose where one lands, you do not reword a ` +
-    `claim, and you do not drop one that reads uninteresting — an absence is often the finding ` +
-    `that decides a question, and it is the one thing a later run cannot cheaply re-establish.\n\n` +
-    `Read each writer's output. {"ok":true,...} means that batch is on disk. ` +
-    `{"ok":false,"error":...} means it refused; the error names what was wrong. Run that ` +
-    `command again, the whole token.\n\n` +
-    `If a command comes back from the SHELL rather than from the writer — "unexpected EOF", a ` +
-    `truncated line, an unmatched quote — the command line was too long for this platform and ` +
-    `retyping it will fail the same way every time. Do not try a heredoc or a script file: ` +
-    `those put the same token on the same one command line. Write the token to a file in ` +
-    `pieces instead, with several appends, and then pass the PATH:\n\n` +
-    `   printf %s '<first piece>' > kb-deposit.b64\n` +
-    `   printf %s '<next piece>' >> kb-deposit.b64\n` +
-    `   node "${pluginRoot}/lib/kb.mjs" append "${kbRepo}" --digest <that batch's digest> ` +
-    `--b64-file kb-deposit.b64\n\n` +
-    `Only when a batch has failed both ways: return stop_reason unwritable with the error ` +
-    `verbatim in notes. Return stop_reason recorded only when every batch above reported ok:true.`
-}
-
-const absences = absenceDeposits()
-
-if (absences.length > 0) {
-  // A side channel with IRON LAW §5 treatment: it is written for the NEXT run, so a deposit that
-  // does not land costs this result nothing it was going to have. It is still said out loud —
-  // silently learning nothing durable is how a repository stays as ignorant on run 20 as on run 1.
-  const held = await agent(absencePrompt(absences), {
-    agentType: 'agentics:kb', effort: 'low', model: 'haiku', schema: DEPOSIT,
-    phase: 'Analyze', label: 'kb-deposit',
-  }).catch((e) => {
-    log(`WARNING: the knowledge-base deposit failed to run: ${e && e.message}`)
-    return null
-  })
-
-  if (held && held.stop_reason === 'recorded') {
-    log(`Deposited ${absences.length} absence entr(ies): ` +
-      absences.map((e) => e.about[0]).join(', ') + '.')
-    kbNotes.push(`${absences.length} exhausted search(es) that found nothing were deposited to ` +
-      `the project knowledge base, so a later run reads them instead of buying the same empty ` +
-      `search again. Nothing in THIS result came from them — they were written by it.`)
-  } else {
-    log(`WARNING: what these searches established was not made durable ` +
-      `(${(held && held.notes) || 'the deposit dispatch returned nothing'}).`)
-    kbNotes.push('this survey exhausted ' + absences.length + ' search(es) that found nothing ' +
-      'and could not write them to the knowledge base, so the next run over this ground pays ' +
-      'for the same empty searches again. It costs this result nothing.')
-  }
-}
-
-// Provenance, computed from what this script actually handed to a dispatch — never from an
-// analyst's account of what it leaned on. One line per topic that received cached evidence,
-// naming how much and the commits it was observed at, so a reader can see which part of this
-// result was searched for today and which part was recalled.
-//
-// A topic that received only leads gets no line: a lead is not evidence, no verdict rests on
-// one, and claiming provenance for something nothing was built on would make this field mean
-// less rather than more.
-const fromKb = kbNotes.slice()
-let verificationTopics = 0
-
-for (const topic of plan.topics) {
-  const fresh = kbForTopic(topic).fresh
-  if (fresh.length === 0) continue
-  verificationTopics++
-
-  const shas = [...new Set(fresh.map((e) => e.observed_at || 'an unrecorded commit'))]
-  fromKb.push(`${topic.key}: ${fresh.length} fresh knowledge-base entr` +
-    `${fresh.length === 1 ? 'y' : 'ies'} for ${topicPath(topic) || '(repository-wide)'} entered ` +
-    `this topic's evidence, observed at ${shas.join(', ')}. This run did not re-establish what ` +
-    `they carry; the search covered what they do not.`)
-}
-
-// The degenerate case the topology rule names: every topic already covered, so what ran was one
-// verification pass rather than a discovery survey. Said out loud, because a phase that shrinks
-// without saying so is exactly the silent maximalism-in-reverse the coverage block exists against.
-if (verificationTopics > 0 && verificationTopics === plan.topics.length) {
-  fromKb.push('every topic in this plan rested on fresh knowledge-base ground, so what ran was ' +
-    'a verification pass rather than a discovery survey: the searches confirmed what was ' +
-    'already recorded and covered what it did not reach.')
-  log('Every topic was a verification topic — this survey ran as a verification pass.')
-}
+const incomplete = [...new Set(partial)].filter((k) => !droppedKeys.has(k)).concat(truncatedChannels)
 
 return surveyResult(
-  plan.topics.map((t) => t.key),
+  topics.map((t) => t.key),
   verdicts,
   channelEvidence(history),
   channelEvidence(docs),
-  coverageOf(dropped, incomplete, failedChannels, unreached, fromKb),
-  [...new Set(plan.topics.map((t) => kbArg(t.kb_path)))],
+  coverageOf(dropped, incomplete, failedChannels, []),
+  [...new Set(topics.map((t) => groundPath(t.subtree)))],
 )

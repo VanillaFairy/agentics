@@ -142,56 +142,14 @@ export function carriedPayload(measurement = {}, damage) {
 /**
  * Any digest-covered payload, carried by a courier.
  *
- * The envelope is the same one `lib/verify.mjs`, `lib/run-verdict.mjs`, `lib/merge.mjs`,
- * `lib/gc.mjs` and `lib/kb.mjs` all print, so the trip is the same trip whatever computed it.
+ * The envelope is the same one `lib/verify.mjs`, `lib/boundary.mjs`, `lib/citations.mjs` and
+ * `lib/effort.mjs` all print, so the trip is the same trip whatever computed it.
  */
 export function carriedEnvelope(payload, damage, notes = 'ran the command and pasted its stdout') {
   const envelope = { payload, payload_digest: fnv1a(canonical(payload)) }
   if (damage) damage(envelope)
 
   return { stop_reason: 'carried', payload_raw: JSON.stringify(envelope), notes }
-}
-
-/**
- * `lib/kb.mjs chain`'s payload, carried — one chain per locus path.
- *
- * A scenario writes only what it cares about (`{ 'src/W1.js': [{ claim: 'x', state: 'stale' }] }`)
- * and the rest of each entry is filled in the way the program fills it: fresh unless the scenario
- * says otherwise, a `gotcha` unless it says otherwise, and every field the workflow reads present.
- */
-export function carriedChain(byPath = {}, damage, kbPresent = true) {
-  const chains = Object.entries(byPath).map(([path, entries]) => ({
-    path,
-    nodes: [''],
-    entries: entries.map((entry, i) => ({
-      id: path + '#' + i,
-      claim: 'something known about ' + path,
-      kind: 'gotcha',
-      about: [path],
-      observed_at: 'base1234',
-      source: { runstamp: '20260830-101500', via: 'coder-discovered' },
-      node: '',
-      state: 'fresh',
-      reason: 'no commit has touched its subject since base1234',
-      ...entry,
-    })),
-  }))
-
-  const all = chains.flatMap((c) => c.entries)
-  const count = (state) => all.filter((e) => e.state === state).length
-
-  return carriedEnvelope({
-    repo: 'C:/repo',
-    chains,
-    counts: { fresh: count('fresh'), stale: count('stale'), orphaned: count('orphaned') },
-    malformed: 0,
-    // Defaults true: a scenario that says nothing about the base is a repository that has one.
-    // Pass false to model the other case — no base installed at all, where the survey collapse
-    // cannot fire for any change and the refusal is a setup fact rather than a stale chain.
-    kb_present: kbPresent,
-    dirty_readable: true,
-    notes: 'read ' + chains.length + ' chain(s)',
-  }, damage)
 }
 
 /**
@@ -216,3 +174,59 @@ export function recordedLine(prompt) {
     token: call[2],
   }
 }
+
+/**
+ * The locations a `lib/citations.mjs excerpts` dispatch carries, decoded from its argv token.
+ *
+ * @param {string} prompt a courier prompt carrying `--digest D --b64 T`
+ * @returns {{ digest: string, locations: Array<{path: string, line: number}> }}
+ */
+export function excerptLocations(prompt) {
+  const call = /--digest (\S+) --b64 (\S+)/.exec(prompt || '')
+  if (!call) throw new Error('this prompt carries no --digest/--b64 locations')
+  return { digest: call[1], locations: JSON.parse(Buffer.from(call[2], 'base64').toString('utf8')) }
+}
+
+/**
+ * `lib/citations.mjs excerpts`'s payload for the locations a prompt carries: a five-line window
+ * around each location, merged when they touch, each line's text naming where it came from
+ * (`text of <path>:<n>` unless `lineText` says otherwise). Wrap it in `carriedEnvelope` to answer
+ * the courier; damage it first to exercise the transport ladder.
+ */
+export function excerptsPayload(prompt, { lineText = (path, n) => `text of ${path}:${n}` } = {}) {
+  const { locations } = excerptLocations(prompt)
+  const byPath = new Map()
+  for (const { path, line } of locations) {
+    if (!byPath.has(path)) byPath.set(path, [])
+    byPath.get(path).push({ from: Math.max(1, line - 2), to: line + 2 })
+  }
+
+  const files = [...byPath].map(([path, ranges]) => {
+    const merged = []
+    for (const r of ranges.sort((a, b) => a.from - b.from)) {
+      const last = merged[merged.length - 1]
+      if (last && r.from <= last.to + 1) last.to = Math.max(last.to, r.to)
+      else merged.push({ ...r })
+    }
+    return {
+      path,
+      lines: 999,
+      excerpts: merged.map((w) => ({
+        ...w,
+        text: Array.from({ length: w.to - w.from + 1 },
+          (_, i) => `${w.from + i}\t${lineText(path, w.from + i)}`).join('\n'),
+      })),
+    }
+  })
+
+  const windows = files.reduce((n, f) => n + f.excerpts.length, 0)
+  const bytes = files.reduce((n, f) => n + f.excerpts.reduce((m, e) => m + e.text.length, 0), 0)
+  return {
+    repo: '.', files, unresolved: [],
+    counts: { locations: locations.length, files: files.length, excerpts: windows, bytes, unresolved: 0 },
+    notes: 'resolved ' + windows + ' window(s)',
+  }
+}
+
+/** An excerpts courier that resolves every location its prompt carries. */
+export const carriedExcerpts = (prompt) => carriedEnvelope(excerptsPayload(prompt))

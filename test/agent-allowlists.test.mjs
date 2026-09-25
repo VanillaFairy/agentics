@@ -34,24 +34,22 @@ const AGENTS = new URL('../agents/', import.meta.url)
  * file without reading it.
  */
 const ALLOWLISTS = {
-  analyst: ['Glob', 'Grep', 'Read'],
-  coder: ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write'],
+  // `Read` alone: the host refuses an agent with no tools, and an analyst judges what it is handed
+  // — without Grep or Glob it cannot widen the evidence base, which is the point of the role.
+  analyst: ['Read'],
+  // Writes only its report file; it declares mutations and a script applies them.
+  auditor: ['Glob', 'Grep', 'Read', 'Write'],
+  // Runs one lib command and pastes stdout; the task tools move the launching session's todo
+  // list. No Read: a courier that could open files would be tempted to tidy what it carries.
+  courier: ['Bash', 'TaskCreate', 'TaskList', 'TaskUpdate'],
   'doc-researcher': ['Glob', 'Grep', 'Read', 'WebFetch', 'WebSearch'],
-  // As narrow as `kb`'s, for the same reason and one of its own: it runs `lib/citations.mjs` and
-  // reports what it printed. A `Read` here would turn the one dispatch that exists to REPLACE
-  // sixteen analysts' exploration into a seventeenth explorer.
-  ground: ['Bash'],
   historian: ['Bash', 'Grep', 'Read'],
-  // Narrower than `run-state`'s, on purpose. Both are couriers for one directory, but this one
-  // opens no file of its own: it runs `lib/kb.mjs` and reports what it printed, and a knowledge
-  // base is exactly the kind of tree a helpful agent would be tempted to tidy by hand.
-  kb: ['Bash'],
+  implementer: ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write'],
+  investigator: ['Bash', 'Glob', 'Grep', 'Read'],
   planner: ['Bash', 'Glob', 'Grep', 'Read', 'Write'],
   reviewer: ['Bash', 'Glob', 'Grep', 'Read'],
-  'run-state': ['Bash', 'Read', 'Write'],
   scout: ['Glob', 'Grep', 'Read'],
   'test-author': ['Edit', 'Glob', 'Grep', 'Read', 'Write'],
-  verifier: ['Bash', 'Grep', 'Read'],
 }
 
 /**
@@ -65,7 +63,7 @@ const ALLOWLISTS = {
  * failing tests and must not be able to run, implement or commit them, so a Bash added here would
  * dissolve the separation the whole role exists for without changing a word of its charter.
  */
-const NO_SHELL = ['analyst', 'doc-researcher', 'scout', 'test-author']
+const NO_SHELL = ['analyst', 'auditor', 'doc-researcher', 'scout', 'test-author']
 
 /** `tools:` out of the frontmatter block. CR-stripped: core.autocrlf is true on Windows. */
 function toolsOf(source) {

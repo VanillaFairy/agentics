@@ -1202,6 +1202,12 @@ const outputIsTheYardstick = (order) =>
 const reviewEveryOrder = input.review_every_order === true
 const reviewedPerOrder = (order) => reviewEveryOrder || outputIsTheYardstick(order)
 
+// What a set of orders costs in dispatches at its floor: coder, verifier and merge for each, and a
+// reviewer for each that buys a loop of its own. Fix rounds and further review rounds sit on top,
+// so this is a floor and is named one — a projection that flattered the plan would defeat the point.
+const dispatchFloor = (ids) =>
+  ids.reduce((n, id) => n + 3 + (reviewedPerOrder(orderById.get(id)) ? 1 : 0), 0)
+
 // Orders whose adversarial review the integration review carries, by id: the coder's concerns
 // and the verifier's advisory series findings, which a per-order reviewer would have attacked first.
 const reviewAtIntegration = new Map()
@@ -5561,6 +5567,20 @@ ${history}
   // individually, which is the ruling the boolean predecessor could not express.
   const staleWithhold = anchorLost !== '' || (staleSuspects.length > 0 && confirmedStale === null)
 
+  // The plan's price at its floor, before anything is dispatched: every wave's orders, one
+  // wave-head verify per wave, and the integration review. Said here so a parked plan carries it
+  // and a run about to start logs it — the caller can only weigh a run they can see the size of.
+  const planIds = waves.flat()
+  const planCost = {
+    orders: planIds.length,
+    waves: waves.length,
+    reviewed_per_order: planIds.filter((id) => reviewedPerOrder(orderById.get(id))).length,
+    dispatch_floor: dispatchFloor(planIds) + waves.length + 1,
+  }
+  log(`Plan size: ${planCost.orders} order(s) across ${planCost.waves} wave(s), ` +
+    `${planCost.reviewed_per_order} with a review loop of their own — at least ` +
+    `${planCost.dispatch_floor} agent dispatches, integration review included. Fix rounds add to it.`)
+
   const checkpointReason = gapsWithhold ? 'blocking_gaps'
     : staleWithhold ? 'stale'
       : planOnly ? 'plan_only' : ''
@@ -5609,6 +5629,7 @@ ${history}
         blocking_gaps: blockingGaps,
         stale: staleSuspects,
         resume_path: planPath,
+        plan_cost: planCost,
       },
       coverage: {
         complete: false,
@@ -6011,15 +6032,8 @@ ${history}
   const remainingNow = () => (budget && typeof budget.remaining === 'function' ? budget.remaining() : Infinity)
   const hasTarget = Boolean(budget && budget.total)
 
-  // Dispatches one order costs at a floor: coder, verifier, reviewer, merge. Fix rounds and
-  // review rounds sit on top, which is why this is a floor and is named one — a projection
-  // that flattered the next wave would defeat the whole point.
-  const DISPATCHES_PER_ORDER = 4
-  const waveCost = (ids) => ids.length * DISPATCHES_PER_ORDER + 1
-
-  const plannedDispatches = waves.reduce((n, ids) => n + waveCost(ids), 0)
-  log(`Plan size: ${orders.length} order(s) across ${waves.length} wave(s) — at least ` +
-    `${plannedDispatches} agent dispatches before the integration review.`)
+  // One wave at its floor: its orders, plus the verify of the merged wave head.
+  const waveCost = (ids) => dispatchFloor(ids) + 1
 
   // A missing `weight` counts as `standard` here, matching exactly what weightOf prices it as —
   // so this line and the tier a resumed order actually pays never disagree about what it is.

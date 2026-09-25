@@ -52,7 +52,7 @@ next one starts. It is off unless the user asks for it: one invocation carrying 
 change is the point of this pipeline, and paused waves cost a re-invocation each.
 
 **Reach for it — or for `--plan-only` — when this session is already deep.** The run logs its
-plan size before dispatching anything (`Plan size: N order(s) across M wave(s)`), and where the
+plan size before dispatching anything — orders, waves, and the dispatch floor — and where the
 caller set a token target the workflow stops at a wave boundary rather than starting a wave the
 target cannot cover. Neither can see an account's usage limit; you can. A run killed halfway
 through a wave does not resume cheaply: the agents that had not returned recorded nothing, so
@@ -461,7 +461,8 @@ if the session dies in the middle.
      plan is already on disk, so the confirmation is a path and a bit rather than a 55KB
      payload you retype. On a no-go, stop; the plan in the result is the deliverable.
    - **`plan_only`** — the user asked to park. Present the plan: the orders, their wave
-     layout, and what implementing it would involve. Say plainly that nothing was built and
+     layout, and what implementing it would involve — `checkpoint.plan_cost` gives the dispatch
+     floor and how many orders buy a review loop of their own; say it is a floor. Say plainly that nothing was built and
      that `resume_path` is how it gets picked up later. Do not offer to start implementing
      unless the user asks — they said plan.
    - **`stale`** — a resumed run found the user's tree moved under its plan. Step 3f.

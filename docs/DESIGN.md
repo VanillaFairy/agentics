@@ -557,7 +557,11 @@ orders merge into the integration worktree, and **the merged head is verified be
 wave branches from it.** A failure there is a defect in the combination that no single order's
 checks could have caught.
 
-The run logs its plan size before dispatching (`Plan size: N order(s) across M wave(s)`). A wave
+The run logs its plan size before dispatching: orders, waves, how many buy a review loop of their
+own, and the **dispatch floor** — coder, verifier and merge per order, a reviewer per looped
+order, a wave-head verify per wave, and the integration review. Fix rounds sit on top, so it is a
+floor and says so. A checkpoint carries the same figures as `plan_cost`, so a parked plan shows its
+price before anyone pays it. A wave
 boundary is the cheap place to stop: the state line is written and the next wave branches from a
 head that already exists. `--pause-between-waves` makes the run stop there on purpose.
 
@@ -737,7 +741,7 @@ A run can return a `checkpoint` instead of results. When it does, nothing was di
 |---|---|
 | `existing_run` | A `planned` or `in-flight` run already records this exact change string. The run refuses to plan it twice and hands back that run's `resume_path`. `confirmed_duplicate: true` overrides. |
 | `blocking_gaps` | The survey could not reach evidence the change depends on. Re-invoke with `resume_path` and `confirmed_gaps: true` to go ahead. |
-| `plan_only` | The caller asked to park the plan (`--plan-only`). |
+| `plan_only` | The caller asked to park the plan (`--plan-only`). `plan_cost` says what building it would cost at its floor. |
 | `stale` | A resumed run found the user's tree moved under its plan. |
 
 The duplicate guard lives in the workflow, not only in the skill, because a skill instruction

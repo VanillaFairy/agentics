@@ -105,3 +105,28 @@ test('with every order reviewed per order, the integration review is told so', a
   assert.doesNotMatch(review, /ORDERS WHOSE ONLY ADVERSARIAL REVIEW IS THIS ONE/)
   assert.match(review, /every order below passed its own review/)
 })
+
+// ── the plan's price, before anything is dispatched ──────────────────────────────────────────
+
+test('a parked plan carries its dispatch floor, counting review loops only where bought', async () => {
+  const orders = [order('W1'), order('W2', { contract: true })]
+  const { result, prompts, logs } = await run(orders, { plan_only: true })
+
+  const cost = result.checkpoint.plan_cost
+  assert.equal(cost.orders, 2)
+  assert.equal(cost.waves, 1)
+  assert.equal(cost.reviewed_per_order, 1, 'only the contract buys its own loop')
+  // coder, verifier and merge per order; a reviewer per looped order; a head verify per wave;
+  // the integration review.
+  assert.equal(cost.dispatch_floor, cost.orders * 3 + cost.reviewed_per_order + cost.waves + 1)
+  assert.ok(logs.some((l) => /Plan size: 2 order\(s\) across 1 wave\(s\), 1 with a review loop/.test(l)))
+  assert.ok(!labels(prompts).some((l) => l.startsWith('code:')), 'nothing was dispatched')
+})
+
+test('asking for a loop on every order raises the floor by one per order', async () => {
+  const orders = [order('W1'), order('W2')]
+  const lean = (await run(orders, { plan_only: true })).result.checkpoint.plan_cost
+  const every = (await run(orders, { plan_only: true, review_every_order: true })).result.checkpoint.plan_cost
+
+  assert.equal(every.dispatch_floor - lean.dispatch_floor, orders.length)
+})

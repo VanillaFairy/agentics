@@ -30,7 +30,7 @@ test('the repository is a single-plugin marketplace listing agentics at its root
   const manifest = JSON.parse(await readFile(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8'))
   const marketplace = JSON.parse(await readFile(new URL('../.claude-plugin/marketplace.json', import.meta.url), 'utf8'))
 
-  assert.equal(marketplace.name, 'agentics')
+  assert.equal(marketplace.name, 'vanillafairy')
   assert.equal(marketplace.owner.name, 'VanillaFairy')
   assert.equal(marketplace.plugins.length, 1, 'the marketplace ships exactly one plugin')
   const [entry] = marketplace.plugins

@@ -74,7 +74,7 @@ ground, the brief assembled by `lib/brief.mjs` — never a sentence asking a mod
 ## Versioning — bump the version in two places
 
 This repository is a single-plugin marketplace (like vf-superpowers): `.claude-plugin/marketplace.json`
-lists exactly one plugin, `agentics`, with `source: "./"`. Whenever the version is bumped, **both**
+defines the `vanillafairy` marketplace with exactly one plugin, `agentics`, with `source: "./"`. Whenever the version is bumped, **both**
 of these move together, in the same commit:
 
 1. `.claude-plugin/plugin.json` — the `version` field.

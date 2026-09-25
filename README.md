@@ -9,8 +9,9 @@ The design — the whole system as it is today — is [`docs/DESIGN.md`](docs/DE
 
 ## Install
 
-This repository is its own single-plugin marketplace: `.claude-plugin/marketplace.json` lists
-exactly one plugin, `agentics`, sourced from the repository root.
+This repository is a single-plugin marketplace: `.claude-plugin/marketplace.json` defines the
+`vanillafairy` marketplace, listing exactly one plugin, `agentics`, sourced from the repository
+root.
 
 - Register the marketplace:
 
@@ -21,10 +22,10 @@ exactly one plugin, `agentics`, sourced from the repository root.
 - Install the plugin from it:
 
   ```bash
-  /plugin install agentics@agentics
+  /plugin install agentics@vanillafairy
   ```
 
-To update later, run `/plugin marketplace update agentics`, then reinstall or enable the new
+To update later, run `/plugin marketplace update vanillafairy`, then reinstall or enable the new
 version from `/plugin`.
 
 ## Development

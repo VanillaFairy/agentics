@@ -545,7 +545,7 @@ The survey (`agentics-survey`) gathers evidence for one node and never concludes
    `stop_reason`, with `no_match` and `not_reached` kept apart, and are continued on exactly what
    remains until exhausted. History and docs channels run alongside when the plan asks, each with
    its own `.catch`.
-3. **Resolve.** A script (`lib/citations.mjs excerpts`) reads the locations, merges overlapping
+3. **Assemble context for analysis.** A script (`lib/citations.mjs excerpts`) reads the locations, merges overlapping
    windows and produces excerpts, once, under a digest.
 4. **Judge.** One analyst **without search tools** judges every topic from the excerpts, unless
    volume or `pace` earns more readers.

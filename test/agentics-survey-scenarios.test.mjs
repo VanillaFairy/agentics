@@ -54,7 +54,7 @@ const resolvePayload = excerptsPayload
 const run = (script, over = {}) => runWorkflow(WF, {
   args: { question: 'how does X work', plugin_root: 'C:/plugin', ...over },
   agent: scriptedAgents({
-    resolve: resolveAll, 'resolve:': resolveAll, judge: judgeAll, 'judge:': judgeAll, ...script,
+    assemble: resolveAll, 'assemble:': resolveAll, judge: judgeAll, 'judge:': judgeAll, ...script,
   }),
 })
 
@@ -586,7 +586,7 @@ test('nothing about the knowledge base survives in the coverage block', async ()
   assert.ok(!labelsOf(prompts).some((l) => /^kb-/.test(l)))
 })
 
-// ------------------------------------------------------------------ resolve
+// ------------------------------------------------------------------ assemble
 //
 // Every location the scouts found is read ONCE, by a script, and handed to the judge as merged
 // excerpts under a digest. The workflow mints the locations whole, base64 on one argv slot with
@@ -603,7 +603,7 @@ test('every location, the shared ground included, is resolved once by a courier'
     'scout:b': HITS({ hits: [{ path: 'src/x.js', line: 1, note: 'x again' }] }),
   })
 
-  const resolves = prompts.filter((p) => /^resolve/.test(p.opts.label))
+  const resolves = prompts.filter((p) => /^assemble/.test(p.opts.label))
   assert.equal(resolves.length, 1, 'one read for every topic, not one per topic')
   assert.equal(resolves[0].opts.agentType, 'agentics:courier')
   assert.equal(resolves[0].opts.model, 'haiku', 'pasting stdout back is not judgment')
@@ -626,8 +626,8 @@ test('a search that found nothing resolves nothing and is still judged', async (
     plan: PLAN(), 'scout:': HITS({ hits: [], no_match: 'no retry helper anywhere' }),
   })
 
-  assert.ok(!labelsOf(prompts).some((l) => /^resolve/.test(l)), 'no locations, no courier')
-  assert.ok(logs.some((l) => /Nothing to resolve/.test(l)))
+  assert.ok(!labelsOf(prompts).some((l) => /^assemble/.test(l)), 'no locations, no courier')
+  assert.ok(logs.some((l) => /No context to assemble/.test(l)))
   assert.match(promptFor(prompts, 'judge'), /no retry helper anywhere/, 'absence is evidence to judge')
   assert.equal(result.coverage.complete, true)
 })
@@ -635,11 +635,11 @@ test('a search that found nothing resolves nothing and is still judged', async (
 test('excerpts damaged in transit are refetched on a stronger courier, then believed', async () => {
   const { result, prompts } = await run({
     plan: PLAN(), 'scout:': HITS(),
-    resolve: (p) => carriedEnvelope(resolvePayload(p), (env) => { env.payload.files[0].excerpts[0].text = 'forged' }),
-    'resolve#2': resolveAll,
+    assemble: (p) => carriedEnvelope(resolvePayload(p), (env) => { env.payload.files[0].excerpts[0].text = 'forged' }),
+    'assemble#2': resolveAll,
   })
 
-  const retry = prompts.find((p) => p.opts.label === 'resolve#2')
+  const retry = prompts.find((p) => p.opts.label === 'assemble#2')
   assert.ok(retry, 'a digest mismatch buys a refetch')
   assert.equal(retry.opts.model, 'sonnet')
   assert.doesNotMatch(promptFor(prompts, 'judge'), /forged/)
@@ -650,11 +650,11 @@ test('excerpts damaged in transit are refetched on a stronger courier, then beli
 test('a token the program refused as damaged on its way in is sent again', async () => {
   const { prompts } = await run({
     plan: PLAN(), 'scout:': HITS(),
-    resolve: carriedEnvelope({ ok: false, error: { kind: 'digest_mismatch', message: 'the token changed' } }),
-    'resolve#2': resolveAll,
+    assemble: carriedEnvelope({ ok: false, error: { kind: 'digest_mismatch', message: 'the token changed' } }),
+    'assemble#2': resolveAll,
   })
 
-  assert.equal(prompts.find((p) => p.opts.label === 'resolve#2').opts.model, 'haiku')
+  assert.equal(prompts.find((p) => p.opts.label === 'assemble#2').opts.model, 'haiku')
   assert.match(promptFor(prompts, 'judge'), /EXCERPTS/)
 })
 
@@ -662,10 +662,10 @@ test('a resolve that cannot be carried is a side channel: the judge reads the lo
   const failed = { stop_reason: 'failed', payload_raw: '', task_ids: [], task_tools: 'skipped', notes: 'node is not on the PATH' }
   const { result, prompts, logs } = await run({
     plan: PLAN(), 'scout:': HITS({ hits: [{ path: 'src/x.js', line: 42, note: 'the thing' }] }),
-    resolve: failed, 'resolve#2': failed,
+    assemble: failed, 'assemble#2': failed,
   })
 
-  assert.equal(prompts.filter((p) => /^resolve/.test(p.opts.label)).length, 2, 'retried once, then let go')
+  assert.equal(prompts.filter((p) => /^assemble/.test(p.opts.label)).length, 2, 'retried once, then let go')
   assert.ok(logs.some((l) => /not resolved[\s\S]*node is not on the PATH/.test(l)))
 
   const judged = promptFor(prompts, 'judge')
@@ -682,7 +682,7 @@ test('a location the script could not read reaches the judge as a location, besi
   const { prompts } = await run({
     plan: PLAN(),
     'scout:': HITS({ hits: [{ path: 'src/x.js', line: 3, note: 'here' }, { path: 'other-repo/y.js', line: 9, note: 'there' }] }),
-    resolve: (p) => {
+    assemble: (p) => {
       const payload = resolvePayload(p)
       payload.files = payload.files.filter((f) => f.path === 'src/x.js')
       payload.unresolved = [{ path: 'other-repo/y.js', why: 'missing', detail: 'no such file' }]
@@ -699,7 +699,7 @@ test('locations too many for one argv slot travel in batches, one file never spl
   const hits = Array.from({ length: 400 }, (_, i) => ({ path: `src/dir-${i % 40}/file-${i % 40}.js`, line: 10 * i + 1, note: 'n' }))
   const { prompts } = await run({ plan: PLAN(), 'scout:': HITS({ hits }) })
 
-  const resolves = prompts.filter((p) => /^resolve/.test(p.opts.label))
+  const resolves = prompts.filter((p) => /^assemble/.test(p.opts.label))
   assert.ok(resolves.length > 1)
   const pathsPer = resolves.map((p) => new Set(locationsIn(p.prompt).locations.map((l) => l.path)))
   const all = pathsPer.flatMap((set) => [...set])
@@ -755,7 +755,7 @@ test('excerpt bytes earn judges too, not only windows', async () => {
     plan: PLAN({ topics: topicsOf(2) }),
     'scout:t1': HITS({ hits: Array.from({ length: 10 }, (_, i) => ({ path: 'src/big1.js', line: 100 * i + 50, note: 'n' })) }),
     'scout:t2': HITS({ hits: Array.from({ length: 10 }, (_, i) => ({ path: 'src/big2.js', line: 100 * i + 50, note: 'n' })) }),
-    resolve: (p) => carriedEnvelope(resolvePayload(p, { lineText: () => long })),
+    assemble: (p) => carriedEnvelope(resolvePayload(p, { lineText: () => long })),
   })
 
   assert.equal(prompts.filter((p) => /^judge/.test(p.opts.label)).length, 2)

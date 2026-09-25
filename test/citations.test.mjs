@@ -6,7 +6,7 @@
 //   merging      overlapping windows in one file collapse into the fewest that cover them
 //   the three    resolved / out_of_range / missing, kept apart
 //   discipline   nothing outside the repository is read, and a dead citation is a FINDING
-//   locations    the survey's Resolve step: scout locations in, merged excerpts out, under a
+//   locations    the survey's Assemble-context step: scout locations in, merged excerpts out, under a
 //                digest on both sides of the courier
 //
 // Design: docs/DESIGN.md#what-a-probe-costs, docs/DESIGN.md#survey.

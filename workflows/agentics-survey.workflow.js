@@ -8,7 +8,7 @@ export const meta = {
     { title: 'Scout' },
     { title: 'History' },
     { title: 'Docs' },
-    { title: 'Resolve', detail: 'one script reads every location once and merges the windows' },
+    { title: 'Assemble context for analysis', detail: 'one script reads every location once and merges the windows' },
     { title: 'Judge', detail: 'one analyst without search tools, unless volume or pace earns more' },
   ],
 }
@@ -941,7 +941,7 @@ const commonGround = commonFind
 const scouted = await parallel(topics.map((topic) => () => scoutUntilComplete(topic)))
 const common = await commonGround
 
-// ------------------------------------------------------------ 5. resolve
+// ------------------------------------------------ 5. assemble context for analysis
 //
 // Every location the scouts found, read ONCE by a script, overlapping windows merged, and handed
 // to the judges as excerpts under a digest. A judge that is handed the lines spends its turns
@@ -952,7 +952,7 @@ const common = await commonGround
 // was lost in transport, or the file is not in the first root — reaches the judge as a location
 // to read itself, which its constitution permits. That costs turns, not evidence.
 
-phase('Resolve')
+phase('Assemble context for analysis')
 
 const locKey = (path, line) => String(path) + ':' + String(line)
 
@@ -1004,11 +1004,12 @@ const resolvedFiles = []
 const resolveFailures = []
 
 if (allLocations.length === 0) {
-  log('Nothing to resolve: no scout reported a location.')
+  log('No context to assemble: no scout reported a location.')
 } else {
   const batches = batchesOf(allLocations)
   const carried = await Promise.all(batches.map((batch, i) =>
-    carry(excerptCommand(batch), batches.length === 1 ? 'resolve' : `resolve:${i + 1}`, 'Resolve')))
+    carry(excerptCommand(batch), batches.length === 1 ? 'assemble' : `assemble:${i + 1}`,
+      'Assemble context for analysis')))
 
   carried.forEach((held, i) => {
     if (held.payload) resolvedFiles.push(...(held.payload.files || []))

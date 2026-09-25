@@ -71,18 +71,11 @@ it.
 Where this plugin needs shared ground it is code — `lib/citations.mjs`, the survey's common
 ground, the brief assembled by `lib/brief.mjs` — never a sentence asking a model to arrange it.
 
-## Versioning — bump the version in two places
+## Versioning
 
-This repository is a single-plugin marketplace (like vf-superpowers): `.claude-plugin/marketplace.json`
-defines the `vanillafairy` marketplace with exactly one plugin, `agentics`, with `source: "./"`. Whenever the version is bumped, **both**
-of these move together, in the same commit:
-
-1. `.claude-plugin/plugin.json` — the `version` field.
-2. `.claude-plugin/marketplace.json` — `plugins[0].version`.
-
-At install time `plugin.json` wins, but the marketplace entry is what `claude plugin list
---available` and update tooling report, so a stale one reads like a version nobody is running.
-`test/plugin-manifest.test.mjs` fails when the two differ. Verify with:
+The version lives only in `.claude-plugin/plugin.json`. The plugin ships through the `vanillafairy`
+marketplace (VanillaFairy/agentic-plugins), which holds this repository as a submodule and carries
+no version of its own for it. Verify with:
 
     claude plugin validate .
 

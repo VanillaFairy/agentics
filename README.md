@@ -9,14 +9,12 @@ The design — the whole system as it is today — is [`docs/DESIGN.md`](docs/DE
 
 ## Install
 
-This repository is a single-plugin marketplace: `.claude-plugin/marketplace.json` defines the
-`vanillafairy` marketplace, listing exactly one plugin, `agentics`, sourced from the repository
-root.
+The plugin ships through the `vanillafairy` marketplace.
 
 - Register the marketplace:
 
   ```bash
-  /plugin marketplace add VanillaFairy/agentics
+  /plugin marketplace add VanillaFairy/agentic-plugins
   ```
 
 - Install the plugin from it:

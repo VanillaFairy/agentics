@@ -21,20 +21,3 @@ test('plugin.json parses and declares the required fields', async () => {
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/)
   assert.equal(manifest.author.name, 'VanillaFairy')
 })
-
-// This repository is its own single-plugin marketplace, so a user can
-// `/plugin marketplace add VanillaFairy/agentics`. The marketplace's version is what
-// `claude plugin list --available` and update tooling report, while plugin.json wins at
-// install time — a drift between the two reads as a version nobody is running.
-test('the repository is a single-plugin marketplace listing agentics at its root', async () => {
-  const manifest = JSON.parse(await readFile(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8'))
-  const marketplace = JSON.parse(await readFile(new URL('../.claude-plugin/marketplace.json', import.meta.url), 'utf8'))
-
-  assert.equal(marketplace.name, 'vanillafairy')
-  assert.equal(marketplace.owner.name, 'VanillaFairy')
-  assert.equal(marketplace.plugins.length, 1, 'the marketplace ships exactly one plugin')
-  const [entry] = marketplace.plugins
-  assert.equal(entry.name, manifest.name)
-  assert.equal(entry.source, './')
-  assert.equal(entry.version, manifest.version, 'marketplace.json and plugin.json must carry the same version')
-})

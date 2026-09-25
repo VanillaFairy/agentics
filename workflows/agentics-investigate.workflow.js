@@ -70,9 +70,17 @@ const asTasks = Boolean(input.as_tasks)
 // they share one derivation rule (fable → max, opus → normal, sonnet and below → low) and a
 // sonnet session therefore sends `low` here as readily as it sends it to develop. The judging
 // tier in this workflow is the analyst that synthesizes.
-const JUDGE_TIER = { low: { model: 'sonnet' }, normal: { model: 'opus' }, max: { model: 'fable' } }
+const JUDGE_TIER = { low: { model: 'sonnet' }, normal: { model: 'opus' }, max: { model: 'opus' } }
 const intelligence = Object.hasOwn(JUDGE_TIER, input.intelligence) ? input.intelligence : 'normal'
 const judge = JUDGE_TIER[intelligence]
+
+// Effort follows the model a judging dispatch resolves to: opus at medium, one step up at `max`;
+// sonnet one step above the call site's base.
+const SONNET_STEP = { low: 'low', medium: 'high', high: 'xhigh' }
+const tiered = (tier, base) => ({
+  ...tier,
+  effort: tier.model === 'sonnet' ? SONNET_STEP[base] : intelligence === 'max' ? 'high' : 'medium',
+})
 
 const MAX_TASKS = 12
 
@@ -233,8 +241,8 @@ if (asTasks) {
     `"ref" is a local id used only by blocked_by. Put anything the investigation could not ` +
     `establish in "gaps"; do not invent a task to paper over it. Return at most ` +
     `${MAX_TASKS} tasks — merge rather than exceed.`,
-    { agentType: 'agentics:analyst', effort: 'high', schema: TASKS,
-      label: 'synthesize:tasks', ...judge },
+    { agentType: 'agentics:analyst', schema: TASKS,
+      label: 'synthesize:tasks', ...tiered(judge, 'high') },
   ).catch((e) => {
     log(`WARNING: task synthesis failed: ${e && e.message}`)
     return null
@@ -281,7 +289,7 @@ const report = await agent(
   `Lead with the recommendation in one or two sentences. Then the reasons that decide it, ` +
   `each tied to a path:line, a commit, or a URL. Then risks and open questions, only where ` +
   `they change the decision. Do not restate the question. Do not list options you rejected.`,
-  { agentType: 'agentics:analyst', effort: 'high', label: 'synthesize', ...judge },
+  { agentType: 'agentics:analyst', label: 'synthesize', ...tiered(judge, 'high') },
 ).catch((e) => {
   log(`WARNING: report synthesis failed: ${e && e.message}`)
   return null

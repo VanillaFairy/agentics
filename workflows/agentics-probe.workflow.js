@@ -554,7 +554,7 @@ log(`Probing ${artifact} on ${axes.length} axes with ${analysts} analyst(s) — 
 // left stays in the coverage block as unreached.
 async function attack(bundle) {
   const opts = {
-    agentType: 'agentics:analyst', effort: 'high',
+    agentType: 'agentics:analyst', effort: 'medium',
     schema: probeFindings(bundle.map((a) => a.key)), phase: 'Probe', label: bundleLabel(bundle),
   }
   const passes = []

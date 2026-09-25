@@ -297,9 +297,17 @@ const maxAngles = input.max_angles || 4
 // sonnet session therefore sends `low` here as readily as it sends it to develop. The judging
 // tier in this workflow is the analyst that frames the capability and the ones that assess
 // each candidate.
-const JUDGE_TIER = { low: { model: 'sonnet' }, normal: { model: 'opus' }, max: { model: 'fable' } }
+const JUDGE_TIER = { low: { model: 'sonnet' }, normal: { model: 'opus' }, max: { model: 'opus' } }
 const intelligence = Object.hasOwn(JUDGE_TIER, input.intelligence) ? input.intelligence : 'normal'
 const judge = JUDGE_TIER[intelligence]
+
+// Effort follows the model a judging dispatch resolves to: opus at medium, one step up at `max`;
+// sonnet one step above the call site's base.
+const SONNET_STEP = { low: 'low', medium: 'high', high: 'xhigh' }
+const tiered = (tier, base) => ({
+  ...tier,
+  effort: tier.model === 'sonnet' ? SONNET_STEP[base] : intelligence === 'max' ? 'high' : 'medium',
+})
 
 // ---------------------------------------------------------------- coverage
 //
@@ -385,7 +393,7 @@ const frame = await agent(
   `provides some of this. Something already on the dependency list beats every candidate ` +
   `the search will turn up, and it costs one scout to check.\n\n` +
   `Do not search anything yourself. Frame only.`,
-  { agentType: 'agentics:analyst', effort: 'medium', schema: FRAME, label: 'frame', ...judge },
+  { agentType: 'agentics:analyst', schema: FRAME, label: 'frame', ...tiered(judge, 'medium') },
 ).catch((e) => {
   log(`WARNING: framing failed: ${e && e.message}`)
   return null
@@ -654,7 +662,7 @@ if (gathered.length > 0) {
     `the fact, that belongs in notes as an open question. Whether the remaining candidates ` +
     `are worth adopting is the caller's decision and rests on things you cannot see: their ` +
     `dependency appetite, their licence policy, whether they want to own this code.`,
-    { agentType: 'agentics:analyst', effort: 'high', schema: ASSESSMENT, label: 'assess', ...judge },
+    { agentType: 'agentics:analyst', schema: ASSESSMENT, label: 'assess', ...tiered(judge, 'high') },
   ).catch((e) => {
     log(`WARNING: assessment failed: ${e && e.message}`)
     return null

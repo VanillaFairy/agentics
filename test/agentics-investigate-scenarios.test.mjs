@@ -45,20 +45,22 @@ test('a survey resolving under neither name is reported as a broken plugin refer
 // workflow as readily as it sends it to develop. A script that recognised only two positions
 // would serve the third as `normal` while the caller reported the tier it derived.
 test('the judging tier follows the dial through all three positions', async () => {
-  const modelAt = async (intelligence) => {
+  const tierAt = async (intelligence) => {
     const { prompts } = await runWorkflow(WF, {
       args: { question: 'how does X work', intelligence },
       agent: scriptedAgents({ synthesize: 'the answer' }),
       workflow: () => surveyResult(),
     })
-    return prompts.find((p) => p.opts.label === 'synthesize').opts.model
+    const { model, effort } = prompts.find((p) => p.opts.label === 'synthesize').opts
+    return { model, effort }
   }
 
-  assert.equal(await modelAt('low'), 'sonnet')
-  assert.equal(await modelAt('normal'), 'opus')
-  assert.equal(await modelAt('max'), 'fable')
-  assert.equal(await modelAt(undefined), 'opus', 'an absent dial is the derived `normal`')
-  assert.equal(await modelAt('cheap'), 'opus', 'and so is a position nobody defined')
+  const normal = { model: 'opus', effort: 'medium' }
+  assert.deepEqual(await tierAt('low'), { model: 'sonnet', effort: 'xhigh' })
+  assert.deepEqual(await tierAt('normal'), normal)
+  assert.deepEqual(await tierAt('max'), { model: 'opus', effort: 'high' })
+  assert.deepEqual(await tierAt(undefined), normal, 'an absent dial is the derived `normal`')
+  assert.deepEqual(await tierAt('cheap'), normal, 'and so is a position nobody defined')
 })
 
 test('report mode hands back the synthesis verbatim with the survey coverage', async () => {

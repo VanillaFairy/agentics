@@ -1081,12 +1081,20 @@ important charges the user for the session's self-assessment, and dialling down 
 cheaper reader. Only the user moves it off that mapping. The exact wording is pinned as the
 verbatim block `intelligence-tier` in the four skills that take the dial.
 
-At `low`, `normal` and `max`, the judging agents (the planner, every reviewer, the survey's
-analysts) run on Sonnet, Opus and Fable respectively. The coder moves once, at `max`, and to
-**Opus rather than Fable**: judgment is where this pipeline concentrates its spend. Below `max`
-the coder keeps its own model, and the verifier, scouts and couriers keep theirs at every
-position. At `low` there is no strong reader anywhere in the loop, and the skill says so before a
-long run starts.
+At `low` the judging agents (the planner, every reviewer, the survey's and investigate's
+analysts, find-existing's framer and assessors) run on Sonnet; at `normal` and `max` they run
+on Opus. The coder runs Sonnet below `max` and Opus at it. The verifier, scouts and couriers
+keep their own models at every position. At `low` there is no strong reader anywhere in the
+loop, and the skill says so before a long run starts.
+
+**Effort follows the model**, for every dispatch that judges or writes code. Opus runs at
+`medium`, and `max` buys one step up to `high`: that step is what separates `max` from
+`normal`. Sonnet runs one step above the call site's base effort, so a `high` site runs `xhigh`
+and a `medium` site runs `high`. Each workflow computes this in one function, `tiered`, from the
+model the dispatch resolved to, so a `light` order's Sonnet reviewer and an escalated Opus fix
+round each get their own model's effort. Couriers, scouts, the historian and the doc-researcher
+keep the effort their call site names. The probe, which takes no dial, runs its analysts at
+Opus `medium`.
 
 **`weight` moves an order down from the ceiling, and only down.** An upward move would let the
 planner buy a tier the user never authorized. A trivial order is still reviewed, just not by the

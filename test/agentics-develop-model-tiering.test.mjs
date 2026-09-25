@@ -122,8 +122,8 @@ test('the first fix round does not escalate', async () => {
 
   const fix1 = prompts.find((p) => p.opts.label === 'fix:W1#1')
   assert.ok(fix1, 'the round-1 fix round was dispatched')
-  assert.equal(fix1.opts.model, undefined,
-    'a standard order at the run\'s default dial implements at whatever the frontmatter says — unescalated')
+  assert.equal(fix1.opts.model, 'sonnet',
+    'a standard order at the run\'s default dial implements at the coder tier — unescalated')
 })
 
 test('the second fix round escalates to opus', async () => {
@@ -144,6 +144,8 @@ test('the second fix round escalates to opus', async () => {
   assert.notEqual(fix1.opts.model, 'opus', 'round 1 has not yet proven the order hard')
   assert.equal(fix2.opts.model, 'opus',
     'round 2 follows a fix that did not clear — that is evidence, not a guess')
+  assert.equal(fix1.opts.effort, 'high', 'a sonnet fix runs one step above its medium base')
+  assert.equal(fix2.opts.effort, 'medium', 'an opus fix runs at medium below `max`')
 })
 
 test('the escalation never exceeds opus, even at --intelligence=max', async () => {
@@ -191,8 +193,7 @@ test('the order-approved line carries the weight, the tiers, and the review-roun
 
   assert.equal(entry.kind, 'order-approved')
   assert.equal(entry.weight, 'heavy')
-  assert.equal(entry.coder_model, 'charter',
-    'the dial spread {} and named no model, so the record says so rather than guessing')
+  assert.equal(entry.coder_model, 'sonnet', 'the coder tier below `max`')
   assert.equal(entry.judge_model, 'opus', 'the run\'s default judge tier')
   assert.equal(entry.review_rounds, 2, 'both review rounds this scenario scripted')
 })

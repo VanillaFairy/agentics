@@ -42,8 +42,8 @@ policy, an appetite for dependencies.
 
 **Roots.** Which repositories are in play. Default to the current working directory.
 
-**Intelligence.** `low`, `normal` or `max` — the model the framing and assessing agents run
-at: Sonnet, Opus, Fable.
+**Intelligence.** `low`, `normal` or `max` — the tier the framing and assessing agents run at:
+Sonnet, Opus, or Opus one effort step deeper.
 
 <!-- agentics:verbatim intelligence-tier -->
 The dial follows the model this session is running, never how important the work feels:
@@ -52,8 +52,8 @@ tell what you are running, `normal`.
 
 The judging agents belong at the tier of the session driving them. A session that dials itself
 up because the change looked significant is charging the user for its own self-assessment; a
-Fable session that leaves the dial at `normal` has its work judged by a weaker model than the
-one the user is talking to, and a Sonnet session that claims `normal` bills the user for Opus
+Fable session that leaves the dial at `normal` has its work judged less deeply than the session
+the user is paying for, and a Sonnet session that claims `normal` bills the user for Opus
 judgment nobody asked it for. Only the user moves it off that mapping — a bare leading `max`,
 `normal` or `low` token, or `--intelligence=<tier>`.
 <!-- /agentics:verbatim -->

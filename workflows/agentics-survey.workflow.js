@@ -277,17 +277,25 @@ const maxTopics = input.max_topics || 8
 const prior = typeof input.prior === 'string' ? input.prior.trim() : ''
 
 // The intelligence dial. Three positions, each naming the judging tier rather than inheriting
-// it: `low` is sonnet, `normal` is opus, `max` is fable. The judging tier in this workflow is
-// the analysts — the one that plans the topics and the ones that rule on them.
+// it: `low` is sonnet, `normal` is opus, `max` is opus one effort step deeper. The judging tier
+// in this workflow is the analysts — the one that plans the topics and the ones that rule on them.
 //
 // Every caller derives the position from the model it is running (fable → max, opus → normal,
 // sonnet and below → low), and `develop` forwards its own dial into this nested call, so a run
 // dialled to `low` reaches its analysis through this line and nowhere else. A position this
 // script did not recognise is served as `normal`: dispatching at one tier while the caller
 // reports the one it typed bills a run at one price and describes it at another.
-const JUDGE_TIER = { low: { model: 'sonnet' }, normal: { model: 'opus' }, max: { model: 'fable' } }
+const JUDGE_TIER = { low: { model: 'sonnet' }, normal: { model: 'opus' }, max: { model: 'opus' } }
 const intelligence = Object.hasOwn(JUDGE_TIER, input.intelligence) ? input.intelligence : 'normal'
 const judge = JUDGE_TIER[intelligence]
+
+// Effort follows the model a judging dispatch resolves to: opus at medium, one step up at `max`;
+// sonnet one step above the call site's base.
+const SONNET_STEP = { low: 'low', medium: 'high', high: 'xhigh' }
+const tiered = (tier, base) => ({
+  ...tier,
+  effort: tier.model === 'sonnet' ? SONNET_STEP[base] : intelligence === 'max' ? 'high' : 'medium',
+})
 
 // ---------------------------------------------------------------- the knowledge base
 //
@@ -628,7 +636,7 @@ const plan = await agent(
   `the matching question must be non-empty — a true flag with no question skips the track ` +
   `entirely and the answer silently loses that evidence.\n` +
   `Do not search anything yourself. Plan only.`,
-  { agentType: 'agentics:analyst', effort: 'medium', schema: PLAN, label: 'plan', ...judge },
+  { agentType: 'agentics:analyst', schema: PLAN, label: 'plan', ...tiered(judge, 'medium') },
 ).catch((e) => {
   log(`WARNING: planning failed: ${e && e.message}`)
   return null
@@ -1090,8 +1098,8 @@ const findings = await pipeline(
       : `\n\nWARNING: the search did NOT finish and is not exhaustive. Your conclusion ` +
         `inherits that limit — state what it rests on and what would change it.`) +
     `\n\nDo not search yourself. Judge what these show. Set topic to exactly "${topic.key}".`,
-    { agentType: 'agentics:analyst', effort: 'high', schema: VERDICT,
-      phase: 'Analyze', label: `analyze:${topic.key}`, ...judge },
+    { agentType: 'agentics:analyst', schema: VERDICT,
+      phase: 'Analyze', label: `analyze:${topic.key}`, ...tiered(judge, 'high') },
   ).catch((e) => {
     // The only unguarded agent call would be this one. The reconciliation below already
     // assumes a failed item arrives as falsy; catching here makes that true whatever

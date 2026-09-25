@@ -86,20 +86,26 @@ const run = (opts) => runWorkflow(WF, { args: ARGS, ...opts })
 // assessing each candidate are both judgment, so both move with it — and the searching angles
 // never do.
 test('the framing and assessing analysts follow the dial; the search tier does not', async () => {
-  const modelsAt = async (intelligence) => {
+  const tiersAt = async (intelligence) => {
     const { prompts } = await run({ args: { ...ARGS, intelligence }, agent: happy() })
-    const at = (label) => prompts.find((p) => p.opts.label === label).opts.model
+    const at = (label) => {
+      const { model, effort } = prompts.find((p) => p.opts.label === label).opts
+      return `${model}/${effort}`
+    }
     return { frame: at('frame'), assess: at('assess'), find: at('find:stdlib') }
   }
 
-  assert.deepEqual(await modelsAt('low'),
-    { frame: 'sonnet', assess: 'sonnet', find: undefined })
-  assert.deepEqual(await modelsAt('normal'),
-    { frame: 'opus', assess: 'opus', find: undefined })
-  assert.deepEqual(await modelsAt('max'),
-    { frame: 'fable', assess: 'fable', find: undefined })
-  assert.deepEqual(await modelsAt(undefined),
-    { frame: 'opus', assess: 'opus', find: undefined }, 'an absent dial is the derived `normal`')
+  // Sonnet runs one step above the site's base (frame medium, assess high); opus runs medium,
+  // one step up at `max`. The search tier keeps its frontmatter model and its low effort.
+  assert.deepEqual(await tiersAt('low'),
+    { frame: 'sonnet/high', assess: 'sonnet/xhigh', find: 'undefined/low' })
+  assert.deepEqual(await tiersAt('normal'),
+    { frame: 'opus/medium', assess: 'opus/medium', find: 'undefined/low' })
+  assert.deepEqual(await tiersAt('max'),
+    { frame: 'opus/high', assess: 'opus/high', find: 'undefined/low' })
+  assert.deepEqual(await tiersAt(undefined),
+    { frame: 'opus/medium', assess: 'opus/medium', find: 'undefined/low' },
+    'an absent dial is the derived `normal`')
 })
 
 /** The invariant the whole workflow exists to protect. */

@@ -1145,9 +1145,7 @@ test('every exit path returns the integration handle, even the ones that dispatc
 // ---------------------------------------------------------------- the intelligence dial
 //
 // Three positions, each moving a different set of agents. A dial is only real where it
-// reaches an `opts.model`, so that is what these read — and the absences matter as much as
-// the values: a tier that grew a coder override would show up here as a model where there
-// should be none.
+// reaches an `opts.model` and `opts.effort`, so that is what these read.
 
 test('`low` puts every judging agent on sonnet and moves nothing else', async () => {
   const { prompts } = await run({
@@ -1156,53 +1154,57 @@ test('`low` puts every judging agent on sonnet and moves nothing else', async ()
   })
 
   const modelOf = (label) => prompts.find((p) => p.opts.label === label).opts.model
+  const tierOf = (label) => {
+    const { model, effort } = prompts.find((p) => p.opts.label === label).opts
+    return { model, effort }
+  }
 
-  assert.equal(modelOf('plan'), 'sonnet', 'the planner is a judging agent')
-  assert.equal(modelOf('review:W1#1'), 'sonnet', 'so is every per-order reviewer')
-  assert.equal(modelOf('review:integration'), 'sonnet', 'and so is the integration reviewer')
-
-  // The coder already runs sonnet by frontmatter, so what these pin is that the dial did not
-  // TOUCH it. An explicit model here would mean `low` had grown a coder tier of its own, and
-  // the next edit to coder.md would silently stop applying to low-tier runs.
-  assert.equal(modelOf('code:W1'), undefined, 'the coder keeps its frontmatter at `low`')
+  // Sonnet runs one effort step above the call site's base: high → xhigh, medium → high.
+  assert.deepEqual(tierOf('plan'), { model: 'sonnet', effort: 'xhigh' }, 'the planner is a judging agent')
+  assert.deepEqual(tierOf('review:W1#1'), { model: 'sonnet', effort: 'xhigh' }, 'so is every per-order reviewer')
+  assert.deepEqual(tierOf('review:integration'), { model: 'sonnet', effort: 'xhigh' },
+    'and so is the integration reviewer')
+  assert.deepEqual(tierOf('code:W1'), { model: 'sonnet', effort: 'xhigh' }, 'the coder is sonnet at `low`')
   // Courier grade, and a constant: the verify dispatch runs a script and pastes one line, so
   // its tier is a property of the JOB rather than of what the user is willing to spend. A dial
   // that reached it would be pricing transcription.
   assert.equal(modelOf('verify:W1'), 'haiku', 'the mechanical tier never moves with the dial')
 })
 
-test('`max` moves the coder too, but to opus and not to the model the judges get', async () => {
-  // Fable-judged, opus-implemented — the configuration the coupled dial could not express.
-  // The equality that must NOT hold is the interesting one: a `max` run where the coder and
-  // the reviewer share a model is the coupling this position was split to remove, and it
-  // returns silently the moment somebody reaches for one ternary to set both.
+test('`max` is opus one effort step deeper, and moves the coder to opus', async () => {
   const { prompts } = await run({
     args: { ...ARGS, intelligence: 'max' },
     agent: happyAgents(),
   })
 
   const modelOf = (label) => prompts.find((p) => p.opts.label === label).opts.model
+  const tierOf = (label) => {
+    const { model, effort } = prompts.find((p) => p.opts.label === label).opts
+    return { model, effort }
+  }
 
-  assert.equal(modelOf('plan'), 'fable')
-  assert.equal(modelOf('review:W1#1'), 'fable')
-  assert.equal(modelOf('code:W1'), 'opus')
-  assert.notEqual(modelOf('code:W1'), modelOf('review:W1#1'),
-    'the judge and the generator are priced apart at the top position, deliberately')
+  assert.deepEqual(tierOf('plan'), { model: 'opus', effort: 'high' })
+  assert.deepEqual(tierOf('review:W1#1'), { model: 'opus', effort: 'high' })
+  assert.deepEqual(tierOf('code:W1'), { model: 'opus', effort: 'high' })
   assert.equal(modelOf('verify:W1'), 'haiku', 'even at `max`, pasting one line is pasting one line')
 })
 
-test('`normal` names opus rather than inheriting it', async () => {
+test('`normal` names opus at medium effort rather than inheriting it', async () => {
   // The dial is the authority on what a judge costs. Reading `undefined` here would mean the
   // tier came from whatever agents/reviewer.md happens to say, which prices a run correctly
   // right up until somebody edits that file — while the tier the envelope RECORDS still comes
   // from the dial.
   const { prompts } = await run({ args: { ...ARGS, intelligence: 'normal' }, agent: happyAgents() })
-  const modelOf = (label) => prompts.find((p) => p.opts.label === label).opts.model
+  const tierOf = (label) => {
+    const { model, effort } = prompts.find((p) => p.opts.label === label).opts
+    return { model, effort }
+  }
 
-  assert.equal(modelOf('plan'), 'opus')
-  assert.equal(modelOf('review:W1#1'), 'opus')
-  assert.equal(modelOf('review:integration'), 'opus')
-  assert.equal(modelOf('code:W1'), undefined, 'the coder is not on this table at any position')
+  assert.deepEqual(tierOf('plan'), { model: 'opus', effort: 'medium' })
+  assert.deepEqual(tierOf('review:W1#1'), { model: 'opus', effort: 'medium' })
+  assert.deepEqual(tierOf('review:integration'), { model: 'opus', effort: 'medium' })
+  assert.deepEqual(tierOf('code:W1'), { model: 'sonnet', effort: 'xhigh' },
+    'the coder stays sonnet below `max`, one step above its base')
 })
 
 // ------------------------------------------------- does the next wave fit
@@ -1288,10 +1290,10 @@ test('a red order implements at opus even when the dial says sonnet', async () =
   // The green order is deliberately NOT floored. Its defects are the catchable kind — the
   // tests the red order pinned either pass or they do not — where a wrong red pin is
   // uncatchable by construction. The floor is about what nothing downstream can see.
-  assert.equal(modelOf('code:G1'), undefined)
+  assert.equal(modelOf('code:G1'), 'sonnet')
 })
 
-test('a contract order implements at opus, where an ordinary one inherits', async () => {
+test('a contract order implements at opus, where an ordinary one stays sonnet', async () => {
   const { prompts } = await run({
     args: { ...ARGS, intelligence: 'normal' },
     agent: happyAgents({ plan: plan([order('W1', { contract: true }), order('W2')]) }),
@@ -1302,7 +1304,7 @@ test('a contract order implements at opus, where an ordinary one inherits', asyn
   // An ambiguity in a contract propagates into every consumer, which is the same
   // uncatchable-downstream shape the red floor exists for.
   assert.equal(modelOf('code:W1'), 'opus')
-  assert.equal(modelOf('code:W2'), undefined, 'an ordinary order keeps its frontmatter model')
+  assert.equal(modelOf('code:W2'), 'sonnet', 'an ordinary order keeps the coder tier')
 })
 
 test('a light order is reviewed by the cheap reader, on a max run', async () => {
@@ -1316,7 +1318,7 @@ test('a light order is reviewed by the cheap reader, on a max run', async () => 
   const modelOf = (label) => prompts.find((p) => p.opts.label === label).opts.model
 
   assert.equal(modelOf('review:W1#1'), 'sonnet', 'a rename does not need the most expensive reader')
-  assert.equal(modelOf('review:W2#1'), 'fable', 'the hard order still gets the run/s ceiling')
+  assert.equal(modelOf('review:W2#1'), 'opus', 'the hard order still gets the run/s ceiling')
   assert.equal(modelOf('code:W1'), 'sonnet', 'and it is implemented cheaply too')
   assert.equal(modelOf('code:W2'), 'opus')
 })
@@ -1341,7 +1343,7 @@ test('a weight nobody set is standard, so an old plan resumes unchanged', async 
 
   const modelOf = (label) => prompts.find((p) => p.opts.label === label).opts.model
   assert.equal(modelOf('review:W1#1'), 'opus')
-  assert.equal(modelOf('code:W1'), undefined)
+  assert.equal(modelOf('code:W1'), 'sonnet')
 })
 
 test('a tier nobody defined is served as `normal`, not as itself', async () => {
@@ -1355,7 +1357,7 @@ test('a tier nobody defined is served as `normal`, not as itself', async () => {
   const modelOf = (label) => prompts.find((p) => p.opts.label === label).opts.model
 
   assert.equal(modelOf('plan'), 'opus')
-  assert.equal(modelOf('code:W1'), undefined)
+  assert.equal(modelOf('code:W1'), 'sonnet')
 })
 
 test('a resumed run adopts a recorded `low` the same way it adopts any other tier', async () => {
@@ -1452,7 +1454,7 @@ test('a caller tier that disagrees with the record wins, and says so', async () 
     }),
   })
 
-  assert.equal(prompts.find((p) => p.opts.label === 'code:W2').opts.model, undefined,
+  assert.equal(prompts.find((p) => p.opts.label === 'code:W2').opts.model, 'sonnet',
     'the supplied tier is the one the resumed run implements at')
   assert.ok(logs.some((l) => /Override: intelligence/.test(l)),
     'a silent re-tier is how a resumed plan stops being the plan it resumed')

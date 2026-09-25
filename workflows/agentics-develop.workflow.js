@@ -1098,7 +1098,8 @@ let slice = typeof input.slice === 'string' ? input.slice.trim() : ''
 let envelopeBase = { branch: '', sha: '' }
 
 // The intelligence dial. Three positions, each NAMING the judging tier rather than inheriting
-// it: `low` is sonnet, `normal` is opus, `max` is fable. Naming opus instead of spreading {}
+// it: `low` is sonnet, `normal` is opus, `max` is opus one effort step deeper (see `tiered`).
+// Naming opus instead of spreading {}
 // makes this table the authority on what a judge costs — a `{}` meaning "whatever the
 // frontmatter says" prices a run correctly only until somebody edits an agent file, while the
 // tier the run RECORDS in its envelope comes from here either way.
@@ -1114,18 +1115,12 @@ let envelopeBase = { branch: '', sha: '' }
 // derivation rule exists to forbid, and the develop skill owes the user a sentence about the
 // cost instead.
 //
-// `coderTier` is deliberately NOT this table, and it does not follow the judges up. At `max`
-// the coder goes to OPUS, not fable: fable-judged, opus-implemented is the coherent pairing the
-// coupled dial cannot express, and the field praise the coder tier rests on was of opus as
-// implementer, not of fable. Doubling the price
-// of the pipeline's volume tier bought nothing that praise ever described.
-//
-// Below `max` it spreads {} and the coder keeps its frontmatter model, which is what lets a
-// change to agents/coder.md's model land without touching this line.
-// The coder's output is gated by the verifier and by fresh adversarial reviewers rather than
-// by its own brilliance; what it must not be is `inherit`, which in the field billed every
-// coding agent at whatever model the interactive session happened to run.
-const JUDGE_TIER = { low: { model: 'sonnet' }, normal: { model: 'opus' }, max: { model: 'fable' } }
+// `coderTier` is deliberately NOT this table. The coder is sonnet below `max` and opus at it.
+// It is named rather than left to the frontmatter because its effort follows its model. The
+// coder's output is gated by the verifier and by fresh adversarial reviewers rather than by its
+// own brilliance; what it must not be is `inherit`, which bills every coding agent at whatever
+// model the interactive session happens to run.
+const JUDGE_TIER = { low: { model: 'sonnet' }, normal: { model: 'opus' }, max: { model: 'opus' } }
 const tierOf = (value) => (Object.hasOwn(JUDGE_TIER, value) ? value : 'normal')
 
 let intelligence = 'normal'
@@ -1136,10 +1131,19 @@ let coderTier = {}
 function applyIntelligence(value) {
   intelligence = tierOf(value)
   judge = JUDGE_TIER[intelligence]
-  coderTier = intelligence === 'max' ? { model: 'opus' } : {}
+  coderTier = { model: intelligence === 'max' ? 'opus' : 'sonnet' }
 }
 
 applyIntelligence(input.intelligence)
+
+// Effort follows the model a judging or coding dispatch resolves to: opus at medium, one step up
+// at `max`; sonnet one step above the call site's base. Read at dispatch time, because a resume
+// re-applies the dial.
+const SONNET_STEP = { low: 'low', medium: 'high', high: 'xhigh' }
+const tiered = (tier, base) => ({
+  ...tier,
+  effort: tier.model === 'sonnet' ? SONNET_STEP[base] : intelligence === 'max' ? 'high' : 'medium',
+})
 
 // ------------------------------------------------------- the dial, per order
 //
@@ -1155,7 +1159,7 @@ applyIntelligence(input.intelligence)
 // not authorize — the same self-upgrade the derivation rule forbids a session, arriving by
 // proxy through an agent the session dispatched.
 
-const MODEL_RANK = { sonnet: 1, opus: 2, fable: 3 }
+const MODEL_RANK = { sonnet: 1, opus: 2 }
 const rankOf = (model) => MODEL_RANK[model] || 0
 const higherOf = (a, b) => (rankOf(a) >= rankOf(b) ? a : b)
 const lowerOf = (a, b) => (rankOf(a) <= rankOf(b) ? a : b)
@@ -1227,7 +1231,7 @@ const reviewAtIntegration = new Map()
  */
 function coderFor(order, round) {
   const structural = outputIsTheYardstick(order)
-  const base = coderTier.model || 'sonnet'
+  const base = coderTier.model
   const proven = Number(round) >= 2
 
   if (structural || proven) return { model: higherOf(base, 'opus') }
@@ -3144,15 +3148,11 @@ const orderStageLine = (kind, wave, state) => ({
   measured: (state.measured || []).slice(),
 })
 
-// 'charter' rather than a guessed model name, on all three tier fields: when a tier spreads
-// {} the run never named a model, and writing the charter's current default into a durable
-// record would state as fact something a later edit to the agent's own frontmatter silently
-// falsifies.
 const orderLine = (wave, state, wo, trail) => ({
   ...orderStageLine('order-approved', wave, state),
   weight: weightOf(wo),
-  coder_model: coderFor(wo).model || 'charter',
-  judge_model: judgeFor(wo).model || 'charter',
+  coder_model: coderFor(wo).model,
+  judge_model: judgeFor(wo).model,
   review_rounds: trail.filter((t) => t.kind === 'review').length,
 })
 
@@ -4022,8 +4022,8 @@ async function verifyUntilGreen(wo, state, trail) {
     const headBefore = state.head_sha
     const fixCall = await dispatch(wo, state, trail, 'the verify fix round for ' + wo.id, failures,
       () => agent(coderFixPrompt(wo, state, verifyFixInstruction(failures)), {
-        agentType: 'agentics:coder', effort: 'medium', schema: CODER_RESULT,
-        phase: 'Verify', label: `fix:${wo.id}`, ...coderFor(wo),
+        agentType: 'agentics:coder', schema: CODER_RESULT,
+        phase: 'Verify', label: `fix:${wo.id}`, ...tiered(coderFor(wo), 'medium'),
       }), coherentFix)
     if (fixCall.escalation) return fixCall.escalation
 
@@ -4079,8 +4079,8 @@ async function reviewLoop(wo, state, trail) {
     const call = await dispatch(wo, state, trail, 'reviewer round ' + round + ' for ' + wo.id,
       openBlockers,
       () => agent(reviewerPrompt(wo, state, state.advisories, state.concerns, state.discovered, priorBlockers, round), {
-        agentType: 'agentics:reviewer', effort: 'high', schema: FINDINGS,
-        phase: 'Review', label: `review:${wo.id}#${round}`, ...judgeFor(wo),
+        agentType: 'agentics:reviewer', schema: FINDINGS,
+        phase: 'Review', label: `review:${wo.id}#${round}`, ...tiered(judgeFor(wo), 'high'),
       }))
     if (call.escalation) return call.escalation
 
@@ -4162,8 +4162,8 @@ async function reviewLoop(wo, state, trail) {
     }
     const fixCall = await dispatch(wo, state, trail, 'the review fix round for ' + wo.id, open,
       () => agent(coderFixPrompt(wo, state, reviewFixInstruction(open)), {
-        agentType: 'agentics:coder', effort: 'medium', schema: CODER_RESULT,
-        phase: 'Review', label: `fix:${wo.id}#${round}`, ...fixTier,
+        agentType: 'agentics:coder', schema: CODER_RESULT,
+        phase: 'Review', label: `fix:${wo.id}#${round}`, ...tiered(fixTier, 'medium'),
       }), coherentFix)
     if (fixCall.escalation) return fixCall.escalation
 
@@ -4262,8 +4262,8 @@ async function implement(wo) {
       try {
         const call = await dispatch(wo, state, trail, 'the continuation coder for ' + wo.id, [],
           () => agent(coderContinuePrompt(wo, found), {
-            agentType: 'agentics:coder', effort: 'high', schema: CODER_RESULT,
-            phase: 'Implement', label: `continue:${wo.id}`, ...coderFor(wo),
+            agentType: 'agentics:coder', schema: CODER_RESULT,
+            phase: 'Implement', label: `continue:${wo.id}`, ...tiered(coderFor(wo), 'high'),
           }), coherentContinuation)
 
         if (call.escalation) return { wo, state, trail, escalation: call.escalation }
@@ -4300,8 +4300,8 @@ async function implement(wo) {
   try {
     const call = await dispatch(wo, state, trail, 'the coder for ' + wo.id, [],
       () => agent(coderPrompt(wo, orderBranch(wo.id)), {
-        agentType: 'agentics:coder', effort: 'high', schema: CODER_RESULT,
-        phase: 'Implement', label: `code:${wo.id}`, isolation: 'worktree', ...coderFor(wo),
+        agentType: 'agentics:coder', schema: CODER_RESULT,
+        phase: 'Implement', label: `code:${wo.id}`, isolation: 'worktree', ...tiered(coderFor(wo), 'high'),
       }), coherentNewSeries)
     if (call.escalation) return { wo, state, trail, escalation: call.escalation }
 
@@ -5358,8 +5358,8 @@ ${history}
     // is not the run's judge tier for the same reason. This is the one dispatch the lane keeps
     // that it could have dropped, and it keeps it for the resume point.
     planned = await agent(plannerPrompt(evidence), {
-      agentType: 'agentics:planner', effort: fixLane ? 'low' : 'high',
-      schema: WORK_ORDERS, phase: 'Plan', label: 'plan', ...(fixLane ? { model: 'sonnet' } : judge),
+      agentType: 'agentics:planner', schema: WORK_ORDERS, phase: 'Plan', label: 'plan',
+      ...(fixLane ? { model: 'sonnet', effort: 'low' } : tiered(judge, 'high')),
     }).catch((e) => {
       log(`WARNING: planning failed: ${e && e.message}`)
       return null
@@ -6580,8 +6580,8 @@ ${history}
     const outstanding = [...orderById.keys()].filter((id) => !integration.merged.includes(id))
 
     const review = await agent(integrationReviewPrompt(mergedOrders, outstanding), {
-      agentType: 'agentics:reviewer', effort: 'high', schema: FINDINGS,
-      phase: 'Integrate', label: 'review:integration', ...judge,
+      agentType: 'agentics:reviewer', schema: FINDINGS,
+      phase: 'Integrate', label: 'review:integration', ...tiered(judge, 'high'),
     }).catch((e) => {
       log(`WARNING: the integration review failed: ${e && e.message}`)
       return null

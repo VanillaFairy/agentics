@@ -10,7 +10,7 @@ Invoking this skill **is** the user's opt-in for the `Workflow` tool. Do not ask
 ## Parse arguments
 
 **Intelligence** sets the tier for the whole run — the judging agents, and at `max` the coder
-along with them, though never to the same model.
+along with them.
 
 <!-- agentics:verbatim intelligence-tier -->
 The dial follows the model this session is running, never how important the work feels:
@@ -19,18 +19,18 @@ tell what you are running, `normal`.
 
 The judging agents belong at the tier of the session driving them. A session that dials itself
 up because the change looked significant is charging the user for its own self-assessment; a
-Fable session that leaves the dial at `normal` has its work judged by a weaker model than the
-one the user is talking to, and a Sonnet session that claims `normal` bills the user for Opus
+Fable session that leaves the dial at `normal` has its work judged less deeply than the session
+the user is paying for, and a Sonnet session that claims `normal` bills the user for Opus
 judgment nobody asked it for. Only the user moves it off that mapping — a bare leading `max`,
 `normal` or `low` token, or `--intelligence=<tier>`.
 <!-- /agentics:verbatim -->
 
 **What each position moves.** The judging agents — the planner, every reviewer, and the
-analysts of the nested survey — run on Sonnet at `low`, Opus at `normal`, Fable at `max`. The
-coder moves once, at `max`, and moves to **Opus rather than Fable**: judging is where this
-pipeline concentrates its judgment, and doubling the price of its highest-volume agent buys
-nothing the field evidence ever credited to Fable. Below `max` the coder keeps its own model,
-and the verifier, the scouts and the courier keep theirs at every position.
+analysts of the nested survey — run on Sonnet at `low` and Opus at `normal` and `max`. The
+coder runs Sonnet below `max` and Opus at it. Effort follows the model: Opus at `medium`, one
+step up to `high` at `max`, which is what sets `max` apart from `normal`; Sonnet one step above
+the call site's base. The verifier, the scouts and the courier keep their model and effort at
+every position.
 
 **When the dial lands on `low`, say what it costs before a long run starts.** The coder already
 runs Sonnet, so `low` leaves no strong reader anywhere in the loop: a defective work order

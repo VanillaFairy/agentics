@@ -474,9 +474,9 @@ A design pass has just spent an interview establishing how big and how settled t
 Handing it over with nothing said about that makes `develop`'s triage re-derive from a change
 string what this conversation already knew.
 
-So write one short paragraph, in the document, naming which of the triage's own three outcomes
-this change looks like — **direct session**, **fix lane**, or **full lane** — and why. Use those
-three words and no others; they are the triage's vocabulary, and inventing a fourth gives the
+So write one short paragraph, in the document, naming which rung of the triage's ladder this
+change looks like — **direct**, **direct + reviewer**, **fix lane**, or **full run** — and why.
+Use those words and no others; they are the triage's vocabulary, and inventing another gives the
 develop session something it cannot act on.
 
 Two things this paragraph is not:

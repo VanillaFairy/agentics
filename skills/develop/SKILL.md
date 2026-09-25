@@ -131,47 +131,45 @@ that already has a `planned` or `in-flight` run recording the same change string
 `existing_run`, step 3), so a cache miss can no longer silently buy a duplicate — but that
 refusal is a stop, and passing `resume_path` up front is the version of it that keeps moving.
 
-## Triage — is this change worth the pipeline?
+## Triage — how much pipeline does this change earn?
 
 **One honest question, asked once, before any survey is bought.** It applies to fresh work
 only: a resume (step 0) is a plan somebody already paid for, and `--plan-only` is a user who
 asked for a plan in so many words. Neither gets triaged.
 
-Three properties. The answer only points one way when **all three** hold:
+Answer four questions about the change, then climb the ladder only as far as the answers push
+you. Each rung is bought by one property of the work, and a rung nobody can name a reason for
+is not bought.
 
-- **one obvious locus** — the file or small cluster of files that changes is already known,
-  and finding it is not part of the work;
-- **a settled shape** — the approach is decided rather than something this change has to
-  discover;
-- **nothing to partition** — no independent pieces to run side by side, and no red/green
-  split worth holding, because it is one series of commits by one author.
+- **Is the locus known?** The file or small cluster of files that changes is already known,
+  and finding it is not part of the work.
+- **Is the shape settled?** The approach is decided rather than something this change has to
+  discover.
+- **Is there anything to partition?** Independent pieces worth running side by side, or a
+  behaviour other work will be measured against.
+- **How big is it?** Whether it fits comfortably in this session, or needs a run's
+  resumability.
 
-When all three hold, **offer the fix lane** — `lane: 'fix'` with the locus you just named. It
-is the same run with the survey and the decomposition taken out, and it keeps the two things
-the audit found were actually paying: the discriminator and the adversarial review. Say it in
-these terms: **this does not need the full pipeline; the fix lane runs the checks that catch
-things and skips the parts that were buying nothing here.**
+| what the answers say | rung | what it buys |
+|---|---|---|
+| no behaviour changes: a rename, a typo, a one-line constant | **direct** | you write it and run the project's checks |
+| locus known, shape settled, small | **direct + reviewer** | you write the failing test first, then the change, run the checks, and dispatch one fresh `vf-agentics:reviewer` over the diff |
+| locus known (one or several files), shape settled, nothing to partition, too big to finish comfortably here | **fix lane** | `lane: 'fix'` with that locus: worktree, mechanical verification with the discriminator, the integration review, resumability |
+| shape not settled | **design first** | `vf-agentics:design`, then this skill with the design's effort — its survey is not bought twice |
+| shape settled, several loci or independent pieces | **full run, trimmed** | the full lane with `settled_shape: true`, `ground` and `effort`, so the survey collapses wherever the knowledge base or the design's survey already covers the ground |
+| ground unknown | **full run** | survey, plan, partition, waves |
 
-A direct session is still the right answer for the smallest work — a rename, a typo, a
-one-line constant — where even four dispatches and a worktree cost more than the change. Offer
-that instead when the change is that small, on the same terms as before: this fits a direct
-session with a reviewer pass.
+Inside a run, the workflow buys the rest by the same rule: a review loop only for an order other
+work is measured against, a red/green split only where the tests become that yardstick, and
+waves only where the partition finds independent pieces.
 
-**Say why, with the numbers.** They come from a field audit that read ten sessions end to end
-and asked of each whether a naive "do X" would have served better. Seven of ten: yes. A run buys ~400–500k tokens of survey before a line is written; a
-TDD'd behaviour costs 10–12 dispatches across its red and green halves; a five-line
-camera-rounding fix carried its own 48-line pinned test through two dedicated worktrees. The
-best direct session in that audit landed ~1,300 lines, 62 tests and four clean commits in 35
-minutes with zero corrections. That comparison is the user's to make, and they can only make
-it if you put it in front of them.
+**Say which rung and why, in one or two sentences, with the cost.** A survey costs roughly
+400–500k tokens before a line is written; a red/green behaviour costs ten to twelve dispatches;
+a fix lane costs about five. The user can only weigh that if you put it in front of them.
 
-**Say what has to be kept either way.** The audit's other half is that the periphery is what
-paid: adversarial review and the discriminator caught real defects that would otherwise have
-shipped. The fix lane keeps both by construction, which is the whole reason it exists — the
-recommendation used to end by handing the work back, so the two-thirds that pays got rebuilt
-by hand or quietly skipped. If you do send the user to a direct session instead, say the rest
-of it: write it directly, then dispatch a fresh `vf-agentics:reviewer` over the diff, and where
-the change is a fix, write the test that fails first.
+**Whatever the rung, two things are kept.** The discriminator's question — does each new test
+fail without the change — and an adversarial reviewer who wrote neither the code nor the tests.
+On the direct + reviewer rung you supply both by hand; on every other rung the pipeline does.
 
 **Anything you dispatch yourself — that reviewer, or any agent outside the workflow — is paid for
 by the turn.**
@@ -199,11 +197,9 @@ the conversation, not the start of a second round of it — proceed to step 1 an
 further about cost. A skill that argues twice has turned advice into a gate, and the IRON LAW
 does not have a cost exception for the pipeline's own opinion of the work.
 
-**And do not reach for it where it does not fit.** Several loci, an unsettled approach, a
-contract other code depends on, anything with independent pieces, or a change the user wants
-reviewed adversarially — all of those are what this pipeline is for. A triage that declines
-those is not saving money, it is declining the work. When the three properties do not all
-hold, say nothing and start the run.
+**Climbing is never declining the work.** Several loci, an unsettled approach, a contract other
+code depends on, independent pieces, or a change the user wants reviewed adversarially all push
+the answer up the ladder, not off it.
 
 ### The fix lane
 
@@ -253,16 +249,16 @@ they have.
 
 ### The two properties the run can use
 
-The triage asks these questions whether or not it declines, and two of its answers are worth
+The triage asks these questions whatever rung it lands on, and two of its answers are worth
 carrying into the run rather than throwing away — they are what lets the workflow decide
 whether the survey phase is earned at all (the **null survey**).
 
-- **`settled_shape: true`** — pass it when the second property held: the approach is decided,
+- **`settled_shape: true`** — pass it when the shape is settled: the approach is decided,
   and nothing about *how* to do this is something the change has to go and discover. This is a
   judgment and it stays yours; no arithmetic in the workflow can make it, and the workflow
   never infers it. Withholding it costs a survey and nothing else, so when you are unsure, do
   not pass it.
-- **`ground: ['src/…', …]`** — pass the paths the first property established. This is not a
+- **`ground: ['src/…', …]`** — pass the paths the locus question established. This is not a
   new judgment: you already had to know the locus to answer the triage question. It is what
   makes the other half computable.
 - **`effort: '<slug>'`** — pass it whenever this change belongs to an effort, which a design
@@ -281,8 +277,8 @@ One path per line, and they go straight into `ground`. A document with no such m
 ground — that is a fact about the design, not a failure, and you answer the triage question
 yourself as you always did.
 
-A design document may also carry a paragraph recommending **direct session**, **fix lane** or
-**full lane**. Read it as advice from the pass that interviewed the user, weigh it, and say what
+A design document may also carry a paragraph recommending a rung — **direct**, **direct +
+reviewer**, **fix lane** or **full run**. Read it as advice from the pass that interviewed the user, weigh it, and say what
 you concluded. **It does not decide anything**: the triage below is still the decision point and
 the user is still asked once, here. A design that could pre-decide the lane would make the fix
 lane's own coverage block false — it states that nothing was searched by this run and nothing

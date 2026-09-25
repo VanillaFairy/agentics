@@ -149,8 +149,8 @@ Two rules bind this principle:
   from, once a step runs, never shrinks, and every order still meets an adversarial reviewer
   before the human gate.
 
-The most visible instrument of this is `develop`'s triage, which can decline the pipeline
-entirely (see [Triage](#triage)).
+The most visible instrument of this is `develop`'s triage, which picks how much pipeline a change
+earns, down to none at all (see [Triage](#triage)).
 
 ### Phase presence is derived
 
@@ -373,8 +373,9 @@ over a half-written section says "finished".
 - **`locus` is declared.** It puts a run on the fix lane and fences what the coder may touch, so
   a wrong value misroutes the whole run. It is never fed from a document.
 
-A design may also carry one paragraph recommending **direct session**, **fix lane** or **full
-lane**. That is advice to `develop`'s triage, never a decision and never the `lane` argument.
+A design may also carry one paragraph recommending a triage rung: **direct**, **direct +
+reviewer**, **fix lane** or **full run**. That is advice to `develop`'s triage, never a decision
+and never the `lane` argument.
 
 ### Why the hand-off leans toward a fresh session
 
@@ -453,22 +454,23 @@ The phases are Survey, Plan, Implement, Verify, Review and Integrate.
 
 ### Triage
 
-Before any survey is bought, the `develop` skill asks one question, once: is this change worth
-the pipeline? Three properties are checked:
+Before any survey is bought, the `develop` skill asks, once, how much pipeline the change earns.
+It answers four questions (is the locus known, is the shape settled, is there anything to
+partition, how big is it) and climbs a ladder only as far as the answers push:
 
-- **one obvious locus** — the files that change are already known;
-- **a settled shape** — the approach is decided, not discovered;
-- **nothing to partition** — one series of commits by one author, with no red/green split worth
-  holding.
+| rung | earned when |
+|---|---|
+| **direct** | no behaviour changes: a rename, a typo, a constant |
+| **direct + reviewer** | locus known, shape settled, small; the session writes the failing test first, then the change, and dispatches one fresh reviewer |
+| **fix lane** | locus known, shape settled, nothing to partition, too big to finish comfortably in the session |
+| **design first** | the shape is not settled |
+| **full run, trimmed** | shape settled, several loci or independent pieces; `settled_shape`, `ground` and `effort` let the survey collapse where it is covered |
+| **full run** | the ground is unknown |
 
-When all three hold, the skill offers the **fix lane**. For the very smallest work, such as a
-rename or a one-line constant, it offers a direct session plus a fresh reviewer pass instead.
-When the three do not all hold, it says nothing and starts the run.
-
-The reasoning is measured, not assumed. Read end to end, most sessions in one field project
-would have been served as well by a direct session. What paid for itself in the rest was the
-adversarial review and the discriminator, not the survey and the planner. A survey costs roughly
-400–500k tokens before a line is written.
+Every rung keeps two things: the discriminator's question, and an adversarial reviewer who wrote
+neither the code nor the tests. Inside a run the same rule continues: review loops, red/green
+splits and waves are each bought by the property that earns them. A survey costs roughly
+400–500k tokens before a line is written, which is why the lower rungs exist.
 
 **Declining is a recommendation, never a refusal.** "Run it anyway" ends the conversation, and
 the skill proceeds without arguing a second time. The IRON LAW has no cost exception for the

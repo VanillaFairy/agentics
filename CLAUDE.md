@@ -73,18 +73,18 @@ ground, the brief assembled by `lib/brief.mjs` — never a sentence asking a mod
 
 ## Versioning — bump the version in two places
 
-Whenever this plugin's version is bumped, **both** of these move together, in the same change:
+This repository is a single-plugin marketplace (like vf-superpowers): `.claude-plugin/marketplace.json`
+lists exactly one plugin, `agentics`, with `source: "./"`. Whenever the version is bumped, **both**
+of these move together, in the same commit:
 
 1. `.claude-plugin/plugin.json` — the `version` field.
-2. The `agentics` entry in `../.claude-plugin/marketplace.json` — the vanillafairy marketplace
-   manifest, one directory up. Note it is **outside this repo**, so a commit here does not carry it.
+2. `.claude-plugin/marketplace.json` — `plugins[0].version`.
 
-Missing the second one does not break an install — at install time `plugin.json` wins and the
-marketplace entry is silently ignored. That is exactly why the drift survives unnoticed: the
-stale number is still what the marketplace reports to `claude plugin list --available` and to
-update tooling, so everything *reads* like a version nobody is actually running. Verify with:
+At install time `plugin.json` wins, but the marketplace entry is what `claude plugin list
+--available` and update tooling report, so a stale one reads like a version nobody is running.
+`test/plugin-manifest.test.mjs` fails when the two differ. Verify with:
 
-    claude plugin validate ..
+    claude plugin validate .
 
 ## Standing requirements
 

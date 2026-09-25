@@ -33,30 +33,6 @@ const lines = source.split('\n').map((line) => line.replace(/\r$/, ''))
 ```
 Or compare with `.trim()` — never `line === '---'`.
 
-## Worktrees must be siblings of the plugin root
-```
-git worktree add ../agentics-wt-<TASK> -b task/<TASK> <branch>
-```
-Not `.worktrees/` inside the repo. `test/plugin-manifest.test.mjs` reads
-`../../.claude-plugin/marketplace.json` — two hops up from `test/`, i.e. the *parent of the plugin
-root*. Only a sibling worktree makes that resolve to the real `vanillafairy/` marketplace.
-
-If you park worktrees one level deeper anyway (e.g. `vanillafairy/.wt-inc2/<TASK>`), the parent
-becomes `.wt-inc2/` and those two tests fail with `ENOENT` in **every** worktree. Fix it once for
-the whole directory rather than per worktree:
-```
-mkdir -p <worktree-parent>/.claude-plugin
-cp vanillafairy/.claude-plugin/marketplace.json <worktree-parent>/.claude-plugin/
-```
-Do not just tolerate the two failures. A permanently-red suite teaches every agent that a failing
-`node --test` is normal, and a real regression then hides in the known noise.
-
-## Two tests read a file outside the repository
-`test/plugin-manifest.test.mjs` asserts on `../../.claude-plugin/marketplace.json`, which this
-repo does not contain or version. The suite is therefore **not hermetic**: a clone in a different
-layout fails two tests with `ENOENT`, and editing an unrelated plugin's marketplace entry turns
-this suite red.
-
 ## `ERROR: Failed to parse repository information` on every commit
 Harmless. It comes from the user's *global* hooks directory (`core.hooksPath`), not from anything
 in this repo, and the commit lands correctly — check `git log` and `git status` rather than

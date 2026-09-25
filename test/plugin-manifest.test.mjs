@@ -22,26 +22,19 @@ test('plugin.json parses and declares the required fields', async () => {
   assert.equal(manifest.author.name, 'VanillaFairy')
 })
 
-test('the vanillafairy marketplace lists agentics', async () => {
-  const raw = await readFile(new URL('../../.claude-plugin/marketplace.json', import.meta.url), 'utf8')
-  const marketplace = JSON.parse(raw)
+// This repository is its own single-plugin marketplace, so a user can
+// `/plugin marketplace add VanillaFairy/agentics`. The marketplace's version is what
+// `claude plugin list --available` and update tooling report, while plugin.json wins at
+// install time — a drift between the two reads as a version nobody is running.
+test('the repository is a single-plugin marketplace listing agentics at its root', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8'))
+  const marketplace = JSON.parse(await readFile(new URL('../.claude-plugin/marketplace.json', import.meta.url), 'utf8'))
 
-  const entry = marketplace.plugins.find((p) => p.name === 'agentics')
-  assert.ok(entry, 'agentics must be listed in the marketplace')
-  assert.equal(entry.source, './agentics')
-  assert.match(entry.version, /^\d+\.\d+\.\d+$/)
-})
-
-test('the sibling plugins are still listed', async () => {
-  const raw = await readFile(new URL('../../.claude-plugin/marketplace.json', import.meta.url), 'utf8')
-  const names = JSON.parse(raw).plugins.map((p) => p.name)
-
-  // The siblings this marketplace actually ships. `investigate` stood here until the
-  // capability moved into agentics and the slot was taken by vf-grill; the assertion
-  // outlived the plugin and had been failing ever since, which is the quiet way a guard
-  // stops guarding — it is red for a reason nobody reads, so a real regression looks
-  // exactly like the noise.
-  for (const name of ['vf-superpowers', 'reasonable', 'vf-grill']) {
-    assert.ok(names.includes(name), `${name} must not be dropped from the marketplace`)
-  }
+  assert.equal(marketplace.name, 'agentics')
+  assert.equal(marketplace.owner.name, 'VanillaFairy')
+  assert.equal(marketplace.plugins.length, 1, 'the marketplace ships exactly one plugin')
+  const [entry] = marketplace.plugins
+  assert.equal(entry.name, manifest.name)
+  assert.equal(entry.source, './')
+  assert.equal(entry.version, manifest.version, 'marketplace.json and plugin.json must carry the same version')
 })

@@ -171,17 +171,23 @@ test('the discriminator still gates the order', async () => {
   assert.deepEqual(result.integration.merged, [])
 })
 
-test('the adversarial review still runs, and its criticals still hold the order', async () => {
+test('the adversarial review still runs, as the integration review, and its criticals lead', async () => {
+  // A fix-lane order is not one other work is measured against, so it buys no review loop of its
+  // own: the integration review over the merged head is its adversarial review, charged with its
+  // criteria. Its criticals go to the human gate and keep the run incomplete.
   const { result, prompts } = await run({}, {
-    'review:': { findings: [{ id: 'R1', severity: 'critical', file: 'src/camera.ts', line: 9,
-      claim: 'the rounding is now wrong in the other direction',
+    'review:integration': { findings: [{ id: 'R1', severity: 'critical', file: 'src/camera.ts',
+      line: 9, claim: 'the rounding is now wrong in the other direction',
       evidence: 'src/camera.ts:9' }], fix_verdicts: [] },
-    'fix:': coded({ commits: [], head_sha: A40 }),
   })
 
-  assert.ok(labels(prompts).some((l) => l.startsWith('review:W1')))
-  assert.ok(!result.implemented.some((e) => e.id === 'W1'),
-    'a critical holds the order here exactly as it does on the full lane')
+  assert.ok(!labels(prompts).some((l) => l.startsWith('review:W1')), 'no per-order loop is bought')
+  const review = prompts.find((p) => p.opts.label === 'review:integration').prompt
+  assert.match(review, /ORDERS WHOSE ONLY ADVERSARIAL REVIEW IS THIS ONE/)
+  assert.match(review, /— W1: /)
+  assert.equal(result.coverage.complete, false)
+  assert.ok(result.coverage.unreached.some((u) => /rounding is now wrong/.test(u)),
+    'the critical leads the result rather than sitting in a log')
 })
 
 test('the integration review still reads the merged head', async () => {

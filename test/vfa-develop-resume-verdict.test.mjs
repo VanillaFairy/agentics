@@ -45,7 +45,9 @@ const M40 = 'e'.repeat(40)
 const N40 = 'f'.repeat(40)
 
 const RUN_DIR = 'C:/repo/.claude/vfa/runs/20260819-062330'
-const ARGS = { change: 'add the thing', roots: '.', plugin_root: 'C:/plugin' }
+// These scenarios pin the per-order review loop, so they ask for it on every order; the default,
+// which reviews only yardstick orders per order, is pinned in vfa-develop-review-scope.
+const ARGS = { change: 'add the thing', roots: '.', plugin_root: 'C:/plugin', review_every_order: true }
 
 const order = (id, over = {}) => ({
   id, title: 'do ' + id, role: 'none', locus: ['src/' + id + '.js'], reads: [],

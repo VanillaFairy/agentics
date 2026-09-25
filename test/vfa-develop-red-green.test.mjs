@@ -38,7 +38,9 @@ const M40 = 'e'.repeat(40)
 const N40 = 'f'.repeat(40)
 
 const RUN_DIR = 'C:/repo/.claude/vfa/runs/20260816-143005'
-const ARGS = { change: 'add the widget', roots: '.', plugin_root: 'C:/plugin' }
+// These scenarios pin the per-order review loop, so they ask for it on every order; the default,
+// which reviews only yardstick orders per order, is pinned in vfa-develop-review-scope.
+const ARGS = { change: 'add the widget', roots: '.', plugin_root: 'C:/plugin', review_every_order: true }
 
 // A red/green pair: R1 owns the test file, G1 owns the implementation and depends on R1.
 const RED = {
@@ -862,4 +864,17 @@ test('a red order never reaches the integration head without its green', async (
     assert.deepEqual(orphanReds, [],
       'after merging ' + seen.join(', ') + ' the head carries a red with no implementation')
   }
+})
+
+test('by default the red is reviewed per order and its green at integration', async () => {
+  const { review_every_order: _, ...defaults } = ARGS
+  const { prompts } = await run({
+    'verify:': verifierSaying({ 'verify:R1': redVerified() }),
+    'merge:': mergeSequence([M40, N40]),
+  }, defaults)
+
+  const labels = prompts.map((p) => p.opts.label)
+  assert.ok(labels.includes('review:R1#1'), 'a red pins the criteria nothing downstream can check')
+  assert.ok(!labels.some((l) => l.startsWith('review:G1')), 'a green is measured by the red\'s tests')
+  assert.match(promptFor(prompts, 'review:integration'), /— G1: /)
 })

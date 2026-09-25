@@ -35,7 +35,9 @@ const B40 = 'b'.repeat(40)
 const M40 = 'e'.repeat(40)
 
 const RUN_DIR = 'C:/repo/.claude/vfa/runs/20260904-113000'
-const ARGS = { change: 'add a member to the closed union', roots: '.', plugin_root: 'C:/plugin' }
+// These scenarios pin the per-order review loop, so they ask for it on every order; the default,
+// which reviews only yardstick orders per order, is pinned in vfa-develop-review-scope.
+const ARGS = { change: 'add a member to the closed union', roots: '.', plugin_root: 'C:/plugin', review_every_order: true }
 
 const W1 = {
   id: 'W1', title: 'tuck the new row in', role: 'none', pins: 'behaviour', weight: 'standard',

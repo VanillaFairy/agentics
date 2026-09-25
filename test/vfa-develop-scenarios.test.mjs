@@ -39,7 +39,9 @@ const N40 = 'f'.repeat(40)   // the next merge commit
 
 const RUN_DIR = 'C:/repo/.claude/vfa/runs/20260816-143005'
 
-const ARGS = { change: 'add the thing', roots: '.', plugin_root: 'C:/plugin' }
+// These scenarios pin the per-order review loop, so they ask for it on every order; the default,
+// which reviews only yardstick orders per order, is pinned in vfa-develop-review-scope.
+const ARGS = { change: 'add the thing', roots: '.', plugin_root: 'C:/plugin', review_every_order: true }
 
 const surveyResult = (over = {}) => ({
   question: 'q', topics: [], verdicts: [], history: null, docs: null,
@@ -1366,7 +1368,7 @@ test('a resumed run adopts a recorded `low` the same way it adopts any other tie
     }),
   })
 
-  assert.equal(prompts.find((p) => p.opts.label === 'review:W2#1').opts.model, 'sonnet',
+  assert.equal(prompts.find((p) => p.opts.label === 'review:integration').opts.model, 'sonnet',
     'a plan written under `low` is reviewed under `low` when it is picked up again')
   assert.ok(!logs.some((l) => /Override: intelligence/.test(l)),
     'a caller who passed no tier has disagreed with nothing')

@@ -60,6 +60,11 @@ their work is gone rather than deferred. A wave boundary has the state line writ
 next wave branching from a head that already exists, which is why stopping there is nearly
 free — and it is the difference the three interruptions of 2026-08-27 turned on.
 
+`--review-every-order` (`review_every_order: true`) gives every order a review loop of its own.
+By default only yardstick orders get one — a `red`, or a `contract: true` order — and every other
+order is verified per order and reviewed inside the integration review. Pass it only when the user
+asks for per-order review.
+
 `--plan-only` surveys, plans and partitions, then stops with the plan written to disk and
 nothing implemented. Use it when the user says to plan something now and build it later, or
 wants to look at the decomposition before paying for it. The run returns a checkpoint whose
@@ -227,9 +232,8 @@ What it costs: plan, code, verify, review, merge, plus the history search if you
 400–500k-token survey in front of it.
 
 What it does **not** drop: the discriminator still proves the test fails without the fix, the
-adversarial reviewer still attacks the series, the mechanical checks still run whole — build,
-typecheck, suite, commit series — and the integration review still reads the merged head. Those
-are the parts the field audit found were paying for themselves.
+mechanical checks still run whole — build, typecheck, suite, commit series — and the integration
+review reads the merged head as the order's adversarial review.
 
 One dispatch it keeps that it could have dropped: the planner, at low effort and on sonnet,
 charged to write one order rather than to decompose anything. It is the only place the run
@@ -375,7 +379,7 @@ if the session dies in the middle.
    resolve:
 
    ```
-   Workflow({ name: 'vf-agentics:vfa-develop', args: { change, roots, notes, prior, intelligence, plugin_root, base_ref, programme, slice, settled_shape, ground, effort } })
+   Workflow({ name: 'vf-agentics:vfa-develop', args: { change, roots, notes, prior, intelligence, plugin_root, base_ref, programme, slice, settled_shape, ground, effort, review_every_order } })
    ```
 
    `plugin_root` is this plugin's absolute root (`${CLAUDE_PLUGIN_ROOT}`); the workflow

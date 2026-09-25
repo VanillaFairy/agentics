@@ -145,7 +145,9 @@ Two rules bind this principle:
 - **Leanness must be legible.** Whatever ran names the property that earned it, and whatever
   did not run is stated. A topology nobody can audit quietly grows back to the maximum.
 - **Leanness never touches verdicts.** What shrinks is the number of dispatches, the model
-  tier and the phases. What a verdict is computed from, once a step runs, never shrinks.
+  tier, the phases, and which orders buy a review loop of their own. What a verdict is computed
+  from, once a step runs, never shrinks, and every order still meets an adversarial reviewer
+  before the human gate.
 
 The most visible instrument of this is `develop`'s triage, which can decline the pipeline
 entirely (see [Triage](#triage)).
@@ -492,8 +494,9 @@ cheap:
 - **The locus is the admission rule.** What licenses skipping the survey is that the caller
   already decided which files the change is about. Without a `locus`, the run refuses at input,
   rather than sending a planner to invent a fence the coder may not widen.
-- **Only phases are dropped, never gates.** The discriminator, the adversarial review, the full
-  mechanical checks and the integration review all still run. The planner still runs too, at low
+- **Only phases are dropped, never gates.** The discriminator, the full mechanical checks and
+  the integration review all still run, and the integration review is the lane's adversarial
+  review of its one order, as it is for any order that is not a yardstick. The planner still runs too, at low
   effort, charged with writing one order: it is the only place the run directory, plan envelope
   and digest manifest get written, and a lane with no resume point pays twice the first time a
   session limit lands.
@@ -599,8 +602,15 @@ orders only.
 
 ### The review loop
 
-Each order is attacked by a **fresh** `reviewer` each round. A reviewer that saw an earlier
-round defends its earlier reading instead of attacking the code.
+**Which orders buy a loop.** A yardstick order, a `red` or a `contract: true` one, is reviewed
+per order: nothing downstream can check it, and later waves build on it before integration would
+see it. Every other order is verified per order (build, typecheck, suite, discriminator) and
+approved, and its adversarial review is carried by the integration review, which is handed its
+criteria and its coder's concerns. Its result entry says so with `review.at_integration: true`.
+`review_every_order: true` buys the loop for every order.
+
+Each reviewed order is attacked by a **fresh** `reviewer` each round. A reviewer that saw an
+earlier round defends its earlier reading instead of attacking the code.
 
 **The reviewer has no approval to give.** Approval is a count the workflow computes: the open
 set being empty. A reviewer that could approve would be a reviewer that could be persuaded.
@@ -676,9 +686,12 @@ list too, and reading that as success waves a broken merge through. Anything tha
 pairwise disjoint — surfaced to the human, never resolved silently.
 <!-- /vfa:verbatim -->
 
-After the last wave, a reviewer reads the **whole merged diff** once more. That integration
-review's criticals go to the human, not into a fix loop, because an integration critical usually
-means two orders disagree, and which one is wrong is a design decision.
+After the last wave, a reviewer reads the **whole merged diff**. It has two charges: the
+defects that only exist once orders are together, and the review of every merged order that did
+not buy a loop of its own, against that order's criteria. Its criticals go to the human, not into
+a fix loop: an integration critical usually means two orders disagree, which is a design
+decision, and one inside a single order's diff is a finding the human rules on before the user's
+tree moves.
 
 **An integration review over a partial merge says so, on every finding.** When some planned
 orders did not land, the reviewer is told which ones are missing and asked to reason about the
@@ -1735,7 +1748,9 @@ What each workflow hands its caller. Every one also carries a `coverage` block.
   deferred, blocked, implemented, escalations, integration, plan_path, checkpoint,
   survey_coverage, coverage}`. `checkpoint` is `null` unless the run stopped before dispatching
   (see [Checkpoints](#checkpoints)). `integration` carries `branch`, `merged`, `head_sha`,
-  `merge_stopped_at`, `approved_unmerged`, `wave_verify` and the integration `review`. `coupled`
+  `merge_stopped_at`, `approved_unmerged`, `wave_verify` and the integration `review`. Each
+  `implemented` entry's `review` carries `at_integration`, true when its only adversarial review
+  was the integration review. `coupled`
   entries carry the whole order body.
 
 ---

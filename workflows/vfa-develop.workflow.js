@@ -1193,6 +1193,19 @@ function judgeFor(order) {
 const outputIsTheYardstick = (order) =>
   Boolean(order) && (order.role === 'red' || order.contract === true)
 
+// Which orders buy a review loop of their own. A yardstick order does, for the reason above:
+// nothing downstream can check it, and later waves build on it before integration would see it.
+// Every other order is verified per order — build, typecheck, suite, discriminator — and reviewed
+// once, adversarially, inside the integration review over the merged change, where the same
+// reviewer also sees what per-order review cannot. `review_every_order` buys the per-order loop
+// for every order when the caller asks for it.
+const reviewEveryOrder = input.review_every_order === true
+const reviewedPerOrder = (order) => reviewEveryOrder || outputIsTheYardstick(order)
+
+// Orders whose adversarial review the integration review carries, by id: the coder's concerns
+// and the verifier's advisory series findings, which a per-order reviewer would have attacked first.
+const reviewAtIntegration = new Map()
+
 /**
  * Which model implements this order.
  *
@@ -3297,6 +3310,39 @@ function reviewerPrompt(wo, state, advisories, concerns, discovered, priorBlocke
       }))
 }
 
+// The per-order review the integration review carries for every merged order that did not buy a
+// loop of its own. Each order's criteria come from disk by digest when the plan is there, so no
+// order prose rides this prompt twice.
+function unreviewedSection(merged) {
+  const owed = (merged || []).filter((wo) => reviewAtIntegration.has(wo.id))
+  if (owed.length === 0) return ''
+
+  return `ORDERS WHOSE ONLY ADVERSARIAL REVIEW IS THIS ONE. Each was verified green — build, ` +
+    `typecheck, suite, discriminator — and approved without a review of its own, because no ` +
+    `other order is measured against it. So for each, do what its own reviewer would have ` +
+    `done, on its commits within the merged diff: try to FALSIFY the claim that it meets its ` +
+    `acceptance criteria by constructing the concrete input or state that violates one. Its ` +
+    `tests are part of what you attack: the same agent wrote them and the code, so ask of each ` +
+    `whether it pins the behaviour a criterion names or the shape this implementation happened ` +
+    `to produce. A criterion no test could fail is critical.\n\n` +
+    owed.map((wo) => {
+      const held = reviewAtIntegration.get(wo.id)
+      return `— ${wo.id}: ${wo.title}\n` +
+        (planPath && wo.digest
+          ? `   criteria: node "${pluginRoot}/lib/ledger.mjs" order "${planPath}" "${wo.id}" ` +
+            `(digest ${wo.digest})\n`
+          : `   criteria:\n${listOf((wo.acceptance || []).map((a) => '     ' + a))}\n`) +
+        `   locus: ${(wo.locus || []).join(', ')}\n` +
+        `   the coder's own concerns — attack these first:\n` +
+        (held.concerns.length ? listOf(held.concerns.map((c) => '     ' + c)) : '     (none)') + '\n' +
+        (held.advisories.length
+          ? `   advisory series findings, context only:\n${advisoryLines(held.advisories)}\n`
+          : '')
+    }).join('\n') +
+    (planPath ? rootWarning : '') +
+    `\n${acceptanceNote}\n\n`
+}
+
 function integrationReviewPrompt(merged, outstanding) {
   const partial = (outstanding || []).length === 0 ? '' :
     `THIS IS A PARTIAL MERGE. These planned orders are NOT in the tree you are reading:\n` +
@@ -3311,9 +3357,16 @@ function integrationReviewPrompt(merged, outstanding) {
     `SAY WHICH ORDER in its evidence rather than dropping the finding: an incomplete tree is ` +
     `something to reason about out loud, not to review as though it were whole.\n\n`
 
+  const owedAny = (merged || []).some((wo) => reviewAtIntegration.has(wo.id))
+
   return `Adversarially review the WHOLE change, as it now stands merged. This is the ` +
-    `integration review: every order below passed its own review in its own worktree, so ` +
-    `what you are hunting is the class of defect that only exists once they are together.\n\n` +
+    `integration review: ` +
+    (owedAny
+      ? `some orders below were reviewed in their own worktrees and some were not — those are ` +
+        `listed with their criteria further down, and reviewing them is half your charge. The ` +
+        `other half is the class of defect that only exists once the orders are together.\n\n`
+      : `every order below passed its own review in its own worktree, so what you are hunting ` +
+        `is the class of defect that only exists once they are together.\n\n`) +
     `INTEGRATION WORKTREE — cd into it; everything below is read from there:\n` +
     `${integration.worktree}\n` +
     `BRANCH: ${integration.branch}\n` +
@@ -3329,8 +3382,10 @@ function integrationReviewPrompt(merged, outstanding) {
     `and another implemented differently; a function two orders each half-wired; duplicated ` +
     `logic that arrived from two directions; an interface whose two sides disagree; ` +
     `something the whole change was supposed to accomplish that no single order owned and ` +
-    `nobody therefore did. A defect entirely inside one order's diff was already reviewed ` +
-    `once — raise it only if you can show the earlier round was wrong.\n\n` +
+    `nobody therefore did. A defect entirely inside the diff of an order that had its own ` +
+    `review was already reviewed once — raise it only if you can show the earlier round was ` +
+    `wrong.\n\n` +
+    unreviewedSection(merged) +
     `Every finding is falsifiable: claim states the defect so it could be proven wrong, and ` +
     `evidence cites the code that makes it real. Criticals here go straight to the human ` +
     `with this trail — no fix loop opens without them — so a padded finding costs a person's ` +
@@ -4291,7 +4346,20 @@ async function verifyAndReview(carried, wo, waveNumber) {
       // in between.
     }
 
-    const escalation = await reviewLoop(wo, held.state, held.trail)
+    let escalation = null
+    if (reviewedPerOrder(wo)) {
+      escalation = await reviewLoop(wo, held.state, held.trail)
+    } else {
+      // Verified green and approved; its adversarial review is the integration review's charge.
+      // What that reviewer needs from this order — its criteria and the coder's doubts — is
+      // kept here, because the order's state is not otherwise in reach at integration.
+      reviewAtIntegration.set(wo.id, {
+        concerns: held.state.concerns || [],
+        advisories: held.state.advisories || [],
+      })
+      log(`${wo.id}: verified green; reviewed at integration rather than per order — it is not ` +
+        `an order other work is measured against.`)
+    }
 
     // An order is approved the instant this returns null, and that instant is what gets
     // recorded. Waiting for the wave to end records nothing a limit landing MID-wave can use —
@@ -6187,6 +6255,10 @@ ${history}
     // that invocation predates the field, which reads as "not recorded", not as "not measured".
     for (const wo of salvagedHere) {
       const salvage = salvagedApproved.get(wo.id)
+      // Approved by an earlier invocation without a review of its own: its review is still owed,
+      // and the integration review is where it is paid. The coder's concerns died with that
+      // invocation, so none are carried.
+      if (!reviewedPerOrder(wo)) reviewAtIntegration.set(wo.id, { concerns: [], advisories: [] })
 
       const entry = {
         id: wo.id,
@@ -6235,6 +6307,7 @@ ${history}
         commits: state.commits,
         review: {
           rounds: chain.trail.length,
+          at_integration: reviewAtIntegration.has(wo.id),
           measured: state.measured,
           open_majors: lastReview ? lastReview.findings.filter((f) => f.severity !== 'critical') : [],
           trail: chain.trail,

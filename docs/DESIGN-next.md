@@ -118,14 +118,14 @@ between two layers has nowhere to go. One recursive node makes depth a property 
 ### GP4 — Scripts do the deterministic work; each agent gets only what it needs
 
 Anything computable is computed in `lib/`: partitions, digests, schedules, verdicts, merges,
-statuses, briefs, excerpts, freshness. A workflow script has no filesystem, so disk crosses into it
+statuses, briefs, excerpts, whether recorded evidence still stands. A workflow script has no filesystem, so disk crosses into it
 through a **courier**: an agent that runs one command and pastes its stdout.
 
 - **Bytes that cross a model carry a digest the receiver re-checks.** Lines the workflow mints
   whole travel encoded on one argv slot (or a file path when an argv slot would overflow).
 - **One courier per boundary**, running every deterministic step of that boundary in one command.
-- **Briefs are assembled by script** from the node, its referenced evidence and role-scoped
-  knowledge. Shared evidence is resolved once into excerpts and handed inline; an agent whose
+- **Briefs are assembled by script** from the node, its referenced evidence and the
+  [gotchas](#gotchas) its role and locus call for. Shared evidence is resolved once into excerpts and handed inline; an agent whose
   charge can be answered from what it is handed gets no tools.
 - **One reader per body of evidence** unless volume or independence (GP1) earns more.
 - **Returns are typed and short**; full reports go to files, opened only by a consumer acting on
@@ -141,9 +141,10 @@ the critical path, so the count of boundaries, not of facts, sets the floor.
 
 Whoever performs an action records the observation, in the same execution. No agent records a
 verdict; verdicts are re-derived from observations by the same functions on every read. The status
-of a node, an execution, an effort or a knowledge entry is computed from append-only logs and git
+of a node, an execution or an effort is computed from append-only logs and git
 on every read; anything that displays a status renders it, and nothing trusts a rendered status.
-One monotonic `seq` per effort orders records; it is a counter, never a clock. Resume names the
+One monotonic `seq` per effort orders records; it is a counter minted by the ledger script,
+never by an agent, and never a clock. Resume names the
 single next undone action per node, trusting a stage only where the record and git agree.
 
 **Why:** a record written after the fact leaves a window where work exists and nothing says so; a
@@ -165,7 +166,7 @@ A node is one file of authored facts plus its events in the effort's log.
 | `level` | design nodes: `context`, `container`, `component`, `leaf-spec` (see [Design](#design)) |
 | `decisions[]` | ids of the decisions this node realises (see [Traceability](#traceability)) |
 | `acceptance[]` | criteria, each naming its check; `HUMAN:` routes one to the user untouched |
-| `ground[]` | paths the node's evidence lives in, checked against the knowledge base |
+| `ground[]` | paths the node's evidence lives in; decides whether recorded evidence still stands |
 | `locus[]` | leaf: every file it may write |
 | `reads[]` | leaf: files it builds against and never writes |
 | `deps[]` | node ids whose outputs this node consumes |
@@ -180,33 +181,43 @@ Events: `planned`, `replanned`, `dispatched`, `approved`, `merged`, `escalated`,
 ### Storage
 
 ```
-.claude/agentics/                 the repository: the root node
-  kb/                             the knowledge base, shared by every effort
+.claude/agentics/
+  slots/                          the parallelism pool, shared by every execution (see Scheduling)
   efforts/<effort>/
     nodes.jsonl                   authored node facts, append-only (a revision appends)
     events.jsonl                  node events, append-only
     evidence/                     survey and probe returns, verbatim, anchored to commit + ground
+    knowledge/                    gotchas (see Gotchas)
     executions/<stamp>/           one execution of a subtree: state.jsonl, journal.jsonl
     reports/                      executor reports, one file per dispatch
+    locks/                        locus and branch locks
 ```
 
-`lib/ledger.mjs` is the only writer of every `.jsonl` here; it mints `seq` per effort under a lock
-file, and refuses a line that does not parse, lacks a kind or an integer `seq`, or fails its
-caller's digest. **One execution per effort is active at a time**; preflight refuses a second
-(checkpoint `existing_execution`). Parallelism lives inside the execution.
+`lib/ledger.mjs` is the only writer of every `.jsonl` here. It mints `seq` per effort under a lock
+file — a script minting a counter, so no agent ever supplies one — and refuses a line that does not
+parse, lacks a kind, or fails its caller's digest.
 
 Design documents are source and live in the source tree (`docs/agentics/designs/<effort>/`); a
-design node points at its document. Worktrees live under `.claude/worktrees/`. Branches:
+design node points at its document. Worktrees live under `.claude/worktrees/`.
 
-| branch | holds |
-|---|---|
-| `agentics/<effort>` | the effort branch: everything delivered for the effort, landed into the user's branch once |
-| `agentics/<effort>/<node-id>` | one leaf's commit series |
+### Integration branches
 
-The effort branch is the integration branch of every execution in the effort.
+Integration is assigned **per composite node, dynamically**. A composite gets its branch
+`agentics/<effort>/<node-id>` and worktree the first time one of its children is ready to merge,
+cut from its own parent's integration head. Its children branch from it and merge into it. When
+its last child has merged and its integration review is done, it merges into its parent's
+integration branch like any child. A leaf's branch is `agentics/<effort>/<node-id>` too.
 
-**Why the knowledge base hangs on the root:** knowledge outlives efforts; every effort reads the
-same base and deposits upward into it.
+The effort root's integration branch, `agentics/<effort>`, is the effort branch: the one landed
+into the user's branch.
+
+- **Concurrent executions** are allowed on any disjoint subtrees of the same effort. Preflight
+  refuses only an execution whose root is an ancestor or a descendant of an active one (checkpoint
+  `existing_execution`).
+- **Locus locks** are effort-wide: a leaf takes a lock on every file of its locus at leaf-open and
+  releases it at merge, so leaves in different executions cannot write the same file unordered.
+- **Merges into one integration branch are serialized** by a lock on that branch, whichever
+  execution performs them.
 
 ### Triage
 
@@ -280,7 +291,7 @@ events; nothing is rewritten, and merged work stays.
 
 | mode | earned when | what runs |
 |---|---|---|
-| **inline** | every leaf is `verify` or `tdd`, the locus is known, the intent settled, nothing is irreversible, and the leaves' summed fit (condition 7's computation) is within the session model's budget | the session does it — see [The simple task](#the-simple-task) |
+| **inline** | every leaf is `verify`, `tests-only` or `tdd`, the locus is known, the intent settled, nothing is irreversible, and the leaves' summed fit (condition 7's computation) is within the session model's budget | the session does it — see [The simple task](#the-simple-task) |
 | **dispatched** | anything else | an execution: worktrees, executors per rigor, boundary couriers, review per rigor, dynamic merge |
 
 A composite may run inline when all its leaves qualify. Every mode keeps two things for any
@@ -296,7 +307,8 @@ The inline mode has its own entry skill, `task`. Its rules:
   the code; surface a mismatch before any plan.
 - **Split within-scope from auxiliary.** Within-scope is what was asked, including the tests its
   rigor requires. Auxiliary is what the change makes desirable: stale docs, neighbouring cleanups.
-  Auxiliary items are proposed as a separate list the user accepts or rejects; a rejected item does
+  The rigor decides the tests: a `tdd` leaf writes them, a `verify` leaf writes none, and the
+  inline mode never adds or drops one on its own. Auxiliary items are proposed as a separate list the user accepts or rejects; a rejected item does
   not exist. A consequence ("skipping this leaves the build red") is stated as information, never
   used to bypass the choice.
 - **Ask, do not assume.** A genuine within-scope decision goes to the user, batched in one round.
@@ -320,11 +332,15 @@ Every leaf carries a `rigor`, set by its author. Walk the table top-down; the fi
 
 | rigor | the work… | leaves | verification |
 |---|---|---|---|
-| `verify` | changes no behaviour: docs, comments, config values, renames behind an unchanged interface, dependency bumps, wiring | one implementer leaf | the named check passes; no test outcome changes |
+| `verify` | adds no logic: only literal values and user-visible text (a window title, a label, a message), config values, docs and comments, assets, renames or moves behind an unchanged interface, dependency versions, wiring of existing parts | one implementer leaf | the named check passes (build, typecheck, the existing suite, a command, or a `HUMAN:` look); no test outcome changes except a test that asserts the changed literal, updated in the same leaf |
 | `tests-only` | only adds tests to code that is already correct | one test-author leaf | each new test passes now and fails under a mutation the test-author declared |
 | `tdd` | adds behaviour whose expected results the criteria state exactly | one implementer leaf, test first | at least one new test; each fails at base and passes now |
 | `pair` | adds behaviour where a wrong reading of the criteria would pass its author's own tests: edge-case rules, parsers, state machines, concurrency, contracts other nodes consume | a `red` test-author leaf, then a `green` implementer leaf | red: its tests fail for want of the implementation; green: they pass, tests untouched |
 | `triad` | as `pair`, and a miss ships silently into durable state or is costly to find: persistence formats, migrations, data loss, security, money | red, green, then an `audit` leaf | as `pair`, plus the auditor's declared mutations are killed |
+
+**Adds no logic** means the diff introduces no new branch, loop, computation, state or error path.
+A literal whose value decides a branch elsewhere is still `verify`; a new branch on that literal is
+not. Unsure between `verify` and `tdd`: `tdd`.
 
 Unsure between `tdd` and `pair`: `tdd` when the leaf is small, `pair` when it is not.
 
@@ -361,8 +377,8 @@ only what the level below needs, and a level is written only when a child reache
 
 - **A level is earned.** A change inside one subsystem skips `container`; inside one component,
   `component`. The skip is recorded.
-- **Evidence is scoped to the level.** Each level surveys only the ground it needs, reuses fresh
-  knowledge and standing evidence, and runs the outward search (does this already exist?)
+- **Evidence is scoped to the level.** Each level surveys only the ground it needs, reuses standing
+  evidence, and runs the outward search (does this already exist?)
   concurrently with the survey when it would build a capability.
 - **Decisions are the user's and carry ids.** One question at a time, dependency order first, each
   with a recommendation and its reason. Open questions are graded `blocking`, `parked`, `lookup`,
@@ -401,8 +417,8 @@ checks a leaf against its own criteria.
 
 The survey gathers evidence for one node and never concludes.
 
-1. **Plan.** One analyst decomposes the question into topics against the knowledge base's index,
-   names each topic's subtree and the common ground.
+1. **Plan.** One analyst decomposes the question into topics, names each topic's subtree and the
+   common ground.
 2. **Scout.** One scout per topic, the common ground scouted once. Scouts return locations and a
    `stop_reason`, with `no_match` and `not_reached` kept apart, and are continued on exactly what
    remains until exhausted. History and docs channels run alongside when the plan asks, each with
@@ -412,26 +428,53 @@ The survey gathers evidence for one node and never concludes.
 4. **Judge.** One analyst **without tools** judges every topic from the excerpts, unless volume or
    `pace` earns more readers.
 
-Fresh knowledge-base entries turn a topic into a verification; stale entries are leads for scouts
-only. A node whose shape is settled and whose whole ground is fresh buys no survey (the null
-survey) and says so. A recorded survey whose commit is an ancestor of HEAD, whose ground no commit
-or edit has touched since, and which reported complete coverage **stands** and is reused.
+A recorded survey **stands**, and is reused instead of bought again, when its commit is an ancestor
+of HEAD, no commit or uncommitted edit has touched its ground since, and it reported complete
+coverage — all computed from git. A node whose shape is settled and whose ground a standing survey
+covers buys no survey, and says so.
 
-### Knowledge base
+---
 
-Anchored observations, one append-only log per source-tree node. Depth is the lowest common
-ancestor of what an entry is about; freshness is `git log <observed_at>..HEAD -- <about>` plus a
-dirty-tree check, computed on read. Fresh is evidence, stale is a lead, orphaned is a claim about
-ground that is gone. Only script-minted kinds are written. Executors are seeded with fresh entries
-on their locus chain; verification is seeded only with established commands whose source is a
-verification.
+## Gotchas
+
+`agentics` keeps no knowledge base. It keeps one narrow kind of memory: **gotchas**, the traps an
+agent fell into while working, recorded so the next agent does not.
+
+**What qualifies.** An observation is a gotcha only when **all** hold:
+
+1. **Hit, not foreseen.** The agent attempted something in this effort and it failed or misled it:
+   a command errored, a tool misbehaved, a check reported something false, a convention was
+   enforced by a tool.
+2. **Resolved and seen to work.** The agent found a workaround and observed it succeed.
+3. **About the environment, not the work.** Tooling, build and test commands, setup, platform
+   quirks, tool-enforced conventions. Never a design decision, a fact about the code's behaviour
+   (that belongs in the code, its tests or the design), a task's status, or an opinion.
+4. **Actionable.** Statable as *when* <trigger> *do* <action>, with the evidence: the failing
+   command and the output line that showed it.
+5. **Not in the brief.** Nothing the agent was handed already said it.
+
+One distinguished kind, **`command`**, records how to build, typecheck and test; only an
+investigator writes it, and it is the one gotcha verification reads.
+
+**Where and how.** `.claude/agentics/efforts/<effort>/knowledge/<id>.md`, one file per gotcha, with
+frontmatter `kind` (`pitfall` | `command`), `roles` (who needs it), optional `paths` (locus prefixes
+it applies to), `observed_at` (commit) and `source` (node and role). The id is minted by script from
+the normalised trigger, so the same trap recorded twice is one file. An executor reports gotchas in
+a fenced block of its report file; leaf-close extracts and writes them — no model retypes one.
+Brief assembly appends every gotcha whose `roles` include the brief's role and whose `paths` (if
+any) overlap its locus. A gotcha an agent observes no longer holds is deleted, not marked.
+
+**Why so narrow:** a memory that stores claims about the code goes stale silently and is then read
+as fact; a gotcha is checked the moment it is used, because the trigger either happens or does not.
+
+---
 
 ---
 
 ## Execution
 
-An execution runs a subtree in the effort branch's worktree and in per-leaf worktrees, and never
-touches the user's tree.
+An execution runs a subtree in the integration worktrees of its composites and in per-leaf
+worktrees, and never touches the user's tree.
 
 ### Boundaries
 
@@ -443,11 +486,11 @@ attached).
 
 | boundary | fused steps |
 |---|---|
-| **preflight** | refuse a second active execution; drift check against the plan's anchor; attach or create the effort worktree; free dead worktrees (clean ones only — a dirty worktree is reported, never forced); read the knowledge chain for every locus |
-| **leaf-open** | create or attach the leaf's worktree and branch; assemble its brief; append `dispatched` |
-| **leaf-close** | commit a shell-less author's files; commit-series check, build, typecheck, suite, discriminator, declared mutations; journal the observation; append the state line |
-| **merge-batch** | merge every approved leaf in dependency order; verify the merged head; append the state line |
-| **postflight** | deposit approved leaves' discoveries; report worktrees and branches eligible for cleanup |
+| **preflight** | refuse an execution overlapping an active one; drift check against the plan's anchor; free this execution's dead worktrees, locks and slots (clean worktrees only — a dirty one is reported, never forced); create the todos |
+| **leaf-open** | acquire a slot and the locus locks; create or attach the leaf's worktree and branch (and its parent's integration branch if absent); assemble its brief; append `dispatched`; move the todo |
+| **leaf-close** | commit a shell-less author's files; commit-series check, build, typecheck, suite, discriminator, declared mutations; journal the observation; write reported gotchas; append the state line; move the todo |
+| **merge-batch** | under the branch lock, merge every approved child into one integration branch in dependency order; verify the merged head; release locus locks; append the state line; complete the todos |
+| **postflight** | report worktrees and branches eligible for cleanup |
 
 Long checks run detached inside the entry point and are polled to completion, so a host's shell
 timeout cannot cut a boundary short.
@@ -470,19 +513,34 @@ escalate as a **combination failure** naming all of them — it is a design ques
 
 ### Scheduling
 
-A ready set, recomputed at every boundary. A leaf is ready when its dependencies are merged, no
-unmerged leaf holds any file of its locus, and no open escalation sits on its dependency chain.
-Ready leaves dispatch immediately. A merge-batch runs whenever approved leaves wait and no batch or
-coupled leaf is using the effort worktree. Cycles are held and land as a unit.
+A ready set per execution, recomputed at every boundary. A leaf is ready when its dependencies are
+merged, its locus locks are free, and no open escalation sits on its dependency chain. A ready leaf
+dispatches as soon as it holds a slot. A merge-batch runs whenever approved children wait on an
+integration branch whose lock is free. Cycles are held and land as a unit.
+
+**Parallelism lives at the leaves and is controlled from outside the execution.** A slot is the
+right to run one leaf. The pool is `.claude/agentics/slots/`: its size comes from one
+configuration file the user edits (`max_parallel`), read at every leaf-open, so a change takes
+effect on the next dispatch in every running execution at once. Slots are lock files naming their holder leaf, acquired at
+leaf-open. A slot is free when its holder's derived status is no longer active (approved, held,
+merged or escalated), so release needs no write of its own; a slot whose holder belongs to an
+execution that is no longer running is freed by that execution's next preflight, or by the user.
 
 When the session set a token target, the scheduler does not start a leaf that the remaining budget
 cannot cover at the effort's measured cost per leaf; it stops at the next merge-batch instead.
 `pause` is a launch flag with the same effect after the next merge-batch.
 
+**Why a lock-file pool rather than a scheduling agent:** the pool is arithmetic, costs no tokens,
+is shared by every execution and every session on the machine, and survives any of them dying. A
+persistent agent receiving messages could do the same job, but it would put a model on the
+scheduling path (GP4), re-read its growing conversation on every message, lose its state with its
+session, and need a courier turn per message from a workflow. It remains an open question — see
+[Open questions](#open-questions).
+
 ### Coupled work
 
 A leaf whose locus includes a designated shared file (lockfiles, configuration roots, barrel files)
-is **coupled**. It runs on its own branch cut from the effort head, under the same rigor,
+is **coupled**. It runs on its own branch cut from its parent's integration head, under the same rigor,
 verification and review, and merges through a merge-batch. Coupled leaves run one at a time;
 everything else keeps running.
 
@@ -517,7 +575,8 @@ ceiling, derived from the session's model unless the user moves it. Couriers run
 
 ### Landing and drift
 
-An execution delivers into the effort branch without asking; the user's tree is not involved.
+An execution delivers into its root's parent integration branch, and ultimately the effort branch, without
+asking; the user's tree is not involved.
 After each merge-batch, the landed diff is intersected with the `consumes` path prefixes of every
 pending designed node; a hit goes to the user as facts, and they rule unaffected, re-design or
 re-slice. Undesigned nodes are reported as unexamined.
@@ -553,17 +612,26 @@ A checkpoint dispatches nothing new and says how to proceed:
 
 ## Progress
 
-The user follows work through the host's todo list, as in `vf-superpowers`' subagent-driven
-development: **one todo per leaf**, subject `<node-id> — <title>`, with the stage in `activeForm`
-(`implementing`, `writing tests`, `in review`, `fix round N`, `merging`, `waiting on user`),
-`completed` on merge, `pending` with the reason when deferred or escalated. Composite nodes appear
-as todos whose status is derived from their children.
+The user follows work through the todo list of the session that launched the execution, as in
+`vf-superpowers`' subagent-driven development. Agents dispatched by a workflow share that session's
+list and move it live while the workflow runs (verified on the host).
 
-**The session is the mover.** The todos are derived from the event logs (`lib/status.mjs`) and
-written by the session when it launches an execution, whenever it is woken, and on the execution's
-return. The list is a view and is never hand-edited. While an execution runs, the workflow's log
-narrates every boundary live. A status header (`ONGOING`, `DONE`, `NEEDS_INPUT`) is rendered from
-derived status for display and never read as a fact.
+- **One todo per leaf**, subject `<node-id> — <title>`; composites get one too, completed by the
+  merge-batch that merges them.
+- **The stage is the `activeForm`**, set to what happens next: `implementing` or `writing tests`
+  (leaf-open); `in review`, `awaiting merge` or `fix round N` (leaf-close, from the measurement);
+  `waiting on user` (a parked node); `completed` on merge; `pending` with the reason when escalated.
+- **The movers are the boundary couriers**, which already run at every stage change, so progress
+  adds task-tool calls to existing dispatches and no dispatch of its own. The first boundary that
+  sees a leaf creates its todo and returns the task id; later boundaries carry it.
+- **`--no-progress`** drops those calls. The session then derives the list from the event logs
+  (`lib/status.mjs`) on launch, on wake and on return, and the workflow's log still narrates every
+  boundary.
+- **The list is a view.** Nothing reads it back as state, it is never hand-edited, and a status
+  header (`ONGOING`, `DONE`, `NEEDS_INPUT`) is rendered from derived status for display only.
+
+**Why a flag:** each todo move is a turn on a courier, which is cheap but not free; a user who
+watches the log or checks in only at the end should not pay for it.
 
 ---
 
@@ -578,8 +646,8 @@ derived status for display and never read as a fact.
 | test-author | write a leaf's tests and declare mutations | implement, execute anything | read, edit |
 | auditor | declare mutations against an implementation | edit anything, execute anything | read |
 | reviewer | attack a span | approve, edit | read, read-only git |
-| investigator | establish build and test commands when none are known | judge quality, fix anything | read, shell |
-| courier | run one command, paste stdout | anything else | shell |
+| investigator | establish build and test commands when none are known, recorded as a `command` gotcha | judge quality, fix anything | read, shell |
+| courier | run one command, paste stdout; move todos | anything else | shell, task tools |
 
 Capability is the tool allowlist and nothing else — no hooks. The test-author and auditor carry no
 shell, so the authors of every yardstick are structurally unable to run what they wrote; their
@@ -611,13 +679,13 @@ in the files whose reader acts on it.
 
 Each contract names its owner (the code that defines the shape) and every place it is restated; a
 change to a field list edits every place in the same commit series. New in this design: the node
-record, the node event, the boundary payloads (`preflight`, `leaf-open`, `leaf-close`,
+record, the node event, the gotcha file, the slot and lock files, the boundary payloads (`preflight`, `leaf-open`, `leaf-close`,
 `merge-batch`, `postflight`) and the replanning returns. **Carried over verbatim** from
 `docs/DESIGN.md`: the digest convention, the state and journal lines, `seq`, the verify payload and
 its typed outcomes (`command_unknown`, `discriminator_undecidable`, `verify_oscillating`,
 `test_unrunnable`, `suite_failures_unnamed`, `tree_not_restored`; absent never inferred; typecheck
-never derived from the suite), the merge result, the resume verdict, the knowledge-base entry, the
-coverage block, the review-loop exit and both severity ladders.
+never derived from the suite), the merge result, the resume verdict, the
+coverage block (without `from_kb`), the review-loop exit and both severity ladders.
 
 ---
 
@@ -642,16 +710,9 @@ coverage block, the review-loop exit and both severity ladders.
 
 ## Open questions
 
-1. **Live todo movement during an execution.** Moving todos from inside a running workflow needs
-   an agent's task-tool calls to reach the session's list while the session waits on the workflow;
-   that is unverified on this host. The design makes the session the mover (on launch, wake and
-   return) plus live log narration. If the host allows it, the boundary couriers could move todos
-   at no extra dispatch.
-2. **Tests on the inline mode.** The simple-task model writes no tests unless asked; this design
-   has rigor decide (`tdd` writes them, `verify` does not). Confirm rigor governs.
-3. **Knowledge base placement.** The design reads "kb is a child of the effort" as "kb is a child
-   of the repository root node, of which every effort is a subtree", so knowledge survives across
-   efforts. Confirm.
-4. **One active execution per effort.** Chosen for a single `seq` authority and one effort
-   worktree; independent subtrees still run in parallel inside it. Confirm, or ask for concurrent
-   executions on disjoint subtrees (which needs per-execution integration branches).
+1. **A persistent agent for parallelism.** The design controls parallelism with a lock-file slot
+   pool (see [Scheduling](#scheduling)). The alternative — one long-lived agent that executions
+   message to ask for slots — is not adopted. Before it could be, a check would have to show: that
+   an agent dispatched inside a workflow can message a persistent agent and get an answer on this
+   host; what one exchange costs as that agent's conversation grows; and that the agent's state
+   survives its session ending. The pool needs none of these.

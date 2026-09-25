@@ -1,5 +1,9 @@
 // test/verify.test.mjs — lib/verify.mjs, against real repositories.
 //
+// Which checks run is the leaf's rigor and role (see `checksFor`); the verdict over what they
+// observed is lib/verdict.mjs's, tested purely in test/verdict.test.mjs. This file pins the
+// observations.
+//
 // These are slow tests: each one stands in a real git worktree and runs a real node test suite
 // inside it, several times. That cost is the point — the whole value of this file is that the
 // discriminator moves HEAD, restores files, runs a suite there and puts the tree back, and none
@@ -25,17 +29,20 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-import { verify, parseArgs, isTestPath, worktreeProblem, extractFailures } from '../lib/verify.mjs'
+import {
+  verify, parseArgs, isTestPath, worktreeProblem, extractFailures, checksFor, journalLine,
+} from '../lib/verify.mjs'
+import { readLog } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import {
-  BRANCH, BUILD, SUITE, TEST_ONE, WIDGET_TEST,
-  git, rev, order, orderBuiltFresh, repository,
+  BRANCH, BUILD, EFFORT, NODE, SUITE, SUITE_TAP, TEST_ONE, WIDGET_TEST,
+  cycle, git, rev, order, orderBuiltFresh, repository,
 } from './harness/verify-fixture.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/verify.mjs', import.meta.url))
@@ -408,9 +415,12 @@ test('suite_output_tail is the suite\'s own last lines, byte for byte', (t) => {
   const direct = spawnSync(SUITE, { cwd: worktree, shell: true, encoding: 'utf8' })
   const expected = ((direct.stdout || '') + (direct.stderr || '')).split('\n').slice(-40).join('\n')
 
-  // Timings differ run to run; the SHAPE and the content that is not a clock must not.
+  // Timings differ run to run; the SHAPE and the content that is not a clock must not. Both
+  // spellings a node reporter uses are normalized — `(1.2ms)` and `duration_ms 1.2` in spec,
+  // `duration_ms: 1.2` in TAP's YAML blocks — so the comparison is deterministic whichever the
+  // runner wrote.
   const scrub = (text) => text.replace(/\(\d+(\.\d+)?ms\)/g, '(Xms)')
-    .replace(/duration_ms [\d.]+/g, 'duration_ms X')
+    .replace(/duration_ms:?\s*[\d.]+/g, 'duration_ms X')
   assert.equal(scrub(payload.suite_output_tail), scrub(expected))
   assert.ok(payload.suite_output_tail.split('\n').length <= 40)
 })
@@ -535,42 +545,325 @@ test('base64 command transport decodes to the same commands', () => {
 
 // ---------------------------------------------------------------- the journal
 
-test('the observation is journalled by the process that observed it', (t) => {
+const EXECUTION = '20260925-120000'
+
+test('the observation is journalled by the process that observed it, through the ledger', (t) => {
   const { dir, worktree, base, head } = order(t)
-  const runDir = dir + '/run'
-  mkdirSync(runDir)
 
   const run = spawnSync(process.execPath, [CLI,
     '--worktree', worktree, '--base', base, '--head', head,
     '--locus', 'src/widget.mjs', '--locus', 'test/widget.test.mjs',
     '--build', BUILD, '--typecheck-absent', '--suite', SUITE, '--test-one', TEST_ONE,
-    '--journal', runDir, '--seq', '7', '--order', 'W1', '--branch', BRANCH,
+    '--repo', dir, '--effort', EFFORT, '--execution', EXECUTION, '--node', NODE, '--branch', BRANCH,
   ], { encoding: 'utf8' })
 
   const parsed = JSON.parse(run.stdout)
   assert.equal(parsed.payload.journal.written, true)
+  assert.equal(fnv1a(canonical(parsed.payload)), parsed.payload_digest,
+    'the journal outcome is part of the payload the digest covers')
 
-  const lines = spawnSync(process.execPath, ['-e',
-    'process.stdout.write(require("fs").readFileSync(process.argv[1],"utf8"))',
-    runDir + '/journal.jsonl'], { encoding: 'utf8' }).stdout.trim().split('\n')
-
-  assert.equal(lines.length, 1)
-  const line = JSON.parse(lines[0])
+  const { entries, malformed } = readLog(dir, EFFORT, 'journal:' + EXECUTION)
+  assert.equal(malformed, 0)
+  assert.equal(entries.length, 1)
+  const [line] = entries
   assert.equal(line.kind, 'verify-observed')
-  assert.equal(line.seq, 7, 'the seq is copied from the dispatch, never chosen here')
-  assert.equal(line.order, 'W1')
+  assert.ok(Number.isInteger(line.seq) && line.seq >= 1, 'the ledger minted the seq; nobody supplied one')
+  assert.equal(line.node, NODE)
   assert.equal(line.branch, BRANCH)
   assert.equal(line.head_sha, head)
   assert.equal(line.build, 'passed')
   assert.equal(line.typecheck, 'absent')
   assert.equal(line.suite, 'passed')
   assert.deepEqual(line.discriminator, parsed.payload.discriminator)
+  assert.deepEqual(line.checks, [])
   assert.deepEqual(Object.keys(line).sort(), [
-    'base_sha', 'branch', 'build', 'discriminator', 'failing_tests', 'head_sha', 'kind',
-    'mutations', 'order', 'seq', 'series_findings', 'stop_reason', 'suite', 'typecheck',
+    'base_sha', 'branch', 'build', 'checks', 'discriminator', 'failing_tests', 'head_sha', 'kind',
+    'mutations', 'node', 'seq', 'series_findings', 'stop_reason', 'suite', 'typecheck',
     'worktree',
-  ], 'the line shape is the one docs/DESIGN.md#journal-lines names — a resume re-derives ' +
-     'verdicts from this line, and both predicates read `typecheck` and `mutations`')
+  ], 'a resume re-derives the verdict from this line alone, so it carries every field ' +
+     'lib/verdict.mjs reads — `typecheck`, `mutations` and `checks` included')
+})
+
+test('verify() journals in-process, and each append mints the next seq', (t) => {
+  const { dir, worktree, base, head } = order(t)
+  const opts = options({ worktree, base, head, extra: [
+    '--repo', dir, '--effort', EFFORT, '--execution', EXECUTION, '--node', NODE, '--branch', BRANCH,
+  ] })
+
+  const first = verify({ ...opts, rigor: 'trivial' })
+  const second = verify({ ...opts, rigor: 'trivial' })
+
+  assert.deepEqual(first.journal, { written: true, error: '' })
+  assert.deepEqual(second.journal, { written: true, error: '' })
+  const seqs = readLog(dir, EFFORT, 'journal:' + EXECUTION).entries.map((e) => e.seq)
+  assert.equal(seqs.length, 2)
+  assert.ok(seqs[1] > seqs[0], 'one monotonic counter per effort, minted under its lock')
+})
+
+test('without somewhere to write, nothing is journalled and the payload says so by null', (t) => {
+  const { worktree, base, head } = order(t)
+  const payload = verify(options({ worktree, base, head, extra: ['--rigor', 'trivial'] }))
+  assert.equal(payload.journal, null)
+})
+
+test('a refused append is reported on the payload rather than thrown', (t) => {
+  const { dir, worktree, base, head } = order(t)
+  const payload = verify(options({ worktree, base, head, extra: [
+    '--rigor', 'trivial', '--repo', dir, '--effort', 'bad--slug', '--execution', EXECUTION, '--node', NODE,
+  ] }))
+  assert.equal(payload.journal.written, false)
+  assert.match(payload.journal.error, /not an effort name/)
+  assert.equal(payload.stop_reason, 'completed', 'the measurement itself is unaffected')
+})
+
+test('journalLine is pure and carries the observed head', () => {
+  const line = journalLine({ node: 'a/b', branch: 'agentics/e--a.b', worktree: 'C:\\w', base: 'b0' },
+    { stop_reason: 'completed', build: 'passed', typecheck: 'absent', suite: 'passed', failing_tests: [],
+      discriminator: [], mutations: [], series_findings: [], checks: [{ command: 'x', status: 'passed' }] },
+    'h1')
+  assert.equal(line.node, 'a/b')
+  assert.equal(line.worktree, 'C:/w')
+  assert.equal(line.head_sha, 'h1')
+  assert.equal(line.base_sha, 'b0')
+  assert.equal('seq' in line, false, 'the ledger mints seq; a line never carries one in')
+  assert.deepEqual(line.checks, [{ command: 'x', status: 'passed' }])
+})
+
+// ---------------------------------------------------------------- rigor selects the checks
+
+test('checksFor: the SPEC table, a role outranking its rigor and integration outranking both', () => {
+  const pick = (o) => {
+    const c = checksFor(o)
+    return [c.profile, c.series, c.discriminator, c.mutations, c.checks, c.emptySeriesExpected]
+  }
+  assert.deepEqual(pick({ rigor: 'verify' }), ['verify', false, false, false, true, false])
+  assert.deepEqual(pick({ rigor: 'trivial' }), ['trivial', true, false, false, true, false])
+  assert.deepEqual(pick({ rigor: 'tests-only' }), ['tests-only', true, true, true, true, false])
+  assert.deepEqual(pick({ rigor: 'tdd' }), ['tdd', true, true, true, true, false])
+  assert.deepEqual(pick({ rigor: 'tdd-pair', role: 'red' }), ['red', true, true, false, false, false])
+  assert.deepEqual(pick({ rigor: 'tdd-triad', role: 'green' }), ['green', true, true, false, false, false])
+  assert.deepEqual(pick({ rigor: 'tdd-triad', role: 'audit' }), ['audit', true, false, true, false, true])
+  assert.deepEqual(pick({}), ['tdd', true, true, true, true, false], 'no rigor measures as before rigor existed')
+  assert.deepEqual(pick({ mode: 'integration', rigor: 'tdd-pair', role: 'red' }),
+    ['integration', false, false, false, true, false])
+})
+
+const check = (command) => ['--check-b64', Buffer.from(command, 'utf8').toString('base64')]
+
+test('a trivial leaf asks no discriminator, and runs its named checks', (t) => {
+  const { worktree, base, head } = order(t)
+
+  const payload = verify(options({ worktree, base, head, extra: [
+    '--rigor', 'trivial', ...check('node -e "process.exit(0)"'), ...check('node -e "process.exit(4)"'),
+  ] }))
+
+  assert.equal(payload.stop_reason, 'completed')
+  assert.deepEqual(payload.discriminator, [], 'a trivial change has no test that would not restate it')
+  assert.deepEqual(payload.series_findings, [], 'but its series is still held to the locus')
+  assert.deepEqual(payload.checks, [
+    { command: 'node -e "process.exit(0)"', status: 'passed' },
+    { command: 'node -e "process.exit(4)"', status: 'failed' },
+  ])
+  assert.match(payload.notes, /check "node -e \\"process.exit\(4\)\\"": failed \(exit 4\)/)
+})
+
+test('a named check that cannot be launched is unrunnable, never failed', (t) => {
+  // 127 is the shell's own "no such command". A check nobody could launch was never observed,
+  // and a fix round sent after it would look for a defect in code that is really in the criterion.
+  const { worktree, base, head } = order(t)
+
+  const payload = verify(options({ worktree, base, head, extra: [
+    '--rigor', 'trivial', ...check('agentics-no-such-command-anywhere --flag'),
+  ] }))
+
+  assert.deepEqual(payload.checks, [{ command: 'agentics-no-such-command-anywhere --flag', status: 'unrunnable' }])
+  assert.equal(payload.stop_reason, 'completed', 'an unrunnable check is an outcome the verdict reads')
+})
+
+test('a verify leaf runs no series and no discriminator: it writes nothing', (t) => {
+  // Measured in a worktree whose branch carries commits outside any locus — which a verify leaf
+  // would have to be blamed for if its series were checked. It is not.
+  const { worktree, base, head } = order(t)
+
+  const payload = verify(parseArgs([
+    '--worktree', worktree, '--base', base, '--head', head, '--rigor', 'verify',
+    '--build', BUILD, '--typecheck-absent', '--suite', SUITE,
+    ...check('node -e "process.exit(0)"'),
+  ]))
+
+  assert.equal(payload.stop_reason, 'completed')
+  assert.equal(payload.error, null, 'no single-test command is needed where no discriminator runs')
+  assert.deepEqual(payload.series_findings, [])
+  assert.deepEqual(payload.discriminator, [])
+  assert.deepEqual(payload.checks, [{ command: 'node -e "process.exit(0)"', status: 'passed' }])
+  assert.equal(payload.build, 'passed')
+  assert.equal(payload.suite, 'passed')
+  assert.match(payload.notes, /series check not run/)
+})
+
+test('a verify leaf still refuses a command nobody named: absent is never inferred', (t) => {
+  const { worktree, base, head } = order(t)
+
+  const payload = verify(parseArgs([
+    '--worktree', worktree, '--base', base, '--head', head, '--rigor', 'verify',
+    '--typecheck-absent', '--suite', SUITE, ...check('node -e "0"'),
+  ]))
+
+  assert.equal(payload.error.kind, 'command_unknown')
+  assert.match(payload.error.message, /build/)
+})
+
+test('a red leaf runs no mutation and no named check, and says what it was given', (t) => {
+  const { worktree, base, head } = order(t, { implemented: false })
+
+  const payload = verify(options({ worktree, base, head, extra: [
+    '--rigor', 'tdd-pair', '--role', 'red', ...check('node -e "0"'),
+    ...mutations([{ file: 'src/widget.mjs', find: "'plain'", replace: "'x'", expect_failing: ['test/widget.test.mjs'] }]),
+  ] }))
+
+  assert.equal(payload.stop_reason, 'completed')
+  assert.deepEqual(payload.discriminator, [
+    { test_id: 'test/widget.test.mjs', failed_on_base: true, passes_now: false },
+  ])
+  assert.deepEqual(payload.mutations, [])
+  assert.deepEqual(payload.checks, [])
+  assert.match(payload.notes, /1 mutation spec\(s\) given and not run/)
+  assert.match(payload.notes, /1 named check\(s\) given and not run/)
+})
+
+test('a green leaf is discriminated over its cycle\'s tests, which its own diff does not touch', (t) => {
+  const { worktree, red, head } = cycle(t)
+
+  const payload = verify(parseArgs([
+    '--worktree', worktree, '--base', red, '--head', head,
+    '--rigor', 'tdd-pair', '--role', 'green', '--locus', 'src/widget.mjs',
+    '--test-file', 'test/widget.test.mjs',
+    '--build', BUILD, '--typecheck-absent', '--suite', SUITE, '--test-one', TEST_ONE,
+  ]))
+
+  assert.equal(payload.stop_reason, 'completed')
+  assert.deepEqual(payload.series_findings, [], 'the green series touches only its own locus')
+  assert.deepEqual(payload.discriminator, [
+    { test_id: 'test/widget.test.mjs', failed_on_base: true, passes_now: true },
+  ], 'the red test fails at the red head and passes now')
+  assert.equal(git(worktree, 'status', '--porcelain').stdout.trim(), '')
+  assert.equal(rev(worktree, 'HEAD'), head)
+})
+
+test('a green leaf with no cycle tests named measures its own diff, finds none, and says so', (t) => {
+  const { worktree, red, head } = cycle(t)
+
+  const payload = verify(parseArgs([
+    '--worktree', worktree, '--base', red, '--head', head,
+    '--rigor', 'tdd-pair', '--role', 'green', '--locus', 'src/widget.mjs',
+    '--build', BUILD, '--typecheck-absent', '--suite', SUITE, '--test-one', TEST_ONE,
+  ]))
+
+  assert.deepEqual(payload.discriminator, [])
+  assert.match(payload.notes, /none of the red tests was measured/)
+})
+
+test('an audit leaf expects an empty series, and its declared mutations are run', (t) => {
+  // An auditor edits nothing, so its branch is its green's head with no commit of its own.
+  const { worktree, head } = order(t)
+
+  const payload = verify(options({ worktree, base: head, head, extra: [
+    '--rigor', 'tdd-triad', '--role', 'audit',
+    ...mutations([{ file: 'src/widget.mjs', find: "'hi'", replace: "'bye'", expect_failing: ['test/widget.test.mjs'] }]),
+  ] }))
+
+  assert.equal(payload.stop_reason, 'completed')
+  assert.deepEqual(payload.series_findings, [], 'an empty series is the audit\'s expected shape')
+  assert.deepEqual(payload.discriminator, [])
+  assert.equal(payload.mutations.length, 1)
+  assert.equal(payload.mutations[0].bites, true)
+})
+
+test('an empty series is still a blocking finding for every other rigor', (t) => {
+  const { worktree, head } = order(t)
+  const payload = verify(options({ worktree, base: head, head, extra: ['--rigor', 'trivial'] }))
+  assert.equal(payload.series_findings[0].check, 'empty-series')
+  assert.equal(payload.series_findings[0].blocking, true)
+})
+
+test('a tests-only leaf runs the discriminator and its declared mutations', (t) => {
+  const { worktree, base, head } = order(t)
+
+  const payload = verify(options({ worktree, base, head, extra: [
+    '--rigor', 'tests-only',
+    ...mutations([{ file: 'src/widget.mjs', find: "'hi'", replace: "'bye'", expect_failing: ['test/widget.test.mjs'] }]),
+  ] }))
+
+  assert.equal(payload.discriminator.length, 1)
+  assert.equal(payload.discriminator[0].passes_now, true)
+  assert.equal(payload.mutations[0].bites, true)
+})
+
+test('named checks travel only as base64, and every option parses', () => {
+  const o = parseArgs(['--rigor', 'tdd-pair', '--role', 'green', '--test-file', 'test/a.test.mjs',
+    ...check("npm run e2e -- 'login flow'"), '--repo', '/r', '--effort', 'e', '--execution', EXECUTION,
+    '--node', 'a/b', '--branch', 'agentics/e--a.b'])
+  assert.equal(o.rigor, 'tdd-pair')
+  assert.equal(o.role, 'green')
+  assert.deepEqual(o.tests, ['test/a.test.mjs'])
+  assert.deepEqual(o.checks, ["npm run e2e -- 'login flow'"])
+  assert.equal(o.repo, '/r')
+  assert.equal(o.effort, 'e')
+  assert.equal(o.execution, EXECUTION)
+  assert.equal(o.node, 'a/b')
+  assert.equal(parseArgs([]).role, 'none')
+  assert.deepEqual(parseArgs([]).checks, [])
+})
+
+// ---------------------------------------------------------------- TAP output
+//
+// On Node 22 `node --test` writes TAP whenever its stdout is not a terminal — which is always,
+// under this program — and TAP names a failure's file AFTER its marker, in the YAML block under
+// it. Placing by the path printed before the marker placed nothing, raised
+// `suite_failures_unnamed`, and made an ordinary red leaf unmeasurable on that runtime.
+
+test('a red leaf whose suite writes TAP is placed by each failure\'s own location line', (t) => {
+  const { worktree, base, head } = order(t, { implemented: false })
+
+  const payload = verify(parseArgs([
+    '--worktree', worktree, '--base', base, '--head', head,
+    '--locus', 'src/widget.mjs', '--locus', 'test/widget.test.mjs',
+    '--build', BUILD, '--typecheck-absent', '--suite', SUITE_TAP, '--test-one', TEST_ONE,
+  ]))
+
+  assert.equal(payload.error, null)
+  assert.equal(payload.stop_reason, 'completed')
+  assert.equal(payload.suite, 'failed')
+  assert.deepEqual([...new Set(payload.failing_tests.map((f) => f.file))], ['test/widget.test.mjs'])
+})
+
+test('two TAP failures in two files are each placed in their own, never the previous one\'s', (t) => {
+  const { worktree } = order(t, { implemented: true })
+  writeFileSync(join(worktree, 'test', 'other.test.mjs'), WIDGET_TEST)
+  const at = (file) => "  location: '" + worktree + '/test/' + file + ":5:1'"
+
+  const found = extractFailures([
+    'not ok 1 - first failure', '  ---', at('widget.test.mjs'), '  ...',
+    'not ok 2 - second failure', '  ---', "  type: 'test'", at('other.test.mjs'), '  ...',
+  ].join('\n'), worktree)
+
+  assert.equal(found.unplaced, 0)
+  assert.deepEqual(found.failures, [
+    { file: 'test/widget.test.mjs', id: 'first failure' },
+    { file: 'test/other.test.mjs', id: 'second failure' },
+  ])
+})
+
+test('a TAP failure whose block names no location falls back to the path in force at its marker', (t) => {
+  const { worktree } = order(t, { implemented: true })
+
+  const found = extractFailures([
+    '# Subtest: ' + worktree + '/test/widget.test.mjs', 'not ok 1 - test/widget.test.mjs', '  ---', '  ...',
+    'not ok 2 - nameless', '  ---', "  type: 'test'", '  ...',
+  ].join('\n'), worktree)
+
+  assert.deepEqual(found.failures.map((f) => f.file), ['test/widget.test.mjs', 'test/widget.test.mjs'])
+  assert.equal(found.unplaced, 0)
 })
 
 // ---------------------------------------------------------------- the closed pattern set

@@ -1,15 +1,16 @@
-// test/effort.test.mjs — the effort store on a real filesystem.
+// test/effort.test.mjs — an effort's identity and evidence on a real filesystem, and the standing
+// survey on real git repositories.
 //
 // What is pinned here:
 //
-//   naming       the slug is the directory name, entire; no identity file restates it
+//   naming       the slug is the directory name, entire; no identity file restates it; no `--`
 //   opening      idempotent, and the second opener adopts the first's account of the effort
-//   recording    a return is stored verbatim, and two returns in the same second both survive
-//   linking      runs and designs are POINTERS — nothing moves under the effort
-//   reading      every list is derived from what is on disk, never from a stored status
-//   discipline   the path guard, and the notes that say this store proves nothing
+//   recording    a return lands verbatim at evidence/<stamp>-<kind>.json; a same-second
+//                collision gets -2, -3 before the kind, and both survive
+//   reading      evidence, executions and the node count are derived from disk
+//   standing     a survey stands only while git says nothing reached its anchored ground
 //
-// Design: docs/DESIGN.md#efforts.
+// Design: docs/DESIGN.md#storage, docs/DESIGN.md#survey.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -20,31 +21,40 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
-  EFFORTS_DIR, linkTo, listEfforts, openEffort, readEffort, recordReturn, safeSlug, slugFor,
+  EFFORTS_DIR, listEfforts, openEffort, readEffort, recordReturn, safeSlug, slugFor, stampNow,
   standingSurvey,
 } from '../lib/effort.mjs'
+import { append } from '../lib/ledger.mjs'
+import * as store from '../lib/store.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/effort.mjs', import.meta.url))
 const fresh = () => mkdtempSync(join(tmpdir(), 'agentics-effort-')).split('\\').join('/')
+const effortPath = (repo, slug, ...rest) => join(repo, ...EFFORTS_DIR.split('/'), slug, ...rest)
 
-const run = (...args) => {
-  const out = execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8' })
-  return JSON.parse(out)
-}
+const run = (...args) => JSON.parse(execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8' }))
 
-test('a slug is dated, kebab, and bounded by words rather than by length', () => {
+test('names and stamps are lib/store.mjs\'s, not a second copy', () => {
+  assert.equal(safeSlug, store.safeSlug)
+  assert.equal(stampNow, store.stampNow)
+  assert.equal(EFFORTS_DIR, store.EFFORTS_DIR)
+})
+
+test('a slug is dated, kebab, bounded by words, and never carries "--"', () => {
   assert.equal(slugFor('Efforts, and what a probe should cost', '2026-09-04'),
     '2026-09-04-efforts-and-what-a-probe-should')
   assert.equal(slugFor('', '2026-09-04'), '2026-09-04-effort')
   assert.equal(slugFor('x', ''), 'undated-x')
+  assert.equal(safeSlug(slugFor('a -- b', '2026-09-04')), '2026-09-04-a-b')
 })
 
-test('a slug that could climb out of the store is refused', () => {
+test('a slug that could climb out of the store, or blur a branch prefix, is refused', () => {
   assert.equal(safeSlug('../../etc'), null)
   assert.equal(safeSlug('a/b'), null)
   assert.equal(safeSlug('..'), null)
   assert.equal(safeSlug(''), null)
+  assert.equal(safeSlug('a--b'), null)
   assert.equal(safeSlug('2026-09-04-ok'), '2026-09-04-ok')
+  assert.equal(openEffort(fresh(), { slug: 'a--b', about: 'x' }).ok, false)
 })
 
 test('opening is idempotent, and no identity file restates the directory name', () => {
@@ -53,7 +63,7 @@ test('opening is idempotent, and no identity file restates the directory name', 
   assert.equal(first.ok, true)
   assert.equal(first.created, true)
 
-  const identity = JSON.parse(readFileSync(join(repo, ...EFFORTS_DIR.split('/'), 'e1', 'effort.json'), 'utf8'))
+  const identity = JSON.parse(readFileSync(effortPath(repo, 'e1', 'effort.json'), 'utf8'))
   assert.deepEqual(Object.keys(identity).sort(), ['about', 'opened_at', 'roots'])
   assert.deepEqual(identity.roots, ['a', 'b'])
 
@@ -63,67 +73,98 @@ test('opening is idempotent, and no identity file restates the directory name', 
     'the second opener adopts what the first recorded rather than overwriting it')
 })
 
-test('a return is stored byte-for-byte, and a collision in the same second keeps both', () => {
+test('a return lands verbatim under evidence/<stamp>-<kind>.json', () => {
   const repo = fresh()
   openEffort(repo, { slug: 'e1', about: 'x' })
 
   const payload = { question: 'q', coverage: { complete: false, unreached: ['a'] } }
-  const now = new Date('2026-09-04T10:11:12Z')
-  const a = recordReturn(repo, 'e1', 'survey', payload, now)
-  const b = recordReturn(repo, 'e1', 'survey', { question: 'q2' }, now)
+  const out = recordReturn(repo, 'e1', 'probe', payload, new Date('2026-09-04T10:11:12Z'))
+  assert.equal(out.ok, true)
+  assert.equal(out.stamp, '20260904-101112')
+  assert.equal(out.path, effortPath(repo, 'e1', 'evidence', '20260904-101112-probe.json').split('\\').join('/'))
+  assert.deepEqual(JSON.parse(readFileSync(out.path, 'utf8')), payload)
+  assert.equal(out.anchor, undefined, 'only a survey is anchored')
+  assert.equal(existsSync(effortPath(repo, 'e1', 'probes')), false, 'the old per-kind directories are gone')
+})
 
-  assert.equal(a.ok, true)
-  assert.equal(b.ok, true)
-  assert.notEqual(a.path, b.path)
-  assert.deepEqual(JSON.parse(readFileSync(a.path, 'utf8')), payload)
+test('a same-second collision takes -2, -3 before the kind, and every return survives', () => {
+  const repo = fresh()
+  openEffort(repo, { slug: 'e1', about: 'x' })
+  const now = new Date('2026-09-04T10:11:12Z')
+
+  const a = recordReturn(repo, 'e1', 'survey', { n: 1 }, now)
+  const b = recordReturn(repo, 'e1', 'survey', { n: 2 }, now)
+  const c = recordReturn(repo, 'e1', 'survey', { n: 3 }, now)
+  const p = recordReturn(repo, 'e1', 'probe', { n: 4 }, now)
+
+  assert.match(a.path, /\/20260904-101112-survey\.json$/)
+  assert.match(b.path, /\/20260904-101112-2-survey\.json$/)
+  assert.match(c.path, /\/20260904-101112-3-survey\.json$/)
+  assert.match(p.path, /\/20260904-101112-probe\.json$/, 'a different kind in the same second does not collide')
+  assert.ok(existsSync(b.path.replace(/\.json$/, '.anchor')), 'each survey carries its own anchor')
+
+  const read = readEffort(repo, 'e1', 'survey')
+  assert.deepEqual(read.evidence.map((e) => e.stamp + ' ' + e.kind), [
+    '20260904-101112 probe', '20260904-101112 survey', '20260904-101112-2 survey', '20260904-101112-3 survey',
+  ])
+  assert.equal(read.latest.payload.n, 3, 'the collision counter orders within the second')
+})
+
+test('the collision counter orders numerically, so -10 is newer than -9', () => {
+  const repo = fresh()
+  openEffort(repo, { slug: 'e1', about: 'x' })
+  const now = new Date('2026-09-04T10:11:12Z')
+  for (let n = 1; n <= 10; n++) recordReturn(repo, 'e1', 'probe', { n }, now)
+  assert.equal(readEffort(repo, 'e1', 'probe').latest.payload.n, 10)
 })
 
 test('recording into an effort nobody opened is refused rather than inventing one', () => {
-  const repo = fresh()
-  const out = recordReturn(repo, 'nope', 'survey', { a: 1 })
+  const out = recordReturn(fresh(), 'nope', 'survey', { a: 1 })
   assert.equal(out.ok, false)
   assert.match(out.error, /no effort named nope/)
 })
 
-test('a return that is not an object is refused — a stored survey is the survey\'s own result', () => {
+test('a return that is not an object, or of an unknown kind, is refused', () => {
   const repo = fresh()
   openEffort(repo, { slug: 'e1', about: 'x' })
   assert.equal(recordReturn(repo, 'e1', 'survey', 'a summary').ok, false)
+  assert.equal(recordReturn(repo, 'e1', 'survey', [1, 2]).ok, false)
   assert.equal(recordReturn(repo, 'e1', 'sketch', { a: 1 }).ok, false)
 })
 
-test('runs and designs are pointers — the run directory is not moved under the effort', () => {
+test('reading derives identity, evidence, node count and executions from disk', () => {
   const repo = fresh()
-  openEffort(repo, { slug: 'e1', about: 'x' })
-  assert.equal(linkTo(repo, 'e1', 'run', '20260904-101112').ok, true)
-  assert.equal(linkTo(repo, 'e1', 'design', 'docs/agentics/designs/x.md').ok, true)
-  assert.equal(linkTo(repo, 'e1', 'run', '20260904-101112').ok, true)
-
-  const read = readEffort(repo, 'e1', '')
-  assert.deepEqual(read.runs, ['20260904-101112'], 'the same run linked twice is one run')
-  assert.deepEqual(read.designs, ['docs/agentics/designs/x.md'])
-  assert.equal(existsSync(join(repo, ...EFFORTS_DIR.split('/'), 'e1', 'runs')), false)
-})
-
-test('reading derives every list from disk, and --latest carries one return in full', () => {
-  const repo = fresh()
-  openEffort(repo, { slug: 'e1', about: 'the change' })
+  openEffort(repo, { slug: 'e1', about: 'the change', roots: ['src'] })
   recordReturn(repo, 'e1', 'survey', { question: 'first' }, new Date('2026-09-04T10:00:00Z'))
   recordReturn(repo, 'e1', 'survey', { question: 'second' }, new Date('2026-09-04T11:00:00Z'))
   recordReturn(repo, 'e1', 'probe', { ratifiable: false }, new Date('2026-09-04T12:00:00Z'))
+  append(repo, 'e1', 'nodes', [
+    { kind: 'node', node: { id: '.', title: 'root', kind: 'composite' } },
+    { kind: 'node', node: { id: 'a', title: 'a', kind: 'leaf' } },
+    { kind: 'node', node: { id: 'a', title: 'a again', kind: 'leaf' } },
+    { kind: 'node', node: { id: 'b', title: 'gone', kind: 'leaf', retired: true } },
+  ])
+  mkdirSync(effortPath(repo, 'e1', 'executions', '20260904-130000'), { recursive: true })
+  mkdirSync(effortPath(repo, 'e1', 'executions', 'not-a-stamp'), { recursive: true })
 
   const read = readEffort(repo, 'e1', 'survey')
   assert.equal(read.exists, true)
-  assert.equal(read.surveys.length, 2)
-  assert.equal(read.probes.length, 1)
-  assert.equal(read.latest.payload.question, 'second', 'the newest stamp wins')
+  assert.deepEqual(read.identity.roots, ['src'])
+  assert.equal(read.identity.about, 'the change')
+  assert.deepEqual(read.evidence.map((e) => e.kind), ['survey', 'survey', 'probe'])
+  assert.equal(read.latest.payload.question, 'second', 'the newest stamp of the asked kind wins')
+  assert.equal(read.nodes_n, 2, 'latest revision per id, retired dropped')
+  assert.deepEqual(read.executions, ['20260904-130000'])
   assert.match(read.notes, /proves nothing/)
+
+  assert.equal(readEffort(repo, 'e1').latest, null, 'no kind asked, no payload carried')
 })
 
 test('an effort nobody opened reads as absent rather than as empty', () => {
-  const read = readEffort(fresh(), 'ghost', '')
+  const read = readEffort(fresh(), 'ghost')
   assert.equal(read.exists, false)
-  assert.deepEqual(read.surveys, [])
+  assert.equal(read.identity, null)
+  assert.deepEqual(read.evidence, [])
   assert.match(read.notes, /no effort named ghost/)
 })
 
@@ -133,22 +174,46 @@ test('listing a repository with no store says so instead of returning an empty s
   assert.deepEqual(out.efforts, [])
 })
 
-test('the CLI opens, records from a file, links, and prints a digest on every read', () => {
+test('listing counts each effort\'s evidence and executions, newest name first', () => {
+  const repo = fresh()
+  openEffort(repo, { slug: 'a1', about: 'first' })
+  openEffort(repo, { slug: 'b2', about: 'second' })
+  recordReturn(repo, 'a1', 'probe', { x: 1 })
+  mkdirSync(effortPath(repo, 'b2', 'executions', '20260904-130000'), { recursive: true })
+
+  const out = listEfforts(repo)
+  assert.deepEqual(out.efforts.map((e) => e.effort), ['b2', 'a1'])
+  assert.equal(out.efforts[1].probes, 1)
+  assert.deepEqual(out.efforts[0].executions, ['20260904-130000'])
+})
+
+test('the CLI opens, records from a file, and prints an envelope on every read', () => {
   const repo = fresh()
   assert.equal(run('open', repo, 'e1', '--about', 'the change', '--roots', repo).created, true)
 
   const file = join(repo, 'return.json')
   writeFileSync(file, JSON.stringify({ question: 'q', topics: ['a'] }), 'utf8')
-  assert.equal(run('record', repo, 'e1', 'survey', '--file', file).ok, true)
-  assert.equal(run('link', repo, 'e1', 'run', '--value', '20260904-101112').ok, true)
+  const recorded = run('record', repo, 'e1', 'survey', '--file', file)
+  assert.equal(recorded.ok, true)
+  assert.match(recorded.path, /\/evidence\/\d{8}-\d{6}-survey\.json$/)
 
   const read = run('read', repo, 'e1', '--latest', 'survey')
   assert.equal(read.payload.latest.payload.topics[0], 'a')
   assert.match(read.payload_digest, /^[0-9a-f]{8}$/)
 
+  const flags = run('read', '--repo', repo, '--effort', 'e1')
+  assert.equal(flags.payload.evidence.length, 1, 'the flag spelling reads the same effort')
+
   const listed = run('list', repo)
   assert.equal(listed.payload.efforts.length, 1)
   assert.equal(listed.payload.efforts[0].effort, 'e1')
+})
+
+test('the CLI has no link verb any more', () => {
+  const repo = fresh()
+  run('open', repo, 'e1', '--about', 'x')
+  assert.throws(() => execFileSync(process.execPath, [CLI, 'link', repo, 'e1', 'run', '--value', 'x'],
+    { encoding: 'utf8', stdio: 'pipe' }))
 })
 
 test('the CLI refuses a return file that did not survive transcription', () => {
@@ -202,13 +267,13 @@ const commitIn = (dir, files) => {
 
 const SURVEY = (over = {}) => ({
   question: 'q', topics: ['a'], ground: ['src/a'], verdicts: [], history: null, docs: null,
-  coverage: { complete: true, dropped: [], incomplete: [], failed_channels: [], unreached: [], from_kb: [] },
+  coverage: { complete: true, dropped: [], incomplete: [], failed_channels: [], unreached: [] },
   ...over,
 })
 
-function surveyed(dir, payload = SURVEY()) {
+function surveyed(dir, payload = SURVEY(), now) {
   openEffort(dir, { slug: 'e', about: 'a change', roots: dir })
-  return recordReturn(dir, 'e', 'survey', payload)
+  return recordReturn(dir, 'e', 'survey', payload, now)
 }
 
 test('recording a survey anchors it to HEAD and its ground, beside the verbatim return', () => {
@@ -218,7 +283,9 @@ test('recording a survey anchors it to HEAD and its ground, beside the verbatim 
   assert.equal(out.anchor.observed_at, git(dir, 'rev-parse', 'HEAD'))
   assert.deepEqual(out.anchor.ground, ['src/a'])
   assert.deepEqual(JSON.parse(readFileSync(out.path, 'utf8')), SURVEY(), 'the return stays verbatim')
-  assert.equal(readEffort(dir, 'e').surveys.length, 1, 'the anchor is not listed as a survey')
+  assert.deepEqual(JSON.parse(readFileSync(out.path.replace(/\.json$/, '.anchor'), 'utf8')), out.anchor)
+  assert.match(out.path, /\/evidence\/\d{8}-\d{6}-survey\.json$/)
+  assert.equal(readEffort(dir, 'e').evidence.length, 1, 'the anchor is not listed as evidence')
 })
 
 test('an untouched ground stands, and says why', () => {
@@ -228,7 +295,7 @@ test('an untouched ground stands, and says why', () => {
 
   const out = standingSurvey(dir, 'e')
   assert.equal(out.standing, true, out.why)
-  assert.match(out.survey_path, /surveys\/.+\.json$/)
+  assert.match(out.survey_path, /\/evidence\/.+-survey\.json$/)
 })
 
 test('a commit on the ground un-stands it and names the commit', () => {
@@ -258,12 +325,22 @@ test('an uncommitted edit on the ground un-stands it; one elsewhere does not', (
 test('a repository-wide survey is not un-stood by the pipeline\'s own state under .claude/agentics', () => {
   const dir = gitRepo()
   surveyed(dir, SURVEY({ ground: ['.'] }))
-  put(dir, { '.claude/agentics/runs/r1/state.jsonl': '{}\n' })
+  put(dir, { '.claude/agentics/efforts/e/executions/20260904-101112/state.jsonl': '{}\n' })
+  commitIn(dir, { '.claude/agentics/efforts/e/nodes.jsonl': '{}\n' })
 
   assert.equal(standingSurvey(dir, 'e').standing, true)
 
   put(dir, { '.claude/notes.md': 'mine\n' })
   assert.equal(standingSurvey(dir, 'e').standing, false, 'anything else under .claude is ground')
+})
+
+test('the newest survey is the one judged, even when an older one would stand', () => {
+  const dir = gitRepo()
+  surveyed(dir, SURVEY(), new Date('2026-09-04T10:00:00Z'))
+  recordReturn(dir, 'e', 'survey', SURVEY({ coverage: { complete: false } }), new Date('2026-09-04T11:00:00Z'))
+  const out = standingSurvey(dir, 'e')
+  assert.equal(out.standing, false)
+  assert.equal(out.stamp, '20260904-110000')
 })
 
 test('a survey that did not complete, or names no ground, never stands', () => {
@@ -274,6 +351,14 @@ test('a survey that did not complete, or names no ground, never stands', () => {
   const groundless = gitRepo()
   surveyed(groundless, SURVEY({ ground: undefined }))
   assert.match(standingSurvey(groundless, 'e').why, /names no ground/)
+})
+
+test('a survey whose commit left HEAD\'s history never stands', () => {
+  const dir = gitRepo()
+  commitIn(dir, { 'src/b/y.js': 'second\n' })
+  surveyed(dir)
+  git(dir, 'reset', '-q', '--hard', 'HEAD~1')
+  assert.match(standingSurvey(dir, 'e').why, /not an ancestor of HEAD/)
 })
 
 test('no survey, or an unanchored one, never stands', () => {

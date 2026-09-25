@@ -45,10 +45,17 @@ import { spawnSync } from 'node:child_process'
 // by importing them, which is the whole hazard of splitting a suite that spawns its own runners.
 delete process.env.NODE_TEST_CONTEXT
 
-export const BRANCH = 'agentics/20260830-090000-W1'
+export const EFFORT = 'widget'
+export const NODE = 'w1'
+export const BRANCH = 'agentics/widget--w1'
 export const BUILD = 'node tools/build.mjs'
-export const SUITE = 'node --test'
-export const TEST_ONE = 'node --test {file}'
+// The runner's output format is pinned rather than left to Node's default, which is `spec` on a
+// terminal and differs by major version otherwise (Node 22 writes TAP to a pipe, later versions
+// `spec`). A fixture whose suite prints a different format on another machine is a test that
+// passes on one of them. The TAP path is covered on its own, by name, in test/verify.test.mjs.
+export const SUITE = 'node --test --test-reporter=spec'
+export const TEST_ONE = 'node --test --test-reporter=spec {file}'
+export const SUITE_TAP = 'node --test --test-reporter=tap'
 
 export const git = (cwd, ...args) => spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8' })
 export const rev = (cwd, ref) => git(cwd, 'rev-parse', ref).stdout.trim()
@@ -111,7 +118,7 @@ function buildRepository(dir) {
   return dir
 }
 
-/** That repository, plus one order's worktree carrying its series. */
+/** That repository, plus one leaf's worktree carrying its series. */
 function buildOrder(dir, { implemented, trailer }) {
   buildRepository(dir)
   const worktree = dir + '/wt'
@@ -122,6 +129,25 @@ function buildOrder(dir, { implemented, trailer }) {
 
   git(worktree, 'add', '-A')
   git(worktree, 'commit', '-qm', 'feat: label the widget hi' + (trailer ? '\n\n' + trailer : ''))
+  return dir
+}
+
+/**
+ * A tdd-pair cycle: a red commit landing the widget test, then a green commit implementing it,
+ * both on one worktree's branch. The green leaf's base is the red commit — the green is cut from
+ * its red's branch head — so its own diff carries no test at all.
+ */
+function buildCycle(dir) {
+  buildRepository(dir)
+  const worktree = dir + '/wt'
+
+  git(dir, 'worktree', 'add', '-q', '-b', BRANCH, worktree, 'main')
+  writeFileSync(join(worktree, 'test', 'widget.test.mjs'), WIDGET_TEST)
+  git(worktree, 'add', '-A')
+  git(worktree, 'commit', '-qm', 'test(w1): pin the widget label')
+  writeFileSync(join(worktree, 'src', 'widget.mjs'), "export const label = () => 'hi'\n")
+  git(worktree, 'add', '-A')
+  git(worktree, 'commit', '-qm', 'feat(w2): label the widget hi')
   return dir
 }
 
@@ -165,8 +191,8 @@ export function repository(t) {
 }
 
 /**
- * One order's worktree, cut from main and carrying its series.
- * `implemented: false` is a RED order — the new test lands and nothing makes it pass.
+ * One leaf's worktree, cut from main and carrying its series.
+ * `implemented: false` is a RED leaf — the new test lands and nothing makes it pass.
  */
 export function order(t, { implemented = true, trailer = '' } = {}) {
   const key = 'order:' + (implemented ? 'green' : 'red') + ':' + trailer
@@ -177,7 +203,17 @@ export function order(t, { implemented = true, trailer = '' } = {}) {
 }
 
 /**
- * The same order, built from scratch rather than copied.
+ * A red → green cycle on one branch: `red` is the red commit (the green's base), `head` the
+ * green's tip, `base` main.
+ */
+export function cycle(t) {
+  const dir = fromTemplate(t, 'cycle', buildCycle, ['wt'])
+  const worktree = dir + '/wt'
+  return { dir, worktree, base: rev(dir, 'main'), red: rev(worktree, 'HEAD~1'), head: rev(worktree, 'HEAD') }
+}
+
+/**
+ * The same leaf, built from scratch rather than copied.
  *
  * Only the equivalence test wants this — it is the other side of the comparison that licenses
  * every clone above, so it deliberately shares the construction functions and not the cache.

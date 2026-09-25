@@ -547,8 +547,7 @@ cannot cover at the effort's measured cost per leaf; it stops at the next merge-
 is shared by every execution and every session on the machine, and survives any of them dying. A
 persistent agent receiving messages could do the same job, but it would put a model on the
 scheduling path (GP4), re-read its growing conversation on every message, lose its state with its
-session, and need a courier turn per message from a workflow. It remains an open question — see
-[Open questions](#open-questions).
+session, and need a courier turn per message from a workflow.
 
 ### Coupled work
 
@@ -719,13 +718,3 @@ coverage block (without `from_kb`), the review-loop exit and both severity ladde
 - **Cost report:** every execution records its dispatches with model, effort and, where the host
   reports it, tokens, so the next triage quotes measured figures.
 
----
-
-## Open questions
-
-1. **A persistent agent for parallelism.** The design controls parallelism with a lock-file slot
-   pool (see [Scheduling](#scheduling)). The alternative — one long-lived agent that executions
-   message to ask for slots — is not adopted. Before it could be, a check would have to show: that
-   an agent dispatched inside a workflow can message a persistent agent and get an answer on this
-   host; what one exchange costs as that agent's conversation grows; and that the agent's state
-   survives its session ending. The pool needs none of these.

@@ -2035,8 +2035,13 @@ function plannerPrompt(surveyEvidence) {
     `is reported as blocked, naming the provider. A dep you omitted therefore does not ` +
     `merely mis-schedule work; it sends a coder to build against something that never ` +
     `landed.\n\n` +
-    `Set role on every order — 'none' is the default and the common case. For behaviour ` +
-    `worth an independent examiner, split it into the red-green-refactor cycle instead:\n\n` +
+    `Set role on every order — 'none' is the default and the common case. Split behaviour ` +
+    `into the red-green-refactor cycle only when its tests become a YARDSTICK: other orders ` +
+    `build against the behaviour, so it would be a contract, or its criteria admit two ` +
+    `plausible readings and the difference reaches a consumer. Everything else stays one ` +
+    `'none' order — the discriminator already proves each new test fails without the change, ` +
+    `and a reviewer attacks the tests. A cycle costs two coders, a held merge and its own ` +
+    `review loop:\n\n` +
     `   role 'red'      — locus is TEST FILES ONLY. Lands tests that fail for want of an ` +
     `implementation.\n` +
     `   role 'green'    — locus is IMPLEMENTATION FILES ONLY, deps names the red order. ` +
@@ -2048,7 +2053,7 @@ function plannerPrompt(surveyEvidence) {
     `green order editing the tests it is being measured against. That is the entire point — ` +
     `one agent that writes both the test and the code certifies its own reading of your ` +
     `criteria, and an exam written by the examinee passes by construction.\n\n` +
-    `Split where a criterion pins BEHAVIOUR worth pinning independently. Do not split ` +
+    `Never split what pins no behaviour. Do not split ` +
     `scaffolding, wiring, config, or docs: a red order for something with no behaviour to ` +
     `assert produces a test that cannot fail, which fails verification and wastes two orders ` +
     `to say so. When in doubt leave role 'none' — the ordinary path already runs the ` +

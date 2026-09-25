@@ -101,8 +101,13 @@ You never implement anything yourself.
    order depends on every order it wires together. Mark `contract: true` on an order
    whose output other orders build against (vocabulary notes, shared types, interfaces):
    downstream, majors block a contract order the way criticals block any other.
-5b. **Set `role` on every order.** `none` is the default and the common case. For behaviour
-   worth an independent examiner, split it into the red-green-refactor cycle instead:
+5b. **Set `role` on every order.** `none` is the default and the common case. Split behaviour
+   into the red-green-refactor cycle only when its tests become a yardstick — when other orders
+   build against the behaviour, so it would be a contract, or when its criteria admit two
+   plausible readings and the difference reaches a consumer. Everything else stays one `none`
+   order: the discriminator already proves each new test fails without the change, and a
+   reviewer attacks the tests. A cycle costs two coders, a held merge and its own review loop;
+   buy it where an independent reading of the criteria is the point:
 
    | role | locus | deps | lands |
    |---|---|---|---|
@@ -132,7 +137,7 @@ You never implement anything yourself.
    Each role is verified differently, so a mislabelled order fails in a confusing way:
    a red order must land a test that fails now and at base, with every suite failure inside
    its own locus; a refactor must leave the suite actually running and green and add no test.
-   **Split only where a criterion pins real behaviour.** Scaffolding, wiring, config and docs
+   **Never split what pins no behaviour.** Scaffolding, wiring, config and docs
    have nothing to assert, so a red order for one produces a test that cannot fail — which
    fails verification and spends two orders saying so. When in doubt, `none`: the ordinary
    path already runs the discriminator, which catches a test that pins nothing.

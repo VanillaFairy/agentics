@@ -561,7 +561,12 @@ head that already exists. `--pause-between-waves` makes the run stop there on pu
 
 ### Red, green and refactor
 
-For behaviour worth an independent examiner, the planner splits the work into a cycle:
+When a behaviour's tests become a yardstick, the planner splits the work into a cycle. That is
+the case when other orders build against the behaviour, or when its criteria admit two readings
+and the difference reaches a consumer. Everything else is one `role: none` order: the
+discriminator proves each new test fails without the change, and a reviewer attacks the tests.
+A cycle costs two coders, a held merge and a per-order review loop, so it is bought where an
+independent reading of the criteria is the point:
 
 | role | locus | lands |
 |---|---|---|

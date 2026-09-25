@@ -33,8 +33,9 @@ const setMax = (repo, value) => {
   writeFileSync(join(slotsDir(repo), 'config.json'), typeof value === 'string' ? value : JSON.stringify({ max_parallel: value }))
 }
 
+// Every leaf declares the shared file too: a lock is held only on a path its holder still claims.
 const leaf = (id) => ({
-  id, kind: 'leaf', title: 'do ' + id, rigor: 'trivial', locus: ['src/' + id + '.js'],
+  id, kind: 'leaf', title: 'do ' + id, rigor: 'trivial', locus: ['src/' + id + '.js', 'src/shared.js'],
   decisions: ['D1'], acceptance: [{ text: id + ' works', check: 'node --test', decisions: ['D1'] }],
 })
 
@@ -143,11 +144,19 @@ test('all or nothing: one held locus path refuses the whole acquire, leaving no 
 
 test('a locus lock whose holder was retired by a replan is free', () => {
   const repo = effortRepo(['a', 'b'], { max: 4 })
-  assert.equal(take(repo, 'a', { locus: ['src/x.js'] }).ok, true)
-  assert.equal(take(repo, 'b', { locus: ['src/x.js'] }).reason, 'locus_held')
+  assert.equal(take(repo, 'a', { locus: ['src/shared.js'] }).ok, true)
+  assert.equal(take(repo, 'b', { locus: ['src/shared.js'] }).reason, 'locus_held')
   const r = addNodes(repo, E, [{ ...leaf('a'), retired: true }], { by: 'session', reason: 'retired' })
   assert.ok(r.ok, JSON.stringify(r.problems))
-  assert.equal(take(repo, 'b', { locus: ['src/x.js'] }).ok, true)
+  assert.equal(take(repo, 'b', { locus: ['src/shared.js'] }).ok, true)
+})
+
+test('a locus lock on a path its holder\'s revision dropped is free', () => {
+  const repo = effortRepo(['a', 'b'], { max: 4 })
+  assert.equal(take(repo, 'a', { locus: ['src/shared.js'] }).ok, true)
+  const r = addNodes(repo, E, [{ ...leaf('a'), locus: ['src/a.js'] }], { by: 'session', reason: 'revised' })
+  assert.ok(r.ok, JSON.stringify(r.problems))
+  assert.equal(take(repo, 'b', { locus: ['src/shared.js'] }).ok, true)
 })
 
 test('re-acquiring what the same node holds is a no-op success on the same slot', () => {

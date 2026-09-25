@@ -3,10 +3,10 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 
 import { land, runBoundary } from '../lib/boundary.mjs'
-import { readLog } from '../lib/ledger.mjs'
+import { append, readLog } from '../lib/ledger.mjs'
 import { heldBy } from '../lib/locks.mjs'
 import { addNodes, readTree } from '../lib/tree.mjs'
 import { branchExists, executionDir, worktreeOf } from '../lib/store.mjs'
@@ -254,6 +254,10 @@ test('resume: a preflight after a lost invocation names each leaf\'s next undone
   assert.equal(again.envelope.resumed, true)
   const next = Object.fromEntries(again.leaves.map((l) => [l.id, l.next_action]))
   assert.deepEqual(next, { a: 'merge', b: 'code' })
+  const a = again.leaves.find((l) => l.id === 'a')
+  assert.equal(a.base_sha, open.base_sha, 'the fork point travels, so a salvaged close measures the right series')
+  assert.equal(a.rounds, 1)
+  assert.equal(a.brief_path, open.brief_path)
   assert.deepEqual(heldBy(r).slots, [], 'the dead invocation\'s slots were freed')
 })
 
@@ -300,4 +304,124 @@ test('drift: a landed diff under a contract a pending node consumes is flagged; 
   assert.deepEqual(out.drift.map((d) => [d.node, d.contract]).sort(), [['c', 'api'], ['d', 'shape']])
   assert.deepEqual(out.unexamined, ['later'])
   assert.deepEqual(driftOf(tree, ['p'], ['src/api.mjs']).drift, [], 'the provider landing its own contract is expected work')
+})
+
+const BOUNDARY = new URL('../lib/boundary.mjs', import.meta.url).pathname
+const cli = (r, name, args, env = {}) => {
+  const out = spawnSync('node', [BOUNDARY, name, '--repo', r, '--effort', 'e1', '--execution', STAMP,
+    '--b64', Buffer.from(JSON.stringify(args)).toString('base64')], { encoding: 'utf8', env: { ...process.env, ...env } })
+  return JSON.parse(out.stdout).payload
+}
+
+test('a detached close re-measures once its inputs change: commands established after command_unknown', () => {
+  const r = repo()
+  addNodes(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })], { by: 'session' })
+  B(r, 'preflight', { root: '.' })
+  const open = B(r, 'leaf-open', { node: 'a', role: 'implementer', round: 1 })
+  commitIn(open.worktree, { 'test/a.test.mjs': A_TEST, 'src/a.mjs': 'export const a = () => 1\n' }, 'Add a')
+  const args = { node: 'a', role: 'implementer', round: 1, base_sha: open.base_sha }
+  const detachedEnv = { AGENTICS_INLINE_JOBS: '', AGENTICS_BOUNDARY_WAIT_MS: '60000' }
+  assert.equal(cli(r, 'leaf-close', args, detachedEnv).decision.next, 'command_unknown')
+  const add = spawnSync('node', [new URL('../lib/gotchas.mjs', import.meta.url).pathname, 'add', '--repo', r, '--effort', 'e1', '--role', 'investigator', '--stdin'],
+    { encoding: 'utf8', input: JSON.stringify(['build', 'typecheck', 'suite', 'test_one'].map((name) => ({
+      kind: 'command', roles: ['implementer', 'investigator'], paths: [], trigger: 'running ' + name, action: 'use it',
+      evidence: { command: name, output: 'ok' },
+      command: { name, value: name === 'suite' ? COMMANDS.suite : name === 'test_one' ? COMMANDS.test_one : '', absent: name === 'build' || name === 'typecheck' },
+    }))) })
+  assert.equal(add.status, 0, add.stdout + add.stderr)
+  assert.equal(cli(r, 'leaf-close', args, detachedEnv).decision.next, 'approve', 'the same arguments over new commands are a new job')
+})
+
+test('a merge-batch that died before recording its outcome is redone from where it started', () => {
+  const r = repo()
+  addNodes(r, 'e1', [root(), leaf('x', { rigor: 'trivial', locus: ['src/add.mjs'] })], { by: 'session' })
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const x = B(r, 'leaf-open', { node: 'x', role: 'implementer', round: 1 })
+  const xs = commitIn(x.worktree, { 'src/add.mjs': 'export const add = (a, b) => a - b\n' }, 'Break add')
+  // Simulate the kill: the batch started, the merge landed, nothing was measured or recorded.
+  const wt = worktreeOf(r, 'e1', '.')
+  const pre = git(wt, 'rev-parse', 'HEAD')
+  append(r, 'e1', 'state:' + STAMP, { kind: 'batch-started', target: '.', pre, children: ['x'] })
+  git(wt, 'merge', '--no-ff', '--no-edit', 'agentics/e1--x')
+  const out = B(r, 'merge-batch', { target: '.', children: [{ id: 'x', head_sha: xs }], cycles: [] })
+  assert.deepEqual(out.merged, [], 'the red merge is not recorded as landed: ' + JSON.stringify(out.notes) + ' ' + out.verified)
+  assert.deepEqual(out.failed_alone.map((f) => f.id), ['x'])
+  assert.equal(out.head_sha, pre)
+  assert.notEqual(readTree(r, 'e1').status.get('x').status, 'merged')
+})
+
+test('a leaf decomposed in place releases its claim: its children are not locked out by it', () => {
+  const r = repo()
+  addNodes(r, 'e1', [root(), leaf('a', { rigor: 'trivial', locus: ['src/a.mjs', 'src/b.mjs'] })], { by: 'session' })
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  assert.equal(B(r, 'leaf-open', { node: 'a', role: 'implementer', round: 1 }).status, 'opened')
+  const split = addNodes(r, 'e1', [
+    { id: 'a', kind: 'composite', title: 'do a', decisions: ['D1'] },
+    leaf('a/x', { rigor: 'trivial', locus: ['src/a.mjs'] }), leaf('a/y', { rigor: 'trivial', locus: ['src/b.mjs'] }),
+  ], { by: 'planner', reason: 'decompose' })
+  assert.equal(split.ok, true, JSON.stringify(split.problems))
+  assert.equal(B(r, 'leaf-open', { node: 'a/x', role: 'implementer', round: 1, wait_ms: 2000 }).status, 'opened')
+})
+
+test('concurrent leaf-opens under one fresh composite all open', async () => {
+  const r = repo()
+  addNodes(r, 'e1', [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] },
+    ...['p', 'q', 's', 't'].map((id) => leaf('c/' + id, { rigor: 'trivial', locus: ['src/' + id + '.mjs'] }))], { by: 'session' })
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const opens = await Promise.all(['p', 'q', 's', 't'].map((id) => new Promise((resolve) => {
+    const child = spawn('node', [BOUNDARY, 'leaf-open', '--repo', r, '--effort', 'e1', '--execution', STAMP,
+      '--b64', Buffer.from(JSON.stringify({ node: 'c/' + id, role: 'implementer', round: 1 })).toString('base64')])
+    let out = ''
+    child.stdout.on('data', (d) => { out += d })
+    child.on('close', () => resolve(JSON.parse(out).payload.status))
+  })))
+  assert.deepEqual(opens, ['opened', 'opened', 'opened', 'opened'])
+})
+
+test('leaf-close never commits outside a linked worktree', () => {
+  const r = repo()
+  addNodes(r, 'e1', [root(), leaf('t', { rigor: 'tests-only', locus: ['test/t.test.mjs'] })], { by: 'session' })
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  // The worktree path exists but is not a registered worktree: git -C would resolve to the user's repo.
+  mkdirSync(worktreeOf(r, 'e1', 't'), { recursive: true })
+  writeFileSync(join(r, 'staged.txt'), 'the user\'s staged work\n')
+  git(r, 'add', 'staged.txt')
+  const head = git(r, 'rev-parse', 'HEAD')
+  B(r, 'leaf-close', { node: 't', role: 'test-author', round: 1, base_sha: head })
+  assert.equal(git(r, 'rev-parse', 'HEAD'), head, 'the user\'s branch did not move')
+})
+
+test('an escalation repeated after a retry is recorded again, and a composite escalation stops landing', () => {
+  const r = repo()
+  addNodes(r, 'e1', [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { rigor: 'trivial', locus: ['src/a.mjs'] })], { by: 'session' })
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const esc = { file: 'events', entry: { kind: 'escalated', node: 'c/a', reason: 'blocked', detail: '' } }
+  B(r, 'postflight', { status: 'paused', records: [esc] })
+  B(r, 'preflight', { root: '.', commands: COMMANDS, retry_escalated: ['c/a'], confirmed_duplicate: true })
+  assert.equal(readTree(r, 'e1').status.get('c/a').status, 'planned')
+  B(r, 'postflight', { status: 'paused', records: [esc] })
+  assert.equal(readTree(r, 'e1').status.get('c/a').status, 'escalated', 'the second occurrence landed in the ledger')
+
+  B(r, 'postflight', { status: 'paused', records: [{ file: 'events', entry: { kind: 'escalated', node: 'c', reason: 'merge_conflict', detail: '' } }] })
+  assert.equal(readTree(r, 'e1').status.get('c').status, 'escalated')
+  const check = land(r, 'e1', 'check')
+  assert.ok(check.open_escalations.some((e) => e.node === 'c'))
+})
+
+test('a green is cut from its red and brought up to the parent head, so its other dependencies are there', () => {
+  const r = repo()
+  addNodes(r, 'e1', [root(),
+    leaf('l', { rigor: 'trivial', locus: ['src/l.mjs'] }),
+    leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'] }),
+    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r', 'l'], locus: ['src/r.mjs'] })], { by: 'session' })
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const red = B(r, 'leaf-open', { node: 'r', role: 'test-author', round: 1 })
+  const redHead = commitIn(red.worktree, { 'test/r.test.mjs': "import { test } from 'node:test'\ntest('r', () => {})\n" }, 'Pin r')
+  const l = B(r, 'leaf-open', { node: 'l', role: 'implementer', round: 1 })
+  const ls = commitIn(l.worktree, { 'src/l.mjs': 'export const l = 1\n' }, 'Add l')
+  B(r, 'merge-batch', { target: '.', children: [{ id: 'l', head_sha: ls }], cycles: [] })
+  const green = B(r, 'leaf-open', { node: 'g', role: 'implementer', round: 1 })
+  assert.ok(existsSync(join(green.worktree, 'src', 'l.mjs')), 'l merged before g was cut, so g builds on it')
+  assert.ok(existsSync(join(green.worktree, 'test', 'r.test.mjs')), 'and on red\'s tests')
+  assert.notEqual(redHead, green.base_sha)
 })

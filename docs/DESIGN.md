@@ -233,7 +233,8 @@ Events: `planned`, `replanned`, `dispatched`, `approved`, `merged`, `escalated`,
 last replan and last revision (a replan or the user's answer clears it); `approved` when newer than
 its last dispatch (a held cycle member is approved and not merged); `active` while a dispatch has
 nothing terminal after it; `planned`. A composite is `merged` on its own event, the root `landed`
-on its, and otherwise summarizes its children (`integrated` once all have merged).
+on its, `escalated` or `parked` on its own open event (cleared like a leaf's), and otherwise
+summarizes its children (`integrated` once all have merged).
 
 `lib/tree.mjs add` validates a batch of revisions against the tree on disk and appends it all or
 nothing: shape problems and tree problems (a missing parent, a dependency cycle, a decision nobody
@@ -610,16 +611,23 @@ already attached).
 | **preflight** | refuse an execution overlapping an open one; drift check against the envelope's base; traceability; free this execution's slots and its dead worktrees (clean ones only — a dirty one is reported, never forced); the resume ladder per leaf; create the todos. `reload: true` re-reads the tree after a planner wrote nodes, and does nothing else |
 | **leaf-open** | acquire a slot and the locus locks; ensure the parent's integration branch (lazily, refreshed from its own parent) and cut or attach the leaf's branch and worktree; assemble its brief; append `dispatched`; move the todo |
 | **leaf-close** | commit a shell-less author's locus files (anything outside is reverted and reported as a breach); build, typecheck, suite, discriminator, declared mutations and named checks by rigor; journal the observation; write and delete reported gotchas; compute the close decision; move the todo |
-| **merge-batch** | under the branch lock, merge every approved child into one integration branch in dependency order; verify the merged head; bisect a red one; append `merged` and `merge-observed`; release locus locks; append a `batch` state line; complete the todos |
+| **merge-batch** | under the branch lock, record `batch-started` with the head it starts from; merge every approved child into one integration branch in dependency order; verify the merged head; bisect a red one; append `merged` and `merge-observed`; release locus locks; append a `batch` state line; complete the todos. A batch that started and never recorded its outcome is reset to where it started and done again, so an unverified merge is never recorded as landed |
 | **postflight** | release this execution's slots; append `closed` when done; report branches and worktrees eligible for cleanup |
 
 Each boundary first appends the workflow's pending decisions (`records`: approvals, escalations,
 parks, dispatch cost lines), once each — a record re-sent after a lost courier lands once.
 
 **Long checks run detached.** leaf-close and merge-batch run in a child process keyed by their
-arguments and are polled; a poll that reaches the limit answers `pending`, and the workflow
-re-dispatches the same boundary, which finds the same job. A host's shell timeout can end a
-courier, never the work.
+arguments and by what their answer depends on — the worktree's head and state, the report, the
+established commands, the target's head — and are polled; a poll that reaches the limit (kept
+under a host's default shell limit) answers `pending`, and the workflow re-dispatches the same
+boundary, which finds the same job. A host's shell timeout can end a courier, never the work. The
+same arguments over a moved tree are a new job, and a job that failed is never kept as an answer.
+
+**Integration branches are locked while they move.** leaf-open creates, attaches and refreshes
+each integration branch on its chain under that branch's lock, and cuts the leaf under its
+parent's, so concurrent leaf-opens and a merge-batch bisecting into the parent never race; a
+lock held longer than a leaf-open may wait answers `busy`, and the workflow re-dispatches.
 
 **Retries are sized to what was observed.** A courier that returned nothing or could not run the
 command is re-run once, because the entry point is idempotent; a payload that fails its digest
@@ -641,17 +649,23 @@ an empty conflict list too. Anything that is not `mergeOk` stops the batch. A co
 defect — loci were declared disjoint — surfaced to the user as an escalation, never resolved
 silently.
 
-A merge-batch whose merged tree equals an already verified leaf tree skips re-verification.
+A merge-batch whose merged tree equals the tree of a leaf head with a recorded green measurement
+skips re-verification.
 
 **A failing merged head** is reset to the last green head, and the script bisects the batch. A leaf
 that fails alone on the new head gets a fix round on its branch refreshed from the integration
-head; leaves that each pass alone and fail together escalate as a **combination failure** naming
-all of them — it is a design question, not a leaf's.
+head; a composite or a cycle that fails alone has no one producer to send it to, and escalates
+(`fails_on_integration`); leaves that each pass alone and fail together escalate as a
+**combination failure** naming all of them — it is a design question, not a leaf's. A batch that
+cannot run at all escalates its target (`merge_batch_failed`), and one that merged nothing and
+reported no failure escalates too (`merge_no_progress`): nothing is re-batched into a stopped
+target.
 
 ### Scheduling
 
-A ready set per execution, recomputed whenever anything in flight settles. A leaf is ready when its
-dependencies' outputs exist where it will be cut — a dependency (or its ancestor just below the
+A ready set per execution, recomputed whenever anything in flight settles. A leaf's dependencies are
+its own and every ancestor's: a dependency declared on a composite binds every leaf beneath it. A
+leaf is ready when its dependencies' outputs exist where it will be cut — a dependency (or its ancestor just below the
 two nodes' lowest common ancestor) has merged into that ancestor's integration branch, or, for a
 cycle predecessor, is approved — no open escalation or park sits on its dependency chain, and a
 slot can be had. A merge-batch runs whenever approved children wait on an integration branch
@@ -662,7 +676,9 @@ right to run one leaf. The pool is `.claude/agentics/slots/`: its size comes fro
 file the user edits (`max_parallel`, default 4), read at every leaf-open, so a change takes effect
 on the next dispatch in every running execution at once. Slots are lock files naming their holder
 leaf, acquired at leaf-open. A slot is free when its holder's derived status is no longer active
-(approved, held, merged, escalated or parked), so release needs no write of its own; a slot whose
+(approved, held, merged, escalated or parked) — or when it is no longer a leaf, because a replan
+decomposed it — so release needs no write of its own; a locus lock whose holder was decomposed, or
+whose revision dropped that path, is free for the same reason; a slot whose
 holder belongs to an execution that is no longer running is freed by that execution's next
 preflight, or by the user.
 
@@ -715,8 +731,8 @@ merge-batch. Coupled leaves run one at a time; everything else keeps running.
   - The blocking set is the round's criticals, plus its majors when the leaf provides a contract
     and the finding carries a non-empty `failure_scenario`.
   - The open set is the round's blocking findings, plus every prior blocker ruled
-    `not_fixed`/`regressed` in `fix_verdicts` that the round did not re-report. Never narrow this
-    to the round's criticals alone.
+    `not_fixed`/`regressed` in `fix_verdicts` — or not ruled on at all — that the round did not
+    re-report. Never narrow this to the round's criticals alone.
   - The leaf is approved when the open set is empty — a count the workflow computes.
   - It escalates when a fix round returns no commits or a blocked status, when the same finding is
     ruled `not_fixed`/`regressed` in two consecutive rounds, or when two consecutive rounds each
@@ -847,7 +863,9 @@ Resume (`lib/resume.mjs`) computes, on disk, one next action per leaf — `none`
 | commits without | `continue-series` |
 | nothing on the branch | `code` |
 
-A checkpoint commit (the executor's mark on an unfinished series) means continue, never measure. A
+A salvaged series is closed and reviewed at the round that produced it, over its own fork point
+and brief; a merge merges the head the approval named, never the branch as it stands. A checkpoint
+commit (the executor's mark on an unfinished series) means continue, never measure. A
 clean execution (no records for its leaves and no leaf branches) opens for the cost of one branch
 listing. Committed work is salvaged by right and reported as salvaged; uncommitted work is reported
 and adopted by nobody. Escalations carry forward until the user names them in `retry_escalated`. A
@@ -976,7 +994,7 @@ Fields as in [Nodes](#nodes). Event lines are `{kind, node, execution, seq, ...}
 
 `state.jsonl` (what the workflow decided): `dispatch {label, node, role, model, effort, tokens}` —
 `tokens` is `null` where the host reports none; `batch {target, merged[], head_sha, verified,
-failed_alone[], combination[], conflict}`; `checkpoint {reason}`; `closed {status}`.
+failed_alone[], combination[], conflict}`; `checkpoint {reason}`; `closed {status}`; `batch-started {target, pre, children}`.
 
 `journal.jsonl` (what was observed, by whoever observed it): `verify-observed {node, branch,
 worktree, base_sha, head_sha, stop_reason, build, typecheck, suite, failing_tests, discriminator,
@@ -1039,11 +1057,11 @@ notes}` plus:
 
 - **preflight** — `checkpoint`, `envelope {stamp, root, base_branch, base_sha, dial, pace,
   commands, resumed}`, `nodes[row]`, `leaves[{id, next_action, note, branch, worktree, head_sha,
-  commits, dirty, rounds}]`, `gaps`, `untraced`, `atomicity`, `coupled`, `stale`, `freed`,
+  base_sha, approved_head, commits, dirty, rounds, brief_path}]`, `gaps`, `untraced`, `atomicity`, `coupled`, `stale`, `freed`,
   `dirty_worktrees`, `commands`, `max_parallel`. A row is `{id, title, kind, level, rigor, role,
   deps, locus, reads, provides, consumes, decisions, dispatch, ground_known, evidence, status,
-  children, acceptance_n, human, own_review, coupled, integration}` — no prose.
-- **leaf-open** — `status` (`opened | no_slot | locus_held | refused`), `branch`, `worktree`,
+  reason, rev, children, acceptance_n, human, own_review, coupled, integration}` — no prose.
+- **leaf-open** — `status` (`opened | no_slot | locus_held | busy | refused`), `branch`, `worktree`,
   `base_sha`, `head_sha`, `rebased`, `brief_path`, `brief_digest`, `report_path`, `slot`,
   `max_parallel`, `held_by[{effort, path, node, execution, status}]`, `stuck`.
 - **leaf-close** — `status` (`done | pending`), `node`, `head_sha`, `measurement`, `decision {next,
@@ -1073,7 +1091,8 @@ notes}` plus:
 - **Restated in:** the skills that walk a result.
 
 `complete` (computed, per workflow; for `agentics-develop`: no checkpoint, every leaf in scope
-merged, the root integrated, nothing escalated or parked), `dropped[]`, `incomplete[]`,
+merged, the root integrated, nothing escalated or parked — carried from an earlier invocation or
+not — and no earned integration review or survey lost), `dropped[]`, `incomplete[]`,
 `failed_channels[]`, `unreached[]` (prose, loss first), `resumable {runId, remaining, args?}`.
 
 ### Workflow returns

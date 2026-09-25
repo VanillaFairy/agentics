@@ -58,13 +58,13 @@ const WORK = {
   'b/c': { 'NOTES.md': 'notes\n' },
 }
 
-function agents(calls) {
+function agents(calls, jobs) {
   return (prompt, opts) => {
     const type = String(opts.agentType || '').replace('agentics:', '')
     calls.push(opts.label)
     if (type === 'courier') {
       const command = /^(node "[^\n]+)$/m.exec(prompt)[1]
-      const run = spawnSync('sh', ['-c', command], { encoding: 'utf8', env: { ...process.env, AGENTICS_INLINE_JOBS: '1' } })
+      const run = spawnSync('sh', ['-c', command], { encoding: 'utf8', env: { ...process.env, AGENTICS_INLINE_JOBS: jobs === 'inline' ? '1' : '' } })
       return { stop_reason: run.status === 0 ? 'carried' : 'failed', payload_raw: run.stdout.trim(), task_ids: [], task_tools: 'skipped', notes: run.stderr }
     }
     if (type === 'implementer' || type === 'test-author') {
@@ -83,7 +83,7 @@ function agents(calls) {
   }
 }
 
-test('an effort executes end to end through the real boundaries and lands', async () => {
+for (const jobs of ['inline', 'detached']) test('an effort executes end to end through the real boundaries and lands (' + jobs + ' jobs)', async () => {
   const r = repo()
   const added = addNodes(r, 'e1', [
     { id: '.', kind: 'composite', title: 'the change', defines: [{ id: 'D1', text: 'a exists' }, { id: 'D2', text: 'greet the world' }] },
@@ -96,7 +96,7 @@ test('an effort executes end to end through the real boundaries and lands', asyn
   const calls = []
   const { result, logs } = await runWorkflow(WF, {
     args: { repo: r, effort: 'e1', execution: '20260925-120000', plugin_root: PLUGIN, commands: COMMANDS, progress: false },
-    agent: agents(calls),
+    agent: agents(calls, jobs),
   })
   assert.deepEqual(result.escalations, [], logs.join('\n'))
   assert.equal(result.coverage.complete, true, JSON.stringify(result.coverage) + '\n' + logs.join('\n'))

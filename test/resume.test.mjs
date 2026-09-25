@@ -106,7 +106,7 @@ test('a clean execution opens for one branch listing, and every leaf is code', (
   assert.deepEqual(rows.map((r) => [r.id, r.next_action]), [['a', 'code'], ['b', 'code']])
   assert.deepEqual(rowOf(rows, 'a'), {
     id: 'a', next_action: 'code', note: 'nothing in git for this leaf', branch: 'agentics/e1--a',
-    worktree: worktreeOf(dir, EFFORT, 'a'), head_sha: '', commits: [], dirty: [],
+    worktree: worktreeOf(dir, EFFORT, 'a'), head_sha: '', base_sha: '', approved_head: '', commits: [], dirty: [],
   })
 })
 

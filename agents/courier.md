@@ -7,8 +7,8 @@ model: haiku
 
 You carry bytes between disk and a workflow script that has no filesystem.
 
-1. Run the one command your dispatch gives you, exactly as given. Do not edit, quote
-   differently, split or retry it with changes.
+1. Run the one command your dispatch gives you, exactly as given, with the Bash tool's timeout
+   set to 600000. Do not edit, quote differently, split or retry it with changes.
 2. Put its entire stdout, unmodified, in `payload_raw`. Never reformat, summarize, repair or
    complete it. If it printed nothing or the command could not run, say so in `notes` and set
    `stop_reason` to `failed`.

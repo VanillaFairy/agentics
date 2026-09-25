@@ -78,7 +78,7 @@ test('a major blocks only on a contract leaf, and only with a failure scenario',
   assert.equal(one.result.implemented[0].review_rounds, 1, 'not a contract: the major is advisory')
 
   const contract = simulate([composite('.'), row('a', { own_review: true, provides: [{ name: 'api', paths: ['src/'] }] })])
-  const two = await run(contract, { 'review:a#1': major('breaks consumer'), 'review:a#2': () => ({ findings: [], fix_verdicts: [], notes: '' }) })
+  const two = await run(contract, { 'review:a#1': major('breaks consumer'), 'review:a#2': () => ({ findings: [], fix_verdicts: [{ id: 'M', status: 'fixed', evidence: 'ok' }], notes: '' }) })
   assert.equal(two.result.implemented[0].review_rounds, 2)
 
   const vague = simulate([composite('.'), row('a', { own_review: true, provides: [{ name: 'api', paths: ['src/'] }] })])
@@ -253,4 +253,110 @@ test('a leaf whose files are held by a stopped leaf is reported blocked, never r
   assert.equal(sim.opens.filter((o) => o === 'b').length, 1)
   assert.deepEqual(result.blocked, [{ id: 'b', blocked_by: 'x' }])
   assert.equal(result.coverage.complete, false)
+})
+
+test('a prior blocker the next round never rules on stays open', async () => {
+  const sim = simulate([composite('.'), row('a', { own_review: true })])
+  const crit = { id: 'F1', severity: 'critical', claim: 'wrong', evidence: 'x:1', failure_scenario: 'y' }
+  const { result } = await run(sim, {
+    'review:a#1': () => ({ findings: [crit], fix_verdicts: [], notes: '' }),
+    'review:': () => ({ findings: [], fix_verdicts: [], notes: '' }),
+  })
+  assert.deepEqual(result.escalations.map((e) => e.reason), ['review_not_converging'])
+})
+
+test('a merge-batch that cannot run escalates its target once, never re-batches it', async () => {
+  const sim = simulate([composite('.'), row('a')], {
+    merge: () => ({ ok: false, error: { kind: 'integration', message: 'refresh conflicted' } }),
+  })
+  const { result } = await run(sim)
+  assert.equal(sim.batches.length, 1)
+  assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['.', 'merge_batch_failed']])
+  assert.equal(result.coverage.complete, false)
+})
+
+test('a composite or a cycle failing on the merged head escalates, never enters a leaf chain', async () => {
+  const sim = simulate([composite('.'), composite('c'), row('c/x'), row('r', { rigor: 'tdd-pair', role: 'red', own_review: true }),
+    row('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], own_review: true })], {
+    merge: (args) => {
+      if (args.target !== '.') return {}
+      const failed = []
+      if (args.children.some((c) => c.id === 'c')) failed.push({ id: 'c', ids: ['c'], failures: [{ check: 'suite', claim: 'c breaks it', evidence: '' }] })
+      if (args.children.some((c) => c.id === 'g')) failed.push({ id: 'g', ids: ['r', 'g'], failures: [{ check: 'suite', claim: 'the pair breaks it', evidence: '' }] })
+      return { merged: args.children.filter((c) => !failed.some((f) => f.ids.includes(c.id))).map((c) => ({ id: c.id, merged_sha: 'm' })), failed_alone: failed }
+    },
+  })
+  const { result } = await run(sim)
+  assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]).sort(), [['c', 'fails_on_integration'], ['g', 'fails_on_integration'], ['r', 'fails_on_integration']])
+  assert.ok(!sim.calls.some((c) => c.name === 'leaf-open' && c.args.node === 'c'))
+})
+
+test('a resumed leaf is closed at its own round, reviewed over its own base and brief', async () => {
+  const sim = simulate([composite('.'), row('a', { own_review: true })], {
+    preflight: () => ({ leaves: [{ id: 'a', next_action: 'verify', note: '', branch: 'agentics/e--a', worktree: '/wt/a', head_sha: 'h1', base_sha: 'b1', approved_head: '', commits: ['h1'], dirty: [], rounds: 1, brief_path: '/briefs/a-r1.md' }] }),
+  })
+  const { result, prompts } = await run(sim)
+  const close = sim.calls.find((c) => c.name === 'leaf-close')
+  assert.equal(close.args.round, 1)
+  assert.equal(close.args.base_sha, 'b1')
+  const review = prompts.find((p) => p.opts.label === 'review:a#1')
+  assert.match(review.prompt, /Span under review: b1\.\.h-a-1/)
+  assert.match(review.prompt, /read \/briefs\/a-r1\.md/)
+  assert.equal(result.implemented[0].salvaged, true)
+})
+
+test('a resumed approval merges the approved head, not the branch tip', async () => {
+  const sim = simulate([composite('.'), row('a', { status: 'approved' })], {
+    preflight: () => ({ leaves: [{ id: 'a', next_action: 'merge', note: '', head_sha: 'tip', base_sha: 'b', approved_head: 'approved', commits: [], dirty: [], rounds: 1, brief_path: '' }] }),
+  })
+  await run(sim)
+  assert.deepEqual(sim.batches[0].children, [{ id: 'a', head_sha: 'approved' }])
+})
+
+test('a replan that writes no new revision of the leaf escalates instead of looping', async () => {
+  const sim = simulate([composite('.'), row('a', { rev: 5 })], {
+    preflight: (args) => (args.reload ? { nodes: [composite('.'), row('a', { rev: 5, status: 'active' })] } : {}),
+  })
+  const { result, prompts } = await run(sim, {
+    implementer: () => ({ status: 'decompose', detail: 'too big', concerns: [], commits: [] }),
+    planner: () => ({ status: 'written', written: [], accepted_warnings: [], uncovered: [], question: '', detail: '' }),
+  })
+  assert.deepEqual(result.escalations.map((e) => e.reason), ['replan_not_converging'])
+  assert.equal(prompts.filter((p) => p.opts.label.startsWith('implementer:')).length, 1)
+})
+
+test('a failed integration review makes the result incomplete', async () => {
+  const sim = simulate([composite('.'), row('a'), row('b')])
+  const { result } = await run(sim, { 'review:integration:.': () => { throw new Error('dispatch died') } })
+  assert.ok(result.coverage.failed_channels.includes('integration-review'))
+  assert.equal(result.coverage.complete, false)
+})
+
+test('a consumer parked for drift while in flight is not merged', async () => {
+  // b is still in its review loop when a merges; the real merge-batch never flags a node it landed.
+  const sim = simulate([composite('.'), row('a'), row('b', { own_review: true, consumes: [{ name: 'api', paths: ['src/api.js'] }] })], {
+    merge: (args) => (args.children.some((c) => c.id === 'a') && !args.children.some((c) => c.id === 'b')
+      ? { drift: [{ node: 'b', contract: 'api', files: ['src/api.js'] }] } : {}),
+  })
+  const { result } = await run(sim, {
+    'review:b#1': () => ({ findings: [{ id: 'F', severity: 'critical', claim: 'x', evidence: 'y', failure_scenario: 'z' }], fix_verdicts: [], notes: '' }),
+    'review:b#2': () => ({ findings: [], fix_verdicts: [{ id: 'F', status: 'fixed', evidence: 'ok' }], notes: '' }),
+  })
+  assert.ok(sim.batches.some((bt) => bt.children.some((c) => c.id === 'a')), 'a merged while b was in flight')
+  assert.ok(!sim.batches.some((bt) => bt.children.some((c) => c.id === 'b')))
+  assert.deepEqual(result.parked.map((p) => p.id), ['b'])
+})
+
+test('a dependency declared on a composite binds every leaf beneath it', async () => {
+  const sim = simulate([composite('.'), row('b'), composite('a', { deps: ['b'] }), row('a/x')])
+  await run(sim)
+  const order = sim.calls.map((c) => c.name + ':' + (c.args.node || c.args.target || ''))
+  assert.ok(order.indexOf('leaf-open:a/x') > order.findIndex((o) => o === 'merge-batch:.'), order.join(' '))
+})
+
+test('escalations carried from an earlier invocation lead the result', async () => {
+  const sim = simulate([composite('.'), row('a', { status: 'escalated', reason: 'blocked' }), row('b')])
+  const { result } = await run(sim)
+  assert.deepEqual(result.escalations.map((e) => [e.id, e.carried === true]), [['a', true]])
+  assert.match(result.coverage.unreached[0], /a: escalated earlier — blocked/)
 })

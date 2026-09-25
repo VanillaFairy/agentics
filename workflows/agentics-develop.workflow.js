@@ -247,6 +247,7 @@ const drift = []
 const integ = new Map()         // composite id -> {worktree, base, head, branch}
 const heads = new Map()         // leaf id -> the head it was approved at
 const lockedBy = new Map()      // leaf id -> the stopped leaf holding its files
+const rounds = new Map()        // leaf id -> the highest round dispatched, across every chain
 const composite = new Map()     // composite id -> 'open' | 'reviewing' | 'ripe' | 'merging' | 'held'
 let maxParallel = 4
 let cleanup = []
@@ -273,15 +274,26 @@ const ancestorsOf = (id) => {
 const inScope = (id) => id === rootId || ancestorsOf(id).includes(rootId)
 const childrenOf = (id) => [...rows.keys()].filter((k) => k !== '.' && parentOf(k) === id).sort()
 const statusOf = (id) => status.get(id) || 'planned'
+/** A leaf's dependencies and every in-scope ancestor's: a composite's deps bind all beneath it. */
+const depsOf = (id) => [...new Set([id, ...ancestorsOf(id)].flatMap((a) => (rows.get(a) || {}).deps || []))]
+
+const LOCAL_TERMINAL = new Set(['approved', 'escalated', 'parked', 'merged'])
 
 function absorbTree(payload) {
   for (const row of payload.nodes || []) {
+    const before = rows.get(row.id)
+    const local = status.get(row.id)
     rows.set(row.id, row)
-    status.set(row.id, row.status)
+    // A decision this invocation took may still be queued for the next boundary, so disk can lag
+    // it; disk wins only where the node itself was revised since (a replan or an answer).
+    const revised = !before || before.rev !== row.rev
+    if (revised || !LOCAL_TERMINAL.has(local)) status.set(row.id, row.status)
   }
   for (const leaf of payload.leaves || []) {
     leafFacts.set(leaf.id, leaf)
-    if (leaf.head_sha && !heads.has(leaf.id)) heads.set(leaf.id, leaf.head_sha)
+    // A resumed merge merges the head that was approved, never the branch as it stands now.
+    if (leaf.approved_head && !heads.has(leaf.id)) heads.set(leaf.id, leaf.approved_head)
+    if (Number.isInteger(leaf.rounds)) rounds.set(leaf.id, Math.max(rounds.get(leaf.id) || 0, leaf.rounds))
   }
   for (const row of payload.nodes || []) {
     if (row.kind !== 'leaf' && row.integration && row.integration.branch) integ.set(row.id, row.integration)
@@ -329,7 +341,7 @@ function carried(held) {
 }
 
 function courierPrompt(command) {
-  return 'Run exactly this one command, unchanged, and put its entire stdout in payload_raw:\n\n' +
+  return 'Run exactly this one command, unchanged (Bash timeout 600000), and put its entire stdout in payload_raw:\n\n' +
     command + '\n\n' +
     (progress
       ? 'Then apply the todo moves listed in the printed payload.todos (create → TaskCreate, update → ' +
@@ -439,7 +451,10 @@ function reviewerPrompt(id, st, round, prior) {
     'from earlier rounds reaches you but the artifacts below.\n' +
     'Worktree: ' + st.worktree + ' (branch ' + st.branch + '). Span under review: ' + span +
     (round === 1 ? ' — the whole series.' : ' — the fix commits since the last round only; a critical you see outside it is still reported.') + '\n' +
-    'Brief (criteria, locus, decisions, contracts): read ' + st.brief + '.\n' +
+    (st.brief
+      ? 'Brief (criteria, locus, decisions, contracts): read ' + st.brief + '.\n'
+      : 'Criteria, locus, decisions and contracts: node "' + pluginRoot + '/lib/tree.mjs" show --repo "' + repo +
+        '" --effort "' + effort + '" --root "' + id + '" --json\n') +
     (row.provides && row.provides.length ? 'This leaf PROVIDES a contract: its majors with a failure scenario block like criticals.\n' : '') +
     (row.role === 'green' ? 'The tests were written by another agent before this code and sit outside this locus.\n' : '') +
     'The executor\'s concerns — attack these first:\n' + listOf(st.concerns) + '\n' +
@@ -494,9 +509,14 @@ function park(id, why, question) {
 }
 
 function approve(id, st, atIntegration) {
+  // Parked while its chain was running (contract drift): the user rules first, and the approval
+  // is not recorded — a resume re-derives it from the measurement once the park is cleared.
+  if (statusOf(id) === 'parked') return
   status.set(id, 'approved')
   recordEvent({ kind: 'approved', node: id, head_sha: st.head, review_rounds: st.reviewRounds, at_integration: atIntegration })
   st.approvedHead = st.head
+  const was = implemented.findIndex((i) => i.id === id)
+  if (was !== -1) implemented.splice(was, 1)
   implemented.push({ id, rigor: rows.get(id).rigor, role: rows.get(id).role, rounds: st.round, review_rounds: st.reviewRounds, at_integration: atIntegration, salvaged: st.salvaged })
   heads.set(id, st.head)
   leavesFinished++
@@ -533,7 +553,7 @@ function blockedBy(id, seen = new Set()) {
   seen.add(id)
   const row = rows.get(id)
   if (!row) return ''
-  for (const dep of row.deps || []) {
+  for (const dep of depsOf(id)) {
     const s = statusOf(dep)
     if (s === 'escalated' || s === 'parked') return dep
     const deeper = blockedBy(dep, seen)
@@ -555,7 +575,7 @@ function readyLeaves() {
     if (s !== 'planned' && s !== 'active') continue
     if (planning.has(parentOf(id))) continue
     if (blockedBy(id) || lockedBy.has(id)) continue
-    if (!(row.deps || []).every((d) => depReady(id, d))) continue
+    if (!depsOf(id).every((d) => depReady(id, d))) continue
     if (row.coupled && (coupledInFlight() || out.some((o) => rows.get(o).coupled))) continue
     out.push(id)
   }
@@ -684,6 +704,7 @@ async function openLeaf(id, st, fix, mode) {
     }, { phase: 'Execute', label: 'open:' + id + '#' + st.round })
     if (Number.isInteger(opened.max_parallel) && opened.max_parallel > 0) maxParallel = opened.max_parallel
     if (opened.status === 'opened') {
+      rounds.set(id, Math.max(rounds.get(id) || 0, st.round))
       st.refresh = false
       st.worktree = opened.worktree
       st.branch = opened.branch
@@ -699,7 +720,7 @@ async function openLeaf(id, st, fix, mode) {
       note(id + ': its files are held by ' + (holder.node || 'a stopped leaf') + ', which waits on the user')
       return null
     }
-    if (opened.status === 'no_slot' || opened.status === 'locus_held') {
+    if (opened.status === 'no_slot' || opened.status === 'locus_held' || opened.status === 'busy') {
       log('open:' + id + ': ' + opened.status + ' — waiting for ' + (opened.held_by ? JSON.stringify(opened.held_by) : 'the pool'))
       continue
     }
@@ -734,15 +755,19 @@ async function closeLeaf(id, st, executorStatus) {
 async function runLeaf(id, entry) {
   const row = rows.get(id)
   const facts = leafFacts.get(id) || {}
-  const st = {
-    role: roleOf(row), round: (facts.rounds || 0) + 1, reviewRounds: 0, raise: false,
-    base: facts.base_sha || '', head: facts.head_sha || '', deltaBase: '', concerns: [],
-    salvaged: false, worktree: facts.worktree || '', branch: facts.branch || '', brief: '',
-    refresh: false, lastFailures: '', priorBlockers: [], priorUnfixed: new Set(), cleanStreak: 0,
-  }
+  const done = rounds.get(id) || 0
   let stage = entry && entry.stage ? entry.stage : ({
     code: 'code', 'continue-series': 'continue', verify: 'close', review: 'review', merge: 'approve',
   })[facts.next_action || 'code'] || 'code'
+  const st = {
+    // A salvaged series is closed and reviewed at the round that produced it; anything new is the
+    // next round, so its brief, report and dispatch never overwrite an earlier one's.
+    role: roleOf(row), round: ['close', 'review', 'approve'].includes(stage) && done ? done : done + 1,
+    reviewRounds: 0, raise: false,
+    base: facts.base_sha || '', head: facts.head_sha || '', deltaBase: '', concerns: [],
+    salvaged: false, worktree: facts.worktree || '', branch: facts.branch || '', brief: facts.brief_path || '',
+    refresh: false, lastFailures: '', priorBlockers: [], priorUnfixed: new Set(), cleanStreak: 0,
+  }
   let fix = (entry && entry.fix) || []
   if (entry && entry.refresh) st.refresh = true
   if (['close', 'review', 'approve', 'continue'].includes(stage) && facts.head_sha) st.salvaged = true
@@ -773,11 +798,12 @@ async function runLeaf(id, entry) {
         if (['decompose', 'unsplittable', 'premise_mismatch'].includes(res.status)) {
           status.set(id, 'planned')
           note(id + ': ' + res.status + ' — replanning its subtree')
-          const before = canonical(row)
+          const before = row.rev
           await planNode(id, res.status + ': ' + res.detail)
           const after = rows.get(id)
-          // A replan that changed nothing would send the same executor back to the same wall.
-          if (after && after.kind === 'leaf' && canonical({ ...after, status: row.status }) === before && statusOf(id) === 'planned') {
+          // A replan that wrote no new revision of the leaf would send the same executor back to
+          // the same wall.
+          if (after && after.kind === 'leaf' && after.rev === before && !['escalated', 'parked'].includes(statusOf(id))) {
             escalate(id, 'replan_not_converging', 'the planner answered ' + res.status + ' without changing the leaf: ' + res.detail)
           }
           return null
@@ -853,7 +879,9 @@ async function runLeaf(id, entry) {
       const findings = res.findings || []
       const blocking = blockingOf(row, findings)
       const verdicts = res.fix_verdicts || []
+      // A prior blocker the round did not rule on is not fixed: it was never looked at.
       const unfixed = verdicts.filter((v) => v.status === 'not_fixed' || v.status === 'regressed')
+        .concat(st.priorBlockers.filter((p) => !verdicts.some((v) => v.id === p.id)).map((p) => ({ id: p.id, status: 'not_fixed' })))
       const reported = new Set(findings.map((f) => f.id))
       const open = blocking.concat(st.priorBlockers.filter((p) => unfixed.some((u) => u.id === p.id) && !reported.has(p.id)))
 
@@ -937,7 +965,7 @@ function mergeable() {
         continue
       }
       add(target, { id, head_sha: heads.get(id) || '' })
-    } else if (composite.get(id) === 'ripe' && (id !== rootId || rootId !== '.')) {
+    } else if (composite.get(id) === 'ripe' && (id !== rootId || rootId !== '.') && !['escalated', 'parked', 'merged'].includes(statusOf(id))) {
       add(target, { id, head_sha: (integ.get(id) || {}).head || '' })
     }
   }
@@ -950,6 +978,12 @@ async function mergeInto(target, batch) {
   for (const c of batch.children) if (composite.get(c.id) === 'ripe') composite.set(c.id, 'merging')
   try {
     const out = await settled('merge-batch', { target, children: batch.children, cycles: batch.cycles }, { phase: 'Integrate', label: 'merge:' + target })
+    if (out.error || out.ok === false) {
+      // The batch could not run at all (a refresh that conflicted, a dirty integration worktree, a
+      // job that failed): the target is stopped, and nothing is re-batched into it until the user acts.
+      escalate(target, 'merge_batch_failed', (out.error && out.error.message) || 'merge-batch refused')
+      return null
+    }
     integ.set(target, { worktree: out.target_worktree, base: out.target_base, head: out.head_sha, branch: out.target_branch })
     for (const m of out.merged || []) {
       status.set(m.id, 'merged')
@@ -969,16 +1003,27 @@ async function mergeInto(target, batch) {
     }
     if ((out.unexamined || []).length) note('undesigned nodes not examined for drift: ' + out.unexamined.join(', '))
     for (const f of out.failed_alone || []) {
+      const members = f.ids && f.ids.length ? f.ids : [f.id]
+      const why = (f.failures || []).map((x) => x.claim).join('; ')
+      // A composite, or a cycle that lands as a unit, has no one producer a fix round could go to:
+      // its failure on the merged head is the user's to route.
+      if (members.length > 1 || !isLeaf(f.id)) {
+        for (const m of members) escalate(m, 'fails_on_integration', why)
+        continue
+      }
       note(f.id + ': fails on the integration head alone — a fix round on the refreshed branch')
       status.set(f.id, 'active')
+      heads.delete(f.id)
       launch('leaf:' + f.id, () => runLeaf(f.id, {
         stage: 'fix', refresh: true,
         fix: (f.failures || []).map((x) => ({ source: 'integration', claim: x.claim, evidence: x.evidence })),
       }))
     }
     for (const c of batch.children) {
-      if (composite.get(c.id) === 'merging' && statusOf(c.id) !== 'merged') composite.set(c.id, 'ripe')
+      if (composite.get(c.id) === 'merging' && statusOf(c.id) !== 'merged') composite.set(c.id, statusOf(c.id) === 'escalated' ? 'held' : 'ripe')
     }
+    const progressed = (out.merged || []).length + (out.failed_alone || []).length + (out.combination || []).length + (out.conflict ? 1 : 0)
+    if (progressed === 0) escalate(target, 'merge_no_progress', 'a merge-batch into ' + target + ' merged nothing and reported no failure')
     if (input.pause && !stopping) stopping = 'pause'
     if (budgetShort() && !stopping) stopping = 'budget'
   } finally {
@@ -1069,6 +1114,21 @@ function result(checkpoint) {
       .map((id) => id + ': not merged in this invocation' + (stopping ? ' (' + stopping + ')' : '')))
     .concat(checkpoint ? ['checkpoint ' + checkpoint.reason + ': nothing was dispatched'] : [])
     .concat([...new Set(failedChannels)].map((c) => 'the ' + c + ' channel failed in this invocation'))
+  // Stopped nodes this invocation did not stop itself are carried from an earlier one: they lead
+  // the result as much as fresh ones, or a resume reads cleaner than the run it resumed.
+  for (const [id, row] of rows) {
+    if (!inScope(id)) continue
+    if (statusOf(id) === 'escalated' && !escalations.some((e) => e.id === id)) escalations.push({ id, reason: row.reason || 'escalated', detail: 'carried from an earlier invocation', carried: true })
+    if (statusOf(id) === 'parked' && !parked.some((p) => p.id === id)) parked.push({ id, return: row.reason || 'parked', question: 'carried from an earlier invocation', carried: true })
+  }
+  // A held cycle member waits on a later member that stopped: say so, not just "not merged".
+  const held = leaves.filter((id) => statusOf(id) === 'approved' && cycleOf(id).some((m) => ['escalated', 'parked'].includes(statusOf(m))))
+    .map((id) => ({ id, behind: cycleOf(id).find((m) => ['escalated', 'parked'].includes(statusOf(m))) }))
+  for (const h of held) unreached.unshift(h.id + ': held — its cycle member ' + h.behind + ' stopped, and a cycle lands as a unit')
+  for (const e of escalations.filter((x) => x.carried)) unreached.unshift(e.id + ': escalated earlier — ' + e.reason)
+  for (const p of parked.filter((x) => x.carried)) unreached.unshift(p.id + ': parked earlier — ' + p.return)
+  // A lost review is a lost check: the leaves it was owed to were verified and never read.
+  const lostReview = failedChannels.includes('integration-review') || failedChannels.includes('survey')
   const where = integ.get(rootId) || {}
   return {
     effort, root: rootId, execution, checkpoint: checkpoint || null,
@@ -1080,7 +1140,7 @@ function result(checkpoint) {
     stopped: stopping || '',
     notes,
     coverage: {
-      complete: !checkpoint && notLanded.length === 0 && rootDone && escalations.length === 0 && parked.length === 0,
+      complete: !checkpoint && notLanded.length === 0 && rootDone && escalations.length === 0 && parked.length === 0 && !lostReview,
       dropped: [],
       incomplete: [],
       failed_channels: [...new Set(failedChannels)],
@@ -1149,7 +1209,9 @@ for (;;) {
 if (stopping) note('stopped starting new leaves after a merge-batch: ' + stopping)
 
 phase('Postflight')
-const done = [...rows.keys()].filter((id) => isLeaf(id) && inScope(id)).every((id) => statusOf(id) === 'merged')
+// Done means delivered: every leaf merged, and a root below the effort's merged into its parent.
+const done = [...rows.keys()].filter((id) => isLeaf(id) && inScope(id)).every((id) => statusOf(id) === 'merged') &&
+  (rootId === '.' || statusOf(rootId) === 'merged')
 try {
   const post = await boundary('postflight', { status: done ? 'done' : stopping ? 'paused' : 'checkpoint' }, { phase: 'Postflight', label: 'postflight' })
   cleanup = post.cleanup || []

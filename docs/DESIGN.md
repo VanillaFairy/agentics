@@ -40,7 +40,10 @@ courier pastes back under a digest the script re-checks (GP4).
 | `.claude/worktrees/` | Integration and leaf worktrees |
 | `docs/agentics/designs/<effort>/` | Design documents — source, committed |
 
-Everything under `.claude/agentics/` and `.claude/worktrees/` is scaffolding and is gitignored.
+Everything under `.claude/agentics/` and `.claude/worktrees/` is scaffolding, local to the machine.
+`.claude/agentics/` ignores itself: every directory made under it goes through
+`lib/store.mjs mkdirState`, which writes a `.gitignore` of `*` at its root, whatever the target
+repository's own ignore rules say.
 
 ### How the plugin checks itself
 
@@ -245,6 +248,7 @@ traceability gaps come back as warnings. It refuses; it never repairs.
 
 ```
 .claude/agentics/
+  .gitignore                      `*`, written by mkdirState
   slots/                          the parallelism pool, shared by every execution (see Scheduling)
     config.json                   {max_parallel}, edited by the user
   efforts/<effort>/

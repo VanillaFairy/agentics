@@ -259,6 +259,15 @@ function gitRepo() {
   return dir
 }
 
+test('the store ignores itself: an opened effort and its records leave git status clean', () => {
+  const repo = gitRepo()
+  openEffort(repo, { slug: 'e1', about: 'x' })
+  recordReturn(repo, 'e1', 'probe', { question: 'q' }, new Date('2026-09-04T10:11:12Z'))
+
+  assert.equal(git(repo, 'status', '--porcelain'), '', 'local state never shows up as a change to commit')
+  assert.equal(readFileSync(join(repo, '.claude/agentics/.gitignore'), 'utf8'), '*\n')
+})
+
 const commitIn = (dir, files) => {
   put(dir, files)
   git(dir, 'add', '-A')
@@ -326,7 +335,10 @@ test('a repository-wide survey is not un-stood by the pipeline\'s own state unde
   const dir = gitRepo()
   surveyed(dir, SURVEY({ ground: ['.'] }))
   put(dir, { '.claude/agentics/efforts/e/executions/20260904-101112/state.jsonl': '{}\n' })
-  commitIn(dir, { '.claude/agentics/efforts/e/nodes.jsonl': '{}\n' })
+  // Committed despite the store's own ignore, as a repository from before it did.
+  put(dir, { '.claude/agentics/efforts/e/nodes.jsonl': '{}\n' })
+  git(dir, 'add', '-f', '.claude/agentics/efforts/e/nodes.jsonl')
+  git(dir, 'commit', '-qm', 'state')
 
   assert.equal(standingSurvey(dir, 'e').standing, true)
 

@@ -58,7 +58,7 @@ export function plan(repo, stamp = stampNow()) {
       if (existsSync(join(dir, 'links.jsonl'))) moves.push({ from: join(dir, 'links.jsonl'), to: join(legacy, 'links', e + '.jsonl') })
     }
   }
-  const listed = spawnSync('git', ['-C', repo, 'branch', '--list', 'agentics/*', '--format=%(refname:short)'], { encoding: 'utf8' })
+  const listed = spawnSync('git', ['-C', repo, 'branch', '--list', 'agentics/*', '--format=%(refname:short)'], { encoding: 'utf8', windowsHide: true })
   const branches = (listed.stdout || '').split('\n').filter((b) => /^agentics\/(\d{8}-\d{6}-|programme-)/.test(b))
   if (branches.length) notes.push(branches.length + ' pre-tree branch(es) left in place; delete them with git once their work is accounted for')
   return { moves, branches, notes }

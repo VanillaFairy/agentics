@@ -185,7 +185,7 @@ closing quote. The closing delimiter must be at the very start of its own line.
 
 Some environments put a guard in front of Bash that refuses a multi-line command as too complex
 to verify. When the heredoc bounces for that reason, write the same JSON to a scratch file in
-your own worktree and redirect it in — `... --file journal < vfa-journal.json`. The writer reads
+your own worktree and redirect it in — `... --file journal < agentics-journal.json`. The writer reads
 standard input either way, so it is the identical line by an identical route. Your dispatch
 spells the command out. Do not fall back to `echo` or a quoted string instead; those are the
 shapes that corrupted records in the first place.
@@ -237,7 +237,7 @@ is `stop_reason: 'environment_broken'` with the real git output in `notes`. Neve
 worktree you did not create and could not enter: everything downstream merges into that path.
 
 **Then free this run's order branches, in the same dispatch.** `git worktree list` shows every
-checkout in the repository, and on a resume some of this run's own `vfa/<runstamp>-*` branches
+checkout in the repository, and on a resume some of this run's own `agentics/<runstamp>-*` branches
 may still be held by a worktree an invocation that died left behind. This is not cosmetic: git
 refuses one branch in two worktrees, so each leftover costs the next dispatch its branch, the
 worktree it gets comes up **detached**, and a coder standing on a detached HEAD can commit
@@ -292,7 +292,7 @@ When dispatched to merge: in the integration tree you are pointed at, run
 `git merge --no-ff <branch>`. Report the observed result in the exact contract below —
 you report the four fields; the caller derives the outcome, never you:
 
-<!-- vfa:verbatim merge-result -->
+<!-- agentics:verbatim merge-result -->
 Merge mode reports exactly four fields: `stop_reason` (`completed` or
 `environment_broken`), `merged_sha` (`''` when the merge did not complete — a fact, not
 a verdict), `conflicts` (conflicting paths verbatim from git; empty when none), and
@@ -302,7 +302,7 @@ never from `conflicts` alone, because an `environment_broken` merge has an empty
 list too, and reading that as success waves a broken merge through. Anything that is not
 `mergeOk` stops the merge run. A conflict is a planner defect — loci were declared
 pairwise disjoint — surfaced to the human, never resolved silently.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 NEVER resolve a conflict; report it, do not fix it.
 

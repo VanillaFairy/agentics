@@ -70,7 +70,7 @@ test('fnv1a matches the published vectors — the constant pair is not a typo', 
 })
 
 test('fnv1a is deterministic across calls', () => {
-  assert.equal(fnv1a('vf-agentics'), fnv1a('vf-agentics'))
+  assert.equal(fnv1a('agentics'), fnv1a('agentics'))
 })
 
 // --- what the order digest catches -------------------------------------------------------
@@ -144,7 +144,7 @@ test('the manifest preserves input order', () => {
 // --- the CLI, which is also the plan file's validator ------------------------------------
 
 test('the CLI prints a manifest for a well-formed plan file', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'vfa-digest-'))
+  const dir = await mkdtemp(join(tmpdir(), 'agentics-digest-'))
   try {
     const path = join(dir, 'plan.json')
     await writeFile(path, JSON.stringify({ work_orders: [order()] }), 'utf8')
@@ -157,7 +157,7 @@ test('the CLI prints a manifest for a well-formed plan file', async () => {
 })
 
 test('malformed JSON prints an error object rather than a manifest', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'vfa-digest-'))
+  const dir = await mkdtemp(join(tmpdir(), 'agentics-digest-'))
   try {
     const path = join(dir, 'plan.json')
     await writeFile(path, '{ "work_orders": [', 'utf8')
@@ -179,7 +179,7 @@ test('malformed JSON prints an error object rather than a manifest', async () =>
 })
 
 test('a plan file with no work_orders array is an error, not an empty manifest', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'vfa-digest-'))
+  const dir = await mkdtemp(join(tmpdir(), 'agentics-digest-'))
   try {
     const path = join(dir, 'plan.json')
     await writeFile(path, JSON.stringify({ notes: 'nothing here' }), 'utf8')

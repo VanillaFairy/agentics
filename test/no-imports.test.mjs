@@ -10,7 +10,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { id, applies, check } from '../tools/rules/no-imports.mjs'
 
-const WF = 'workflows/vfa-survey.workflow.js'
+const WF = 'workflows/agentics-survey.workflow.js'
 
 test('it applies only to workflow scripts', () => {
   assert.ok(applies.test(WF))
@@ -67,7 +67,7 @@ test('flags a re-export, which loads the module exactly like an import', () => {
 })
 
 test('does NOT flag the meta export — no from, no module load', () => {
-  const src = "export const meta = { name: 'vfa-survey', description: 'x', phases: [] }"
+  const src = "export const meta = { name: 'agentics-survey', description: 'x', phases: [] }"
   assert.deepEqual(check(src, WF), [])
 })
 
@@ -84,8 +84,8 @@ test('does NOT flag import talk inside a multi-line template prompt', () => {
 
 test('a clean workflow produces no violations', () => {
   const src = [
-    "export const meta = { name: 'vfa-survey', description: 'x', phases: [] }",
-    "const r = await agent('go', { agentType: 'vf-agentics:scout' })",
+    "export const meta = { name: 'agentics-survey', description: 'x', phases: [] }",
+    "const r = await agent('go', { agentType: 'agentics:scout' })",
   ].join('\n')
 
   assert.deepEqual(check(src, WF), [])

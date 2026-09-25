@@ -1,4 +1,4 @@
-// test/vfa-develop-scenarios.test.mjs — executes vfa-develop's orchestration arithmetic
+// test/agentics-develop-scenarios.test.mjs — executes agentics-develop's orchestration arithmetic
 // through the harness with scripted agents. Until the self-audit, no test ever RAN a
 // workflow: coverage derivation, escalation routing, the checkpoint gate and the review
 // loop's exit conditions were enforced by prose and regex alone. Each scenario here pins
@@ -28,7 +28,7 @@ import { digestOrder } from '../lib/plan-digest.mjs'
 const resumeLoad = resumeVerdict
 
 
-const WF = fileURLToPath(new URL('../workflows/vfa-develop.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../workflows/agentics-develop.workflow.js', import.meta.url))
 
 const A40 = 'a'.repeat(40)
 const B40 = 'b'.repeat(40)
@@ -37,10 +37,10 @@ const D40 = 'd'.repeat(40)
 const M40 = 'e'.repeat(40)   // a merge commit
 const N40 = 'f'.repeat(40)   // the next merge commit
 
-const RUN_DIR = 'C:/repo/.claude/vfa/runs/20260816-143005'
+const RUN_DIR = 'C:/repo/.claude/agentics/runs/20260816-143005'
 
 // These scenarios pin the per-order review loop, so they ask for it on every order; the default,
-// which reviews only yardstick orders per order, is pinned in vfa-develop-review-scope.
+// which reviews only yardstick orders per order, is pinned in agentics-develop-review-scope.
 const ARGS = { change: 'add the thing', roots: '.', plugin_root: 'C:/plugin', review_every_order: true }
 
 const surveyResult = (over = {}) => ({
@@ -90,8 +90,8 @@ const verified = (over = {}, damage) => carriedPayload({
 const reviewed = (over = {}) => ({ findings: [], fix_verdicts: [], ...over })
 
 const setUp = (over = {}) => ({
-  stop_reason: 'completed', worktree: 'C:/repo/.claude/worktrees/vfa-20260816-143005-integration',
-  branch: 'vfa/20260816-143005-integration', head_sha: A40, notes: 'created', ...over,
+  stop_reason: 'completed', worktree: 'C:/repo/.claude/worktrees/agentics-20260816-143005-integration',
+  branch: 'agentics/20260816-143005-integration', head_sha: A40, notes: 'created', ...over,
 })
 
 const merged = (sha = M40, over = {}) => ({
@@ -116,7 +116,7 @@ const integrationCast = (over = {}) => ({
   'wave-verify:': verified({ discriminator: [], notes: 'built and tested the merged head' }),
   'record:': recorded(),
   'kb-chain': carriedChain(),
-  'kb-write': { stop_reason: 'recorded', path: '.claude/vfa/kb', notes: 'appended' },
+  'kb-write': { stop_reason: 'recorded', path: '.claude/agentics/kb', notes: 'appended' },
   'review:integration': reviewed(),
   ...over,
 })
@@ -210,7 +210,7 @@ test('the setup pass is told to free this run\'s branches, and never to force on
 
 test('a branch freed by the setup pass is reported and costs the run nothing', async () => {
   const { result } = await run({
-    agent: happyAgents({ 'integration-setup': setUp({ released: ['vfa/20260816-143005-W1'] }) }),
+    agent: happyAgents({ 'integration-setup': setUp({ released: ['agentics/20260816-143005-W1'] }) }),
   })
 
   assert.deepEqual(result.integration.merged, ['W1'])
@@ -222,7 +222,7 @@ test('a branch still held is named in coverage, and nothing is forced to get it'
   const { result } = await run({
     agent: happyAgents({
       'integration-setup': setUp({
-        held: ['vfa/20260816-143005-W1: dirty at C:/repo/.claude/worktrees/wf_dead-3 — ' +
+        held: ['agentics/20260816-143005-W1: dirty at C:/repo/.claude/worktrees/wf_dead-3 — ' +
                'one staged deletion of test/w1.test.js'],
       }),
     }),
@@ -580,14 +580,14 @@ test('a wave-2 coder is re-anchored onto the head wave 1 merged', async () => {
   const w2 = prompts.find((p) => p.opts.label === 'code:W2').prompt
   assert.match(w2, /RE-ANCHOR FIRST/)
   assert.ok(w2.includes(M40), 'wave 2 must branch from the head wave 1 produced')
-  // `vfa/<runstamp>-<order-id>`, derived from the runstamp rather than from the integration
+  // `agentics/<runstamp>-<order-id>`, derived from the runstamp rather than from the integration
   // branch. Deterministic on purpose: a later invocation of the same run knows the runstamp,
   // so it knows which branches to look for when it goes scavenging. And still a dash rather
   // than a slash between the parts — git stores refs as paths, so `<b>/W2` cannot exist while
   // the ref `<b>` does.
-  assert.ok(w2.includes('vfa/20260816-143005-W2'),
+  assert.ok(w2.includes('agentics/20260816-143005-W2'),
     'the order branch is derived from the runstamp with a dash, never a slash')
-  assert.ok(!w2.includes('vfa/20260816-143005-integration-W2'),
+  assert.ok(!w2.includes('agentics/20260816-143005-integration-W2'),
     'the order branch no longer hangs off the integration branch name')
 })
 
@@ -1103,7 +1103,7 @@ test('a verdict no courier can carry halts the resume with the shape of the dama
 // loaded plan did not carry. Nothing per-order is loaded any more: lib/run-verdict.mjs reads
 // plan.json itself and emits exactly one row per work order, so the two sets cannot disagree,
 // and an order lost between the CLI and this script takes the payload digest with it. That
-// path is pinned end-to-end in test/vfa-develop-resume-verdict.test.mjs ('a payload no tier
+// path is pinned end-to-end in test/agentics-develop-resume-verdict.test.mjs ('a payload no tier
 // can carry halts, and never reports the plan as all-coupled'), and the halt it produces is
 // the test directly above.
 
@@ -1123,7 +1123,7 @@ test('a throw mid-run still hands back the branch that holds the finished work',
   })
 
   assert.ok(result.coverage.failed_channels.includes('pipeline'))
-  assert.equal(result.integration.branch, 'vfa/20260816-143005-integration')
+  assert.equal(result.integration.branch, 'agentics/20260816-143005-integration')
   assert.deepEqual(result.integration.merged, ['W1'])
   assert.equal(result.integration.head_sha, M40)
   assert.ok(result.coverage.resumable.remaining.includes('integration'))

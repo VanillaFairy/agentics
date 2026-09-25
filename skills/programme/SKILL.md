@@ -1,6 +1,6 @@
 ---
 name: programme
-description: Use when a repository has a programme — a design decomposed into slices by vf-agentics:plan — and the user wants to see where it stands or drive the next slice. Renders the hierarchical status, designs the frontier slice just in time, dispatches one develop run per slice onto a branch this layer owns, and asks once at the end whether to land it. Not for a single change (develop) and not for drawing the graph (plan).
+description: Use when a repository has a programme — a design decomposed into slices by agentics:plan — and the user wants to see where it stands or drive the next slice. Renders the hierarchical status, designs the frontier slice just in time, dispatches one develop run per slice onto a branch this layer owns, and asks once at the end whether to land it. Not for a single change (develop) and not for drawing the graph (plan).
 ---
 
 # programme
@@ -22,14 +22,14 @@ stored claim does.
 ## The branch and the worktree
 
 ```
-branch:    vfa/programme-<programme-dir-name>
+branch:    agentics/programme-<programme-dir-name>
 worktree:  .claude/worktrees/programme-<programme-dir-name>/
 ```
 
 Created lazily, at the first dispatch, from the user's current HEAD:
 
 ```bash
-git worktree add -b vfa/programme-<name> .claude/worktrees/programme-<name> HEAD
+git worktree add -b agentics/programme-<name> .claude/worktrees/programme-<name> HEAD
 ```
 
 then record the base you branched from, observed rather than assumed:
@@ -39,7 +39,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/programme.mjs" <repo-root> --programme <name> \
   --append-opened --base-branch "$(git rev-parse --abbrev-ref HEAD)" --base-sha "$(git rev-parse HEAD)"
 ```
 
-Ensure `.claude/vfa/` and `.claude/worktrees/` are gitignored before either, exactly as
+Ensure `.claude/agentics/` and `.claude/worktrees/` are gitignored before either, exactly as
 develop's step 1 does — the event log and the worktrees are scaffolding rather than source.
 
 The worktree stays on the branch for the programme's whole life. Every slice run gets it as
@@ -95,7 +95,7 @@ positioned, contracted, undesigned nodes. When one reaches the frontier, **invok
 skill** — never restate its steps:
 
 ```
-Skill({ skill: 'vf-agentics:design', args: 'programme=<name> slice=<slice>' })
+Skill({ skill: 'agentics:design', args: 'programme=<name> slice=<slice>' })
 ```
 
 In that scoped mode design treats the root and delivered predecessors as settled context, scopes
@@ -113,7 +113,7 @@ boundary re-asking.
 
 If the leaf conversation reveals the graph itself is wrong — the slice wants splitting, a
 dependency is missing — that is a **plan revision**, and the user is by construction present for
-the conversation. Hand to `vf-agentics:plan`.
+the conversation. Hand to `agentics:plan`.
 
 ## Step 3 — Drive one ready slice
 
@@ -134,7 +134,7 @@ the conversation. Hand to `vf-agentics:plan`.
 - **`base_ref`** = the programme branch.
 - **`programme`** and **`slice`** = copied from `programme.json`, never retyped.
 
-Then invoke `vf-agentics:develop` and **follow its step-3 walk exactly** — escalations first,
+Then invoke `agentics:develop` and **follow its step-3 walk exactly** — escalations first,
 its reporting rules, its blocked and coupled buckets. This skill restates none of it, except the
 one supersession below. Coupled orders are implemented in the run's integration worktree, never
 in the user's checkout.
@@ -149,12 +149,12 @@ in the user's checkout.
 
 2. **Merge the slice into the programme branch.** No ask, in either advance mode:
 
-   <!-- vfa:verbatim programme-merge-target -->
+   <!-- agentics:verbatim programme-merge-target -->
    In a programme run, develop step 3d's merge target is the programme branch, in the
    programme worktree, performed by the programme skill without a per-slice ask; its
    dirty-tree and no-open-escalation guards apply unchanged; the user-branch merge it
    describes happens once, at landing.
-   <!-- /vfa:verbatim -->
+   <!-- /agentics:verbatim -->
 
    The question the user wants asked is about *their* branch, once, and this is not their
    branch. A conflict here means the tree moved under the run or two slices overlapped
@@ -170,7 +170,7 @@ in the user's checkout.
    Write the coverage block to a file exactly as the workflow returned it. Never recompute it,
    never summarize it, and never select from it: copying the block whole is what removes the
    selection problem instead of relocating it. The mirror at
-   `.claude/vfa/programmes/<name>/progress.md` refreshes on every append.
+   `.claude/agentics/programmes/<name>/progress.md` refreshes on every append.
 
    **Never compose an event by hand.** The append verbs validate shape and refuse duplicates,
    and they are the only way a line reaches that file. At run level every event passes through
@@ -238,7 +238,7 @@ is a conflict.
 Then, on yes, **merge the programme branch** in the user's checkout:
 
 ```bash
-git merge --no-ff vfa/programme-<name>
+git merge --no-ff agentics/programme-<name>
 ```
 
 Develop step 3d's dirty-tree and no-open-escalation guards apply unchanged. Then record the act:

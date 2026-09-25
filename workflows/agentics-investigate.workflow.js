@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'vfa-investigate',
+  name: 'agentics-investigate',
   description: 'Answer one large question about the local codebase from evidence — current code, git history and vendor documentation — and return an ordered task list or a written report.',
   whenToUse: 'Use for "can we replace X with Y", "how does subsystem X work", "when did X break", or any question needing several parts of the codebase read, plus history or external documentation, before a decision.',
   phases: [
@@ -100,7 +100,7 @@ const resumable = (remaining) => ({ runId: RUN_ID, remaining, args: LAUNCH_ARGS,
 const carryArgs = (block) => ({ ...(block || { runId: RUN_ID, remaining: [] }), args: LAUNCH_ARGS, note: RESUME_NOTE })
 
 // The parameter is named `coverageBlock` so the key can be written out as `coverage:` without
-// reading as a redundant `coverage: coverage`. Style only, matching `vfa-survey` — the
+// reading as a redundant `coverage: coverage`. Style only, matching `agentics-survey` — the
 // `coverage-block` rule understands ES shorthand, so `{ …, coverage }` would lint clean too.
 function investigateResult(mode, tasks, report, coverageBlock, evidence = null) {
   return { question, mode, tasks, report, evidence, coverage: coverageBlock }
@@ -132,13 +132,13 @@ let survey = null
 let surveyUnresolved = false
 
 try {
-  survey = await workflow('vf-agentics:vfa-survey', surveyArgs)
+  survey = await workflow('agentics:agentics-survey', surveyArgs)
 } catch (e) {
   if (!notFound(e)) {
     log(`WARNING: the survey threw: ${e && e.message}`)
   } else {
     try {
-      survey = await workflow('vfa-survey', surveyArgs)
+      survey = await workflow('agentics-survey', surveyArgs)
     } catch (e2) {
       if (notFound(e2)) surveyUnresolved = true
       else log(`WARNING: the survey threw: ${e2 && e2.message}`)
@@ -153,8 +153,8 @@ if (surveyUnresolved) {
     incomplete: [],
     failed_channels: ['survey'],
     unreached: [
-      'the vfa-survey sub-workflow resolved under neither "vf-agentics:vfa-survey" nor ' +
-      '"vfa-survey" — a broken reference in this plugin, not an environmental failure; ' +
+      'the agentics-survey sub-workflow resolved under neither "agentics:agentics-survey" nor ' +
+      '"agentics-survey" — a broken reference in this plugin, not an environmental failure; ' +
       'nothing was searched',
     ],
     resumable: resumable([]),
@@ -169,7 +169,7 @@ if (!survey || !survey.coverage) {
     dropped: [],
     incomplete: [],
     failed_channels: ['survey'],
-    unreached: ['vfa-survey returned no coverage block; the evidence phase did not complete'],
+    unreached: ['agentics-survey returned no coverage block; the evidence phase did not complete'],
     resumable: resumable([]),
   })
 }
@@ -233,7 +233,7 @@ if (asTasks) {
     `"ref" is a local id used only by blocked_by. Put anything the investigation could not ` +
     `establish in "gaps"; do not invent a task to paper over it. Return at most ` +
     `${MAX_TASKS} tasks — merge rather than exceed.`,
-    { agentType: 'vf-agentics:analyst', effort: 'high', schema: TASKS,
+    { agentType: 'agentics:analyst', effort: 'high', schema: TASKS,
       label: 'synthesize:tasks', ...judge },
   ).catch((e) => {
     log(`WARNING: task synthesis failed: ${e && e.message}`)
@@ -257,7 +257,7 @@ if (asTasks) {
   // in `gaps` for the reader, and in the coverage block so `complete` goes false. Recording
   // it only in `gaps` would let a truncated task list come back `complete: true` — a partial
   // result indistinguishable from a whole one, which is the single failure this plugin
-  // exists to prevent. `vfa-survey` accounts for its own topic cap the same way, by putting
+  // exists to prevent. `agentics-survey` accounts for its own topic cap the same way, by putting
   // overflow into `dropped` rather than into a side note.
   let coverage = c
 
@@ -281,7 +281,7 @@ const report = await agent(
   `Lead with the recommendation in one or two sentences. Then the reasons that decide it, ` +
   `each tied to a path:line, a commit, or a URL. Then risks and open questions, only where ` +
   `they change the decision. Do not restate the question. Do not list options you rejected.`,
-  { agentType: 'vf-agentics:analyst', effort: 'high', label: 'synthesize', ...judge },
+  { agentType: 'agentics:analyst', effort: 'high', label: 'synthesize', ...judge },
 ).catch((e) => {
   log(`WARNING: report synthesis failed: ${e && e.message}`)
   return null

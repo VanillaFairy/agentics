@@ -36,7 +36,7 @@ const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encodi
 
 /** A repo with two source files and one commit. */
 function repo(files = { 'src/a.js': 'alpha\n', 'src/ui/b.js': 'bravo\n' }) {
-  const dir = mkdtempSync(join(tmpdir(), 'vfa-kb-')).split('\\').join('/')
+  const dir = mkdtempSync(join(tmpdir(), 'agentics-kb-')).split('\\').join('/')
   git(dir, 'init', '-q', '.')
   git(dir, 'config', 'user.email', 't@t')
   git(dir, 'config', 'user.name', 't')
@@ -182,7 +182,7 @@ test('a commit elsewhere in the repository leaves the entry fresh', () => {
 test('A HAND COMMIT demotes the entry — the case a ledger-keyed design certified fresh', () => {
   // The whole reason freshness is keyed to GIT rather than the run ledger.
   // This commit is made by a person, outside any run: there is no run directory, no state.jsonl,
-  // and nothing in this repository has ever recorded a vfa run. Ledger arithmetic would find no
+  // and nothing in this repository has ever recorded an agentics run. Ledger arithmetic would find no
   // event and report the entry fresh; git finds the commit.
   const { dir, head } = repo()
   deposit(dir, [entry({ observed_at: head })])
@@ -193,7 +193,7 @@ test('A HAND COMMIT demotes the entry — the case a ledger-keyed design certifi
   const found = stateFor(dir, 'the-trap')
   assert.equal(found.state, 'stale')
   assert.match(found.reason, /src\/a\.js has moved/)
-  assert.equal(existsSync(join(dir, '.claude', 'vfa', 'runs')), false,
+  assert.equal(existsSync(join(dir, '.claude', 'agentics', 'runs')), false,
     'nothing in this repository ever recorded a run, which is exactly the point')
 })
 
@@ -421,7 +421,7 @@ test('a line that will not parse is counted, never guessed at, and dropped by co
   const { dir, head } = repo()
   deposit(dir, [entry({ observed_at: head })])
 
-  const file = join(dir, '.claude', 'vfa', 'kb', 'src', 'a.js', 'node.jsonl')
+  const file = join(dir, '.claude', 'agentics', 'kb', 'src', 'a.js', 'node.jsonl')
   writeFileSync(file, readFileSync(file, 'utf8') + '{"id":"broken",\n')
 
   assert.equal(readNode(dir, 'src/a.js').malformed, 1)
@@ -438,7 +438,7 @@ test('reading a chain leaves the node file byte-identical', () => {
   const { dir, head } = repo()
   deposit(dir, [entry({ observed_at: head })])
 
-  const file = join(dir, '.claude', 'vfa', 'kb', 'src', 'a.js', 'node.jsonl')
+  const file = join(dir, '.claude', 'agentics', 'kb', 'src', 'a.js', 'node.jsonl')
   const before = readFileSync(file, 'utf8')
 
   chainFor(dir, ['src/a.js'])
@@ -515,7 +515,7 @@ test('the index of a repository with no knowledge base is an empty index, not an
 test('a malformed line is counted by the index rather than counted as knowledge', () => {
   const { dir, head } = repo()
   deposit(dir, [entry({ observed_at: head })])
-  appendFileSync(join(dir, '.claude/vfa/kb/src/a.js/node.jsonl'), '{"id":"broken"}\n', 'utf8')
+  appendFileSync(join(dir, '.claude/agentics/kb/src/a.js/node.jsonl'), '{"id":"broken"}\n', 'utf8')
 
   const payload = indexTree(dir)
   assert.equal(payload.malformed, 1)
@@ -704,7 +704,7 @@ test('an absence about a directory reads fresh until something touches that dire
 })
 
 test('the sentinel is refused where git cannot answer, never written empty', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'vfa-kb-nogit-')).split('\\').join('/')
+  const dir = mkdtempSync(join(tmpdir(), 'agentics-kb-nogit-')).split('\\').join('/')
   mkdirSync(join(dir, 'src'), { recursive: true })
   writeFileSync(join(dir, 'src', 'a.js'), 'alpha\n', 'utf8')
 

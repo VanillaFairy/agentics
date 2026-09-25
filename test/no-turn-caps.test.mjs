@@ -11,7 +11,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { id, applies, check } from '../tools/rules/no-turn-caps.mjs'
 
-const WF = 'workflows/vfa-survey.workflow.js'
+const WF = 'workflows/agentics-survey.workflow.js'
 const SKILL = 'skills/investigate/SKILL.md'
 
 test('it applies to workflow scripts, SKILL.md, and agent charters — not to tools', () => {
@@ -73,7 +73,7 @@ test('does NOT flag a content bound', () => {
 
 test('a clean workflow produces no violations', () => {
   const src = [
-    'const found = await agent(prompt, { agentType: "vf-agentics:scout", effort: "low" })',
+    'const found = await agent(prompt, { agentType: "agentics:scout", effort: "low" })',
     'if (found.stop_reason !== "exhausted") continue',
   ].join('\n')
 

@@ -27,9 +27,9 @@ Invoking this skill **is** the user's opt-in for anything it launches. Do not as
 ## When not to use it
 
 - The design describes **one** change. Then there is no graph to draw: go to
-  `vf-agentics:develop` and let the run-level planner be the HOW.
-- The user wants the work built. That is `vf-agentics:programme`.
-- The design is not ratified yet. Finish `vf-agentics:design` first — a graph over an
+  `agentics:develop` and let the run-level planner be the HOW.
+- The user wants the work built. That is `agentics:programme`.
+- The design is not ratified yet. Finish `agentics:design` first — a graph over an
   unratified design is a decomposition of something that may not survive the interview.
 
 ## The artifact is the authorization
@@ -79,7 +79,7 @@ The decisions worth their own question:
 
 ## Step 2 — Write `programme.json`
 
-Into the design directory: `docs/vfa/designs/YYYY-MM-DD-<name>/programme.json`.
+Into the design directory: `docs/agentics/designs/YYYY-MM-DD-<name>/programme.json`.
 
 ```json
 {
@@ -156,7 +156,7 @@ they are programme-owned and belong on the programme branch, in its worktree.
 Then:
 
 ```
-Skill({ skill: 'vf-agentics:programme' })
+Skill({ skill: 'agentics:programme' })
 ```
 
 Say plainly what now exists: a graph, the frontier it implies, and that the artifact is the

@@ -1,4 +1,4 @@
-// test/vfa-develop-resilience.test.mjs — the interruption story.
+// test/agentics-develop-resilience.test.mjs — the interruption story.
 //
 // The field incident this file exists for, 2026-08-17: a complex develop run died on a session
 // limit. Its retry started from scratch. So did the next one. The plan sat resumable on disk
@@ -28,7 +28,7 @@ import { carriedChain, carriedPayload, recordedLine, runWorkflow, scriptedAgents
 import { resumeVerdict, gitFacts } from './harness/resume-fixture.mjs'
 import { digestEntry } from '../lib/ledger.mjs'
 
-const WF = fileURLToPath(new URL('../workflows/vfa-develop.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../workflows/agentics-develop.workflow.js', import.meta.url))
 
 const A40 = 'a'.repeat(40)
 const B40 = 'b'.repeat(40)
@@ -36,9 +36,9 @@ const C40 = 'c'.repeat(40)
 const M40 = 'e'.repeat(40)
 const N40 = 'f'.repeat(40)
 
-const RUN_DIR = 'C:/repo/.claude/vfa/runs/20260816-143005'
+const RUN_DIR = 'C:/repo/.claude/agentics/runs/20260816-143005'
 // These scenarios pin the per-order review loop, so they ask for it on every order; the default,
-// which reviews only yardstick orders per order, is pinned in vfa-develop-review-scope.
+// which reviews only yardstick orders per order, is pinned in agentics-develop-review-scope.
 const ARGS = { change: 'add the thing', roots: '.', plugin_root: 'C:/plugin', review_every_order: true }
 
 const surveyResult = () => ({
@@ -85,8 +85,8 @@ const reviewed = (over = {}) => ({ findings: [], fix_verdicts: [], ...over })
 
 const setUp = (over = {}) => ({
   stop_reason: 'completed',
-  worktree: 'C:/repo/.claude/worktrees/vfa-20260816-143005-integration',
-  branch: 'vfa/20260816-143005-integration', head_sha: A40, notes: 'created', ...over,
+  worktree: 'C:/repo/.claude/worktrees/agentics-20260816-143005-integration',
+  branch: 'agentics/20260816-143005-integration', head_sha: A40, notes: 'created', ...over,
 })
 
 const merged = (sha = M40) => ({
@@ -131,7 +131,7 @@ const cast = (over = {}) => scriptedAgents({
   'wave-verify:': verified({ discriminator: [], notes: 'the merged head' }),
   'record:': { stop_reason: 'recorded', path: RUN_DIR + '/state.jsonl', notes: 'appended' },
   'kb-chain': carriedChain(),
-  'kb-write': { stop_reason: 'recorded', path: '.claude/vfa/kb', notes: 'appended' },
+  'kb-write': { stop_reason: 'recorded', path: '.claude/agentics/kb', notes: 'appended' },
   'review:integration': reviewed(),
   'code:': coded(),
   'verify:': verified(),
@@ -173,7 +173,7 @@ test('a resume buys ONE verdict courier, at the frontmatter tier, and no loader 
   // the fan that replaced it bounded each order by its own size but still ran the index — and
   // `partition_raw` with it — through a model. The whole payload is computed on disk now, so
   // one dispatch runs one command and pastes its stdout, and the frontmatter tier carries that.
-  // The transport ladder around it is pinned in test/vfa-develop-resume-verdict.test.mjs.
+  // The transport ladder around it is pinned in test/agentics-develop-resume-verdict.test.mjs.
   const { prompts } = await resumed()
 
   const verdicts = prompts.filter((p) => /^resume-verdict/.test(p.opts.label || ''))
@@ -194,10 +194,10 @@ test('a resume buys ONE verdict courier, at the frontmatter tier, and no loader 
 // --- base_ref ------------------------------------------------------------------------------
 
 test('base_ref reaches the integration setup as the base to branch from', async () => {
-  const { prompts } = await fresh({ base_ref: 'vfa/programme-eva-plays-2' })
+  const { prompts } = await fresh({ base_ref: 'agentics/programme-eva-plays-2' })
   const setup = promptFor(prompts, 'integration-setup')
 
-  assert.match(setup, /vfa\/programme-eva-plays-2/)
+  assert.match(setup, /agentics\/programme-eva-plays-2/)
   assert.match(setup, /environment_broken/,
     'an unresolvable ref stops the run; it never falls back to HEAD')
   assert.ok(!/BASE: the repository's current HEAD/.test(setup),
@@ -205,10 +205,10 @@ test('base_ref reaches the integration setup as the base to branch from', async 
 })
 
 test('base_ref reaches the planner as the base to record, not the branch it stands on', async () => {
-  const { prompts } = await fresh({ base_ref: 'vfa/programme-eva-plays-2' })
+  const { prompts } = await fresh({ base_ref: 'agentics/programme-eva-plays-2' })
   const planner = promptFor(prompts, 'plan')
 
-  assert.match(planner, /vfa\/programme-eva-plays-2/)
+  assert.match(planner, /agentics\/programme-eva-plays-2/)
   assert.match(planner, /base_branch/)
 })
 
@@ -295,7 +295,7 @@ test('a verification is journalled where it was observed, not by a second dispat
   const { prompts } = await fresh({})
 
   const verify = promptFor(prompts, 'verify:W1')
-  assert.match(verify, /--journal "C:\/repo\/\.claude\/vfa\/runs\/20260816-143005"/,
+  assert.match(verify, /--journal "C:\/repo\/\.claude\/agentics\/runs\/20260816-143005"/,
     'the check runner is told which run directory to append to')
   assert.match(verify, /--order W1/)
   assert.match(verify, /--branch wo-w1/)
@@ -402,7 +402,7 @@ test('a wave line still names its type explicitly', async () => {
 // carries one commit and still has a worktree to stand in.
 
 const FOUND_W2 = {
-  id: 'W2', branch: 'vfa/20260816-143005-W2', worktree: 'C:/wt/w2',
+  id: 'W2', branch: 'agentics/20260816-143005-W2', worktree: 'C:/wt/w2',
   base_sha: M40, head_sha: C40, commits: [{ sha: C40, subject: 'feat: w2' }],
   already_merged: false,
 }
@@ -414,7 +414,7 @@ const holdingW2 = (rows = [FOUND_W2]) => ({ git: gitFacts(rows) })
 const stageLine = (kind, over = {}) => ({
   kind, seq: 0, wave: 2, merged: [], approved_unmerged: [], escalated: [], discovered: [],
   integration_base: '', integration_head: '',
-  order: 'W2', branch: 'vfa/20260816-143005-W2', worktree: 'C:/wt/w2', head_sha: C40,
+  order: 'W2', branch: 'agentics/20260816-143005-W2', worktree: 'C:/wt/w2', head_sha: C40,
   measured: ['build', 'suite'],
   ...over,
 })
@@ -428,7 +428,7 @@ const cutTrees = (over = {}) => ({
 test('order branches are named from the runstamp, which is what makes them findable', async () => {
   const { prompts } = await fresh({})
 
-  assert.ok(promptFor(prompts, 'code:W1').includes('vfa/20260816-143005-W1'))
+  assert.ok(promptFor(prompts, 'code:W1').includes('agentics/20260816-143005-W1'))
 })
 
 test('a fresh run salvages nothing — there is no predecessor to have left anything', async () => {
@@ -441,16 +441,16 @@ test('a fresh run salvages nothing — there is no predecessor to have left anyt
 test('a resume points the verdict at its own run directory, and at the CLI', async () => {
   // Was: "a resume looks for exactly the branches its own naming scheme would have used" — the
   // reconnaissance a scavenge agent used to be told to perform. It is `git branch --list
-  // vfa/<runstamp>-*` inside lib/run-verdict.mjs now, bounded by the same naming scheme, and
+  // agentics/<runstamp>-*` inside lib/run-verdict.mjs now, bounded by the same naming scheme, and
   // pinned in test/run-verdict.test.mjs. What this side still owns is the handover: the one
   // dispatch names the run directory and the command, and asks for nothing to be worked out.
   const verdict = promptFor((await resumed()).prompts, 'resume-verdict')
 
-  assert.match(verdict, /C:\/repo\/\.claude\/vfa\/runs\/20260816-143005/,
+  assert.match(verdict, /C:\/repo\/\.claude\/agentics\/runs\/20260816-143005/,
     'the run directory the branch names are derived from')
-  assert.match(verdict, /node "C:\/plugin\/lib\/run-verdict\.mjs" "C:\/repo\/\.claude\/vfa\/runs\/20260816-143005" "C:\/repo\/\.claude\/vfa\/runs\/20260816-143005"/,
+  assert.match(verdict, /node "C:\/plugin\/lib\/run-verdict\.mjs" "C:\/repo\/\.claude\/agentics\/runs\/20260816-143005" "C:\/repo\/\.claude\/agentics\/runs\/20260816-143005"/,
     'the run directory twice: the repository is recorded inside the plan, and the CLI reads it')
-  assert.ok(!/vfa\/20260816-143005-W[12]/.test(verdict),
+  assert.ok(!/agentics\/20260816-143005-W[12]/.test(verdict),
     'no branch is enumerated into the prompt — enumerating them is the CLI\'s job')
 })
 
@@ -912,7 +912,7 @@ test('an approval recorded before `measured` existed still salvages, and says wh
 
 /** One journal line for W2, as the file holds it: a string, not a parsed object. */
 const journalLine = (over = {}) => JSON.stringify({
-  kind: 'verify-observed', seq: 0, order: 'W2', branch: 'vfa/20260816-143005-W2',
+  kind: 'verify-observed', seq: 0, order: 'W2', branch: 'agentics/20260816-143005-W2',
   worktree: 'C:/wt/w2', base_sha: M40, head_sha: C40,
   stop_reason: 'completed', build: 'passed', suite: 'passed', failing_tests: [],
   discriminator: [{ test_id: 'test/w2.test.js', failed_on_base: true, passes_now: true }],
@@ -922,7 +922,7 @@ const journalLine = (over = {}) => JSON.stringify({
 
 /** The line the merging agent writes inside the merge itself. */
 const mergeObservedW2 = () => JSON.stringify({
-  kind: 'merge-observed', order: 'W2', branch: 'vfa/20260816-143005-W2',
+  kind: 'merge-observed', order: 'W2', branch: 'agentics/20260816-143005-W2',
   worktree: '', base_sha: M40, head_sha: N40, stop_reason: 'completed',
   build: '', suite: '', failing_tests: [], discriminator: [], series_findings: [],
 })
@@ -1054,7 +1054,7 @@ test('a journal line missing a field cannot end the run that was reading it', as
   // throw out of the replay, and end a resume before it dispatched anything — a file whose
   // whole job is making an interrupted run cheaper, ending one.
   const { result, prompts } = await journalled([
-    '{"kind":"verify-observed","order":"W2","branch":"vfa/20260816-143005-W2",' +
+    '{"kind":"verify-observed","order":"W2","branch":"agentics/20260816-143005-W2",' +
     '"worktree":"C:/wt/w2","base_sha":"' + M40 + '","head_sha":"' + C40 + '",' +
     '"stop_reason":"completed","build":"passed","suite":"passed","failing_tests":[],' +
     '"series_findings":[]}',

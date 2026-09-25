@@ -1,4 +1,4 @@
-// test/vfa-find-existing-solutions-scenarios.test.mjs — executes the build-or-adopt sweep
+// test/agentics-find-existing-solutions-scenarios.test.mjs — executes the build-or-adopt sweep
 // through the harness with scripted agents.
 //
 // One mechanism here matters more than the rest, and most of these scenarios are about it:
@@ -13,7 +13,7 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import { runWorkflow, scriptedAgents } from './harness/workflow-host.mjs'
 
-const WF = fileURLToPath(new URL('../workflows/vfa-find-existing-solutions.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../workflows/agentics-find-existing-solutions.workflow.js', import.meta.url))
 
 const ARGS = { capability: 'rate-limit inbound HTTP requests per API key', roots: '.' }
 

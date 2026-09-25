@@ -1,6 +1,6 @@
 ---
 name: design
-description: Use when a change is worth designing before it is built — a new subsystem, a migration, an API, a reshaping of something that exists. Interviews the user against evidence the repository already holds, records their decisions, probes the design adversarially, and produces a ratified design document that vf-agentics:develop implements. Not for a change whose shape is already settled (use develop), and not for a question (use investigate).
+description: Use when a change is worth designing before it is built — a new subsystem, a migration, an API, a reshaping of something that exists. Interviews the user against evidence the repository already holds, records their decisions, probes the design adversarially, and produces a ratified design document that agentics:develop implements. Not for a change whose shape is already settled (use develop), and not for a question (use investigate).
 ---
 
 # design
@@ -25,7 +25,7 @@ Invoking this skill **is** the user's opt-in for the `Workflow` tool. Do not ask
 
 ## Where this pass writes what it learns
 
-<!-- vfa:verbatim effort-store -->
+<!-- agentics:verbatim effort-store -->
 **Efforts — one directory for everything this piece of work produces.** A change moves through
 design, survey, probe and one or more runs, and every phase records what it returned in the
 effort's directory. Design and develop are separate sessions by recommendation, so this is how
@@ -51,7 +51,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" record <repo> <slug> survey|probe --
 ```
 
 Link a run and the design document as each comes into being. These are **pointers**: run state
-stays at `.claude/vfa/runs/<runstamp>/` where every other part of this pipeline reads and writes
+stays at `.claude/agentics/runs/<runstamp>/` where every other part of this pipeline reads and writes
 it, and a design stays in the source tree, because it is source:
 
 ```bash
@@ -78,14 +78,14 @@ uncommitted edit has reached its ground since. Hand `develop` the effort's name 
 beside `settled_shape: true`, and the run asks that question itself: a standing survey is used
 instead of buying a second one, and one that does not stand is bought again in full. The session
 never decides that a survey stands; the program does.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 ## Step 1 — Evidence before questions
 
 Run the survey first, scoped to the idea:
 
 ```
-Workflow({ name: 'vf-agentics:vfa-survey', args: { question, roots, notes, intelligence, prior } })
+Workflow({ name: 'agentics:agentics-survey', args: { question, roots, notes, intelligence, prior } })
 ```
 
 `question` is what the design needs to know about the existing system — how the thing it
@@ -95,7 +95,7 @@ design question itself; the survey gathers evidence and never concludes.
 `intelligence` is the tier every workflow this session launches runs at — this survey, and the
 sweep in step 1b.
 
-<!-- vfa:verbatim intelligence-tier -->
+<!-- agentics:verbatim intelligence-tier -->
 The dial follows the model this session is running, never how important the work feels:
 **Fable → `max`; Opus → `normal`; Sonnet and everything below it → `low`.** When you cannot
 tell what you are running, `normal`.
@@ -106,7 +106,7 @@ Fable session that leaves the dial at `normal` has its work judged by a weaker m
 one the user is talking to, and a Sonnet session that claims `normal` bills the user for Opus
 judgment nobody asked it for. Only the user moves it off that mapping — a bare leading `max`,
 `normal` or `low` token, or `--intelligence=<tier>`.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 **Every question the repository, its git history, or vendor documentation can answer is
 answered here, not asked of the human.** The human is asked only what only the human knows:
@@ -128,11 +128,11 @@ pass to discover again.
 
 ## Step 1b — Does this already exist?
 
-`vfa-survey` searches the code you have. It cannot tell you that the thing you are about to
+`agentics-survey` searches the code you have. It cannot tell you that the thing you are about to
 design is on a package registry, so run the outward sweep too:
 
 ```
-Workflow({ name: 'vf-agentics:vfa-find-existing-solutions', args: { capability, roots, constraints, notes, intelligence } })
+Workflow({ name: 'agentics:agentics-find-existing-solutions', args: { capability, roots, constraints, notes, intelligence } })
 ```
 
 Run it whenever the design would **build a capability** — a parser, a scheduler, a cache, a
@@ -171,7 +171,7 @@ So when the evidence supports it, **recommend staging and let the user rule.** T
 
 A design that stays a single change keeps today's shape exactly, and that is the common case.
 A staged one becomes a **programme**: this skill writes the root design and the first slice's
-leaf, `/vf-agentics:plan` turns it into a graph with the user, and `/vf-agentics:programme`
+leaf, `/agentics:plan` turns it into a graph with the user, and `/agentics:programme`
 drives it. Read the programme section of this plugin's design
 (`${CLAUDE_PLUGIN_ROOT}/docs/DESIGN.md#programmes`) before recommending it, so you can say what
 the user is agreeing to.
@@ -221,7 +221,7 @@ depends on which, and let the user rule.
 
 ### The approach panel
 
-Draft **two or three approaches in parallel**, one `vf-agentics:analyst` each, dispatched in
+Draft **two or three approaches in parallel**, one `agentics:analyst` each, dispatched in
 a single message. Every one gets the same survey verdicts and the decisions the interview has
 recorded so far; each gets a different assigned stance:
 
@@ -251,10 +251,10 @@ rather than silent.
 
 ### The probe
 
-Before ratification, probe the design document with `vf-agentics:probe`:
+Before ratification, probe the design document with `agentics:probe`:
 
 ```
-Workflow({ name: 'vf-agentics:vfa-probe', args: { artifact, roots, context } })
+Workflow({ name: 'agentics:agentics-probe', args: { artifact, roots, context } })
 ```
 
 Do not hand-roll a probe here. That skill owns the axes, the ladder, and the computed gate;
@@ -277,7 +277,7 @@ The code ladder speaks entirely in acceptance criteria, commit series and declar
 a design document has none of those, so a probe holding it would have to invent a mapping
 and would rule badly in both directions.
 
-<!-- vfa:verbatim design-severity-ladder -->
+<!-- agentics:verbatim design-severity-ladder -->
 - **ambiguity** — a term, contract, or interface the design leaves readable two ways. Blocks
   ratification. The archetype is one name with two incompatible definitions in the same
   document: every consumer implements one of them, the mismatch is invisible until
@@ -285,7 +285,7 @@ and would rule badly in both directions.
 - **gap** — a growth axis or requirement the design names but cannot absorb without rework.
   Resolved, or explicitly accepted by the user with the cost stated. Never silently carried.
 - **note** — advisory. Recorded in the design document, never blocks, never loops.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 Every `ambiguity` is resolved with the user before the design can be ratified. Every `gap` is
 either designed away or accepted out loud, in the document, in the user's words. Notes are
@@ -296,7 +296,7 @@ Buy a second round only under the probe skill's rule: an ambiguity whose resolut
 the design. A gate closed by incomplete coverage is different. Nobody looked, so re-run the
 probe for what `coverage.resumable.remaining` names.
 
-<!-- vfa:verbatim probe-disposition -->
+<!-- agentics:verbatim probe-disposition -->
 **Summarise before you ask anything.** A probe returns findings per axis and the axes
 overlap, so handed over raw it is a wall of text that costs more attention than the artefact
 did. Open with a count and a table — one row per topic, never one per finding:
@@ -333,7 +333,7 @@ recommended answer marked `(Recommended)`, with the reason in the option's descr
 because each answer changes what is worth asking next and the tree is discovered as it is
 walked. A disposition has no such tree: the findings are computed, independent, and all on
 the table before the first question. One at a time is not care here, it is forty turns.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 ## Step 4 — The artifact and the HARD GATE
 
@@ -343,12 +343,12 @@ plugin are read-only by design, and artifact writing is the main session's job.
 **Where it goes — a file for a single-change design, a directory for a programme.**
 
 ```
-docs/vfa/designs/YYYY-MM-DD-<slug>.md          one change
+docs/agentics/designs/YYYY-MM-DD-<slug>.md          one change
 
-docs/vfa/designs/YYYY-MM-DD-<name>/            a programme
+docs/agentics/designs/YYYY-MM-DD-<name>/            a programme
   system.md            the root design — pure WHAT, and it carries NO graph
   slices/<slice>.md    leaf designs, written just in time (below)
-  programme.json       written later, by /vf-agentics:plan
+  programme.json       written later, by /agentics:plan
   plan.md              likewise
 ```
 
@@ -376,10 +376,10 @@ Write it to be read by a planner, not by a person.
 Three sections carry markers, in a root document and a leaf alike:
 
 ```
-<!-- vfa:section change -->            one paragraph: the ratified change, verbatim
-<!-- vfa:section decisions -->         the user-authored decisions
-<!-- vfa:section settled-evidence -->  the payload a planner consumes
-<!-- /vfa:section -->
+<!-- agentics:section change -->            one paragraph: the ratified change, verbatim
+<!-- agentics:section decisions -->         the user-authored decisions
+<!-- agentics:section settled-evidence -->  the payload a planner consumes
+<!-- /agentics:section -->
 ```
 
 A fourth is **optional**: `ground`. Write it when this pass established which paths the change
@@ -420,7 +420,7 @@ exist in the plan as positioned, contracted, undesigned nodes. Feedback beats pr
 designed months early is designed at the moment of least knowledge, against a tree that will
 not exist when it is implemented.
 
-When an undesigned slice reaches the frontier, `/vf-agentics:programme` invokes **this skill**
+When an undesigned slice reaches the frontier, `/agentics:programme` invokes **this skill**
 with `programme` and `slice` arguments. In that scoped mode:
 
 - the root document and delivered predecessors' leaves are **settled context** — read, not
@@ -525,7 +525,7 @@ but let the user answer either way.
 **If they choose this session:**
 
 ```
-Skill({ skill: 'vf-agentics:develop', args: '<the change string, verbatim>' })
+Skill({ skill: 'agentics:develop', args: '<the change string, verbatim>' })
 ```
 
 with the settled-evidence block as `notes`. `develop` is already aware it may be starting deep
@@ -536,7 +536,7 @@ case they were written for. Say the plan size out loud when it prints.
 inline, and name the document so nothing has to be reconstructed:
 
 ```
-/vf-agentics:develop <the change string, verbatim>
+/agentics:develop <the change string, verbatim>
 ```
 
 Copy-paste preserves the bytes; a retype does not, and the guards above cannot tell the
@@ -547,7 +547,7 @@ the design is already durable without it.
 A **programme** hands off to the graph rather than to the build:
 
 ```
-Skill({ skill: 'vf-agentics:plan', args: '<the design directory>' })
+Skill({ skill: 'agentics:plan', args: '<the design directory>' })
 ```
 
 `plan` decides slices with the user; the planner agent inside a run decides work orders. Same

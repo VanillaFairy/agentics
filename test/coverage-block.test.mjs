@@ -1,5 +1,5 @@
 // test/coverage-block.test.mjs — pins IRON LAW §4 at the workflow boundary: a partial
-// result must never be indistinguishable from a whole one. A vfa-* workflow that returns
+// result must never be indistinguishable from a whole one. An agentics-* workflow that returns
 // nothing, or returns a result with no coverage block, hands its caller an answer that
 // looks exactly like a complete one.
 //
@@ -17,7 +17,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { id, applies, check } from '../tools/rules/coverage-block.mjs'
 
-const WF = 'workflows/vfa-survey.workflow.js'
+const WF = 'workflows/agentics-survey.workflow.js'
 
 /** 1-indexed line number of an exact fixture line, so no test has to count by hand. */
 function lineOf(lines, exact) {
@@ -27,7 +27,7 @@ function lineOf(lines, exact) {
 }
 
 const clean = [
-  "export const meta = { name: 'vfa-survey', description: 'x', phases: [] }",
+  "export const meta = { name: 'agentics-survey', description: 'x', phases: [] }",
   'const verdicts = []',
   'return {',
   '  question,',
@@ -67,7 +67,7 @@ test('a workflow that returns a coverage block is clean', () => {
 // --- V1: nothing is returned at all -----------------------------------------------------
 
 const noReturn = [
-  "export const meta = { name: 'vfa-survey', description: 'x', phases: [] }",
+  "export const meta = { name: 'agentics-survey', description: 'x', phases: [] }",
   'const verdicts = []',
   "phase('Plan')",
 ].join('\n')

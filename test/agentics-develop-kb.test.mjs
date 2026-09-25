@@ -1,6 +1,6 @@
-// test/vfa-develop-kb.test.mjs — the knowledge base's two seams inside a run.
+// test/agentics-develop-kb.test.mjs — the knowledge base's two seams inside a run.
 //
-// The knowledge base adds exactly two dispatches to `vfa-develop`, and everything worth pinning is
+// The knowledge base adds exactly two dispatches to `agentics-develop`, and everything worth pinning is
 // about who receives what:
 //
 //   3e, before the first order   one chain read for every locus this plan touches. Fresh entries
@@ -21,13 +21,13 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import { carriedChain, carriedEnvelope, carriedPayload, recordedLine, runWorkflow, scriptedAgents } from './harness/workflow-host.mjs'
 
-const WF = fileURLToPath(new URL('../workflows/vfa-develop.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../workflows/agentics-develop.workflow.js', import.meta.url))
 
 const A40 = 'a'.repeat(40)
 const B40 = 'b'.repeat(40)
 const M40 = 'e'.repeat(40)
 
-const RUN_DIR = 'C:/repo/.claude/vfa/runs/20260830-101500'
+const RUN_DIR = 'C:/repo/.claude/agentics/runs/20260830-101500'
 const ARGS = { change: 'add the thing', roots: 'C:/repo', plugin_root: 'C:/plugin' }
 
 const b64 = (text) => Buffer.from(text, 'utf8').toString('base64')
@@ -93,7 +93,7 @@ const cast = (over = {}) => scriptedAgents({
   plan: plan([order('W1')]),
   'integration-setup': {
     stop_reason: 'completed', worktree: 'C:/repo/.claude/worktrees/int',
-    branch: 'vfa/20260830-101500-integration', head_sha: A40, notes: 'created',
+    branch: 'agentics/20260830-101500-integration', head_sha: A40, notes: 'created',
   },
   'merge:': { stop_reason: 'completed', merged_sha: M40, conflicts: [], notes: 'git merge --no-ff' },
   'wave-verify:': verified({ discriminator: [], notes: 'the merged head' }),
@@ -103,7 +103,7 @@ const cast = (over = {}) => scriptedAgents({
   'verify:': verified(),
   'review:': { findings: [], fix_verdicts: [] },
   'kb-chain': carriedChain(),
-  'kb-write': { stop_reason: 'recorded', path: 'C:/repo/.claude/vfa/kb', notes: 'appended' },
+  'kb-write': { stop_reason: 'recorded', path: 'C:/repo/.claude/agentics/kb', notes: 'appended' },
   ...over,
 })
 
@@ -142,7 +142,7 @@ test('the chain read runs at courier grade — reading a payload back is not jud
   const { prompts } = await run()
   const read = prompts.find((p) => p.opts.label === 'kb-chain')
 
-  assert.equal(read.opts.agentType, 'vf-agentics:kb')
+  assert.equal(read.opts.agentType, 'agentics:kb')
   assert.equal(read.opts.model, 'haiku')
 })
 
@@ -556,7 +556,7 @@ test('a repository with no knowledge base at all is told so, not told its chain 
     })
 
     const said = logs.join(' ')
-    assert.match(said, /NO KNOWLEDGE BASE at \.claude\/vfa\/kb/,
+    assert.match(said, /NO KNOWLEDGE BASE at \.claude\/agentics\/kb/,
       'the path is named, because that is the whole of what a user needs to act')
     assert.match(said, /cannot fire here for any change/,
       'and that it is about every change, not this one')
@@ -680,7 +680,7 @@ const EFFORT = { ...ARGS, settled_shape: true, effort: '2026-09-22-a-change' }
 
 const standing = (over = {}) => carriedEnvelope({
   standing: true, why: 'no commit since abc123 reaches the survey\'s ground',
-  effort: '2026-09-22-a-change', survey_path: 'C:/repo/.claude/vfa/efforts/e/surveys/s.json',
+  effort: '2026-09-22-a-change', survey_path: 'C:/repo/.claude/agentics/efforts/e/surveys/s.json',
   stamp: 's', observed_at: 'abc123', head: 'def456', ground: ['src/a', 'src/b'],
   commits_since: [], dirty: [], ...over,
 })

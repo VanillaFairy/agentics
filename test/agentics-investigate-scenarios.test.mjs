@@ -1,4 +1,4 @@
-// test/vfa-investigate-scenarios.test.mjs — the investigate workflow through the same
+// test/agentics-investigate-scenarios.test.mjs — the investigate workflow through the same
 // harness: the survey-reference failure classes, and the report path's coverage
 // passthrough. Parse-compilation of all three workflows is pinned here too, so a syntax
 // error in any script fails the suite instead of the first live run.
@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { compileWorkflow, runWorkflow, scriptedAgents } from './harness/workflow-host.mjs'
 
 const wf = (name) => fileURLToPath(new URL('../workflows/' + name, import.meta.url))
-const WF = wf('vfa-investigate.workflow.js')
+const WF = wf('agentics-investigate.workflow.js')
 
 const surveyResult = (over = {}) => ({
   question: 'q', topics: [], verdicts: [], history: null, docs: null,
@@ -21,9 +21,9 @@ const surveyResult = (over = {}) => ({
 })
 
 test('all three workflow scripts compile as workflow bodies', () => {
-  compileWorkflow(wf('vfa-survey.workflow.js'))
-  compileWorkflow(wf('vfa-investigate.workflow.js'))
-  compileWorkflow(wf('vfa-develop.workflow.js'))
+  compileWorkflow(wf('agentics-survey.workflow.js'))
+  compileWorkflow(wf('agentics-investigate.workflow.js'))
+  compileWorkflow(wf('agentics-develop.workflow.js'))
 })
 
 test('a survey resolving under neither name is reported as a broken plugin reference', async () => {

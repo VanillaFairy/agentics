@@ -24,7 +24,7 @@ const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encodi
 
 /** A repo with an integration branch and one order branch carrying `commits` commits. */
 function repo({ commits = 2, integration = true, dirty = false } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'vfa-git-')).split('\\').join('/')
+  const dir = mkdtempSync(join(tmpdir(), 'agentics-git-')).split('\\').join('/')
   git(dir, 'init', '-q', '.')
   git(dir, 'config', 'user.email', 't@t')
   git(dir, 'config', 'user.name', 't')
@@ -33,17 +33,17 @@ function repo({ commits = 2, integration = true, dirty = false } = {}) {
   git(dir, 'commit', '-qm', 'init')
   const baseSha = git(dir, 'rev-parse', 'HEAD')
 
-  git(dir, 'branch', 'vfa/' + RUNSTAMP + '-integration')
-  git(dir, 'checkout', '-q', '-b', 'vfa/' + RUNSTAMP + '-W1')
+  git(dir, 'branch', 'agentics/' + RUNSTAMP + '-integration')
+  git(dir, 'checkout', '-q', '-b', 'agentics/' + RUNSTAMP + '-W1')
   for (let i = 0; i < commits; i++) {
     writeFileSync(join(dir, 'w1-' + i + '.txt'), 'x\n')
     git(dir, 'add', '-A')
     git(dir, 'commit', '-qm', 'feat: w1 part ' + i)
   }
-  git(dir, 'checkout', '-q', 'vfa/' + RUNSTAMP + '-integration')
+  git(dir, 'checkout', '-q', 'agentics/' + RUNSTAMP + '-integration')
   if (dirty) writeFileSync(join(dir, 'base.txt'), 'edited\n')
   if (!integration) git(dir, 'checkout', '-q', '--detach')
-  if (!integration) git(dir, 'branch', '-D', 'vfa/' + RUNSTAMP + '-integration')
+  if (!integration) git(dir, 'branch', '-D', 'agentics/' + RUNSTAMP + '-integration')
 
   return { dir, baseSha }
 }
@@ -53,7 +53,7 @@ test('a branch with commits is read off real git, fork point and all', () => {
   const facts = gitFacts(dir, RUNSTAMP, ['W1'], true)
 
   assert.equal(facts.clean, false)
-  assert.equal(facts.branches.W1.branch, 'vfa/' + RUNSTAMP + '-W1')
+  assert.equal(facts.branches.W1.branch, 'agentics/' + RUNSTAMP + '-W1')
   assert.equal(facts.branches.W1.commits.length, 2)
   assert.deepEqual(facts.branches.W1.commits.map((c) => c.subject),
     ['feat: w1 part 0', 'feat: w1 part 1'], 'oldest first, subjects intact')
@@ -79,16 +79,16 @@ test('the commits survive the integration branch being deleted', () => {
 
 // --- the checkpoint tip, read off a real commit ----------------------------------------------
 
-test('a vfa-checkpoint trailer on the tip is read off real git', () => {
+test('an agentics-checkpoint trailer on the tip is read off real git', () => {
   // The trailer is the mark that survives a reworded subject, so it has to come from the
   // commit object rather than from anything a model typed. This is the only test that proves
   // the format string actually asks git for it.
   const { dir } = repo({ commits: 1 })
-  git(dir, 'checkout', '-q', 'vfa/' + RUNSTAMP + '-W1')
+  git(dir, 'checkout', '-q', 'agentics/' + RUNSTAMP + '-W1')
   writeFileSync(join(dir, 'half.txt'), 'partial\n')
   git(dir, 'add', '-A')
-  git(dir, 'commit', '-q', '-m', 'feat: most of the thing', '-m', 'vfa-checkpoint: W1')
-  git(dir, 'checkout', '-q', 'vfa/' + RUNSTAMP + '-integration')
+  git(dir, 'commit', '-q', '-m', 'feat: most of the thing', '-m', 'agentics-checkpoint: W1')
+  git(dir, 'checkout', '-q', 'agentics/' + RUNSTAMP + '-integration')
 
   const facts = gitFacts(dir, RUNSTAMP, ['W1'], true)
 
@@ -100,11 +100,11 @@ test('a vfa-checkpoint trailer on the tip is read off real git', () => {
 
 test('a checkpoint subject with no trailer is caught too', () => {
   const { dir } = repo({ commits: 1 })
-  git(dir, 'checkout', '-q', 'vfa/' + RUNSTAMP + '-W1')
+  git(dir, 'checkout', '-q', 'agentics/' + RUNSTAMP + '-W1')
   writeFileSync(join(dir, 'half.txt'), 'partial\n')
   git(dir, 'add', '-A')
   git(dir, 'commit', '-q', '-m', 'checkpoint: stopped mid-series')
-  git(dir, 'checkout', '-q', 'vfa/' + RUNSTAMP + '-integration')
+  git(dir, 'checkout', '-q', 'agentics/' + RUNSTAMP + '-integration')
 
   assert.equal(gitFacts(dir, RUNSTAMP, ['W1'], true).branches.W1.checkpoint_head, true)
 })
@@ -120,14 +120,14 @@ test('a checkpoint that is no longer the tip does not force a continuation', () 
   // coder that instead landed real work on top has also moved past it. The tip is the
   // question; the history is not.
   const { dir } = repo({ commits: 1 })
-  git(dir, 'checkout', '-q', 'vfa/' + RUNSTAMP + '-W1')
+  git(dir, 'checkout', '-q', 'agentics/' + RUNSTAMP + '-W1')
   writeFileSync(join(dir, 'half.txt'), 'partial\n')
   git(dir, 'add', '-A')
   git(dir, 'commit', '-q', '-m', 'checkpoint: stopped mid-series')
   writeFileSync(join(dir, 'rest.txt'), 'finished\n')
   git(dir, 'add', '-A')
   git(dir, 'commit', '-q', '-m', 'feat: the rest of it')
-  git(dir, 'checkout', '-q', 'vfa/' + RUNSTAMP + '-integration')
+  git(dir, 'checkout', '-q', 'agentics/' + RUNSTAMP + '-integration')
 
   assert.equal(gitFacts(dir, RUNSTAMP, ['W1'], true).branches.W1.checkpoint_head, false)
 })
@@ -142,7 +142,7 @@ test('an order branch that was never created is simply absent', () => {
 
 test('a merged branch is reported as an ancestor, read from the exit status', () => {
   const { dir } = repo({ commits: 1 })
-  git(dir, 'merge', '--no-ff', '-q', '-m', 'merge w1', 'vfa/' + RUNSTAMP + '-W1')
+  git(dir, 'merge', '--no-ff', '-q', '-m', 'merge w1', 'agentics/' + RUNSTAMP + '-W1')
 
   const facts = gitFacts(dir, RUNSTAMP, ['W1'], true)
   assert.equal(facts.branches.W1.already_merged, true)
@@ -161,7 +161,7 @@ test('uncommitted changes in a worktree are reported as a fact', () => {
 test('a branch checked out in a worktree reports that worktree, and its dirt', () => {
   const { dir } = repo({ commits: 1 })
   const wt = dir + '/wt-w1'
-  git(dir, 'worktree', 'add', '-q', wt, 'vfa/' + RUNSTAMP + '-W1')
+  git(dir, 'worktree', 'add', '-q', wt, 'agentics/' + RUNSTAMP + '-W1')
   writeFileSync(join(wt, 'scratch.txt'), 'uncommitted\n')
 
   const facts = gitFacts(dir, RUNSTAMP, ['W1'], true)
@@ -174,7 +174,7 @@ test('a branch checked out in a worktree reports that worktree, and its dirt', (
 
 test('no records and no branches is clean, and asks git nothing further', () => {
   const { dir } = repo({ commits: 0 })
-  git(dir, 'branch', '-D', 'vfa/' + RUNSTAMP + '-W1')
+  git(dir, 'branch', '-D', 'agentics/' + RUNSTAMP + '-W1')
 
   const facts = gitFacts(dir, RUNSTAMP, ['W1'], false)
   assert.equal(facts.clean, true)
@@ -194,7 +194,7 @@ test('branches without records is NOT clean — a run can die before it writes a
 
 test('records without branches is NOT clean either', () => {
   const { dir } = repo({ commits: 0 })
-  git(dir, 'branch', '-D', 'vfa/' + RUNSTAMP + '-W1')
+  git(dir, 'branch', '-D', 'agentics/' + RUNSTAMP + '-W1')
 
   assert.equal(gitFacts(dir, RUNSTAMP, ['W1'], true).clean, false)
 })
@@ -208,32 +208,32 @@ test("another run's branches are never mistaken for this one's", () => {
   // The glob is the whole bound on what a resume looks at. A repository with several runs in it
   // must not have one run adopt another's work.
   const { dir } = repo({ commits: 1 })
-  git(dir, 'branch', 'vfa/20260101-000000-W1', 'vfa/' + RUNSTAMP + '-W1')
+  git(dir, 'branch', 'agentics/20260101-000000-W1', 'agentics/' + RUNSTAMP + '-W1')
 
   const facts = gitFacts(dir, '20260101-000000', ['W1'], true)
   assert.ok(facts.branches.W1, 'the other run does hold a branch of its own')
 
   const mine = gitFacts(dir, RUNSTAMP, ['W1'], true)
-  assert.equal(mine.branches.W1.branch, 'vfa/' + RUNSTAMP + '-W1')
+  assert.equal(mine.branches.W1.branch, 'agentics/' + RUNSTAMP + '-W1')
 })
 
 // --- the repository root, worked out rather than supplied ------------------------------------
 
 test('the root comes from the plan first, the layout second, the hint last', () => {
-  const runDir = 'C:/work/thing/.claude/vfa/runs/' + RUNSTAMP
+  const runDir = 'C:/work/thing/.claude/agentics/runs/' + RUNSTAMP
 
   assert.equal(rootFor({ roots: 'C:/recorded' }, runDir, 'C:/hint'), 'C:/recorded')
   assert.equal(rootFor({ roots: 'C:/one, C:/two' }, runDir, ''), 'C:/one',
     'a multi-root run is git-rooted at its first')
   assert.equal(rootFor({}, runDir, 'C:/hint'), 'C:/work/thing',
-    'the layout gives the root away: a run directory is <root>/.claude/vfa/runs/<stamp>')
+    'the layout gives the root away: a run directory is <root>/.claude/agentics/runs/<stamp>')
   assert.equal(rootFor({}, 'C:/odd/place', 'C:/hint'), 'C:/hint',
     'and only somewhere unusual does the caller get a say')
 })
 
 test('verdictFor reads the repository the PLAN names, not the one it was handed', () => {
   const { dir } = repo({ commits: 2 })
-  const runDir = dir + '/.claude/vfa/runs/' + RUNSTAMP
+  const runDir = dir + '/.claude/agentics/runs/' + RUNSTAMP
   mkdirSync(runDir, { recursive: true })
   writeFileSync(join(runDir, 'plan.json'), JSON.stringify({
     change: 'c', roots: dir, base_branch: 'master', base_sha: '',
@@ -255,7 +255,7 @@ test('an unreadable plan still comes back as a digest-covered envelope', () => {
   // retry that could never succeed, and reported the courier as broken while the real reason
   // ("plan.json could not be read") sat in notes and reached nobody.
   const { dir } = repo({ commits: 0 })
-  const runDir = dir + '/.claude/vfa/runs/' + RUNSTAMP
+  const runDir = dir + '/.claude/agentics/runs/' + RUNSTAMP
   mkdirSync(runDir, { recursive: true })
 
   const out = verdictFor(dir, runDir)

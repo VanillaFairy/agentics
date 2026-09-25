@@ -1,4 +1,4 @@
-// test/vfa-develop-review-scope.test.mjs — which orders buy a review loop of their own.
+// test/agentics-develop-review-scope.test.mjs — which orders buy a review loop of their own.
 //
 // A yardstick order (a contract, or a red) is reviewed per order, because nothing downstream can
 // check it and later waves build on it. Every other order is verified per order and reviewed
@@ -10,12 +10,12 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import { carriedPayload, scriptedAgents, runWorkflow } from './harness/workflow-host.mjs'
 
-const WF = fileURLToPath(new URL('../workflows/vfa-develop.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../workflows/agentics-develop.workflow.js', import.meta.url))
 
 const A40 = 'a'.repeat(40)
 const B40 = 'b'.repeat(40)
 const M40 = 'e'.repeat(40)
-const RUN_DIR = 'C:/repo/.claude/vfa/runs/20260925-100000'
+const RUN_DIR = 'C:/repo/.claude/agentics/runs/20260925-100000'
 
 const ARGS = { change: 'add the thing', roots: '.', plugin_root: 'C:/plugin' }
 
@@ -35,7 +35,7 @@ const planOf = (orders) => ({
 })
 
 const coded = (over = {}) => ({
-  status: 'done', worktree: 'C:/wt/x', branch: 'vfa/x', base_sha: A40, head_sha: B40,
+  status: 'done', worktree: 'C:/wt/x', branch: 'agentics/x', base_sha: A40, head_sha: B40,
   commits: [{ sha: B40, subject: 'feat: the thing' }],
   concerns: ['unsure whether empty input should throw'], discovered: [], summary: 's', ...over,
 })
@@ -52,11 +52,11 @@ const cast = (orders, over = {}) => scriptedAgents({
   plan: planOf(orders),
   drift: { stop_reason: 'completed', user_head: A40, moved_files: [], notes: 'unchanged' },
   'integration-setup': { stop_reason: 'completed', worktree: 'C:/repo/.claude/worktrees/x',
-    branch: 'vfa/20260925-100000-integration', head_sha: A40, notes: 'created' },
+    branch: 'agentics/20260925-100000-integration', head_sha: A40, notes: 'created' },
   'merge:': { stop_reason: 'completed', merged_sha: M40, conflicts: [], notes: 'merged' },
   'wave-verify:': verified({ discriminator: [] }),
   'record:': { stop_reason: 'recorded', path: RUN_DIR, notes: 'appended' },
-  'kb-write': { stop_reason: 'recorded', path: '.claude/vfa/kb', notes: 'appended' },
+  'kb-write': { stop_reason: 'recorded', path: '.claude/agentics/kb', notes: 'appended' },
   ...over,
   'code:': coded(),
   'verify:': verified(),

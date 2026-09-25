@@ -1,4 +1,4 @@
-// test/vfa-survey-scenarios.test.mjs — the survey workflow's accounting arithmetic, executed.
+// test/agentics-survey-scenarios.test.mjs — the survey workflow's accounting arithmetic, executed.
 //
 // Lint judges form and cannot reach any of this: whether a channel nobody ran is recorded,
 // whether a verdict is matched to its topic by position or by a string the model retyped,
@@ -12,7 +12,7 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import { carriedChain, carriedEnvelope, runWorkflow, scriptedAgents } from './harness/workflow-host.mjs'
 
-const WF = fileURLToPath(new URL('../workflows/vfa-survey.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../workflows/agentics-survey.workflow.js', import.meta.url))
 
 const PLAN = (over = {}) => ({
   topics: [{ key: 'a', find: 'find a', kb_path: 'src/a' }],
@@ -550,7 +550,7 @@ test('the index is read before the decomposition, at courier grade, and reaches 
   assert.equal(at, 0, 'an index read after the decomposition informs no decomposition')
 
   const index = prompts[at]
-  assert.equal(index.opts.agentType, 'vf-agentics:kb')
+  assert.equal(index.opts.agentType, 'agentics:kb')
   assert.equal(index.opts.model, 'haiku', 'pasting a payload back is not judgment')
   assert.match(index.prompt, /node "C:\/plugin\/lib\/kb\.mjs" index "\."/)
 
@@ -799,7 +799,7 @@ test('prior context changes no count: every topic is still searched', async () =
 
 // ------------------------------------------------------------- absence deposits
 
-const recorded = { stop_reason: 'recorded', path: '.claude/vfa/kb', notes: 'written' }
+const recorded = { stop_reason: 'recorded', path: '.claude/agentics/kb', notes: 'written' }
 const EMPTY = (over = {}) => HITS({ hits: [], no_match: 'no retry helper anywhere under src/a', ...over })
 
 test('an exhausted search that found nothing is deposited as an absence', async () => {

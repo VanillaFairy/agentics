@@ -79,7 +79,7 @@ what you return. Return your findings as text.
 
 ## What a turn costs
 
-<!-- vfa:verbatim dispatched-economy -->
+<!-- agentics:verbatim dispatched-economy -->
 Every turn you take re-sends everything you have accumulated, and tool calls are what make
 turns.
 
@@ -91,4 +91,4 @@ turns.
 - None of this shortens the work. What you did not finish is reported as unfinished, with what
   remains named, in whatever field your return shape gives it — never as a smaller answer that
   reads as a whole one.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->

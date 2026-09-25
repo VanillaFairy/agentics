@@ -9,7 +9,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { id, applies, check } from '../tools/rules/qualified-agent-types.mjs'
 
-const WF = 'workflows/vfa-survey.workflow.js'
+const WF = 'workflows/agentics-survey.workflow.js'
 
 test('it applies only to workflow scripts', () => {
   assert.ok(applies.test(WF))
@@ -23,21 +23,21 @@ test('flags a bare agent name and names the offending value', () => {
   assert.equal(found.length, 1)
   assert.equal(found[0].line, 1)
   assert.match(found[0].message, /scout/)
-  assert.match(found[0].message, /vf-agentics:scout/)
+  assert.match(found[0].message, /agentics:scout/)
 })
 
 test('accepts a fully-qualified name', () => {
-  assert.deepEqual(check("{ agentType: 'vf-agentics:analyst' }", WF), [])
+  assert.deepEqual(check("{ agentType: 'agentics:analyst' }", WF), [])
 })
 
 test('accepts all three quote styles', () => {
-  assert.deepEqual(check('{ agentType: "vf-agentics:scout" }', WF), [])
-  assert.deepEqual(check("{ agentType: 'vf-agentics:scout' }", WF), [])
-  assert.deepEqual(check('{ agentType: `vf-agentics:scout` }', WF), [])
+  assert.deepEqual(check('{ agentType: "agentics:scout" }', WF), [])
+  assert.deepEqual(check("{ agentType: 'agentics:scout' }", WF), [])
+  assert.deepEqual(check('{ agentType: `agentics:scout` }', WF), [])
 })
 
 test('flags a malformed qualification', () => {
-  assert.equal(check("{ agentType: 'vf-agentics:' }", WF).length, 1)
+  assert.equal(check("{ agentType: 'agentics:' }", WF).length, 1)
   assert.equal(check("{ agentType: ':scout' }", WF).length, 1)
   assert.equal(check("{ agentType: 'a:b:c' }", WF).length, 1)
   assert.equal(check("{ agentType: 'VF:Scout' }", WF).length, 1)
@@ -58,8 +58,8 @@ test('does NOT flag agentType as a schema property', () => {
 
 test('a clean workflow produces no violations', () => {
   const src = [
-    "await agent(p, { agentType: 'vf-agentics:scout', effort: 'low' })",
-    "await agent(q, { agentType: 'vf-agentics:analyst', effort: 'high' })",
+    "await agent(p, { agentType: 'agentics:scout', effort: 'low' })",
+    "await agent(q, { agentType: 'agentics:analyst', effort: 'high' })",
   ].join('\n')
 
   assert.deepEqual(check(src, WF), [])

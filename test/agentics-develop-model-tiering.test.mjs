@@ -1,14 +1,14 @@
-// test/vfa-develop-model-tiering.test.mjs — the coder tier rising on EVIDENCED difficulty
+// test/agentics-develop-model-tiering.test.mjs — the coder tier rising on EVIDENCED difficulty
 // (the 2026-08-30 change). `coderFor` used to floor only `red` and `contract` orders at opus,
 // because their defects are the ones nothing downstream can catch. A fix round that follows a
 // round which did not clear its blockers is the same kind of fact, arriving later: it is
 // measured evidence the tier was too low, not a guess that it might be, so the second fix round
 // onward floors at opus too — and a `light` order's discount does not survive being proven
 // wrong. These tests read the tier straight off `opts.model` on the scripted dispatches, the
-// way `test/vfa-develop-scenarios.test.mjs` already does for the run-level dial.
+// way `test/agentics-develop-scenarios.test.mjs` already does for the run-level dial.
 //
 // The scenarios here deliberately use a NON-structural order (role 'none', contract false) —
-// vfa-develop-review-tuning.test.mjs's default order is a contract order, which floors at opus
+// agentics-develop-review-tuning.test.mjs's default order is a contract order, which floors at opus
 // from round 1 and would never show the escalation these tests exist to pin.
 
 import { test } from 'node:test'
@@ -16,15 +16,15 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import { carriedChain, carriedPayload, recordedLine, runWorkflow, scriptedAgents } from './harness/workflow-host.mjs'
 
-const WF = fileURLToPath(new URL('../workflows/vfa-develop.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../workflows/agentics-develop.workflow.js', import.meta.url))
 
 const A40 = 'a'.repeat(40)
 const B40 = 'b'.repeat(40)
 const M40 = 'e'.repeat(40)
 
-const RUN_DIR = 'C:/repo/.claude/vfa/runs/20260830-091500'
+const RUN_DIR = 'C:/repo/.claude/agentics/runs/20260830-091500'
 // These scenarios pin the per-order review loop, so they ask for it on every order; the default,
-// which reviews only yardstick orders per order, is pinned in vfa-develop-review-scope.
+// which reviews only yardstick orders per order, is pinned in agentics-develop-review-scope.
 const ARGS = { change: 'add the thing', roots: '.', plugin_root: 'C:/plugin', review_every_order: true }
 
 const surveyResult = () => ({
@@ -78,17 +78,17 @@ const cast = (workOrder, over = {}) => scriptedAgents({
   plan: plan([workOrder]),
   'integration-setup': {
     stop_reason: 'completed', worktree: 'C:/repo/.claude/worktrees/int',
-    branch: 'vfa/20260830-091500-integration', head_sha: A40, notes: 'created',
+    branch: 'agentics/20260830-091500-integration', head_sha: A40, notes: 'created',
   },
   'merge:': { stop_reason: 'completed', merged_sha: M40, conflicts: [], notes: 'merged' },
   'wave-verify:': verified(),
   'record:': { stop_reason: 'recorded', path: RUN_DIR + '/state.jsonl', notes: 'appended' },
   'kb-chain': carriedChain(),
-  'kb-write': { stop_reason: 'recorded', path: '.claude/vfa/kb', notes: 'appended' },
+  'kb-write': { stop_reason: 'recorded', path: '.claude/agentics/kb', notes: 'appended' },
   'review:integration': { findings: [], fix_verdicts: [] },
   'code:': coded(),
   'verify:': verified(),
-  // Each fix round lands a distinct head, exactly as vfa-develop-review-tuning.test.mjs's cast
+  // Each fix round lands a distinct head, exactly as agentics-develop-review-tuning.test.mjs's cast
   // does — a repeated head reads as no_fix_progress and escalates instead of looping.
   'fix:': (prompt, opts) => {
     const r = parseInt((opts.label || '').split('#')[1] || '1', 10)

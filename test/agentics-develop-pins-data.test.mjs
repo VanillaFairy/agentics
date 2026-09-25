@@ -1,4 +1,4 @@
-// test/vfa-develop-pins-data.test.mjs — regression-net orders, and the round nobody can win.
+// test/agentics-develop-pins-data.test.mjs — regression-net orders, and the round nobody can win.
 //
 // The discriminator asks one question of every test an order lands: did it fail before the
 // change under it? That is the right question for a test written to pin a behaviour change,
@@ -24,13 +24,13 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import { carriedChain, carriedPayload, scriptedAgents, runWorkflow } from './harness/workflow-host.mjs'
 
-const WF = fileURLToPath(new URL('../workflows/vfa-develop.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../workflows/agentics-develop.workflow.js', import.meta.url))
 
 const A40 = 'a'.repeat(40)
 const B40 = 'b'.repeat(40)
 const M40 = 'e'.repeat(40)
 
-const RUN_DIR = 'C:/repo/.claude/vfa/runs/20260903-101500'
+const RUN_DIR = 'C:/repo/.claude/agentics/runs/20260903-101500'
 const ARGS = { change: 'add a regression net over the shipped bundle', roots: '.', plugin_root: 'C:/plugin' }
 
 // The order from the field report, reduced to its shape: test files only, no production code,
@@ -70,7 +70,7 @@ const netVerified = (over = {}) => carriedPayload({
 
 const setUp = (over = {}) => ({
   stop_reason: 'completed', worktree: 'C:/repo/.claude/worktrees/x',
-  branch: 'vfa/20260903-101500-integration', head_sha: A40, notes: 'created', ...over,
+  branch: 'agentics/20260903-101500-integration', head_sha: A40, notes: 'created', ...over,
 })
 
 const cast = (over = {}) => scriptedAgents({
@@ -85,7 +85,7 @@ const cast = (over = {}) => scriptedAgents({
   }),
   'record:': { stop_reason: 'recorded', path: RUN_DIR, notes: 'appended' },
   'kb-chain': carriedChain(),
-  'kb-write': { stop_reason: 'recorded', path: '.claude/vfa/kb', notes: 'appended' },
+  'kb-write': { stop_reason: 'recorded', path: '.claude/agentics/kb', notes: 'appended' },
   'review:integration': { findings: [], fix_verdicts: [] },
   ...over,
   'code:': over['code:'] || coded(),

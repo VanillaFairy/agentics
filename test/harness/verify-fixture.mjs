@@ -45,7 +45,7 @@ import { spawnSync } from 'node:child_process'
 // by importing them, which is the whole hazard of splitting a suite that spawns its own runners.
 delete process.env.NODE_TEST_CONTEXT
 
-export const BRANCH = 'vfa/20260830-090000-W1'
+export const BRANCH = 'agentics/20260830-090000-W1'
 export const BUILD = 'node tools/build.mjs'
 export const SUITE = 'node --test'
 export const TEST_ONE = 'node --test {file}'
@@ -73,7 +73,7 @@ let made = 0
 
 function templateRoot() {
   if (root) return root
-  root = posix(mkdtempSync(join(tmpdir(), 'vfa-verify-')))
+  root = posix(mkdtempSync(join(tmpdir(), 'agentics-verify-')))
   process.on('exit', () => { try { rmSync(root, { recursive: true, force: true }) } catch { /* the OS gets it */ } })
   return root
 }

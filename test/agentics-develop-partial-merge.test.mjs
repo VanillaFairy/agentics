@@ -1,4 +1,4 @@
-// test/vfa-develop-partial-merge.test.mjs — an integration review over a tree that is not the
+// test/agentics-develop-partial-merge.test.mjs — an integration review over a tree that is not the
 // whole change.
 //
 // The integration review exists to see what per-order review structurally cannot: two orders
@@ -17,13 +17,13 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import { carriedChain, carriedPayload, scriptedAgents, runWorkflow } from './harness/workflow-host.mjs'
 
-const WF = fileURLToPath(new URL('../workflows/vfa-develop.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../workflows/agentics-develop.workflow.js', import.meta.url))
 
 const A40 = 'a'.repeat(40)
 const B40 = 'b'.repeat(40)
 const M40 = 'e'.repeat(40)
 
-const RUN_DIR = 'C:/repo/.claude/vfa/runs/20260903-120000'
+const RUN_DIR = 'C:/repo/.claude/agentics/runs/20260903-120000'
 const ARGS = { change: 'wire the manifest through', roots: '.', plugin_root: 'C:/plugin' }
 
 const order = (id, over = {}) => ({
@@ -70,12 +70,12 @@ const cast = (over = {}) => scriptedAgents({
   plan,
   drift: { stop_reason: 'completed', user_head: A40, moved_files: [], notes: 'unchanged' },
   'integration-setup': { stop_reason: 'completed', worktree: 'C:/repo/.claude/worktrees/x',
-    branch: 'vfa/20260903-120000-integration', head_sha: A40, notes: 'created' },
+    branch: 'agentics/20260903-120000-integration', head_sha: A40, notes: 'created' },
   'merge:': { stop_reason: 'completed', merged_sha: M40, conflicts: [], notes: 'merged' },
   'wave-verify:': verified({ discriminator: [] }),
   'record:': { stop_reason: 'recorded', path: RUN_DIR, notes: 'appended' },
   'kb-chain': carriedChain(),
-  'kb-write': { stop_reason: 'recorded', path: '.claude/vfa/kb', notes: 'appended' },
+  'kb-write': { stop_reason: 'recorded', path: '.claude/agentics/kb', notes: 'appended' },
   ...over,
   'code:': over['code:'] || coded(),
   'verify:': over['verify:'] || verified(),

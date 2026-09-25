@@ -31,10 +31,10 @@ const cleanRule = {
 }
 
 test('a violation becomes a finding carrying file and rule id', () => {
-  const found = lintSource('src', 'workflows/vfa-survey.workflow.js', [workflowRule])
+  const found = lintSource('src', 'workflows/agentics-survey.workflow.js', [workflowRule])
 
   assert.deepEqual(found, [{
-    file: 'workflows/vfa-survey.workflow.js',
+    file: 'workflows/agentics-survey.workflow.js',
     rule: 'fake-workflow-rule',
     line: 7,
     message: 'bad thing',
@@ -84,7 +84,7 @@ test('formatFindings renders one line per finding, file first', () => {
 
 /** Build a throwaway plugin root containing tools/rules/<name> for each entry. */
 async function pluginWithRules(files) {
-  const root = await mkdtemp(join(tmpdir(), 'vfa-lint-'))
+  const root = await mkdtemp(join(tmpdir(), 'agentics-lint-'))
   await mkdir(join(root, 'tools', 'rules'), { recursive: true })
   for (const [name, source] of Object.entries(files)) {
     await writeFile(join(root, 'tools', 'rules', name), source, 'utf8')
@@ -99,7 +99,7 @@ export function check() { return [] }
 `
 
 test('a plugin with no tools/rules yet loads no rules and does not throw', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'vfa-lint-'))
+  const root = await mkdtemp(join(tmpdir(), 'agentics-lint-'))
   try {
     assert.deepEqual(await loadRules(root), [])
   } finally {

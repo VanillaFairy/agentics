@@ -20,7 +20,7 @@ const head = (cwd) => git(cwd, 'rev-parse', 'HEAD').stdout.trim()
 
 /** A repo on `main` with one commit, plus a `feature` branch forked from it. */
 function repo(t) {
-  const dir = mkdtempSync(join(tmpdir(), 'vfa-merge-'))
+  const dir = mkdtempSync(join(tmpdir(), 'agentics-merge-'))
   t.after(() => rmSync(dir, { recursive: true, force: true }))
 
   git(dir, 'init', '-b', 'main')
@@ -104,7 +104,7 @@ test('a branch that does not exist is a value, not a throw', (t) => {
 })
 
 test('an unreadable worktree is a value, not a throw', () => {
-  const result = mergeBranch(join(tmpdir(), 'vfa-merge-does-not-exist'), 'feature')
+  const result = mergeBranch(join(tmpdir(), 'agentics-merge-does-not-exist'), 'feature')
 
   assert.equal(result.ok, false)
   assert.match(result.reason, /could not be read/)

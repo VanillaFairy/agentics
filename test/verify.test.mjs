@@ -76,7 +76,7 @@ test('a path that is no working tree at all is refused before anything runs', (t
     'no worktree at all is the case that used to be a sentence in a prompt')
   assert.equal(worktreeProblem(dir + '/nowhere').kind, 'no_worktree')
 
-  const outside = mkdtempSync(join(tmpdir(), 'vfa-not-a-repo-')).split('\\').join('/')
+  const outside = mkdtempSync(join(tmpdir(), 'agentics-not-a-repo-')).split('\\').join('/')
   t.after(() => rmSync(outside, { recursive: true, force: true }))
   assert.equal(worktreeProblem(outside).kind, 'no_worktree')
 })
@@ -375,7 +375,7 @@ test('a checkpoint trailer under an ordinary subject is still a blocking finding
   // The trailer is the load-bearing half of the mark and the subject here is unremarkable, so
   // this only ever fires through lib/commit-series.mjs's own LOG_FORMAT. A log format
   // re-implemented in this file would pass every other test in it and silently lose this one.
-  const { worktree, base, head } = order(t, { trailer: 'vfa-checkpoint: ran long' })
+  const { worktree, base, head } = order(t, { trailer: 'agentics-checkpoint: ran long' })
 
   const payload = verify(options({ worktree, base, head }))
 

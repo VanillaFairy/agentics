@@ -1,12 +1,12 @@
 ---
 name: runs
-description: Use when the user asks what vf-agentics runs exist, wants to resume or pick up a parked or interrupted plan, or asks what they were working on — "what runs do I have", "resume the feature-B plan", "is that still in flight". Lists every run in the repository with its derived status and hands the chosen one to develop. Not for starting new work (use design or develop).
+description: Use when the user asks what agentics runs exist, wants to resume or pick up a parked or interrupted plan, or asks what they were working on — "what runs do I have", "resume the feature-B plan", "is that still in flight". Lists every run in the repository with its derived status and hands the chosen one to develop. Not for starting new work (use design or develop).
 ---
 
 # runs
 
 Every `develop` run writes its plan and its wave-by-wave progression to
-`.claude/vfa/runs/<runstamp>/`. Several can be in flight at once — that is the point of
+`.claude/agentics/runs/<runstamp>/`. Several can be in flight at once — that is the point of
 parking a plan — and a runstamp is a timestamp, which tells a human nothing about what the
 run was for. This skill is how they find it again.
 
@@ -46,7 +46,7 @@ orders is a partial result wearing a complete one's label.
 A programme has a `landed` of its own — a slice that reached the *user's* branch — and a slice
 run that landed on its programme branch is finished as a run and has reached the user not at
 all. When a row carries `programme` and `slice`, say which scope you mean, or point at
-`/vf-agentics:programme`, which reports the other one.
+`/agentics:programme`, which reports the other one.
 
 `unreadable` is a real status and not an error to swallow: it means the plan or its partition
 could not be parsed, so this tool cannot say what the run did. Report it as unknown. Never
@@ -81,7 +81,7 @@ wrong change.
 
 ## Step 3 — Hand off to develop
 
-Invoke the `vf-agentics:develop` skill with the change from the run's `change` field and
+Invoke the `agentics:develop` skill with the change from the run's `change` field and
 `resume_path` set to its run directory, then **follow that skill's step 3 walk**. Do not
 reimplement the walk here — a second consumer of that result contract is a second place for
 it to drift.
@@ -101,7 +101,7 @@ decides whether the user resumes now or later.
 Runs accumulate for the life of the repository, and the moment they are listed, thirty
 `landed` rows is how the two live ones get missed. When the list has grown unwieldy, offer to
 move `landed` runs older than a cutoff the user picks into
-`.claude/vfa/runs/archived/<runstamp>/`.
+`.claude/agentics/runs/archived/<runstamp>/`.
 
 Move, never delete, and only with an explicit go. A run directory is the only record of what
 a run decided and did, it costs nothing to keep, and nothing about it expires on its own —

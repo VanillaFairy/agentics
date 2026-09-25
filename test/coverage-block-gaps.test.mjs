@@ -17,7 +17,7 @@
 //
 // DEFECT 2 (medium) — ES shorthand `coverage` is not recognized. This was written down as an
 // accepted limitation, then hit by the very first real workflow written against the rule
-// (vfa-survey, which had to rename a parameter to `coverageBlock` to get around it).
+// (agentics-survey, which had to rename a parameter to `coverageBlock` to get around it).
 // Shorthand counts.
 //
 // Written by an agent who had seen neither the fix nor the original author's reasoning, on
@@ -27,7 +27,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { check } from '../tools/rules/coverage-block.mjs'
 
-const WF = 'workflows/vfa-survey.workflow.js'
+const WF = 'workflows/agentics-survey.workflow.js'
 
 /** V2 is a file-level finding: exactly one, line 0, and it talks about coverage. */
 function assertMissingCoverageBlock(found) {

@@ -19,7 +19,7 @@ import assert from 'node:assert/strict'
 import { id, applies, check } from '../tools/rules/workflow-meta.mjs'
 
 /** A realistic POSIX-style repo-relative path, as `lint.mjs` hands one to a rule. */
-const WF = 'workflows/vfa-survey.workflow.js'
+const WF = 'workflows/agentics-survey.workflow.js'
 
 /** Build fixture source from one line per argument, so line N is argument N. */
 const src = (...lines) => lines.join('\n')
@@ -53,12 +53,12 @@ test('applies is stateless, so lint can reuse one instance across every file', (
 
 // --- the clean case --------------------------------------------------------------
 //
-// The shape every vfa-* workflow has: a prefixed name, phases declared one entry per line, and a
+// The shape every agentics-* workflow has: a prefixed name, phases declared one entry per line, and a
 // phase() call for each. A rule that flags this flags everything.
 
 const clean = src(
   'export const meta = {', //                       1
-  "  name: 'vfa-survey',", //                       2
+  "  name: 'agentics-survey',", //                       2
   "  description: 'Gather evidence and stop.',", // 3
   '  phases: [', //                                 4
   "    { title: 'Plan' },", //                      5
@@ -93,7 +93,7 @@ test('V1: a script with no meta literal is flagged against the whole file', () =
 test('V1: a meta that is declared but never exported does not count', () => {
   const unexported = src(
     'const meta = {', //          1
-    "  name: 'vfa-survey',", //   2
+    "  name: 'agentics-survey',", //   2
     '  phases: [],', //           3
     '}', //                       4
   )
@@ -104,7 +104,7 @@ test('V1: a meta that is declared but never exported does not count', () => {
   assert.match(violation.message, /meta/i)
 })
 
-// --- V2: meta.name must carry the vfa- prefix ------------------------------------
+// --- V2: meta.name must carry the agentics- prefix ------------------------------------
 
 const unprefixedName = src(
   'export const meta = {', //                       1
@@ -118,12 +118,12 @@ const unprefixedName = src(
   "phase('Plan')", //                               9
 )
 
-test('V2: a name without the vfa- prefix is flagged on the name line', () => {
+test('V2: a name without the agentics- prefix is flagged on the name line', () => {
   const violation = onlyViolation(check(unprefixedName, WF))
 
   assert.equal(violation.line, 2)
   assert.match(violation.message, /survey/)
-  assert.match(violation.message, /vfa-/)
+  assert.match(violation.message, /agentics-/)
 })
 
 test('a violation carries a numeric line and a non-empty message', () => {
@@ -134,10 +134,10 @@ test('a violation carries a numeric line and a non-empty message', () => {
   assert.notEqual(violation.message.trim(), '')
 })
 
-test('V2: a name starting with vfa but not vfa- is still flagged', () => {
+test('V2: a name starting with agentics but not agentics- is still flagged', () => {
   const nearMiss = src(
     'export const meta = {', //   1
-    "  name: 'vfasurvey',", //    2
+    "  name: 'agenticssurvey',", //    2
     '  phases: [],', //           3
     '}', //                       4
   )
@@ -145,7 +145,7 @@ test('V2: a name starting with vfa but not vfa- is still flagged', () => {
   const violation = onlyViolation(check(nearMiss, WF))
 
   assert.equal(violation.line, 2)
-  assert.match(violation.message, /vfasurvey/)
+  assert.match(violation.message, /agenticssurvey/)
 })
 
 test('V2: a meta with no name key is flagged against the whole file', () => {
@@ -192,7 +192,7 @@ test('V3: a phase call with no declared title is flagged on its own line', () =>
 test('V3: two unmatched titles produce two violations on their own lines', () => {
   const twoUnmatched = src(
     'export const meta = {', //   1
-    "  name: 'vfa-survey',", //   2
+    "  name: 'agentics-survey',", //   2
     '  phases: [', //             3
     "    { title: 'Plan' },", //  4
     '  ],', //                    5
@@ -215,7 +215,7 @@ test('V3: two unmatched titles produce two violations on their own lines', () =>
 test('V3: phase titles must agree exactly, not by prefix', () => {
   const almost = src(
     'export const meta = {', //     1
-    "  name: 'vfa-survey',", //     2
+    "  name: 'agentics-survey',", //     2
     '  phases: [', //               3
     "    { title: 'Scout' },", //   4
     '  ],', //                      5
@@ -234,7 +234,7 @@ test('V3: phase titles must agree exactly, not by prefix', () => {
 test('V3: a meta with no phases key leaves every phase call unmatched', () => {
   const noPhases = src(
     'export const meta = {', //                       1
-    "  name: 'vfa-survey',", //                       2
+    "  name: 'agentics-survey',", //                       2
     "  description: 'Gather evidence and stop.',", // 3
     '}', //                                           4
     '', //                                            5
@@ -256,7 +256,7 @@ test('V3: a meta with no phases key leaves every phase call unmatched', () => {
 test('V3: a declaration whose entry spans several lines is still found', () => {
   const spreadEntries = src(
     'export const meta = {', //   1
-    "  name: 'vfa-survey',", //   2
+    "  name: 'agentics-survey',", //   2
     '  phases: [', //             3
     '    {', //                   4
     "      title: 'Plan',", //    5
@@ -276,7 +276,7 @@ test('V3: a declaration whose entry spans several lines is still found', () => {
 
 test('V3: declarations packed onto a single line are all found', () => {
   const oneLine = src(
-    "export const meta = { name: 'vfa-survey', phases: [{ title: 'Plan' }, { title: 'Scout' }] }",
+    "export const meta = { name: 'agentics-survey', phases: [{ title: 'Plan' }, { title: 'Scout' }] }",
     '', //                2
     "phase('Plan')", //   3
     "phase('Scout')", //  4
@@ -300,7 +300,7 @@ test('V3: a double-quoted phase call is recognised as a call', () => {
 test('V3: a double-quoted title declaration satisfies a single-quoted call', () => {
   const doubleQuotedTitle = src(
     'export const meta = {', //     1
-    "  name: 'vfa-survey',", //     2
+    "  name: 'agentics-survey',", //     2
     '  phases: [', //               3
     '    { title: "Plan" },', //    4
     '    { title: "Scout" },', //   5
@@ -316,7 +316,7 @@ test('V3: a double-quoted title declaration satisfies a single-quoted call', () 
 
 test('V3: a commented-out declaration outside meta declares nothing', () => {
   const commentedOutside = src(
-    "export const meta = { name: 'vfa-x', phases: [] }", // 1
+    "export const meta = { name: 'agentics-x', phases: [] }", // 1
     "// { title: 'Scout' }", //                            2
     "phase('Scout')", //                                   3
   )
@@ -330,7 +330,7 @@ test('V3: a commented-out declaration outside meta declares nothing', () => {
 test('V3: a commented-out declaration inside meta.phases declares nothing', () => {
   const commentedInside = src(
     'export const meta = {', //         1
-    "  name: 'vfa-survey',", //         2
+    "  name: 'agentics-survey',", //         2
     '  phases: [', //                   3
     "    { title: 'Plan' },", //        4
     "    // { title: 'Scout' },", //    5
@@ -350,7 +350,7 @@ test('V3: a commented-out declaration inside meta.phases declares nothing', () =
 test('V3: a block-commented declaration inside meta.phases declares nothing', () => {
   const blockCommented = src(
     'export const meta = {', //           1
-    "  name: 'vfa-survey',", //           2
+    "  name: 'agentics-survey',", //           2
     '  phases: [', //                     3
     "    { title: 'Plan' },", //          4
     "    /* { title: 'Scout' }, */", //   5
@@ -370,7 +370,7 @@ test('V3: a block-commented declaration inside meta.phases declares nothing', ()
 test('V3: a title in an unrelated object literal is not a phase declaration', () => {
   const strayTitle = src(
     'export const meta = {', //              1
-    "  name: 'vfa-survey',", //              2
+    "  name: 'agentics-survey',", //              2
     '  phases: [', //                        3
     "    { title: 'Plan' },", //             4
     '  ],', //                               5
@@ -390,7 +390,7 @@ test('V3: a title in an unrelated object literal is not a phase declaration', ()
 
 // --- V4: the meta literal is literal ---------------------------------------------
 //
-// The failure this catches has already happened in this plugin. `vfa-probe` shipped with a
+// The failure this catches has already happened in this plugin. `agentics-probe` shipped with a
 // `description` written as a three-line concatenation — ordinary, readable JavaScript that
 // every check above passed — and the runtime, which reads meta statically instead of
 // evaluating it, refused to register the workflow. Nothing reported that. The workflow was
@@ -402,7 +402,7 @@ test('V3: a title in an unrelated object literal is not a phase declaration', ()
 test('V4: a concatenated description is flagged — the bug that shipped', () => {
   const concatenated = src(
     'export const meta = {', //                                    1
-    "  name: 'vfa-probe',", //                                     2
+    "  name: 'agentics-probe',", //                                     2
     "  description: 'Adversarially probe an artefact with ' +", // 3
     "    'independent analysts.',", //                             4
     '  phases: [],', //                                            5
@@ -418,7 +418,7 @@ test('V4: a concatenated description is flagged — the bug that shipped', () =>
 test('V4: each concatenation operator is reported where it sits', () => {
   const twoJoins = src(
     'export const meta = {', //                1
-    "  name: 'vfa-survey',", //                2
+    "  name: 'agentics-survey',", //                2
     "  description: 'one ' +", //              3
     "    'two ' +", //                         4
     "    'three',", //                         5
@@ -435,7 +435,7 @@ test('V4: an interpolating template literal is flagged', () => {
   const interpolated = src(
     'const SUBJECT = "the repository"', //          1
     'export const meta = {', //                    2
-    "  name: 'vfa-survey',", //                    3
+    "  name: 'agentics-survey',", //                    3
     '  description: `Gather evidence about ${SUBJECT}.`,', // 4
     '  phases: [],', //                            5
     '}', //                                        6
@@ -450,7 +450,7 @@ test('V4: an interpolating template literal is flagged', () => {
 test('V4: a template literal with no interpolation is a literal and passes', () => {
   const plain = src(
     'export const meta = {', //                1
-    '  name: `vfa-survey`,', //                2
+    '  name: `agentics-survey`,', //                2
     '  description: `plain backticks`,', //    3
     '  phases: [],', //                        4
     '}', //                                    5
@@ -462,7 +462,7 @@ test('V4: a template literal with no interpolation is a literal and passes', () 
 test('V4: a function call inside meta is flagged', () => {
   const called = src(
     'export const meta = {', //                        1
-    "  name: 'vfa-survey',", //                        2
+    "  name: 'agentics-survey',", //                        2
     "  description: describe('survey'),", //           3
     '  phases: [],', //                                4
     '}', //                                            5
@@ -481,7 +481,7 @@ test('V4: a function call inside meta is flagged', () => {
 test('V4: a spread inside meta is flagged', () => {
   const spread = src(
     'export const meta = {', //                1
-    "  name: 'vfa-survey',", //                2
+    "  name: 'agentics-survey',", //                2
     '  phases: [...BASE_PHASES],', //          3
     '}', //                                    4
   )
@@ -495,7 +495,7 @@ test('V4: a spread inside meta is flagged', () => {
 test('V4: a bare identifier standing in for a value is flagged', () => {
   const borrowed = src(
     'export const meta = {', //                1
-    "  name: 'vfa-survey',", //                2
+    "  name: 'agentics-survey',", //                2
     '  description: SURVEY_BLURB,', //         3
     '  phases: [],', //                        4
     '}', //                                    5
@@ -510,7 +510,7 @@ test('V4: a bare identifier standing in for a value is flagged', () => {
 test('V4: keys are identifiers too and are never flagged as values', () => {
   const keys = src(
     'export const meta = {', //                                1
-    "  name: 'vfa-survey',", //                                2
+    "  name: 'agentics-survey',", //                                2
     "  whenToUse: 'when evidence is wanted',", //              3
     '  phases: [', //                                          4
     "    { title: 'Plan', detail: 'scope the topics' },", //   5
@@ -524,7 +524,7 @@ test('V4: keys are identifiers too and are never flagged as values', () => {
 test('V4: true, false and null are literals and pass', () => {
   const flags = src(
     'export const meta = {', //                1
-    "  name: 'vfa-survey',", //                2
+    "  name: 'agentics-survey',", //                2
     '  hidden: false,', //                     3
     '  owner: null,', //                       4
     '  phases: [],', //                        5
@@ -547,7 +547,7 @@ test('V4: only the meta block is judged — the script body concatenates freely'
 test('V4: a comment inside meta may say anything', () => {
   const commented = src(
     'export const meta = {', //                                  1
-    "  name: 'vfa-survey',", //                                  2
+    "  name: 'agentics-survey',", //                                  2
     '  // built from parts elsewhere: NAME + SUFFIX, ${x}', //   3
     '  phases: [],', //                                          4
     '}', //                                                      5

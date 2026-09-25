@@ -21,12 +21,12 @@ import { spawnSync } from 'node:child_process'
 import { collect } from '../lib/gc.mjs'
 
 const RUNSTAMP = '20260830-120000'
-const INTEGRATION = 'vfa/' + RUNSTAMP + '-integration'
-const orderBranch = (id) => 'vfa/' + RUNSTAMP + '-' + id
+const INTEGRATION = 'agentics/' + RUNSTAMP + '-integration'
+const orderBranch = (id) => 'agentics/' + RUNSTAMP + '-' + id
 
 const git = (cwd, ...args) => spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8' })
 const branches = (dir) =>
-  git(dir, 'branch', '--list', 'vfa/*', '--format=%(refname:short)')
+  git(dir, 'branch', '--list', 'agentics/*', '--format=%(refname:short)')
     .stdout.trim().split('\n').map((s) => s.trim()).filter(Boolean)
 
 /**
@@ -34,7 +34,7 @@ const branches = (dir) =>
  * integration branch, integration merged into `main`, W2 still sitting on its own branch.
  */
 function acceptedRun(t, { acceptOnMain = true, worktrees = [] } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'vfa-gc-')).split('\\').join('/')
+  const dir = mkdtempSync(join(tmpdir(), 'agentics-gc-')).split('\\').join('/')
   t.after(() => rmSync(dir, { recursive: true, force: true }))
 
   git(dir, 'init', '-q', '-b', 'main', '.')
@@ -165,18 +165,18 @@ test('a worktree swept by hand no longer blocks its branch', (t) => {
 
 test("another run's branches are never in scope", (t) => {
   const dir = acceptedRun(t)
-  git(dir, 'branch', 'vfa/20260101-000000-W1', 'main')
+  git(dir, 'branch', 'agentics/20260101-000000-W1', 'main')
 
   const result = collect(dir, RUNSTAMP)
 
   assert.equal(result.ok, true)
-  assert.ok(!result.deleted_branches.some((b) => b.branch.startsWith('vfa/20260101')))
-  assert.ok(branches(dir).includes('vfa/20260101-000000-W1'),
+  assert.ok(!result.deleted_branches.some((b) => b.branch.startsWith('agentics/20260101')))
+  assert.ok(branches(dir).includes('agentics/20260101-000000-W1'),
     'a repository holds several runs at once; a sweep bounded by anything looser is a hazard')
 })
 
 test('a repository that is not one is a value, not a throw', () => {
-  const result = collect(join(tmpdir(), 'vfa-gc-does-not-exist'), RUNSTAMP)
+  const result = collect(join(tmpdir(), 'agentics-gc-does-not-exist'), RUNSTAMP)
 
   assert.equal(result.ok, false)
   assert.deepEqual(result.kept, [])

@@ -45,7 +45,7 @@ policy, an appetite for dependencies.
 **Intelligence.** `low`, `normal` or `max` — the model the framing and assessing agents run
 at: Sonnet, Opus, Fable.
 
-<!-- vfa:verbatim intelligence-tier -->
+<!-- agentics:verbatim intelligence-tier -->
 The dial follows the model this session is running, never how important the work feels:
 **Fable → `max`; Opus → `normal`; Sonnet and everything below it → `low`.** When you cannot
 tell what you are running, `normal`.
@@ -56,12 +56,12 @@ Fable session that leaves the dial at `normal` has its work judged by a weaker m
 one the user is talking to, and a Sonnet session that claims `normal` bills the user for Opus
 judgment nobody asked it for. Only the user moves it off that mapping — a bare leading `max`,
 `normal` or `low` token, or `--intelligence=<tier>`.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 ## Step 2 — Run it
 
 ```
-Workflow({ name: 'vf-agentics:vfa-find-existing-solutions', args: { capability, roots, constraints, notes, intelligence } })
+Workflow({ name: 'agentics:agentics-find-existing-solutions', args: { capability, roots, constraints, notes, intelligence } })
 ```
 
 The name is plugin-namespaced; the bare name does not resolve. Record the `runId` from the

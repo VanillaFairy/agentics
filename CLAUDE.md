@@ -1,4 +1,4 @@
-# CLAUDE.md — vf-agentics
+# CLAUDE.md — agentics
 
 Guidance for Claude Code when working in this repository, and the law inherited by every agent
 this plugin defines.
@@ -10,7 +10,7 @@ over a generic codebase. Its runtime artifacts are declarative — agent markdow
 workflow JS, `SKILL.md` — and are validated in three layers: `tools/lint.mjs` judges form, the
 scenario harness (`test/harness/workflow-host.mjs`) executes the workflows' orchestration
 arithmetic with scripted agents, and `test/verbatim-blocks.test.mjs` diffs every contract that
-is restated in prose (`<!-- vfa:verbatim <id> -->` markers) so copies cannot drift. The design
+is restated in prose (`<!-- agentics:verbatim <id> -->` markers) so copies cannot drift. The design
 itself — the whole system, as it is today — is `docs/DESIGN.md`.
 
 The development pipeline runs **design → ratified change → develop**. `design` interviews the
@@ -18,7 +18,7 @@ user against surveyed evidence and produces the ratified change; `develop` surve
 partitions, and then runs **every wave of that plan in one invocation**, merging each wave into
 an integration worktree it creates and owns. The invariant is tree ownership, not merging:
 **the workflow never mutates the user's branch or working tree.** A run's plan and its
-wave-by-wave progression are persisted under `.claude/vfa/runs/<runstamp>/`, so an interrupted
+wave-by-wave progression are persisted under `.claude/agentics/runs/<runstamp>/`, so an interrupted
 run resumes by path instead of by re-buying its survey.
 
 Runs are a **lifecycle**, not a single invocation. `develop --plan-only` parks a plan without
@@ -115,7 +115,7 @@ it closed, and git still holds the head it closed over. Rebuilding from scratch 
 that ladder, not the top. Committed work is scavengeable by right, since commits live on the
 branch and survive a lost worktree; uncommitted work is reported as a fact and adopted by
 nobody automatically. Two regimes, deliberately asymmetric: a **clean** run — empty ledger, no
-`vfa/<runstamp>-*` branches — has nothing to salvage *by definition* and opens for the cost of
+`agentics/<runstamp>-*` branches — has nothing to salvage *by definition* and opens for the cost of
 one `git branch --list`, while a **dirty** one resumes each order exactly where it stopped.
 Escalations are carried forward rather than silently retried — `retry_escalated` names the ids
 whose cause has been dealt with. Salvage is always reported: a run that says "implemented W4"
@@ -140,7 +140,7 @@ share the cached system prompt instead of each paying for a prompt body; the fou
 command and carry none of it. Whoever decides a dispatch — a skill's session, or you writing a
 workflow — works to this:
 
-<!-- vfa:verbatim dispatch-economy -->
+<!-- agentics:verbatim dispatch-economy -->
 A dispatch costs context × turns, and every agent pays its own. Tool calls are what make turns;
 parallel agents share only the system prompt, so a prompt body handed to four agents is paid four
 times; and what an agent returns is re-read on every later turn of the session that dispatched
@@ -156,7 +156,7 @@ it.
   ends.
 - To check a change, re-dispatch narrowed to what changed and name the narrowing in coverage.
   Never re-run the whole pass.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 Measured on 2026-09-16, an orchestrator told exactly this still sent four tool-bearing agents that
 each located the same ground for itself: the instruction bought the agent it declined to add, and
@@ -165,7 +165,7 @@ the survey's `common_ground` — never a sentence asking a model to arrange it. 
 `docs/DESIGN.md#what-a-dispatch-costs`.
 
 **What a run learns outlives the run, and none of it is stored as a status.** The project knowledge
-base at `.claude/vfa/kb/` mirrors the source tree, one append-only `node.jsonl` per node, holding
+base at `.claude/agentics/kb/` mirrors the source tree, one append-only `node.jsonl` per node, holding
 anchored observations: what was seen, where, and at which commit. Depth is `LCA(about)` and
 freshness is `git log <observed_at>..HEAD -- <about>`, both recomputed on every read by
 `lib/kb.mjs` — a status computed cannot be stale, while a status written down outlives the thing it
@@ -177,7 +177,7 @@ the base is the build and suite commands an earlier investigation established, a
 the entry is fresh **and** its source says a verification wrote it. Both seams are advisory side
 channels and neither can make a run incomplete.
 
-**What a phase produces outlives the phase.** An **effort** at `.claude/vfa/efforts/<effort>/` is the
+**What a phase produces outlives the phase.** An **effort** at `.claude/agentics/efforts/<effort>/` is the
 unit of work that spans design, survey, probe and runs, and every phase records its return there,
 verbatim, written by the session that ran it. Runs and designs are pointers rather than nested
 children, so nothing about the resume ladder's paths moved. Read back as `prior`, a return is
@@ -232,7 +232,7 @@ Run the checks with:
 Whenever this plugin's version is bumped, **both** of these move together, in the same change:
 
 1. `.claude-plugin/plugin.json` — the `version` field.
-2. The `vf-agentics` entry in `../.claude-plugin/marketplace.json` — the vanillafairy marketplace
+2. The `agentics` entry in `../.claude-plugin/marketplace.json` — the vanillafairy marketplace
    manifest, one directory up. Note it is **outside this repo**, so a commit here does not carry it.
 
 Missing the second one does not break an install — at install time `plugin.json` wins and the
@@ -313,10 +313,10 @@ A law with no enforcement is decoration. Its mechanical consequences:
 | Clause | Enforced by |
 |---|---|
 | §1 no counter-based termination | `tools/rules/no-turn-caps.mjs` |
-| §2 stop_reason enum, not a boolean | the `HITS` schema in `vfa-survey` + `tools/rules/coverage-block.mjs` |
-| §3 resume, do not truncate | `scoutUntilComplete` in `vfa-survey` |
+| §2 stop_reason enum, not a boolean | the `HITS` schema in `agentics-survey` + `tools/rules/coverage-block.mjs` |
+| §3 resume, do not truncate | `scoutUntilComplete` in `agentics-survey` |
 | §4 partial ≠ whole | `tools/rules/coverage-block.mjs` + `tools/rules/task-tool-fallback.mjs` + `coverage.from_kb` |
-| §5 side channels get `.catch` | every side channel in the workflows, `vfa-survey`'s history and docs channels first |
+| §5 side channels get `.catch` | every side channel in the workflows, `agentics-survey`'s history and docs channels first |
 | §6 resumable halt | `coverage.resumable` |
 | §7 escalate, never abandon | the agent constitutions |
 | §8 cost via method | model and effort tiering, and the intelligence dial (`docs/DESIGN.md#model-tier-earned`) |

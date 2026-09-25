@@ -22,7 +22,7 @@ import { citationsIn, mergeRanges, resolveCitations, safePath } from '../lib/cit
 const CLI = fileURLToPath(new URL('../lib/citations.mjs', import.meta.url))
 
 function repo(files) {
-  const dir = mkdtempSync(join(tmpdir(), 'vfa-cite-')).split('\\').join('/')
+  const dir = mkdtempSync(join(tmpdir(), 'agentics-cite-')).split('\\').join('/')
   for (const [path, content] of Object.entries(files)) {
     const full = join(dir, path)
     mkdirSync(dirname(full), { recursive: true })

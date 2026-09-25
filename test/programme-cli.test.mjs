@@ -39,30 +39,30 @@ const GRAPH = {
 
 const ROOT_DOC = [
   '# system',
-  '<!-- vfa:section settled-evidence -->',
+  '<!-- agentics:section settled-evidence -->',
   'The tablet is the only target.',
-  '<!-- /vfa:section -->',
+  '<!-- /agentics:section -->',
 ].join('\n')
 
 const leafDoc = (id) => [
   '# ' + id,
-  '<!-- vfa:section change -->',
+  '<!-- agentics:section change -->',
   'Deliver ' + id + '.',
-  '<!-- /vfa:section -->',
-  '<!-- vfa:section decisions -->',
+  '<!-- /agentics:section -->',
+  '<!-- agentics:section decisions -->',
   'Tap to move.',
-  '<!-- /vfa:section -->',
-  '<!-- vfa:section settled-evidence -->',
+  '<!-- /agentics:section -->',
+  '<!-- agentics:section settled-evidence -->',
   'Godot 4.5.',
-  '<!-- /vfa:section -->',
+  '<!-- /agentics:section -->',
 ].join('\n')
 
 const NAME = '2026-08-15-eva'
 
 /** A repository with one programme, its root design, and walk's leaf. hug is undesigned. */
 function fixture(over = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'vfa-programme-'))
-  const dir = join(root, 'docs', 'vfa', 'designs', NAME)
+  const root = mkdtempSync(join(tmpdir(), 'agentics-programme-'))
+  const dir = join(root, 'docs', 'agentics', 'designs', NAME)
 
   mkdirSync(join(dir, 'slices'), { recursive: true })
   writeFileSync(join(dir, 'programme.json'), JSON.stringify(over.graph || GRAPH), 'utf8')
@@ -106,7 +106,7 @@ test('a design directory with no programme.json is not a programme', (t) => {
   const { root } = fixture()
   t.after(() => rmSync(root, { recursive: true, force: true }))
 
-  mkdirSync(join(root, 'docs', 'vfa', 'designs', '2026-01-01-plain'), { recursive: true })
+  mkdirSync(join(root, 'docs', 'agentics', 'designs', '2026-01-01-plain'), { recursive: true })
 
   assert.deepEqual(listProgrammes(root), [NAME])
 })
@@ -123,7 +123,7 @@ test('marker completeness is read off the leaf files that exist', (t) => {
 })
 
 test('a leaf that exists but lost a marker is not a finished design', (t) => {
-  const { root } = fixture({ walk: leafDoc('walk').replace('vfa:section decisions', 'vfa:section x') })
+  const { root } = fixture({ walk: leafDoc('walk').replace('agentics:section decisions', 'agentics:section x') })
   t.after(() => rmSync(root, { recursive: true, force: true }))
 
   const { derived } = loadProgramme(root, NAME)
@@ -140,7 +140,7 @@ test('the design tree is read from the programme worktree when one exists', (t) 
   // Leaf documents and plan revisions are committed on the programme branch, so they exist in
   // the worktree and not in the user's checkout until landing. Reading the checkout would
   // report every just-in-time leaf as never written.
-  const wt = join(root, '.claude', 'worktrees', 'programme-' + NAME, 'docs', 'vfa', 'designs', NAME)
+  const wt = join(root, '.claude', 'worktrees', 'programme-' + NAME, 'docs', 'agentics', 'designs', NAME)
   mkdirSync(join(wt, 'slices'), { recursive: true })
   writeFileSync(join(wt, 'programme.json'), JSON.stringify(GRAPH), 'utf8')
   writeFileSync(join(wt, 'system.md'), ROOT_DOC, 'utf8')
@@ -321,9 +321,9 @@ test('--section --file prints one marked section of any document, byte-exact', (
   const doc = join(root, 'design.md')
   writeFileSync(doc, [
     '# design',
-    '<!-- vfa:section change -->',
+    '<!-- agentics:section change -->',
     'Replace the legacy timer poll with an event subscription.',
-    '<!-- /vfa:section -->',
+    '<!-- /agentics:section -->',
   ].join('\n'), 'utf8')
 
   const run = spawnSync(process.execPath, [LIB, root, '--section', 'change', '--file', doc],
@@ -353,7 +353,7 @@ test('--append-delivered refuses a run that is visibly still in flight', (t) => 
 
   // A run sitting in the programme's own worktree, planned and never finished.
   const runDir = join(root, '.claude', 'worktrees', 'programme-' + NAME,
-    '.claude', 'vfa', 'runs', '20260817-091412')
+    '.claude', 'agentics', 'runs', '20260817-091412')
   mkdirSync(runDir, { recursive: true })
   writeFileSync(join(runDir, 'plan.json'), JSON.stringify({
     change: 'Deliver walk.', programme: NAME, slice: 'walk',
@@ -393,7 +393,7 @@ test('--write-view splices the graph into plan.md and leaves the prose alone', (
 
   assert.match(planMd, /Why this decomposition\./)
   assert.match(planMd, /frontier: walk/)
-  assert.equal(planMd.split('vfa:graph').length, 3, 'regeneration splices; it never appends again')
+  assert.equal(planMd.split('agentics:graph').length, 3, 'regeneration splices; it never appends again')
 })
 
 test('--out writes the same render the CLI printed', (t) => {
@@ -445,7 +445,7 @@ test('--drift flags a pending slice whose consumed contract moved', (t) => {
   const base = git(root, 'rev-parse', 'HEAD').stdout.trim()
   const worktree = join(root, '.claude', 'worktrees', 'programme-' + NAME)
 
-  assert.equal(git(root, 'worktree', 'add', '-q', '-b', 'vfa/programme-' + NAME,
+  assert.equal(git(root, 'worktree', 'add', '-q', '-b', 'agentics/programme-' + NAME,
     worktree, 'HEAD').status, 0)
 
   // What a landed slice looks like: one file under a contract hug consumes, one that is not.
@@ -478,7 +478,7 @@ test('--drift names an undesigned pending slice as unexamined', (t) => {
   git(root, 'commit', '-qm', 'base')
 
   const base = git(root, 'rev-parse', 'HEAD').stdout.trim()
-  git(root, 'worktree', 'add', '-q', '-b', 'vfa/programme-' + NAME,
+  git(root, 'worktree', 'add', '-q', '-b', 'agentics/programme-' + NAME,
     join(root, '.claude', 'worktrees', 'programme-' + NAME), 'HEAD')
 
   const found = JSON.parse(cli(root, '--drift', base).out)
@@ -498,7 +498,7 @@ test('--drift fails loudly when the anchor cannot be resolved', (t) => {
   git(root, 'init', '-q', '.')
   git(root, 'add', '-A')
   git(root, 'commit', '-qm', 'base')
-  git(root, 'worktree', 'add', '-q', '-b', 'vfa/programme-' + NAME,
+  git(root, 'worktree', 'add', '-q', '-b', 'agentics/programme-' + NAME,
     join(root, '.claude', 'worktrees', 'programme-' + NAME), 'HEAD')
 
   const { out, status } = cli(root, '--drift', 'f'.repeat(40))
@@ -511,7 +511,7 @@ test('several programmes make the CLI list rather than choose', (t) => {
   const { root } = fixture()
   t.after(() => rmSync(root, { recursive: true, force: true }))
 
-  const other = join(root, 'docs', 'vfa', 'designs', '2026-09-01-other')
+  const other = join(root, 'docs', 'agentics', 'designs', '2026-09-01-other')
   mkdirSync(other, { recursive: true })
   writeFileSync(join(other, 'programme.json'), JSON.stringify({ nodes: [] }), 'utf8')
 

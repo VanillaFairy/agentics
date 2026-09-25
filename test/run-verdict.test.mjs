@@ -35,14 +35,14 @@ const plan = (orders, over = {}) => ({
   base_branch: 'master', base_sha: A40, programme: '', slice: '',
   work_orders: orders,
   partition_raw: JSON.stringify({ waves: [orders.map((o) => o.id)], coupled: [] }),
-  blocking_gaps: [], plan_path: 'C:/repo/.claude/vfa/runs/20260826-184728',
+  blocking_gaps: [], plan_path: 'C:/repo/.claude/agentics/runs/20260826-184728',
   ...over,
 })
 
 const jsonl = (rows) => rows.map((r) => JSON.stringify(r)).join('\n')
 
 const branchRow = (id, over = {}) => ({
-  branch: 'vfa/20260826-184728-' + id,
+  branch: 'agentics/20260826-184728-' + id,
   head_sha: C40, base_sha: M40,
   commits: [{ sha: C40, subject: 'feat: ' + id }],
   worktree: 'C:/wt/' + id, dirty: [], already_merged: false, ...over,
@@ -50,7 +50,7 @@ const branchRow = (id, over = {}) => ({
 
 const git = (rows = {}, over = {}) => ({
   clean: false, branches: rows,
-  integration_branch: 'vfa/20260826-184728-integration', integration_head: M40, ...over,
+  integration_branch: 'agentics/20260826-184728-integration', integration_head: M40, ...over,
 })
 
 const NO_GIT = { clean: true, branches: {} }
@@ -64,12 +64,12 @@ const waveLine = (over = {}) => ({
 const stageLine = (kind, over = {}) => ({
   kind, seq: 2, wave: 1, merged: [], approved_unmerged: [], escalated: [], discovered: [],
   integration_base: '', integration_head: '',
-  order: 'W1', branch: 'vfa/20260826-184728-W1', worktree: 'C:/wt/W1',
+  order: 'W1', branch: 'agentics/20260826-184728-W1', worktree: 'C:/wt/W1',
   head_sha: C40, measured: ['build', 'suite'], ...over,
 })
 
 const verifyObserved = (over = {}) => ({
-  kind: 'verify-observed', seq: 3, order: 'W1', branch: 'vfa/20260826-184728-W1',
+  kind: 'verify-observed', seq: 3, order: 'W1', branch: 'agentics/20260826-184728-W1',
   worktree: 'C:/wt/W1', base_sha: M40, head_sha: C40, stop_reason: 'completed',
   build: 'passed', typecheck: 'passed', suite: 'passed', failing_tests: [],
   discriminator: [{ test_id: 't', failed_on_base: true, passes_now: true }],
@@ -358,7 +358,7 @@ test('a merge the merging agent journalled is the other witness', () => {
   // the line that never got written.
   const row = actionFor('W1', {
     journal: [{ kind: 'merge-observed', seq: 4, order: 'W1',
-                branch: 'vfa/20260826-184728-W1', head_sha: M40 }],
+                branch: 'agentics/20260826-184728-W1', head_sha: M40 }],
     branches: { W1: branchRow('W1', { already_merged: true }) },
   })
 
@@ -674,7 +674,7 @@ test('the workflow copy of measuredOf treats absent the same way this one does',
   // how `absent` is treated, so that is the thing worth holding, and evaluating source text
   // pulled out of another file is a habit worth not having even in a test.
   const { readFileSync } = await import('node:fs')
-  const src = readFileSync(new URL('../workflows/vfa-develop.workflow.js', import.meta.url), 'utf8')
+  const src = readFileSync(new URL('../workflows/agentics-develop.workflow.js', import.meta.url), 'utf8')
   const body = /const measuredOf = \(v\) => \[[\s\S]*?\]\.filter\(Boolean\)/.exec(src)
 
   assert.ok(body, 'the workflow still defines measuredOf where this test can find it')

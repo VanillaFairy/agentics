@@ -1,4 +1,4 @@
-// test/vfa-probe-scenarios.test.mjs — vfa-probe's arithmetic: axis assembly, finding
+// test/agentics-probe-scenarios.test.mjs — agentics-probe's arithmetic: axis assembly, finding
 // attribution, and the computed ratification gate.
 //
 // The property worth pinning hardest is the one a reader cannot check by reading: an axis
@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import { carriedEnvelope, runWorkflow, scriptedAgents } from './harness/workflow-host.mjs'
 
-const WF = fileURLToPath(new URL('../workflows/vfa-probe.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../workflows/agentics-probe.workflow.js', import.meta.url))
 
 // Most scenarios below pin per-axis arithmetic, so they ask for the per-axis shape by name; the
 // default, one analyst holding every axis, has its own section at the end.

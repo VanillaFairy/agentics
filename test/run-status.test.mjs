@@ -58,7 +58,7 @@ test('order-approved lines alone make a run in-flight, never planned', () => {
   // The 2026-08-19 shape: a run died mid-wave-1, so state.jsonl holds order lines and no
   // wave line. `planned` here invites re-planning work that sits reviewed on its branches —
   // the exact wrong invitation for the one run most worth resuming.
-  const state = [{ kind: 'order-approved', wave: 1, order: 'W1', branch: 'vfa/x-W1' }]
+  const state = [{ kind: 'order-approved', wave: 1, order: 'W1', branch: 'agentics/x-W1' }]
   const run = deriveRun('20260816-143005', plan(), state, null)
 
   assert.equal(run.status, 'in-flight')
@@ -68,7 +68,7 @@ test('order-approved lines alone make a run in-flight, never planned', () => {
 test('order-verified lines alone make a run in-flight too', () => {
   // One stage earlier than the case above, and the same wrong invitation: those orders are
   // sitting green on their branches, and a resume takes them straight to review.
-  const state = [{ kind: 'order-verified', wave: 1, order: 'W1', branch: 'vfa/x-W1' }]
+  const state = [{ kind: 'order-verified', wave: 1, order: 'W1', branch: 'agentics/x-W1' }]
   const run = deriveRun('20260816-143005', plan(), state, null)
 
   assert.equal(run.status, 'in-flight')
@@ -79,7 +79,7 @@ test('order-verified lines alone make a run in-flight too', () => {
 
 test('a verified order that later merged is not still reported as verified', () => {
   const state = [
-    { kind: 'order-verified', wave: 1, order: 'W1', branch: 'vfa/x-W1' },
+    { kind: 'order-verified', wave: 1, order: 'W1', branch: 'agentics/x-W1' },
     wave({ merged: ['W1'] }),
   ]
 
@@ -100,7 +100,7 @@ test('waves_recorded counts waves, not lines', () => {
 // --- the observation journal ---------------------------------------------------------------
 
 const mergeObserved = (order, head = 'ccccccc') => ({
-  kind: 'merge-observed', order, branch: 'vfa/x-' + order, head_sha: head,
+  kind: 'merge-observed', order, branch: 'agentics/x-' + order, head_sha: head,
 })
 
 test('a merge the journal recorded counts as merged, wave line or no wave line', () => {
@@ -153,7 +153,7 @@ test('a journalled measurement is what measured_unapproved counts now', () => {
 test('a measurement the run later merged or approved is no longer outstanding', () => {
   const journal = [{ kind: 'verify-observed', order: 'W1', head_sha: 'aaa' },
                    { kind: 'verify-observed', order: 'W2', head_sha: 'bbb' }]
-  const state = [{ kind: 'order-approved', wave: 1, order: 'W2', branch: 'vfa/x-W2' },
+  const state = [{ kind: 'order-approved', wave: 1, order: 'W2', branch: 'agentics/x-W2' },
                  wave({ merged: ['W1'] })]
 
   const run = deriveRun('20260816-143005', plan(), state, null, [], journal)
@@ -346,7 +346,7 @@ test('an unreadable run still carries the two columns, so a reader can group it'
 const approvedLine = (order, over = {}) => ({
   kind: 'order-approved', wave: 1, merged: [], approved_unmerged: [], escalated: [],
   discovered: [], integration_base: '', integration_head: '',
-  order, branch: 'vfa/20260816-143005-' + order, worktree: 'C:/wt/' + order,
+  order, branch: 'agentics/20260816-143005-' + order, worktree: 'C:/wt/' + order,
   head_sha: 'ccccccc', ...over,
 })
 

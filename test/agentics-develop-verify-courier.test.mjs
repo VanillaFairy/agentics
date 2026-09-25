@@ -1,4 +1,4 @@
-// test/vfa-develop-verify-courier.test.mjs — the verify dispatch's transport ladder.
+// test/agentics-develop-verify-courier.test.mjs — the verify dispatch's transport ladder.
 //
 // Verification used to be a sonnet agent running four commands and typing what it saw into a
 // schema, once per order and again per fix round. The commands are one program now
@@ -22,14 +22,14 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import { carriedChain, carriedPayload, runWorkflow, scriptedAgents } from './harness/workflow-host.mjs'
 
-const WF = fileURLToPath(new URL('../workflows/vfa-develop.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../workflows/agentics-develop.workflow.js', import.meta.url))
 
 const A40 = 'a'.repeat(40)
 const B40 = 'b'.repeat(40)
 const M40 = 'e'.repeat(40)
 const N40 = 'f'.repeat(40)
 
-const RUN_DIR = 'C:/repo/.claude/vfa/runs/20260816-143005'
+const RUN_DIR = 'C:/repo/.claude/agentics/runs/20260816-143005'
 const ARGS = { change: 'add the thing', roots: '.', plugin_root: 'C:/plugin' }
 
 const b64 = (text) => Buffer.from(text, 'utf8').toString('base64')
@@ -117,13 +117,13 @@ const cast = (over = {}) => scriptedAgents({
   plan: plan([order('W1')]),
   'integration-setup': {
     stop_reason: 'completed', worktree: 'C:/repo/.claude/worktrees/int',
-    branch: 'vfa/20260816-143005-integration', head_sha: A40, notes: 'created',
+    branch: 'agentics/20260816-143005-integration', head_sha: A40, notes: 'created',
   },
   'merge:': mergeSequence([M40, N40]),
   'wave-verify:': verified({ discriminator: [], notes: 'the merged head' }),
   'record:': { stop_reason: 'recorded', path: RUN_DIR + '/state.jsonl', notes: 'appended' },
   'kb-chain': carriedChain(),
-  'kb-write': { stop_reason: 'recorded', path: '.claude/vfa/kb', notes: 'appended' },
+  'kb-write': { stop_reason: 'recorded', path: '.claude/agentics/kb', notes: 'appended' },
   'review:integration': { findings: [], fix_verdicts: [] },
   'code:': (prompt, opts) => coded((opts.label || '').split(':')[1] || 'W1'),
   'verify:': verified(),

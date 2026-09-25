@@ -1,8 +1,8 @@
 export const meta = {
-  name: 'vfa-develop',
+  name: 'agentics-develop',
   description: 'Implement a change as work orders: survey, plan, partition, then wave by wave — coder -> verifier -> adversarial review per order, merged into a workflow-owned integration worktree. Never touches the user\'s branch or working tree.',
   phases: [
-    { title: 'Survey', detail: 'nested vfa-survey, scoped to the change' },
+    { title: 'Survey', detail: 'nested agentics-survey, scoped to the change' },
     { title: 'Plan', detail: 'planner: work orders + declared loci + partition, persisted to disk' },
     { title: 'Implement', detail: 'coder per order, worktree-isolated, focused commits' },
     { title: 'Verify', detail: 'discriminator + build + suite + series checks' },
@@ -113,7 +113,7 @@ const WORK_ORDERS = {
     shared_files: { type: 'array', items: { type: 'string' } },  // designated shared files for the independence test
     partition_raw: { type: 'string' }, // VERBATIM stdout of `node lib/independence.mjs <input>` — never retyped
     blocking_gaps: { type: 'array', items: { type: 'string' } },  // survey gaps the change itself leans on; non-empty withholds dispatch
-    // Absolute path of the run directory the planner wrote (.claude/vfa/runs/<runstamp>/),
+    // Absolute path of the run directory the planner wrote (.claude/agentics/runs/<runstamp>/),
     // holding plan.json, its manifest, and plan.md. '' means no resume point exists — a
     // stated cost, never a guessed path. Required rather than optional on purpose: a field
     // that may be absent is a field whose absence nobody notices.
@@ -228,7 +228,7 @@ const DRIFT = {
   },
 }
 
-// What .claude/vfa/runs already holds, before this invocation plans anything. The agent
+// What .claude/agentics/runs already holds, before this invocation plans anything. The agent
 // reports rows verbatim from lib/run-status.mjs; THIS SCRIPT compares each row's change
 // against its own — the agent holds no verdict on whether a run is "the same work", because
 // a paraphrase-tolerant judgment there is exactly how a near-duplicate slips through.
@@ -276,7 +276,7 @@ const INTEGRATION_SETUP = {
 }
 
 // What an interrupted earlier invocation left behind in git. Order branches are named
-// deterministically (`vfa/<runstamp>-<order-id>`), so a later invocation of the same run can
+// deterministically (`agentics/<runstamp>-<order-id>`), so a later invocation of the same run can
 // FIND the work its predecessor did — which is the whole reason the naming is deterministic
 // rather than incidental.
 //
@@ -1377,7 +1377,7 @@ const primaryRoot = () => String(roots).split(/[,;\n]/)[0].trim() || '.'
 const kbRepo = primaryRoot
 
 // Where every worktree this run creates goes, named from `roots` and never from a shell's
-// working directory. Run 20260902-124933 asked for `.claude/worktrees/vfa-<order>` as a bare
+// working directory. Run 20260902-124933 asked for `.claude/worktrees/agentics-<order>` as a bare
 // relative path and got it under the ORCHESTRATING session's own worktree, because that is
 // where the agent's Bash happened to start — the tree landed somewhere nobody would look for
 // it. The run's recorded roots were correct the whole time; nothing was reading them here.
@@ -1840,7 +1840,7 @@ async function dispatch(wo, state, trail, what, open, run, coherent) {
 
 function haltedEsc(wo, state, trail, open, note, reason) {
   log(`ESCALATION ${wo.id}: ${note}`)
-  const finding = runtimeFinding(wo.id + '-halt', note, 'recorded by vfa-develop at dispatch')
+  const finding = runtimeFinding(wo.id + '-halt', note, 'recorded by agentics-develop at dispatch')
   trail.push({ round: trail.length + 1, kind: 'halt', findings: [finding], fix_commits: [] })
   return esc(wo, reason || 'budget', open.concat([finding]), trail, state)
 }
@@ -2120,9 +2120,9 @@ function plannerPrompt(surveyEvidence) {
     `session): fix the decomposition and re-run it, and paste an error verbatim only when ` +
     `you cannot resolve it.\n\n` +
     `Finally, PERSIST THE PLAN, exactly as your charter's step 9 describes. Mint a runstamp, ` +
-    `write .claude/vfa/runs/<runstamp>/plan.json inside the target repository with the whole ` +
+    `write .claude/agentics/runs/<runstamp>/plan.json inside the target repository with the whole ` +
     `plan and every work order in full, add the manifest printed by\n\n` +
-    `   node "${pluginRoot}/lib/plan-digest.mjs" .claude/vfa/runs/<runstamp>/plan.json\n` +
+    `   node "${pluginRoot}/lib/plan-digest.mjs" .claude/agentics/runs/<runstamp>/plan.json\n` +
     rootWarning +
     `\nwrite plan.md beside it for a human, and return the run directory's ABSOLUTE path in ` +
     `plan_path. That path is how an interrupted run resumes without buying this plan a ` +
@@ -2335,7 +2335,7 @@ function worktreePrompt(needed) {
     `For each one, in the target repository:\n\n` +
     `1. git worktree list — if that branch already has a worktree, report that path and move ` +
     `on. Git refuses the same branch in two worktrees, so a second add would fail anyway.\n` +
-    `2. Otherwise: git worktree add ${worktreeDir()}/vfa-<the branch's last path segment> ` +
+    `2. Otherwise: git worktree add ${worktreeDir()}/agentics-<the branch's last path segment> ` +
     `<branch>\n` +
     `   That path is written out in full for a reason: it belongs to the REPOSITORY above, ` +
     `not to whatever directory your shell happens to start in. cd into the repository first ` +
@@ -2385,7 +2385,7 @@ function existingRunsPrompt() {
     `result VERBATIM, character for character. Do not trim the change, do not summarize it, ` +
     `do not drop rows that look finished or unreadable: the caller's comparison is exact ` +
     `string equality, and a change you shortened is a duplicate it cannot see. Report path ` +
-    `as the ABSOLUTE path of the run's directory: <root>/.claude/vfa/runs/<runstamp>.\n\n` +
+    `as the ABSOLUTE path of the run's directory: <root>/.claude/agentics/runs/<runstamp>.\n\n` +
     `A repository with no runs directory prints {"runs":[]} — report that as observed with ` +
     `an empty list, which IS the good case. Return stop_reason unobservable only when the ` +
     `command itself would not run, with what actually happened in notes: "there are no ` +
@@ -2403,8 +2403,8 @@ function setupPrompt(runstamp) {
       `The runstamp above is empty because no plan directory was written. Mint one with\n` +
       `   node -e "console.log(new Date().toISOString().replace(/[-:]/g,'').replace(/\\..+/,'').replace('T','-'))"\n` +
       `and use it below, then report the branch and path you actually used.\n`) +
-    `\nBRANCH: vfa/<runstamp>-integration\n` +
-    `WORKTREE: ${worktreeDir()}/vfa-<runstamp>-integration — that path belongs to the ` +
+    `\nBRANCH: agentics/<runstamp>-integration\n` +
+    `WORKTREE: ${worktreeDir()}/agentics-<runstamp>-integration — that path belongs to the ` +
     `REPOSITORY above, not to the directory your shell starts in. cd there first and confirm ` +
     `with git rev-parse --show-toplevel. Report the path you actually used, ABSOLUTE.\n` +
     (baseRef
@@ -2421,7 +2421,7 @@ function setupPrompt(runstamp) {
     `base because earlier waves merged into it.\n\n` +
     `THEN, in the same dispatch, free this run's order branches.\n\n` +
     `Run git worktree list. Some of this run's own branches — anything matching ` +
-    `vfa/${stamp}-* that is NOT the integration branch above — may still be checked out in a ` +
+    `agentics/${stamp}-* that is NOT the integration branch above — may still be checked out in a ` +
     `worktree left by an invocation that died. Git refuses one branch in two worktrees, so ` +
     `every such leftover silently costs the next dispatch its branch: the worktree comes up ` +
     `DETACHED and the coder standing in it can commit nowhere that survives. For each one:\n\n` +
@@ -2439,7 +2439,7 @@ function setupPrompt(runstamp) {
     `actually remove.\n\n` +
     `This worktree is the workflow's own. Everything merges here and the tree the user is ` +
     `sitting in is never touched — not by you, not by anything downstream. The tree the user ` +
-    `is sitting in is also never a leftover: it holds no vfa/ branch, so it can never appear ` +
+    `is sitting in is also never a leftover: it holds no agentics/ branch, so it can never appear ` +
     `in the list above.`
 }
 
@@ -2469,9 +2469,9 @@ function journalSection(what, fields) {
     `Append ONE line to this run's journal by piping it into the ledger writer. Run these ` +
     `lines with NO leading whitespace on any of them; a heredoc delimiter that is indented ` +
     `never matches, and the shell swallows the rest of your session looking for it:\n\n` +
-    `node "${pluginRoot}/lib/ledger.mjs" append "${planPath}" --file journal <<'VFAJOURNAL'\n` +
+    `node "${pluginRoot}/lib/ledger.mjs" append "${planPath}" --file journal <<'AGENTICSJOURNAL'\n` +
     `${fields}\n` +
-    `VFAJOURNAL\n` +
+    `AGENTICSJOURNAL\n` +
     rootWarning +
     `The writer is the only thing that appends to these files. It parses your line before ` +
     `writing it and REFUSES anything that is not valid JSON carrying a kind and a seq, then ` +
@@ -2491,7 +2491,7 @@ function journalSection(what, fields) {
     `instead. The writer reads standard input either way, so this is the identical line by an ` +
     `identical route, and it is a fallback rather than a preference only because the heredoc ` +
     `leaves nothing behind:\n\n` +
-    `node "${pluginRoot}/lib/ledger.mjs" append "${planPath}" --file journal < vfa-journal.json\n\n` +
+    `node "${pluginRoot}/lib/ledger.mjs" append "${planPath}" --file journal < agentics-journal.json\n\n` +
     `Put that scratch file inside your own worktree, write the whole line to it in one go, and ` +
     `do not hand-edit it afterwards — a half-rewritten file is the unreadable record this ` +
     `writer exists to refuse. Delete it once the writer has accepted the line.\n\n` +
@@ -2685,9 +2685,9 @@ function coderContinuePrompt(wo, facts) {
     `amend, do not rebase, do not squash. The series is append-only: you add the commits that ` +
     `are still missing.\n\n` +
     `ONE EXCEPTION, and it is the only one in this pipeline. If the TIP commit is a checkpoint ` +
-    `— a "checkpoint:" subject or a vfa-checkpoint trailer, left by an earlier coder stopping ` +
+    `— a "checkpoint:" subject or an agentics-checkpoint trailer, left by an earlier coder stopping ` +
     `deliberately — you may squash THAT COMMIT AND ONLY THAT COMMIT into your next one: ` +
-    `confirm the mark with git log -1 --format='%s%n%(trailers:key=vfa-checkpoint)', then ` +
+    `confirm the mark with git log -1 --format='%s%n%(trailers:key=agentics-checkpoint)', then ` +
     `git reset --soft HEAD~1 and commit the whole unit properly. A checkpoint left standing is ` +
     `a blocking series finding, so it has to be dissolved and nothing else can dissolve it. A ` +
     `tip WITHOUT that mark is somebody's finished work: squashing it is history rewriting, and ` +
@@ -3074,7 +3074,7 @@ function appendState(entry, label) {
   // reaching here means that agent is out of moves rather than unlucky.
   const write = async () => {
     const first = await agent(recorderPrompt(planPath, entry, digest), {
-      agentType: 'vf-agentics:run-state', effort: 'low', schema: RECORDED,
+      agentType: 'agentics:run-state', effort: 'low', schema: RECORDED,
       phase: 'Integrate', label,
     })
 
@@ -3084,7 +3084,7 @@ function appendState(entry, label) {
       `re-dispatching it once.`)
 
     return agent(recorderPrompt(planPath, entry, digest), {
-      agentType: 'vf-agentics:run-state', effort: 'low', schema: RECORDED,
+      agentType: 'agentics:run-state', effort: 'low', schema: RECORDED,
       phase: 'Integrate', label: label + ':retry',
     })
   }
@@ -3804,7 +3804,7 @@ const unfixedVerdict = (v) => v.status === 'not_fixed' || v.status === 'regresse
 async function measureOrder(wo, state, trail) {
   const carry = (label, opts) => dispatch(wo, state, trail, 'the verifier for ' + wo.id, [],
     () => agent(verifierPrompt(wo, state), {
-      agentType: 'vf-agentics:verifier', effort: 'low', schema: CARRIED,
+      agentType: 'agentics:verifier', effort: 'low', schema: CARRIED,
       phase: 'Verify', label, ...opts,
     }))
 
@@ -3837,7 +3837,7 @@ async function measureOrder(wo, state, trail) {
   const investigated = await dispatch(wo, state, trail,
     'the verification investigator for ' + wo.id, [],
     () => agent(verifierInvestigatePrompt(wo, state, why), {
-      agentType: 'vf-agentics:verifier', effort: 'medium', schema: VERIFY,
+      agentType: 'agentics:verifier', effort: 'medium', schema: VERIFY,
       phase: 'Verify', label: `verify-investigate:${wo.id}`,
     }), coherentVerify)
 
@@ -3856,7 +3856,7 @@ async function measureOrder(wo, state, trail) {
  */
 async function measureWave(waveNumber, label) {
   const carry = (l, opts) => agent(waveVerifyPrompt(waveNumber), {
-    agentType: 'vf-agentics:verifier', effort: 'low', schema: CARRIED,
+    agentType: 'agentics:verifier', effort: 'low', schema: CARRIED,
     phase: 'Integrate', label: l, ...opts,
   }).catch((e) => {
     log(`WARNING: ${l} failed to run: ${e && e.message}`)
@@ -3883,7 +3883,7 @@ async function measureWave(waveNumber, label) {
     `head by hand.`)
 
   const measured = await agent(waveInvestigatePrompt(waveNumber, why), {
-    agentType: 'vf-agentics:verifier', effort: 'medium', schema: VERIFY,
+    agentType: 'agentics:verifier', effort: 'medium', schema: VERIFY,
     phase: 'Integrate', label: label.replace('wave-verify', 'wave-investigate'),
   }).catch((e) => {
     log(`WARNING: the merged head could not be measured by hand either: ${e && e.message}`)
@@ -4022,7 +4022,7 @@ async function verifyUntilGreen(wo, state, trail) {
     const headBefore = state.head_sha
     const fixCall = await dispatch(wo, state, trail, 'the verify fix round for ' + wo.id, failures,
       () => agent(coderFixPrompt(wo, state, verifyFixInstruction(failures)), {
-        agentType: 'vf-agentics:coder', effort: 'medium', schema: CODER_RESULT,
+        agentType: 'agentics:coder', effort: 'medium', schema: CODER_RESULT,
         phase: 'Verify', label: `fix:${wo.id}`, ...coderFor(wo),
       }), coherentFix)
     if (fixCall.escalation) return fixCall.escalation
@@ -4079,7 +4079,7 @@ async function reviewLoop(wo, state, trail) {
     const call = await dispatch(wo, state, trail, 'reviewer round ' + round + ' for ' + wo.id,
       openBlockers,
       () => agent(reviewerPrompt(wo, state, state.advisories, state.concerns, state.discovered, priorBlockers, round), {
-        agentType: 'vf-agentics:reviewer', effort: 'high', schema: FINDINGS,
+        agentType: 'agentics:reviewer', effort: 'high', schema: FINDINGS,
         phase: 'Review', label: `review:${wo.id}#${round}`, ...judgeFor(wo),
       }))
     if (call.escalation) return call.escalation
@@ -4162,7 +4162,7 @@ async function reviewLoop(wo, state, trail) {
     }
     const fixCall = await dispatch(wo, state, trail, 'the review fix round for ' + wo.id, open,
       () => agent(coderFixPrompt(wo, state, reviewFixInstruction(open)), {
-        agentType: 'vf-agentics:coder', effort: 'medium', schema: CODER_RESULT,
+        agentType: 'agentics:coder', effort: 'medium', schema: CODER_RESULT,
         phase: 'Review', label: `fix:${wo.id}#${round}`, ...fixTier,
       }), coherentFix)
     if (fixCall.escalation) return fixCall.escalation
@@ -4196,7 +4196,7 @@ async function reviewLoop(wo, state, trail) {
   }
 }
 
-// The branch each order's coder re-anchors onto and commits to: `vfa/<runstamp>-<order-id>`.
+// The branch each order's coder re-anchors onto and commits to: `agentics/<runstamp>-<order-id>`.
 //
 // A dash rather than a slash between the parts, because git stores refs as paths — `<b>/W3`
 // cannot exist while the ref `<b>` does, and the checkout would fail on the second order of
@@ -4211,7 +4211,7 @@ async function reviewLoop(wo, state, trail) {
 // wrote no plan file and the setup agent minted a branch this script only learned by reading
 // it back. Nothing can be scavenged in that case either, and both facts have the same cause.
 const orderBranch = (id) =>
-  (runstamp ? 'vfa/' + runstamp + '-' + id : integration.branch + '-' + id)
+  (runstamp ? 'agentics/' + runstamp + '-' + id : integration.branch + '-' + id)
 
 async function implement(wo) {
   const state = newState(wo)
@@ -4262,7 +4262,7 @@ async function implement(wo) {
       try {
         const call = await dispatch(wo, state, trail, 'the continuation coder for ' + wo.id, [],
           () => agent(coderContinuePrompt(wo, found), {
-            agentType: 'vf-agentics:coder', effort: 'high', schema: CODER_RESULT,
+            agentType: 'agentics:coder', effort: 'high', schema: CODER_RESULT,
             phase: 'Implement', label: `continue:${wo.id}`, ...coderFor(wo),
           }), coherentContinuation)
 
@@ -4300,7 +4300,7 @@ async function implement(wo) {
   try {
     const call = await dispatch(wo, state, trail, 'the coder for ' + wo.id, [],
       () => agent(coderPrompt(wo, orderBranch(wo.id)), {
-        agentType: 'vf-agentics:coder', effort: 'high', schema: CODER_RESULT,
+        agentType: 'agentics:coder', effort: 'high', schema: CODER_RESULT,
         phase: 'Implement', label: `code:${wo.id}`, isolation: 'worktree', ...coderFor(wo),
       }), coherentNewSeries)
     if (call.escalation) return { wo, state, trail, escalation: call.escalation }
@@ -4533,7 +4533,7 @@ try {
     // The ladder stays, because a courier can still drop a character: a failed digest costs one
     // re-fetch one tier up, and only a payload no tier can carry halts the run.
     const fetchVerdict = (label, opts) => agent(verdictPrompt(), {
-      agentType: 'vf-agentics:run-state', effort: 'low', schema: VERDICT,
+      agentType: 'agentics:run-state', effort: 'low', schema: VERDICT,
       phase: 'Plan', label, ...opts,
     }).catch((e) => {
       log(`WARNING: the run-verdict dispatch failed: ${e && e.message}`)
@@ -4892,7 +4892,7 @@ try {
     // in the log instead, so they are never silently waved past.
     if (!confirmedDuplicate) {
       const observed = await agent(existingRunsPrompt(), {
-        agentType: 'vf-agentics:verifier', effort: 'low', schema: EXISTING_RUNS,
+        agentType: 'agentics:verifier', effort: 'low', schema: EXISTING_RUNS,
         phase: 'Survey', label: 'existing-runs',
       }).catch((e) => {
         log(`WARNING: the existing-run observation failed: ${e && e.message}`)
@@ -4909,7 +4909,7 @@ try {
         // one, at exactly this moment, on exactly the relaunch that most needs the guard.
         const why = observed && observed.notes
           ? observed.notes : 'the observation returned no result'
-        log(`HALT: .claude/vfa/runs could not be observed (${why}); nothing was dispatched.`)
+        log(`HALT: .claude/agentics/runs could not be observed (${why}); nothing was dispatched.`)
         return developResult({
           coverage: {
             complete: false,
@@ -4917,7 +4917,7 @@ try {
             incomplete: [],
             failed_channels: ['existing-runs'],
             unreached: [
-              'the existing-run guard could not observe .claude/vfa/runs: ' + why +
+              'the existing-run guard could not observe .claude/agentics/runs: ' + why +
               ' — nothing was dispatched, because planning without looking is how a ' +
               'half-built run gets planned a second time. Re-invoke to try again; if you ' +
               'are recovering an interrupted run, re-invoke with resume_path instead.',
@@ -4930,7 +4930,7 @@ try {
 
       const unreadableRows = (observed.runs || []).filter((r) => r.status === 'unreadable')
       if (unreadableRows.length > 0) {
-        log(`${unreadableRows.length} run(s) under .claude/vfa/runs are unreadable and could ` +
+        log(`${unreadableRows.length} run(s) under .claude/agentics/runs are unreadable and could ` +
           `not be compared against this change: ` +
           unreadableRows.map((r) => r.runstamp).join(', '))
       }
@@ -5015,7 +5015,7 @@ try {
         `knowledge base already covers it.`)
 
       const carried = carriedVerify(await agent(kbChainPrompt(ground), {
-        agentType: 'vf-agentics:kb', effort: 'low', model: 'haiku', schema: CARRIED,
+        agentType: 'agentics:kb', effort: 'low', model: 'haiku', schema: CARRIED,
         phase: 'Survey', label: 'kb-ground',
       }).catch((e) => {
         log(`WARNING: the knowledge-base read failed to run: ${e && e.message}`)
@@ -5046,7 +5046,7 @@ try {
         // routine. It is said once, plainly, with the path — a user can fix that in an afternoon
         // and cannot fix what they were never told.
         if (carried.payload.kb_present === false) {
-          log(`Surveying in full: this repository has NO KNOWLEDGE BASE at .claude/vfa/kb, so ` +
+          log(`Surveying in full: this repository has NO KNOWLEDGE BASE at .claude/agentics/kb, so ` +
             `the survey collapse cannot fire here for any change — this is a setup fact, not a ` +
             `stale chain. Runs will keep paying for a full survey until a base exists. It is ` +
             `written by runs as they go; there is nothing to do by hand.`)
@@ -5071,7 +5071,7 @@ try {
     let standingSurvey = null
     if (!fixLane && !nullSurvey && settledShape && effortName) {
       const carried = carriedVerify(await agent(standingPrompt(), {
-        agentType: 'vf-agentics:kb', effort: 'low', model: 'haiku', schema: CARRIED,
+        agentType: 'agentics:kb', effort: 'low', model: 'haiku', schema: CARRIED,
         phase: 'Survey', label: 'effort-standing',
       }).catch((e) => {
         log(`WARNING: the effort's standing check failed to run: ${e && e.message}`)
@@ -5113,7 +5113,7 @@ try {
 
     if (!nullSurvey && !fixLane && !standingSurvey) {
       try {
-        survey = await workflow('vf-agentics:vfa-survey', surveyArgs)
+        survey = await workflow('agentics:agentics-survey', surveyArgs)
       } catch (e) {
         if (!notFound(e)) {
           surveyFailure = String((e && e.message) || e)
@@ -5121,7 +5121,7 @@ try {
           survey = null
         } else {
           try {
-            survey = await workflow('vfa-survey', surveyArgs)
+            survey = await workflow('agentics-survey', surveyArgs)
           } catch (e2) {
             if (notFound(e2)) {
               surveyUnresolved = true
@@ -5136,7 +5136,7 @@ try {
     }
 
     if (surveyUnresolved) {
-      log('vfa-survey resolved under neither name — a defect in this plugin; stopping before planning.')
+      log('agentics-survey resolved under neither name — a defect in this plugin; stopping before planning.')
       return developResult({
         coverage: {
           complete: false,
@@ -5144,8 +5144,8 @@ try {
           incomplete: [],
           failed_channels: ['survey'],
           unreached: [
-            'the vfa-survey sub-workflow resolved under neither "vf-agentics:vfa-survey" nor ' +
-            '"vfa-survey" — a broken reference in this plugin, not an environmental failure. ' +
+            'the agentics-survey sub-workflow resolved under neither "agentics:agentics-survey" nor ' +
+            '"agentics-survey" — a broken reference in this plugin, not an environmental failure. ' +
             'Nothing was planned or dispatched: planning without the evidence phase is the ' +
             'silent degradation this stop exists to prevent.',
           ],
@@ -5238,7 +5238,7 @@ try {
       // returned without a coverage block.
       const surveyGap = surveyFailure
         ? 'the survey threw before returning: ' + surveyFailure
-        : 'vfa-survey returned no coverage block; the evidence phase did not complete'
+        : 'agentics-survey returned no coverage block; the evidence phase did not complete'
       log(`WARNING: ${surveyGap}; planning on thin evidence.`)
       failedChannels.push('survey')
       survey = null
@@ -5271,7 +5271,7 @@ try {
     let history = ''
     if (fixLane && regression) {
       const found = await agent(historianPrompt(), {
-        agentType: 'vf-agentics:historian', effort: 'medium', model: 'sonnet',
+        agentType: 'agentics:historian', effort: 'medium', model: 'sonnet',
         schema: HISTORY, phase: 'Plan', label: 'history',
       }).catch((e) => {
         log(`WARNING: the history search failed to run: ${e && e.message}`)
@@ -5358,7 +5358,7 @@ ${history}
     // is not the run's judge tier for the same reason. This is the one dispatch the lane keeps
     // that it could have dropped, and it keeps it for the resume point.
     planned = await agent(plannerPrompt(evidence), {
-      agentType: 'vf-agentics:planner', effort: fixLane ? 'low' : 'high',
+      agentType: 'agentics:planner', effort: fixLane ? 'low' : 'high',
       schema: WORK_ORDERS, phase: 'Plan', label: 'plan', ...(fixLane ? { model: 'sonnet' } : judge),
     }).catch((e) => {
       log(`WARNING: planning failed: ${e && e.message}`)
@@ -5374,7 +5374,7 @@ ${history}
       log('WARNING: the planner wrote no plan file, so this run has no resume point on disk.')
       failedChannels.push('run-state')
       extraUnreached.push('the planner returned no plan_path: nothing was persisted under ' +
-        '.claude/vfa/runs/, so an interruption cannot be resumed by reference and would ' +
+        '.claude/agentics/runs/, so an interruption cannot be resumed by reference and would ' +
         'have to be re-planned from scratch')
     }
   }
@@ -5532,7 +5532,7 @@ ${history}
 
   if (resumePath && anchor && anchorBranch) {
     const drift = await agent(driftPrompt(anchor, anchorBranch), {
-      agentType: 'vf-agentics:verifier', effort: 'low', schema: DRIFT,
+      agentType: 'agentics:verifier', effort: 'low', schema: DRIFT,
       phase: 'Plan', label: 'drift',
     }).catch((e) => {
       log(`WARNING: the drift observation failed: ${e && e.message}`)
@@ -5679,7 +5679,7 @@ ${history}
     runstamp = planPath ? runstampOf(planPath) : runstamp
 
     const setup = await agent(setupPrompt(runstamp), {
-      agentType: 'vf-agentics:verifier', effort: 'low', schema: INTEGRATION_SETUP,
+      agentType: 'agentics:verifier', effort: 'low', schema: INTEGRATION_SETUP,
       phase: 'Integrate', label: 'integration-setup',
     }).catch((e) => {
       log(`WARNING: integration setup failed: ${e && e.message}`)
@@ -5767,7 +5767,7 @@ ${history}
     // record of it is the branch name it reports back. Recovering it here is what keeps order
     // branches deterministically named even on that path.
     if (!runstamp) {
-      const minted = /^vfa\/(.+)-integration$/.exec(integration.branch || '')
+      const minted = /^agentics\/(.+)-integration$/.exec(integration.branch || '')
       if (minted) runstamp = minted[1]
     }
 
@@ -5813,7 +5813,7 @@ ${history}
         `commits can be verified and reviewed.`)
 
       const made = await agent(worktreePrompt(needTrees), {
-        agentType: 'vf-agentics:verifier', effort: 'low', schema: WORKTREES,
+        agentType: 'agentics:verifier', effort: 'low', schema: WORKTREES,
         phase: 'Implement', label: 'worktrees',
       }).catch((e) => {
         log(`WARNING: the worktree pass failed: ${e && e.message}`)
@@ -6128,7 +6128,7 @@ ${history}
     phase('Implement')
 
     const carried = carriedVerify(await agent(kbChainPrompt(kbPaths), {
-      agentType: 'vf-agentics:kb', effort: 'low', model: 'haiku', schema: CARRIED,
+      agentType: 'agentics:kb', effort: 'low', model: 'haiku', schema: CARRIED,
       phase: 'Implement', label: 'kb-chain',
     }).catch((e) => {
       log(`WARNING: the knowledge-base read failed to run: ${e && e.message}`)
@@ -6360,7 +6360,7 @@ ${history}
      */
     async function mergeBranch(entry, carries) {
       const merge = await agent(mergePrompt(entry), {
-        agentType: 'vf-agentics:verifier', effort: 'low', schema: MERGE_RESULT,
+        agentType: 'agentics:verifier', effort: 'low', schema: MERGE_RESULT,
         phase: 'Integrate', label: `merge:${entry.id}`,
       }).catch((e) => {
         log(`WARNING: the merge of ${entry.id} failed to run: ${e && e.message}`)
@@ -6580,7 +6580,7 @@ ${history}
     const outstanding = [...orderById.keys()].filter((id) => !integration.merged.includes(id))
 
     const review = await agent(integrationReviewPrompt(mergedOrders, outstanding), {
-      agentType: 'vf-agentics:reviewer', effort: 'high', schema: FINDINGS,
+      agentType: 'agentics:reviewer', effort: 'high', schema: FINDINGS,
       phase: 'Integrate', label: 'review:integration', ...judge,
     }).catch((e) => {
       log(`WARNING: the integration review failed: ${e && e.message}`)
@@ -6631,7 +6631,7 @@ ${history}
     phase('Integrate')
 
     const deposited = await agent(kbDepositPrompt(deposits), {
-      agentType: 'vf-agentics:kb', effort: 'low', model: 'haiku', schema: RECORDED,
+      agentType: 'agentics:kb', effort: 'low', model: 'haiku', schema: RECORDED,
       phase: 'Integrate', label: 'kb-write',
     }).catch((e) => {
       log(`WARNING: the knowledge-base deposit failed to run: ${e && e.message}`)

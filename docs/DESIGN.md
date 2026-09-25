@@ -1,6 +1,6 @@
-# vf-agentics — design
+# agentics — design
 
-This is the design of vf-agentics as it stands today. It describes the system that actually
+This is the design of agentics as it stands today. It describes the system that actually
 runs. It does not tell the story of how the system got here; git history has that.
 
 Two ground rules for reading it:
@@ -16,7 +16,7 @@ Two ground rules for reading it:
 
 ## What the plugin is
 
-vf-agentics is a Claude Code plugin for designing, investigating and building changes in any
+agentics is a Claude Code plugin for designing, investigating and building changes in any
 codebase. It works by orchestration: scripts decide what happens next, and models are called
 only for the steps that need judgment.
 
@@ -25,7 +25,7 @@ Everything it ships is declarative or a small script:
 | Directory | What lives there |
 |---|---|
 | `skills/` | Eight skills. These are the entry points a user invokes. |
-| `workflows/` | Five workflow scripts, all named `vfa-*`. They hold the orchestration. |
+| `workflows/` | Five workflow scripts, all named `agentics-*`. They hold the orchestration. |
 | `agents/` | Twelve agent constitutions. Each defines one narrow role. |
 | `lib/` | Node CLIs for everything deterministic that has to touch disk or git. |
 | `tools/` | `lint.mjs` and its rules under `tools/rules/`. |
@@ -40,14 +40,14 @@ that paste is kept honest is covered under [The ledger](#the-ledger).
 
 | Skill | What it is for | How it runs |
 |---|---|---|
-| `design` | Interview the user against evidence and produce a ratified design document | Session-driven. Calls `vfa-survey`, `vfa-find-existing-solutions` and `vfa-probe` |
-| `probe` | Attack a written document before anyone builds from it | `vfa-probe` |
-| `develop` | Implement a change: plan, code, verify, review, merge | `vfa-develop`, which nests `vfa-survey` |
+| `design` | Interview the user against evidence and produce a ratified design document | Session-driven. Calls `agentics-survey`, `agentics-find-existing-solutions` and `agentics-probe` |
+| `probe` | Attack a written document before anyone builds from it | `agentics-probe` |
+| `develop` | Implement a change: plan, code, verify, review, merge | `agentics-develop`, which nests `agentics-survey` |
 | `runs` | List a repository's runs and hand one back to `develop` | `lib/run-status.mjs` |
 | `plan` | Turn a staged design into a programme graph, with the user | Session-driven, `lib/programme.mjs` |
 | `programme` | Drive a programme one slice at a time | Session-driven. Calls `design` and `develop` |
-| `investigate` | Answer one large question, as a task list or a report | `vfa-investigate`, which nests `vfa-survey` |
-| `find-existing-solutions` | Find out whether something needs building at all | `vfa-find-existing-solutions` |
+| `investigate` | Answer one large question, as a task list or a report | `agentics-investigate`, which nests `agentics-survey` |
+| `find-existing-solutions` | Find out whether something needs building at all | `agentics-find-existing-solutions` |
 
 The main path is **design → ratified change → develop**. A design too big for one run takes a
 longer path: **design → plan → programme**, with one `develop` run per slice.
@@ -59,19 +59,19 @@ talks to the user or launches something, and a workflow script can do neither.
 
 | Path | What it holds |
 |---|---|
-| `.claude/vfa/runs/<runstamp>/` | One run's plan and ledgers |
-| `.claude/vfa/kb/` | The project knowledge base |
-| `.claude/vfa/efforts/<effort>/` | Everything one piece of work produced, across phases |
-| `.claude/vfa/programmes/<name>/` | A programme's event log and its rendered progress mirror |
+| `.claude/agentics/runs/<runstamp>/` | One run's plan and ledgers |
+| `.claude/agentics/kb/` | The project knowledge base |
+| `.claude/agentics/efforts/<effort>/` | Everything one piece of work produced, across phases |
+| `.claude/agentics/programmes/<name>/` | A programme's event log and its rendered progress mirror |
 | `.claude/worktrees/` | Integration, per-order and programme worktrees |
-| `docs/vfa/designs/` | Design documents. These are source and get committed |
+| `docs/agentics/designs/` | Design documents. These are source and get committed |
 
-Everything under `.claude/vfa/` and `.claude/worktrees/` is scaffolding, and the skills make
+Everything under `.claude/agentics/` and `.claude/worktrees/` is scaffolding, and the skills make
 sure it is gitignored.
 
 Branches follow fixed names, which is what makes interrupted work findable:
-`vfa/<runstamp>-<order-id>` for an order, `vfa/<runstamp>-integration` for a run's integration
-branch, and `vfa/programme-<name>` for a programme.
+`agentics/<runstamp>-<order-id>` for an order, `agentics/<runstamp>-integration` for a run's integration
+branch, and `agentics/programme-<name>` for a programme.
 
 ### How the plugin checks itself
 
@@ -86,7 +86,7 @@ The runtime artifacts are prompts and scripts, so they get checked in layers:
   real workflow scripts with scripted agents, so the arithmetic between dispatches is tested
   for real.
 - **Verbatim blocks stop copies drifting.** A contract restated in several files sits between
-  `<!-- vfa:verbatim <id> -->` markers, and `test/verbatim-blocks.test.mjs` requires every
+  `<!-- agentics:verbatim <id> -->` markers, and `test/verbatim-blocks.test.mjs` requires every
   copy of an id to match word for word. Several of those contracts have their canonical copy
   in this document.
 - **Pins.** `test/agent-allowlists.test.mjs` pins every agent's tool list, and
@@ -186,7 +186,7 @@ too.
 
 ## The survey
 
-`vfa-survey` is the shared evidence engine. `develop`, `investigate` and `design` all call it.
+`agentics-survey` is the shared evidence engine. `develop`, `investigate` and `design` all call it.
 It gathers evidence and **never concludes**: it returns findings and a coverage block, and the
 caller decides what they mean.
 
@@ -275,7 +275,7 @@ under Efforts, never as `prior`.)
 
 ## Investigate
 
-`vfa-investigate` answers one large question from evidence: what a change would break, why
+`agentics-investigate` answers one large question from evidence: what a change would break, why
 something regressed, how a subsystem behaves. It runs the survey and then one synthesis step.
 
 It returns either:
@@ -295,7 +295,7 @@ state such a fallback.
 
 ## Find existing solutions
 
-`vfa-find-existing-solutions` answers "should we write this at all?" It searches the world
+`agentics-find-existing-solutions` answers "should we write this at all?" It searches the world
 outside the codebase, which is the opposite direction from the survey.
 
 It runs in three phases:
@@ -352,7 +352,7 @@ The pass runs like this:
 
 ### The design document
 
-A single change is one file, `docs/vfa/designs/YYYY-MM-DD-<slug>.md`. A programme is a
+A single change is one file, `docs/agentics/designs/YYYY-MM-DD-<slug>.md`. A programme is a
 directory (see [Programmes](#programmes)).
 
 Its sections are Context, Decisions, The design, Open questions, and Settled evidence. The last
@@ -360,7 +360,7 @@ one is written for a planner rather than a person: it is exactly the `notes` pay
 consumes, and it stops the run from re-litigating what the design already settled.
 
 **Section markers are the machine-readable half.** `change`, `decisions` and
-`settled-evidence` are marked with `<!-- vfa:section <name> -->`. An optional `ground` section
+`settled-evidence` are marked with `<!-- agentics:section <name> -->`. An optional `ground` section
 lists the paths the change lives in, one per line. `lib/programme.mjs --section <name>` prints
 a section byte for byte, so nothing downstream composes or paraphrases a design. A document
 missing a required marker fails loudly, by name. Markers are written last, because a marker
@@ -392,7 +392,7 @@ skill still asks, and says so when a short pass makes continuing the cheaper cho
 
 ## Probe
 
-`vfa-probe` attacks a written document before anyone acts on it. Two properties make it worth
+`agentics-probe` attacks a written document before anyone acts on it. Two properties make it worth
 more than a careful reread, and both are structural:
 
 - **The probers are not the author.** Each analyst receives the document and the repository,
@@ -444,7 +444,7 @@ iterate on taste. The probe reports; a human rules.
 
 ## Develop
 
-`develop` implements one change. The workflow, `vfa-develop`, runs every wave of the plan in a
+`develop` implements one change. The workflow, `agentics-develop`, runs every wave of the plan in a
 single invocation, merging into an integration worktree it creates and owns.
 
 **The workflow never mutates the user's branch or working tree.** The user's tree moves once,
@@ -597,7 +597,7 @@ still builds.
 
 ### Coding
 
-One `coder` per order, in its own worktree on `vfa/<runstamp>-<order-id>`. It fetches its own
+One `coder` per order, in its own worktree on `agentics/<runstamp>-<order-id>`. It fetches its own
 order from disk with `lib/ledger.mjs order` and checks the digest, so order prose never travels
 through a model.
 
@@ -628,7 +628,7 @@ set being empty. A reviewer that could approve would be a reviewer that could be
 
 The exit contract, verbatim:
 
-<!-- vfa:verbatim review-loop-exit -->
+<!-- agentics:verbatim review-loop-exit -->
 - Dispatch a fresh reviewer each round with the work order, the worktree path, the span
   under review, the coder's `concerns`, the advisory `series_findings`, and — from round
   2 on — the prior round's open blockers (id, claim, fix commits since). Round 1 reviews
@@ -652,11 +652,11 @@ The exit contract, verbatim:
   commits, no amends, no rebase), re-verify, and dispatch a fresh reviewer.
 - No round counter ends this loop (IRON LAW §1). A budget error is caught and becomes an
   escalation carrying resumable state (IRON LAW §6) — never a silent stop.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 The code severity ladder the reviewer rules on, verbatim:
 
-<!-- vfa:verbatim severity-ladder -->
+<!-- agentics:verbatim severity-ladder -->
 - **critical** — must not merge: violates or fails an acceptance criterion; introduces
   incorrect behavior; security or data-loss risk; a new test that does not discriminate
   (would pass without the change); behavior change inside a commit presented as a refactor;
@@ -674,7 +674,7 @@ The code severity ladder the reviewer rules on, verbatim:
   an already-landed commit is advisory by definition — the series is append-only. Finding
   nothing new is a real, reportable answer; a severity is never raised to make a round
   look thorough.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 A fix verdict on a prior blocker is `fixed`, `not_fixed` or `regressed`.
 
@@ -685,7 +685,7 @@ Merging an approved branch is deterministic, so it is a script: `lib/merge.mjs` 
 agent only runs it and pastes the result, which carries a digest. The merge result contract,
 verbatim:
 
-<!-- vfa:verbatim merge-result -->
+<!-- agentics:verbatim merge-result -->
 Merge mode reports exactly four fields: `stop_reason` (`completed` or
 `environment_broken`), `merged_sha` (`''` when the merge did not complete — a fact, not
 a verdict), `conflicts` (conflicting paths verbatim from git; empty when none), and
@@ -695,7 +695,7 @@ never from `conflicts` alone, because an `environment_broken` merge has an empty
 list too, and reading that as success waves a broken merge through. Anything that is not
 `mergeOk` stops the merge run. A conflict is a planner defect — loci were declared
 pairwise disjoint — surfaced to the human, never resolved silently.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 After the last wave, a reviewer reads the **whole merged diff**. It has two charges: the
 defects that only exist once orders are together, and the review of every merged order that did
@@ -730,7 +730,7 @@ criterion is surfaced verbatim, because the session is its last consumer.
 After the human accepts the result, `lib/gc.mjs` cleans up: it removes the worktrees of merged
 branches and deletes those branches with `git branch -d`. It must be run from the checkout that
 took the merge, and it refuses everything if that does not hold. It reports what it kept and
-why, and it touches nothing outside `vfa/<runstamp>-*`. Escalated and held orders keep their
+why, and it touches nothing outside `agentics/<runstamp>-*`. Escalated and held orders keep their
 branches, because they are the resumable state.
 
 ### Checkpoints
@@ -783,14 +783,14 @@ An unreachable anchor holds the whole run.
 It comes back with `reason: 'carried_forward'`, and `retry_escalated` names the ones whose cause
 has been dealt with.
 
-Archiving moves old `landed` runs to `.claude/vfa/runs/archived/` on an explicit go. Run
+Archiving moves old `landed` runs to `.claude/agentics/runs/archived/` on an explicit go. Run
 directories are never deleted: they are the only record of what a run decided and did.
 
 ---
 
 ## The ledger
 
-A run's durable state lives in `.claude/vfa/runs/<runstamp>/`:
+A run's durable state lives in `.claude/agentics/runs/<runstamp>/`:
 
 - `plan.json` — what was decided, with its envelope and a digest manifest;
 - `plan.md` — the same plan, for a human;
@@ -898,7 +898,7 @@ layer repeats the WHAT → HOW → DO split one level up:
 | `plan` | the HOW | `programme.json` and `plan.md`, built with the user |
 | `programme` | the DO | one `develop` run per slice, on a branch the layer owns |
 
-Everything lives in one directory, `docs/vfa/designs/YYYY-MM-DD-<name>/`. **The programme's
+Everything lives in one directory, `docs/agentics/designs/YYYY-MM-DD-<name>/`. **The programme's
 identifier is the directory name**; there is no `slug` field, because a field restating the
 directory name can only ever disagree with it.
 
@@ -931,7 +931,7 @@ Delivered slices are never edited.
 
 ### Driving it
 
-The programme runs on `vfa/programme-<name>` in `.claude/worktrees/programme-<name>/`, created
+The programme runs on `agentics/programme-<name>` in `.claude/worktrees/programme-<name>/`, created
 lazily at the first dispatch. Every slice run gets the worktree as `roots`, the branch as
 `base_ref`, and its `programme` and `slice` tags copied from `programme.json`.
 
@@ -968,16 +968,16 @@ After each slice run:
 
 The develop skill's merge step is superseded inside a programme, and both skills pin the wording:
 
-<!-- vfa:verbatim programme-merge-target -->
+<!-- agentics:verbatim programme-merge-target -->
 In a programme run, develop step 3d's merge target is the programme branch, in the
 programme worktree, performed by the programme skill without a per-slice ask; its
 dirty-tree and no-open-escalation guards apply unchanged; the user-branch merge it
 describes happens once, at landing.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 **Landing is the one ask.** When the programme is complete, or the user says "land what we
 have", the session first reports how the user's branch drifted from the `opened` anchor, then
-asks, then merges `vfa/programme-<name>` into the user's checkout and appends `merged`. An empty
+asks, then merges `agentics/programme-<name>` into the user's checkout and appends `merged`. An empty
 frontier is not completeness: a slice delivered with an unruled gap blocks its dependents while
 nothing is in flight.
 
@@ -1227,7 +1227,7 @@ the next run pay again to learn what this one learned.
 Without a memory, every run opens blind on ground a previous run already paid to see. The
 knowledge base is that memory.
 
-It lives at `.claude/vfa/kb/` in the target repository and mirrors the source tree: one
+It lives at `.claude/agentics/kb/` in the target repository and mirrors the source tree: one
 append-only `node.jsonl` per node. `lib/kb.mjs` owns it.
 
 **It stores observations and computes everything judgmental on read.** A line says what was seen,
@@ -1303,7 +1303,7 @@ opened.
 It owns a directory:
 
 ```
-.claude/vfa/efforts/<effort>/
+.claude/agentics/efforts/<effort>/
   effort.json            { about, roots, opened_at }
   surveys/<stamp>.json   each survey's return, verbatim
   probes/<stamp>.json    each probe's findings, verbatim
@@ -1326,7 +1326,7 @@ anchor beside it: the commit it was taken at, and its `ground`, the subtrees its
 
 - the survey reported `coverage.complete`;
 - its commit is still an ancestor of HEAD;
-- no commit since reaches its ground (the pipeline's own `.claude/vfa/` is excluded);
+- no commit since reaches its ground (the pipeline's own `.claude/agentics/` is excluded);
 - no uncommitted edit sits on its ground.
 
 `develop` asks when the caller passes `effort` beside `settled_shape: true`. A standing survey is
@@ -1413,14 +1413,14 @@ Two conventions hold throughout:
 
 ### Plan envelope and work orders
 
-`.claude/vfa/runs/<runstamp>/plan.json`, written by the planner.
+`.claude/agentics/runs/<runstamp>/plan.json`, written by the planner.
 
 - **Owner:** the order shape is `WORK_ORDER_ITEM` (inside `WORK_ORDERS`) in
-  `workflows/vfa-develop.workflow.js`. No constant holds the whole envelope; the planner writes it
+  `workflows/agentics-develop.workflow.js`. No constant holds the whole envelope; the planner writes it
   following `agents/planner.md` step 9. The order digest is `ORDER_FIELDS` and `digestOrder` in
   `lib/plan-digest.mjs`.
 - **Restated in:** the planner and fix-lane prompts, `envelopeSection()` and the resume adoption
-  in `vfa-develop`; `deriveVerdict` in `lib/run-verdict.mjs`; `deriveRun` in `lib/run-status.mjs`;
+  in `agentics-develop`; `deriveVerdict` in `lib/run-verdict.mjs`; `deriveRun` in `lib/run-status.mjs`;
   `order` and `notes` in `lib/ledger.mjs`; `agents/planner.md`; `skills/develop` and `skills/runs`.
 
 The envelope:
@@ -1466,7 +1466,7 @@ plus `role` when it is not `none` and `reads` when it is non-empty. It does not 
 `state.jsonl`: what the workflow decided.
 
 - **Owner:** the builders `waveLine`, `orderStageLine`, `orderLine` and `escalationLine` in
-  `vfa-develop`, appended through `appendState` by the `run-state` recorder, as base64 with a
+  `agentics-develop`, appended through `appendState` by the `run-state` recorder, as base64 with a
   digest.
 - **Restated in:** `parseState` and `replay` in `lib/run-verdict.mjs`; `lib/run-status.mjs`;
   `agents/run-state.md`; `skills/develop`.
@@ -1492,7 +1492,7 @@ A line with no `kind` reads as a `wave` line.
 `lib/ledger.mjs append --file journal`.
 
 - **Owner:** `journalLine` in `lib/verify.mjs` for `verify-observed`. The other kinds are JSON
-  templates inside `vfa-develop`'s dispatch prompts. `parseJournal` in `lib/run-verdict.mjs` is
+  templates inside `agentics-develop`'s dispatch prompts. `parseJournal` in `lib/run-verdict.mjs` is
   what reads them back.
 - **Restated in:** `replay` in `lib/run-verdict.mjs`; `lib/run-status.mjs`;
   `agents/verifier.md`; `test/verify.test.mjs`; `skills/develop`.
@@ -1517,8 +1517,8 @@ still refuses a line that does not parse, has no `kind`, or has a non-integer `s
 
 ### The seq counter
 
-- **Owner:** `nextSeq()` in `vfa-develop`. On a resume it is seeded from the verdict's `seq_max`.
-- **Restated in:** the line builders and journal templates in `vfa-develop`; the `--seq` flag of
+- **Owner:** `nextSeq()` in `agentics-develop`. On a resume it is seeded from the verdict's `seq_max`.
+- **Restated in:** the line builders and journal templates in `agentics-develop`; the `--seq` flag of
   `lib/verify.mjs`; `entryProblem` in `lib/ledger.mjs`; the readers in `lib/run-verdict.mjs` and
   `lib/run-status.mjs`; `agents/verifier.md` and `agents/run-state.md`.
 
@@ -1537,7 +1537,7 @@ order's stages by it.
 - **Owner:** `blank()` and `verify()` in `lib/verify.mjs`.
 - **Restated in:** `VERIFY` (the investigate-mode shape, which adds `commands`), `CARRIED`,
   `carriedVerify`, `verifyInvocation`, the verify prompts, `measuredOf` and the verdict predicates
-  in `vfa-develop`; the behavioural copy of the predicates in `lib/run-verdict.mjs`;
+  in `agentics-develop`; the behavioural copy of the predicates in `lib/run-verdict.mjs`;
   `agents/verifier.md`.
 
 Fields:
@@ -1561,13 +1561,13 @@ mutations. Mutations arrive as base64 JSON on `--mutations-b64`.
 
 The series checks come from `lib/commit-series.mjs`: `empty-series`, `empty-commit`,
 `locus-breach`, `wip-subject`, `checkpoint-commit`, `and-subject` and `subject-length`. A
-checkpoint commit carries the `vfa-checkpoint` trailer.
+checkpoint commit carries the `agentics-checkpoint` trailer.
 
 ### Resume verdict
 
 - **Owner:** `deriveVerdict`, `nextActionFor` and `gitFacts` in `lib/run-verdict.mjs`.
 - **Restated in:** the `VERDICT` schema, `verdictPrompt` and `verdictProblem` (the digest
-  recheck) in `vfa-develop`; `agents/run-state.md`.
+  recheck) in `agentics-develop`; `agents/run-state.md`.
 
 The payload: `stop_reason` (`loaded | unreadable`), `runstamp`, `clean`, `envelope{change, roots,
 intelligence, base_branch, base_sha, programme, slice, caller_notes_len, caller_notes_digest}`,
@@ -1586,12 +1586,12 @@ ladder in [Resume](#resume). Escalations are reported and never acted on.
 
 ### Knowledge-base entry
 
-One line of `.claude/vfa/kb/**/node.jsonl`.
+One line of `.claude/agentics/kb/**/node.jsonl`.
 
 - **Owner:** `lib/kb.mjs` (`KINDS`, `entryProblem`, `stateOf`, `appendEntries`). Entries are minted
-  by `kbDeposits` in `vfa-develop` and `absenceDeposits` in `vfa-survey`.
-- **Restated in:** `agents/kb.md`; the `kb.mjs` command lines in the `vfa-develop` and
-  `vfa-survey` prompts; `skills/develop` and `skills/design`; `CLAUDE.md`.
+  by `kbDeposits` in `agentics-develop` and `absenceDeposits` in `agentics-survey`.
+- **Restated in:** `agents/kb.md`; the `kb.mjs` command lines in the `agentics-develop` and
+  `agentics-survey` prompts; `skills/develop` and `skills/design`; `CLAUDE.md`.
 
 Fields:
 
@@ -1629,8 +1629,8 @@ The CLI:
 ### Coverage block
 
 - **Owner:** there is no single definition, because scripts cannot import. The builders are
-  `coverageOf` in `vfa-survey`, `vfa-develop` and `vfa-find-existing-solutions`, and inline
-  literals in `vfa-probe` and `vfa-investigate`. The `coverage-block` lint rule requires every
+  `coverageOf` in `agentics-survey`, `agentics-develop` and `agentics-find-existing-solutions`, and inline
+  literals in `agentics-probe` and `agentics-investigate`. The `coverage-block` lint rule requires every
   workflow to return one.
 - **Restated in:** `skills/investigate`, `skills/find-existing-solutions`, `skills/develop`,
   `skills/probe`; `lib/programme.mjs` (which reads `complete` and `unreached`); `CLAUDE.md`.
@@ -1662,11 +1662,11 @@ Fields:
 
 ### Effort store
 
-`.claude/vfa/efforts/<effort>/`, described under [Efforts](#efforts).
+`.claude/agentics/efforts/<effort>/`, described under [Efforts](#efforts).
 
 - **Owner:** `lib/effort.mjs`.
 - **Restated in:** the verbatim block `effort-store` in `skills/design`, `skills/develop` and
-  `skills/probe`; the `prior` input of `vfa-survey` and `vfa-develop`, which accept it as a string;
+  `skills/probe`; the `prior` input of `agentics-survey` and `agentics-develop`, which accept it as a string;
   `CLAUDE.md`.
 
 The pieces:
@@ -1685,7 +1685,7 @@ The pieces:
 The CLI: `slug`, `open`, `record … survey|probe --file`, `link … run|design --value`, `read
 [--latest survey|probe]`, `standing`, and `list`. `standing` prints, under a digest,
 `{standing, why, effort, survey_path, stamp, observed_at, head, ground, commits_since, dirty}`.
-The `effort` input of `vfa-develop` restates the slug rule.
+The `effort` input of `agentics-develop` restates the slug rule.
 
 ### Programme graph and events
 
@@ -1695,7 +1695,7 @@ The `effort` input of `vfa-develop` restates the slug rule.
   routes, and the verbatim block `programme-merge-target`, twinned with `skills/develop`),
   `skills/design` (paths and section markers), `skills/runs`, `CLAUDE.md`.
 
-`docs/vfa/designs/<name>/programme.json`, read from the programme worktree when one exists:
+`docs/agentics/designs/<name>/programme.json`, read from the programme worktree when one exists:
 
 - `advance` — `gated | standing`, default `gated`.
 - `nodes[]`, each with:
@@ -1712,7 +1712,7 @@ Unknown keys are dropped. The design tree beside it holds `system.md` (requires 
 `settled-evidence` section), `slices/<id>.md` (requires `change`, `decisions` and
 `settled-evidence`; `ground` is optional) and `plan.md`.
 
-The event log is `.claude/vfa/programmes/<name>/state.jsonl`, append-only, written only by the
+The event log is `.claude/agentics/programmes/<name>/state.jsonl`, append-only, written only by the
 CLI's append verbs, and mirrored to `progress.md` on every append:
 
 - `opened` — `{base_branch, base_sha}`, once.
@@ -1736,18 +1736,18 @@ The CLI: render (`--json`, `--write-view`, `--watch`), `--notes <slice>`, `--cha
 
 What each workflow hands its caller. Every one also carries a `coverage` block.
 
-- **`vfa-survey`** — takes `question, roots, notes, max_topics, prior, intelligence, plugin_root`.
+- **`agentics-survey`** — takes `question, roots, notes, max_topics, prior, intelligence, plugin_root`.
   Returns `{question, topics, ground, verdicts[{topic, conclusion, evidence, risks}], history,
   docs, coverage}`, where `ground` is the topics' subtrees (`.` for a repository-wide topic). Search agents report `stop_reason` as `exhausted | unfinished | stuck`.
-- **`vfa-investigate`** — takes `question, roots, notes, as_tasks, intelligence`. Returns
+- **`agentics-investigate`** — takes `question, roots, notes, as_tasks, intelligence`. Returns
   `{question, mode, tasks{summary, gaps, tasks[{ref, subject, description, activeForm,
   blocked_by}]} | null, report | null, evidence | null, coverage}`. Tasks are capped at 12;
   `evidence` is set only when synthesis fails.
-- **`vfa-find-existing-solutions`** — takes `capability, roots, constraints, notes, max_angles,
+- **`agentics-find-existing-solutions`** — takes `capability, roots, constraints, notes, max_angles,
   intelligence`. Returns `{capability, constraints, frame, already_present[{path, line, note}],
   candidates[{name, source_url, what_it_is, latest_version, license, maintenance, covers,
   does_not_cover, disqualifiers_hit}], viable, ruled_out[{name, why}], coverage}`.
-- **`vfa-probe`** — takes `artifact, roots, context, max_derived_axes, per_axis, plugin_root`.
+- **`agentics-probe`** — takes `artifact, roots, context, max_derived_axes, per_axis, plugin_root`.
   Returns `axes[{key, source}]`, `axes_dropped`, `analysts` (the axis keys each analyst held),
   `shared_ground`, `guidance_read`,
   `findings[{id, severity: ambiguity | gap | note, section, claim, evidence, axis}]`,
@@ -1755,7 +1755,7 @@ What each workflow hands its caller. Every one also carries a `coverage` block.
   `lib/citations.mjs` prints `{artifact, repo, read_error, files[{path, lines, cited_at,
   excerpts}], unresolved[{path, why: missing | out_of_range, detail}], counts, artifact_lines,
   notes}`.
-- **`vfa-develop`** — every exit goes through `developResult`: `{change, work_orders, coupled,
+- **`agentics-develop`** — every exit goes through `developResult`: `{change, work_orders, coupled,
   deferred, blocked, implemented, escalations, integration, plan_path, checkpoint,
   survey_coverage, coverage}`. `checkpoint` is `null` unless the run stopped before dispatching
   (see [Checkpoints](#checkpoints)). `integration` carries `branch`, `merged`, `head_sha`,

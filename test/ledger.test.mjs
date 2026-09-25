@@ -19,11 +19,11 @@ import { join } from 'node:path'
 import { appendLine, digestEntry, entryProblem, readNotes, readOrder } from '../lib/ledger.mjs'
 import { digestOrder } from '../lib/plan-digest.mjs'
 
-const runDir = () => mkdtempSync(join(tmpdir(), 'vfa-ledger-'))
+const runDir = () => mkdtempSync(join(tmpdir(), 'agentics-ledger-'))
 
 const line = (over = {}) => ({
   kind: 'order-approved', seq: 4, wave: 1, order: 'W2',
-  branch: 'vfa/20260826-184728-W2', worktree: 'C:/repo/.claude/worktrees/w2',
+  branch: 'agentics/20260826-184728-W2', worktree: 'C:/repo/.claude/worktrees/w2',
   head_sha: 'b'.repeat(40), measured: ['build', 'suite'],
   merged: [], approved_unmerged: [], escalated: [], discovered: [],
   integration_base: '', integration_head: '', ...over,
@@ -245,7 +245,7 @@ test('a journal line goes in without a digest but still has to parse', () => {
 
 test('a run directory that is not there is an error, never a silent success', () => {
   const entry = line()
-  const out = appendLine(join(tmpdir(), 'vfa-no-such-dir-' + entry.seq), 'state',
+  const out = appendLine(join(tmpdir(), 'agentics-no-such-dir-' + entry.seq), 'state',
     JSON.stringify(entry), digestEntry(entry))
 
   assert.equal(out.ok, false)
@@ -295,6 +295,6 @@ test('the caller notes come back whole, and their absence is an empty string', (
 })
 
 test('an unreadable plan is an error rather than an empty order', () => {
-  assert.match(readOrder(join(tmpdir(), 'vfa-absent'), 'W2').error, /plan\.json could not be read/)
-  assert.match(readNotes(join(tmpdir(), 'vfa-absent')).error, /plan\.json could not be read/)
+  assert.match(readOrder(join(tmpdir(), 'agentics-absent'), 'W2').error, /plan\.json could not be read/)
+  assert.match(readNotes(join(tmpdir(), 'agentics-absent')).error, /plan\.json could not be read/)
 })

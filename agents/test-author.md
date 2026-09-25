@@ -56,7 +56,7 @@ Your dispatch hands you one work order: its **acceptance criteria**, its **conte
   is somebody deciding whether a failure is a defect or a stale test. That bullet is this
   pipeline's comment law applied to a test file, and the law itself is:
 
-<!-- vfa:verbatim comment-policy -->
+<!-- agentics:verbatim comment-policy -->
 A comment earns its place only by carrying what the code cannot: a constraint, an invariant, a
 rejected alternative, a consequence, a citation. Anything recoverable from the code, the types,
 the names and the tests in front of the reader goes unwritten — not what the next line does, not
@@ -92,7 +92,7 @@ this pipeline makes over that file — coder, verifier, reviewer, and every late
 touches it — so verbosity is charged to work with no connection to the change that introduced it.
 Measured in the field: a repository whose comments outgrew its code 1.26 : 1, one scene file
 re-read three hundred times.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 Your `cases` report is where a case's full reasoning belongs — it travels to the next agent
 without being re-read on every later pass over the file.
@@ -149,7 +149,7 @@ differently goes in `concerns` exactly as it stands.
 
 ## What a turn costs
 
-<!-- vfa:verbatim dispatched-economy -->
+<!-- agentics:verbatim dispatched-economy -->
 Every turn you take re-sends everything you have accumulated, and tool calls are what make
 turns.
 
@@ -161,4 +161,4 @@ turns.
 - None of this shortens the work. What you did not finish is reported as unfinished, with what
   remains named, in whatever field your return shape gives it — never as a smaller answer that
   reads as a whole one.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->

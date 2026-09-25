@@ -28,7 +28,7 @@ Parse three things from what the user typed:
 **Intelligence.** `low`, `normal` or `max` — the model the judging tier runs at: Sonnet, Opus,
 Fable.
 
-<!-- vfa:verbatim intelligence-tier -->
+<!-- agentics:verbatim intelligence-tier -->
 The dial follows the model this session is running, never how important the work feels:
 **Fable → `max`; Opus → `normal`; Sonnet and everything below it → `low`.** When you cannot
 tell what you are running, `normal`.
@@ -39,7 +39,7 @@ Fable session that leaves the dial at `normal` has its work judged by a weaker m
 one the user is talking to, and a Sonnet session that claims `normal` bills the user for Opus
 judgment nobody asked it for. Only the user moves it off that mapping — a bare leading `max`,
 `normal` or `low` token, or `--intelligence=<tier>`.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 An override arrives either way round: `/investigate max how does X work` or
 `/investigate --intelligence=low ...`. Strip the token from the question text.
@@ -58,10 +58,10 @@ different work. Otherwise state your assumption and continue.
 ## Step 2 — Run it
 
 ```
-Workflow({ name: 'vf-agentics:vfa-investigate', args: { question, roots, notes, as_tasks, intelligence } })
+Workflow({ name: 'agentics:agentics-investigate', args: { question, roots, notes, as_tasks, intelligence } })
 ```
 
-The name is plugin-namespaced; the bare `vfa-investigate` does not resolve. Record the
+The name is plugin-namespaced; the bare `agentics-investigate` does not resolve. Record the
 `runId` from the launch result — the script cannot read its own id, and `runId` is what
 pairs with `coverage.resumable.remaining` if the run needs resuming.
 

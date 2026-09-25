@@ -1,4 +1,4 @@
-// test/vfa-develop-fix-lane.test.mjs — the cheap lane, and what it refuses to make cheap.
+// test/agentics-develop-fix-lane.test.mjs — the cheap lane, and what it refuses to make cheap.
 //
 // The triage section has been honest about its own numbers for a while: a ten-session field
 // audit found SEVEN of ten better served by a direct session, and identified what the pipeline
@@ -19,13 +19,13 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import { carriedPayload, scriptedAgents, runWorkflow } from './harness/workflow-host.mjs'
 
-const WF = fileURLToPath(new URL('../workflows/vfa-develop.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../workflows/agentics-develop.workflow.js', import.meta.url))
 
 const A40 = 'a'.repeat(40)
 const B40 = 'b'.repeat(40)
 const M40 = 'e'.repeat(40)
 
-const RUN_DIR = 'C:/repo/.claude/vfa/runs/20260904-150000'
+const RUN_DIR = 'C:/repo/.claude/agentics/runs/20260904-150000'
 const LOCUS = ['src/camera.ts']
 
 const ARGS = {
@@ -50,7 +50,7 @@ const plan = {
 }
 
 const coded = (over = {}) => ({
-  status: 'done', worktree: 'C:/wt/W1', branch: 'vfa/20260904-150000-W1',
+  status: 'done', worktree: 'C:/wt/W1', branch: 'agentics/20260904-150000-W1',
   base_sha: A40, head_sha: B40,
   commits: [{ sha: B40, subject: 'fix: round the other way' }],
   concerns: [], discovered: [], summary: 's', ...over,
@@ -68,11 +68,11 @@ const cast = (over = {}) => scriptedAgents({
   plan,
   drift: { stop_reason: 'completed', user_head: A40, moved_files: [], notes: 'unchanged' },
   'integration-setup': { stop_reason: 'completed', worktree: 'C:/repo/.claude/worktrees/x',
-    branch: 'vfa/20260904-150000-integration', head_sha: A40, notes: 'created' },
+    branch: 'agentics/20260904-150000-integration', head_sha: A40, notes: 'created' },
   'merge:': { stop_reason: 'completed', merged_sha: M40, conflicts: [], notes: 'merged' },
   'wave-verify:': verified({ discriminator: [] }),
   'record:': { stop_reason: 'recorded', path: RUN_DIR, notes: 'appended' },
-  'kb-write': { stop_reason: 'recorded', path: '.claude/vfa/kb', notes: 'appended' },
+  'kb-write': { stop_reason: 'recorded', path: '.claude/agentics/kb', notes: 'appended' },
   history: { stop_reason: 'exhausted',
     findings: 'c0ffee1 2026-08-14 "perf: cache the zoom factor" changed src/camera.ts:88',
     searched: 'main, src/camera.ts, last 90 days' },

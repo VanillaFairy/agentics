@@ -25,7 +25,7 @@ import {
 } from '../lib/effort.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/effort.mjs', import.meta.url))
-const fresh = () => mkdtempSync(join(tmpdir(), 'vfa-effort-')).split('\\').join('/')
+const fresh = () => mkdtempSync(join(tmpdir(), 'agentics-effort-')).split('\\').join('/')
 
 const run = (...args) => {
   const out = execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8' })
@@ -96,12 +96,12 @@ test('runs and designs are pointers — the run directory is not moved under the
   const repo = fresh()
   openEffort(repo, { slug: 'e1', about: 'x' })
   assert.equal(linkTo(repo, 'e1', 'run', '20260904-101112').ok, true)
-  assert.equal(linkTo(repo, 'e1', 'design', 'docs/vfa/designs/x.md').ok, true)
+  assert.equal(linkTo(repo, 'e1', 'design', 'docs/agentics/designs/x.md').ok, true)
   assert.equal(linkTo(repo, 'e1', 'run', '20260904-101112').ok, true)
 
   const read = readEffort(repo, 'e1', '')
   assert.deepEqual(read.runs, ['20260904-101112'], 'the same run linked twice is one run')
-  assert.deepEqual(read.designs, ['docs/vfa/designs/x.md'])
+  assert.deepEqual(read.designs, ['docs/agentics/designs/x.md'])
   assert.equal(existsSync(join(repo, ...EFFORTS_DIR.split('/'), 'e1', 'runs')), false)
 })
 
@@ -255,10 +255,10 @@ test('an uncommitted edit on the ground un-stands it; one elsewhere does not', (
   assert.deepEqual(out.dirty, ['src/a/new.js'])
 })
 
-test('a repository-wide survey is not un-stood by the pipeline\'s own state under .claude/vfa', () => {
+test('a repository-wide survey is not un-stood by the pipeline\'s own state under .claude/agentics', () => {
   const dir = gitRepo()
   surveyed(dir, SURVEY({ ground: ['.'] }))
-  put(dir, { '.claude/vfa/runs/r1/state.jsonl': '{}\n' })
+  put(dir, { '.claude/agentics/runs/r1/state.jsonl': '{}\n' })
 
   assert.equal(standingSurvey(dir, 'e').standing, true)
 

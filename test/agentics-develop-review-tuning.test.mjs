@@ -1,4 +1,4 @@
-// test/vfa-develop-review-tuning.test.mjs — the retuned review loop (the 2026-08-19 field
+// test/agentics-develop-review-tuning.test.mjs — the retuned review loop (the 2026-08-19 field
 // data).
 //
 // Sixty agents into a Stage 2 run, the pattern was implement -> verify -> review ->
@@ -15,14 +15,14 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import { carriedChain, carriedPayload, runWorkflow, scriptedAgents } from './harness/workflow-host.mjs'
 
-const WF = fileURLToPath(new URL('../workflows/vfa-develop.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../workflows/agentics-develop.workflow.js', import.meta.url))
 
 const A40 = 'a'.repeat(40)
 const B40 = 'b'.repeat(40)
 const C40 = 'c'.repeat(40)
 const M40 = 'e'.repeat(40)
 
-const RUN_DIR = 'C:/repo/.claude/vfa/runs/20260816-143005'
+const RUN_DIR = 'C:/repo/.claude/agentics/runs/20260816-143005'
 const ARGS = { change: 'add the thing', roots: '.', plugin_root: 'C:/plugin' }
 
 const surveyResult = () => ({
@@ -74,13 +74,13 @@ const cast = (over = {}) => scriptedAgents({
   plan: plan([order('W1', { contract: true })]),
   'integration-setup': {
     stop_reason: 'completed', worktree: 'C:/repo/.claude/worktrees/int',
-    branch: 'vfa/20260816-143005-integration', head_sha: A40, notes: 'created',
+    branch: 'agentics/20260816-143005-integration', head_sha: A40, notes: 'created',
   },
   'merge:': { stop_reason: 'completed', merged_sha: M40, conflicts: [], notes: 'merged' },
   'wave-verify:': verified(),
   'record:': { stop_reason: 'recorded', path: RUN_DIR + '/state.jsonl', notes: 'appended' },
   'kb-chain': carriedChain(),
-  'kb-write': { stop_reason: 'recorded', path: '.claude/vfa/kb', notes: 'appended' },
+  'kb-write': { stop_reason: 'recorded', path: '.claude/agentics/kb', notes: 'appended' },
   'review:integration': { findings: [], fix_verdicts: [] },
   'code:': coded(),
   'verify:': verified(),

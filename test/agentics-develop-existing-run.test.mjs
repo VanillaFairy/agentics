@@ -1,4 +1,4 @@
-// test/vfa-develop-existing-run.test.mjs — the existing-run guard (the 2026-08-19 field
+// test/agentics-develop-existing-run.test.mjs — the existing-run guard (the 2026-08-19 field
 // incident).
 //
 // The 2026-08-17 incident got step 0 in the develop skill: look for a run before planning
@@ -11,7 +11,7 @@
 // runstamp, which also renamed every order id and thereby blinded the scavenger).
 //
 // The guard is the mechanical end of it: before a fresh invocation surveys anything, one
-// cheap observation of .claude/vfa/runs, and an exact string comparison — computed by the
+// cheap observation of .claude/agentics/runs, and an exact string comparison — computed by the
 // script, never judged by the agent — between this change and every planned or in-flight
 // run's recorded one. A match is a checkpoint, not a plan.
 
@@ -49,13 +49,13 @@ const resumeLoad = (v) => ({
 })
 
 
-const WF = fileURLToPath(new URL('../workflows/vfa-develop.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../workflows/agentics-develop.workflow.js', import.meta.url))
 
 const A40 = 'a'.repeat(40)
 const B40 = 'b'.repeat(40)
 const M40 = 'e'.repeat(40)
 
-const RUN_DIR = 'C:/repo/.claude/vfa/runs/20260819-062330'
+const RUN_DIR = 'C:/repo/.claude/agentics/runs/20260819-062330'
 const ARGS = { change: 'add the thing', roots: '.', plugin_root: 'C:/plugin' }
 
 const surveyResult = () => ({
@@ -92,8 +92,8 @@ const cast = (over = {}) => scriptedAgents({
   'existing-runs': observed(),
   plan: plan(),
   'integration-setup': {
-    stop_reason: 'completed', worktree: 'C:/repo/.claude/worktrees/vfa-20260819-062330-integration',
-    branch: 'vfa/20260819-062330-integration', head_sha: A40, notes: 'created',
+    stop_reason: 'completed', worktree: 'C:/repo/.claude/worktrees/agentics-20260819-062330-integration',
+    branch: 'agentics/20260819-062330-integration', head_sha: A40, notes: 'created',
   },
   'merge:': { stop_reason: 'completed', merged_sha: M40, conflicts: [], notes: 'merged' },
   'wave-verify:': carriedPayload({
@@ -102,7 +102,7 @@ const cast = (over = {}) => scriptedAgents({
   }),
   'record:': { stop_reason: 'recorded', path: RUN_DIR + '/state.jsonl', notes: 'appended' },
   'kb-chain': carriedChain(),
-  'kb-write': { stop_reason: 'recorded', path: '.claude/vfa/kb', notes: 'appended' },
+  'kb-write': { stop_reason: 'recorded', path: '.claude/agentics/kb', notes: 'appended' },
   'review:integration': { findings: [], fix_verdicts: [] },
   'code:': {
     status: 'done', worktree: 'C:/wt/w1', branch: 'wo-w1', base_sha: A40, head_sha: B40,
@@ -228,5 +228,5 @@ test('the guard prompt names the CLI and forbids the agent a verdict', async () 
   assert.match(guard.prompt, /run-status\.mjs/)
   assert.match(guard.prompt, /VERBATIM/i)
   assert.match(guard.prompt, /judge nothing/)
-  assert.equal(guard.opts.agentType, 'vf-agentics:verifier')
+  assert.equal(guard.opts.agentType, 'agentics:verifier')
 })

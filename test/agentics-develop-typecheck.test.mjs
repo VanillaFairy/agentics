@@ -1,4 +1,4 @@
-// test/vfa-develop-typecheck.test.mjs — the third mechanical answer, and the note that reached
+// test/agentics-develop-typecheck.test.mjs — the third mechanical answer, and the note that reached
 // nobody.
 //
 // A passing suite is not evidence that the tree compiles. Vitest and Jest transform TypeScript
@@ -28,15 +28,15 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import { carriedChain, carriedPayload, scriptedAgents, runWorkflow } from './harness/workflow-host.mjs'
 
-const WF = fileURLToPath(new URL('../workflows/vfa-develop.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../workflows/agentics-develop.workflow.js', import.meta.url))
 
 const A40 = 'a'.repeat(40)
 const B40 = 'b'.repeat(40)
 const M40 = 'e'.repeat(40)
 
-const RUN_DIR = 'C:/repo/.claude/vfa/runs/20260904-113000'
+const RUN_DIR = 'C:/repo/.claude/agentics/runs/20260904-113000'
 // These scenarios pin the per-order review loop, so they ask for it on every order; the default,
-// which reviews only yardstick orders per order, is pinned in vfa-develop-review-scope.
+// which reviews only yardstick orders per order, is pinned in agentics-develop-review-scope.
 const ARGS = { change: 'add a member to the closed union', roots: '.', plugin_root: 'C:/plugin', review_every_order: true }
 
 const W1 = {
@@ -55,7 +55,7 @@ const plan = {
 }
 
 const coded = (over = {}) => ({
-  status: 'done', worktree: 'C:/wt/W1', branch: 'vfa/20260904-113000-W1',
+  status: 'done', worktree: 'C:/wt/W1', branch: 'agentics/20260904-113000-W1',
   base_sha: A40, head_sha: B40,
   commits: [{ sha: B40, subject: 'feat: tuck the row in' }],
   concerns: [], discovered: [], summary: 's', ...over,
@@ -74,12 +74,12 @@ const cast = (over = {}) => scriptedAgents({
   plan,
   drift: { stop_reason: 'completed', user_head: A40, moved_files: [], notes: 'unchanged' },
   'integration-setup': { stop_reason: 'completed', worktree: 'C:/repo/.claude/worktrees/x',
-    branch: 'vfa/20260904-113000-integration', head_sha: A40, notes: 'created' },
+    branch: 'agentics/20260904-113000-integration', head_sha: A40, notes: 'created' },
   'merge:': { stop_reason: 'completed', merged_sha: M40, conflicts: [], notes: 'merged' },
   'wave-verify:': verified({ discriminator: [] }),
   'record:': { stop_reason: 'recorded', path: RUN_DIR, notes: 'appended' },
   'kb-chain': carriedChain(),
-  'kb-write': { stop_reason: 'recorded', path: '.claude/vfa/kb', notes: 'appended' },
+  'kb-write': { stop_reason: 'recorded', path: '.claude/agentics/kb', notes: 'appended' },
   ...over,
   'code:': over['code:'] || coded(),
   'verify:': over['verify:'] || verified(),

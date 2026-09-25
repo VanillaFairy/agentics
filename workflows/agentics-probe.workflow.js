@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'vfa-probe',
+  name: 'agentics-probe',
   description: 'Adversarially probe a written artefact — a design, a proposal, a spec — with independent analysts who receive the document and the target repository\'s own guidance and nothing from its author. Rules on the design severity ladder; the gate is computed.',
   phases: [
     { title: 'Axes', detail: 'read the target repo\'s own review guidance for what to attack' },
@@ -125,7 +125,7 @@ function probeFindings(axisKeys) {
 }
 
 // What the citation courier hands back: one command's stdout, byte-exact, in one string.
-// Copied from `vfa-survey`'s CARRIED rather than shared, because a workflow script cannot
+// Copied from `agentics-survey`'s CARRIED rather than shared, because a workflow script cannot
 // import — the copies are diffed against each other and against the library's output.
 //
 // `failed` is the courier unable to run the command AT ALL. An artefact that cites nothing is
@@ -459,7 +459,7 @@ phase('Axes')
 // for them one after the other would add the slower one's wall-clock to the faster one's for
 // nothing.
 const groundHeld = agent(groundPrompt(), {
-  agentType: 'vf-agentics:ground', effort: 'low', model: 'haiku', schema: CARRIED,
+  agentType: 'agentics:ground', effort: 'low', model: 'haiku', schema: CARRIED,
   phase: 'Ground', label: 'ground',
 }).catch((e) => {
   log(`WARNING: resolving the document's cited evidence failed: ${e && e.message}`)
@@ -467,7 +467,7 @@ const groundHeld = agent(groundPrompt(), {
 })
 
 const discovered = await agent(axesPrompt(), {
-  agentType: 'vf-agentics:analyst', effort: 'low', schema: AXES,
+  agentType: 'agentics:analyst', effort: 'low', schema: AXES,
   phase: 'Axes', label: 'axes',
 }).catch((e) => {
   log(`WARNING: reading the repository's review guidance failed: ${e && e.message}`)
@@ -490,7 +490,7 @@ if (!discovered || discovered.stop_reason === 'unreadable') {
 }
 
 // The cap, applied to the DERIVED axes only. What it drops is a declared narrowing rather than
-// a coverage failure — the same distinction `vfa-develop`'s fix lane draws when a caller names a
+// a coverage failure — the same distinction `agentics-develop`'s fix lane draws when a caller names a
 // locus instead of buying a survey — so it does not flip `coverage.complete`, which stays what it
 // has always been: axes this probe COMMISSIONED and did not get a report from. It is named in
 // `unreached` and in `resumable.remaining` all the same, because "an axis nobody ran" and "an
@@ -513,7 +513,7 @@ if (!ground.payload) {
   // Degraded, and deliberately NOT a failed channel. A shared-ground read that does not happen
   // costs this probe nothing it was going to have: every analyst locates the document's evidence
   // itself, exactly as it did before this dispatch existed. More work, not less evidence — the
-  // same stance `vfa-survey` takes toward an unreadable knowledge base.
+  // same stance `agentics-survey` takes toward an unreadable knowledge base.
   log(`The document's cited evidence was not resolved (${ground.why}); every analyst locates it ` +
     `itself, as it did before. More work, not less evidence.`)
 } else {
@@ -554,7 +554,7 @@ log(`Probing ${artifact} on ${axes.length} axes with ${analysts} analyst(s) — 
 // left stays in the coverage block as unreached.
 async function attack(bundle) {
   const opts = {
-    agentType: 'vf-agentics:analyst', effort: 'high',
+    agentType: 'agentics:analyst', effort: 'high',
     schema: probeFindings(bundle.map((a) => a.key)), phase: 'Probe', label: bundleLabel(bundle),
   }
   const passes = []

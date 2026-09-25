@@ -1,4 +1,4 @@
-// test/vfa-develop-red-green.test.mjs — the RED/GREEN work-order split.
+// test/agentics-develop-red-green.test.mjs — the RED/GREEN work-order split.
 //
 // A work order may declare `role: 'red' | 'green'`. A RED order lands tests that MUST fail —
 // that is its entire purpose — so the ordinary verification verdict, which treats a failing
@@ -30,16 +30,16 @@ import { digestEntry } from '../lib/ledger.mjs'
 const resumeLoad = resumeVerdict
 
 
-const WF = fileURLToPath(new URL('../workflows/vfa-develop.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../workflows/agentics-develop.workflow.js', import.meta.url))
 
 const A40 = 'a'.repeat(40)
 const B40 = 'b'.repeat(40)
 const M40 = 'e'.repeat(40)
 const N40 = 'f'.repeat(40)
 
-const RUN_DIR = 'C:/repo/.claude/vfa/runs/20260816-143005'
+const RUN_DIR = 'C:/repo/.claude/agentics/runs/20260816-143005'
 // These scenarios pin the per-order review loop, so they ask for it on every order; the default,
-// which reviews only yardstick orders per order, is pinned in vfa-develop-review-scope.
+// which reviews only yardstick orders per order, is pinned in agentics-develop-review-scope.
 const ARGS = { change: 'add the widget', roots: '.', plugin_root: 'C:/plugin', review_every_order: true }
 
 // A red/green pair: R1 owns the test file, G1 owns the implementation and depends on R1.
@@ -101,7 +101,7 @@ const redVerified = (over = {}) => verified({
 
 const setUp = (over = {}) => ({
   stop_reason: 'completed', worktree: 'C:/repo/.claude/worktrees/x',
-  branch: 'vfa/20260816-143005-integration', head_sha: A40, notes: 'created', ...over,
+  branch: 'agentics/20260816-143005-integration', head_sha: A40, notes: 'created', ...over,
 })
 
 const merged = (sha = M40, over = {}) => ({
@@ -136,7 +136,7 @@ const cast = (over = {}) => scriptedAgents({
   'wave-verify:': verified({ discriminator: [], suite: 'passed' }),
   'record:': recorded(),
   'kb-chain': carriedChain(),
-  'kb-write': { stop_reason: 'recorded', path: '.claude/vfa/kb', notes: 'appended' },
+  'kb-write': { stop_reason: 'recorded', path: '.claude/agentics/kb', notes: 'appended' },
   'review:integration': reviewed(),
   ...over,
   'code:': over['code:'] || coded(),
@@ -306,7 +306,7 @@ test('a red whose green never lands is reported unmerged, not merged alone', asy
 // pending red's failures past wave verification has to survive for it. What this run will not
 // do is create the state: the two cases below reach it only through a resumed ledger.
 
-const RESUMED = 'C:/repo/.claude/vfa/runs/20260816-143005'
+const RESUMED = 'C:/repo/.claude/agentics/runs/20260816-143005'
 
 /** A ledger from a pre-hold invocation: R1 merged alone, G1 still to build. */
 const legacyRedMerged = (over = {}) => resumeLoad({
@@ -821,7 +821,7 @@ test('a state line carrying a Windows path survives the transport intact', async
   const entry = JSON.parse(Buffer.from(call[2], 'base64').toString('utf8'))
 
   assert.equal(digestEntry(entry), call[1])
-  assert.ok(!/VFASTATE/.test(record.prompt),
+  assert.ok(!/AGENTICSSTATE/.test(record.prompt),
     'no heredoc remains on the path that mints its own lines')
 })
 

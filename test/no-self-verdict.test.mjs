@@ -11,10 +11,10 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { id, applies, check } from '../tools/rules/no-self-verdict.mjs'
 
-const FILE = 'workflows/vfa-develop.workflow.js'
+const FILE = 'workflows/agentics-develop.workflow.js'
 
 test('it applies to workflow scripts and nothing else', () => {
-  assert.ok(applies.test('workflows/vfa-develop.workflow.js'))
+  assert.ok(applies.test('workflows/agentics-develop.workflow.js'))
   assert.ok(!applies.test('agents/reviewer.md'))
   assert.ok(!applies.test('tools/lint.mjs'))
 })

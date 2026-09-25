@@ -1,6 +1,6 @@
 ---
 name: develop
-description: Use when the user asks to implement a change, feature, or fix through the vf-agentics pipeline — surveyed evidence, planned work orders, focused commits, mechanical verification, and an adversarial review loop. Not for read-only questions (investigate).
+description: Use when the user asks to implement a change, feature, or fix through the agentics pipeline — surveyed evidence, planned work orders, focused commits, mechanical verification, and an adversarial review loop. Not for read-only questions (investigate).
 ---
 
 # develop
@@ -12,7 +12,7 @@ Invoking this skill **is** the user's opt-in for the `Workflow` tool. Do not ask
 **Intelligence** sets the tier for the whole run — the judging agents, and at `max` the coder
 along with them, though never to the same model.
 
-<!-- vfa:verbatim intelligence-tier -->
+<!-- agentics:verbatim intelligence-tier -->
 The dial follows the model this session is running, never how important the work feels:
 **Fable → `max`; Opus → `normal`; Sonnet and everything below it → `low`.** When you cannot
 tell what you are running, `normal`.
@@ -23,7 +23,7 @@ Fable session that leaves the dial at `normal` has its work judged by a weaker m
 one the user is talking to, and a Sonnet session that claims `normal` bills the user for Opus
 judgment nobody asked it for. Only the user moves it off that mapping — a bare leading `max`,
 `normal` or `low` token, or `--intelligence=<tier>`.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 **What each position moves.** The judging agents — the planner, every reviewer, and the
 analysts of the nested survey — run on Sonnet at `low`, Opus at `normal`, Fable at `max`. The
@@ -69,7 +69,7 @@ asks for per-order review.
 nothing implemented. Use it when the user says to plan something now and build it later, or
 wants to look at the decomposition before paying for it. The run returns a checkpoint whose
 `reason` is `plan_only`; implementing it later is a resume, not a re-plan, and costs no
-second survey. Several plans may sit parked at once — that is the point — and `/vf-agentics:runs`
+second survey. Several plans may sit parked at once — that is the point — and `/agentics:runs`
 is how the user finds them again.
 
 `base_ref` names the branch the run's integration worktree is cut from. Absent, it is the
@@ -153,9 +153,9 @@ is not bought.
 | what the answers say | rung | what it buys |
 |---|---|---|
 | no behaviour changes: a rename, a typo, a one-line constant | **direct** | you write it and run the project's checks |
-| locus known, shape settled, small | **direct + reviewer** | you write the failing test first, then the change, run the checks, and dispatch one fresh `vf-agentics:reviewer` over the diff |
+| locus known, shape settled, small | **direct + reviewer** | you write the failing test first, then the change, run the checks, and dispatch one fresh `agentics:reviewer` over the diff |
 | locus known (one or several files), shape settled, nothing to partition, too big to finish comfortably here | **fix lane** | `lane: 'fix'` with that locus: worktree, mechanical verification with the discriminator, the integration review, resumability |
-| shape not settled | **design first** | `vf-agentics:design`, then this skill with the design's effort — its survey is not bought twice |
+| shape not settled | **design first** | `agentics:design`, then this skill with the design's effort — its survey is not bought twice |
 | shape settled, several loci or independent pieces | **full run, trimmed** | the full lane with `settled_shape: true`, `ground` and `effort`, so the survey collapses wherever the knowledge base or the design's survey already covers the ground |
 | ground unknown | **full run** | survey, plan, partition, waves |
 
@@ -174,7 +174,7 @@ On the direct + reviewer rung you supply both by hand; on every other rung the p
 **Anything you dispatch yourself — that reviewer, or any agent outside the workflow — is paid for
 by the turn.**
 
-<!-- vfa:verbatim dispatch-economy -->
+<!-- agentics:verbatim dispatch-economy -->
 A dispatch costs context × turns, and every agent pays its own. Tool calls are what make turns;
 parallel agents share only the system prompt, so a prompt body handed to four agents is paid four
 times; and what an agent returns is re-read on every later turn of the session that dispatched
@@ -190,7 +190,7 @@ it.
   ends.
 - To check a change, re-dispatch narrowed to what changed and name the narrowing in coverage.
   Never re-run the whole pass.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 **Declining is a recommendation, never a refusal.** The user's "run it anyway" is the end of
 the conversation, not the start of a second round of it — proceed to step 1 and say nothing
@@ -299,7 +299,7 @@ gathered today, and they are entitled to know which one they have.
 
 ## Where this run is recorded
 
-<!-- vfa:verbatim effort-store -->
+<!-- agentics:verbatim effort-store -->
 **Efforts — one directory for everything this piece of work produces.** A change moves through
 design, survey, probe and one or more runs, and every phase records what it returned in the
 effort's directory. Design and develop are separate sessions by recommendation, so this is how
@@ -325,7 +325,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" record <repo> <slug> survey|probe --
 ```
 
 Link a run and the design document as each comes into being. These are **pointers**: run state
-stays at `.claude/vfa/runs/<runstamp>/` where every other part of this pipeline reads and writes
+stays at `.claude/agentics/runs/<runstamp>/` where every other part of this pipeline reads and writes
 it, and a design stays in the source tree, because it is source:
 
 ```bash
@@ -352,7 +352,7 @@ uncommitted edit has reached its ground since. Hand `develop` the effort's name 
 beside `settled_shape: true`, and the run asks that question itself: a standing survey is used
 instead of buying a second one, and one that does not stand is bought again in full. The session
 never decides that a survey stands; the program does.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 Pass what `read` returns as the workflow's `prior` argument, and link the runstamp as
 soon as the launch result carries one — a run linked at the end is a run nobody can find
@@ -364,16 +364,16 @@ if the session dies in the middle.
    is dirty, tell the user what is uncommitted and get an explicit go/no-go before any
    workflow runs.
 
-   **Ensure `.claude/vfa/` is gitignored, once.** The run's plan and its wave-by-wave state
+   **Ensure `.claude/agentics/` is gitignored, once.** The run's plan and its wave-by-wave state
    are written there, and they are scaffolding rather than source. Add the line yourself if
    it is missing — an agent adding it would be a tree mutation, and no agent in this pipeline
    is allowed one. `.claude/worktrees/` wants the same treatment.
 
-2. Invoke the workflow — the name is plugin-namespaced; the bare `vfa-develop` does not
+2. Invoke the workflow — the name is plugin-namespaced; the bare `agentics-develop` does not
    resolve:
 
    ```
-   Workflow({ name: 'vf-agentics:vfa-develop', args: { change, roots, notes, prior, intelligence, plugin_root, base_ref, programme, slice, settled_shape, ground, effort, review_every_order } })
+   Workflow({ name: 'agentics:agentics-develop', args: { change, roots, notes, prior, intelligence, plugin_root, base_ref, programme, slice, settled_shape, ground, effort, review_every_order } })
    ```
 
    `plugin_root` is this plugin's absolute root (`${CLAUDE_PLUGIN_ROOT}`); the workflow
@@ -423,7 +423,7 @@ if the session dies in the middle.
 
      **`measured` means a measurement is on record, not that it was green.** Say "a
      measurement is on record for W2", never "W2 is verified" — the same care
-     `/vf-agentics:runs` takes with `measured_unapproved`, and for the same reason: whether it
+     `/agentics:runs` takes with `measured_unapproved`, and for the same reason: whether it
      was green is derived on resume against the order's role, and this listing does not repeat
      that computation.
 
@@ -514,14 +514,14 @@ if the session dies in the middle.
       checks out the base SHA, and force-checks-out back; run that against the user's live
       working tree and it wrecks their uncommitted work. The plugin's design forbids this
       outright, and no other runtime file says so, so it is stated here rather than assumed.
-      Then drive the SAME review contract via the Agent tool — `vf-agentics:verifier` for
-      facts, then fresh `vf-agentics:reviewer` rounds — under the review loop's exit and
+      Then drive the SAME review contract via the Agent tool — `agentics:verifier` for
+      facts, then fresh `agentics:reviewer` rounds — under the review loop's exit and
       escalation conditions. The block below is a verbatim copy of that contract, whose
       canonical copy is the plugin's `docs/DESIGN.md#the-review-loop`, and
       `test/verbatim-blocks.test.mjs` diffs the two — a paraphrase down to "zero criticals →
       approved" would reopen a hole the contract explicitly closes:
 
-      <!-- vfa:verbatim review-loop-exit -->
+      <!-- agentics:verbatim review-loop-exit -->
 - Dispatch a fresh reviewer each round with the work order, the worktree path, the span
   under review, the coder's `concerns`, the advisory `series_findings`, and — from round
   2 on — the prior round's open blockers (id, claim, fix commits since). Round 1 reviews
@@ -545,7 +545,7 @@ if the session dies in the middle.
   commits, no amends, no rebase), re-verify, and dispatch a fresh reviewer.
 - No round counter ends this loop (IRON LAW §1). A budget error is caught and becomes an
   escalation carrying resumable state (IRON LAW §6) — never a silent stop.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
    d. **The integration branch.** Read `result.integration` before you touch anything:
 
@@ -576,12 +576,12 @@ if the session dies in the middle.
       **Superseded inside a programme.** When this run is one slice of a programme, the merge
       below is not the merge that happens, and the block that says so is pinned in both skills:
 
-      <!-- vfa:verbatim programme-merge-target -->
+      <!-- agentics:verbatim programme-merge-target -->
       In a programme run, develop step 3d's merge target is the programme branch, in the
       programme worktree, performed by the programme skill without a per-slice ask; its
       dirty-tree and no-open-escalation guards apply unchanged; the user-branch merge it
       describes happens once, at landing.
-      <!-- /vfa:verbatim -->
+      <!-- /agentics:verbatim -->
 
       The reason the ask does not fire per slice is that the question the user wants asked is
       about *their* branch, and the programme branch is not their branch. Merging a reviewed
@@ -594,7 +594,7 @@ if the session dies in the middle.
 
    e. **Deferred waves.** `deferred` is non-empty when the line stopped — a merge that did
       not complete, a merged head that failed verification, or a caller-requested pause. Fix
-      what stopped it with the human, then re-invoke `vf-agentics:vfa-develop` with
+      what stopped it with the human, then re-invoke `agentics:agentics-develop` with
       `change`, `plugin_root` and `resume_path: result.plan_path`.
 
       `roots`, `notes` and `intelligence` come back off disk with the plan — they were
@@ -610,7 +610,7 @@ if the session dies in the middle.
       iteration's escalations, blocked, coupled and still-deferred ids join the running
       totals, so the final report covers every order from every pass.
 
-      **It also salvages, by stage.** Order branches are named `vfa/<runstamp>-<order-id>`,
+      **It also salvages, by stage.** Order branches are named `agentics/<runstamp>-<order-id>`,
       which is what makes an interrupted invocation's work findable rather than merely present.
       Before dispatching anything, a resumed run pairs what the run recorded against what git
       holds, and takes each order as far as the two agree:
@@ -696,7 +696,7 @@ if the session dies in the middle.
       the files it recorded building against. It is exact on both, and blind to a dependency
       the planner did not write down. So an empty `stale` list means "nothing the plan
       declared has moved", which is strong but is still not "the plan is definitely correct".
-      Say that plainly when a run is old — `/vf-agentics:runs` shows plan age for exactly this
+      Say that plainly when a run is old — `/agentics:runs` shows plan age for exactly this
       reason — and treat a large drift with an empty `stale` list as a reason to re-read the
       plan rather than a clearance. A plan whose orders all declare an empty `reads` is the
       case to distrust most: either the work genuinely stands alone, or the planner did not
@@ -725,8 +725,8 @@ if the session dies in the middle.
 ## Afterwards
 
 - **Progress lives in derived state, never in a hand-maintained ledger.** A run's status is
-  derived from `plan.json` and `state.jsonl` by `/vf-agentics:runs`; a programme's is derived
-  from its event log by `/vf-agentics:programme`. A progress file the session maintains by
+  derived from `plan.json` and `state.jsonl` by `/agentics:runs`; a programme's is derived
+  from its event log by `/agentics:programme`. A progress file the session maintains by
   hand duplicates both, is stale the moment either moves, and costs the most expensive tokens
   in the pipeline — the orchestrating session's — on every rewrite. In the field one such
   file's mid-run commit to the base branch was misattributed as a locus breach and killed a
@@ -734,7 +734,7 @@ if the session dies in the middle.
   a run returns, never while one is in flight, and put nothing in it that `runs` or
   `programme` already derives.
 - **Do not route `discovered` entries anywhere by hand.** The run deposits them itself, at its
-  own end, into the project knowledge base at `.claude/vfa/kb/` — approved orders only, each
+  own end, into the project knowledge base at `.claude/agentics/kb/` — approved orders only, each
   entry anchored to the order's own locus and stamped with the run's base commit, so the next
   run in that ground opens with them instead of rediscovering them. A second parallel routing
   would put the same claims in two places with two different ideas of whether they are still
@@ -756,7 +756,7 @@ if the session dies in the middle.
   It prunes the worktrees of merged branches, deletes those branches with `git branch -d`, and
   **reports what it kept and why** — unmerged branches, dirty worktrees, and with them the
   escalated and held orders that are the resumable state. Read that list out loud; a kept item
-  is a fact about the run, not leftover litter. It touches nothing outside `vfa/<runstamp>-*`:
+  is a fact about the run, not leftover litter. It touches nothing outside `agentics/<runstamp>-*`:
   the harness's own auto-named worktree branches are shared territory across plugins, and tags
   are left alone, since a tag pointing into a deleted branch is what keeps its commits
   reachable.

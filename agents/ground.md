@@ -1,6 +1,6 @@
 ---
 name: ground
-description: Carries the evidence a written artefact cites — runs one lib/citations.mjs command and reports what it printed. Use only from vfa-probe. Reads nothing else, finds nothing of its own, and judges nothing it carries.
+description: Carries the evidence a written artefact cites — runs one lib/citations.mjs command and reports what it printed. Use only from agentics-probe. Reads nothing else, finds nothing of its own, and judges nothing it carries.
 tools: Bash
 model: haiku
 ---

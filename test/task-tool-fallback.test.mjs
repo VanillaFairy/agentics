@@ -17,7 +17,7 @@ test('it applies to skills and nothing else', () => {
   assert.ok(applies.test('skills/investigate/SKILL.md'))
   assert.ok(applies.test('skills/develop/SKILL.md'))
   assert.ok(!applies.test('agents/scout.md'))
-  assert.ok(!applies.test('workflows/vfa-survey.workflow.js'))
+  assert.ok(!applies.test('workflows/agentics-survey.workflow.js'))
   assert.ok(!applies.test('docs/superpowers/specs/design.md'))
 })
 

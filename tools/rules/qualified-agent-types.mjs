@@ -31,7 +31,7 @@ export function check(source) {
         message:
           `agentType "${value}" is not namespaced. Agent types resolve from one flat ` +
           `global registry, so a bare name collides with other installed plugins and ` +
-          `fails mid-run. Use "<plugin>:<agent>", e.g. "vf-agentics:scout".`,
+          `fails mid-run. Use "<plugin>:<agent>", e.g. "agentics:scout".`,
       })
     }
   })

@@ -2,14 +2,14 @@
 //
 // 1. An unprefixed name. The workflow namespace is flat and global across every installed
 //    plugin, so `survey` collides with anyone else's `survey`. The `reasonable` plugin already
-//    had to rename its audit workflow after exactly that. Every workflow here is `vfa-*`.
+//    had to rename its audit workflow after exactly that. Every workflow here is `agentics-*`.
 // 2. A `phase('X')` call with no matching `meta.phases` entry. `meta.phases` drives the progress
 //    display; an unmatched call silently gets its own ungrouped box. Nothing throws — the
 //    display is just quietly wrong, and no test run will ever show it.
 // 3. A meta literal that is not literal. The runtime reads this block STATICALLY and never
 //    evaluates it, so `description: 'a' + 'b'` is valid JavaScript that the runtime refuses —
 //    and a refused workflow does not register at all. Nothing anywhere says so; the workflow is
-//    simply absent when something tries to invoke it. That is not hypothetical: `vfa-probe`'s
+//    simply absent when something tries to invoke it. That is not hypothetical: `agentics-probe`'s
 //    description was a two-line concatenation, it passed every check in this file, and the
 //    installed plugin never had the workflow.
 //
@@ -35,8 +35,8 @@ const META_DECL = /export\s+const\s+meta\s*=\s*\{/
 /** `phases: [` inside the meta literal. The trailing `[` is where bracket matching starts. */
 const PHASES_DECL = /\bphases\s*:\s*\[/
 
-/** A workflow name must be `vfa-` plus something. `vfa-` alone names nothing. */
-const PREFIXED = /^vfa-.+/
+/** A workflow name must be `agentics-` plus something. `agentics-` alone names nothing. */
+const PREFIXED = /^agentics-.+/
 
 // The `d` flag gives each match `.indices`, so the *original* text of a quoted value can be
 // sliced out of the source — the blanked copy has turned its contents into spaces. All three are
@@ -158,7 +158,7 @@ export function check(source) {
   ]
 }
 
-/** V2: meta.name is present, non-empty, and carries the vfa- prefix. */
+/** V2: meta.name is present, non-empty, and carries the agentics- prefix. */
 function checkName(source, blanked, metaStart, metaEnd) {
   const [match] = within(blanked, NAME, metaStart, metaEnd)
   const value = match ? quotedValue(source, match) : ''
@@ -167,7 +167,7 @@ function checkName(source, blanked, metaStart, metaEnd) {
     return [{
       line: 0,
       message:
-        `meta has no name. Add name: 'vfa-<something>' — the workflow namespace is flat and ` +
+        `meta has no name. Add name: 'agentics-<something>' — the workflow namespace is flat and ` +
         `global across every installed plugin, so an unnamed workflow cannot be addressed and ` +
         `an unprefixed one collides.`,
     }]
@@ -178,7 +178,7 @@ function checkName(source, blanked, metaStart, metaEnd) {
   return [{
     line: lineOf(source, match.index),
     message:
-      `meta.name "${value}" must be "vfa-" followed by a name of its own. The workflow ` +
+      `meta.name "${value}" must be "agentics-" followed by a name of its own. The workflow ` +
       `namespace is flat and global across every installed plugin, so an unprefixed name ` +
       `collides with another plugin's workflow.`,
   }]

@@ -14,7 +14,7 @@ import { id, applies, check } from '../tools/rules/design-gate.mjs'
 const PATH = 'skills/design/SKILL.md'
 
 const WHOLE = [
-  'Hand off with Skill vf-agentics:develop once ratified.',
+  'Hand off with Skill agentics:develop once ratified.',
   'HARD GATE. Nothing is implemented until the user ratifies.',
   'A design with an open blocking question does not hand off.',
   "Where the build runs is the user's call: ask before chaining into develop.",
@@ -36,7 +36,7 @@ test('a missing terminal handoff is one violation naming develop', () => {
   const found = check(without(0), PATH)
 
   assert.equal(found.length, 1)
-  assert.match(found[0].message, /vf-agentics:develop/)
+  assert.match(found[0].message, /agentics:develop/)
   assert.equal(found[0].line, 0)
 })
 
@@ -76,7 +76,7 @@ test('an empty source reports all four, so a rewrite cannot lose them quietly', 
 })
 
 test('the handoff must be namespaced — a bare develop does not resolve', () => {
-  const bare = WHOLE.replace('vf-agentics:develop', 'develop')
+  const bare = WHOLE.replace('agentics:develop', 'develop')
   assert.equal(check(bare, PATH).length, 1)
 })
 
@@ -87,7 +87,7 @@ test('applies to the two gated skills and to nothing else', () => {
   assert.ok(!applies.test('skills/investigate/SKILL.md'))
   assert.ok(!applies.test('skills/plan/SKILL.md'))
   assert.ok(!applies.test('agents/analyst.md'))
-  assert.ok(!applies.test('workflows/vfa-develop.workflow.js'))
+  assert.ok(!applies.test('workflows/agentics-develop.workflow.js'))
   // Anchored at both ends: a path that merely ends this way belongs to another plugin.
   assert.ok(!applies.test('vendor/skills/design/SKILL.md'))
 })

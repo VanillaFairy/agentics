@@ -1,7 +1,7 @@
 {
-  "name": "vf-agentics",
+  "name": "agentics",
   "description": "Workflow-orchestrated design, investigation, and development over a generic codebase. One agent pool, one survey core, governed by the IRON LAW: a set task is finished regardless of cost.",
-  "version": "1.14.0",
+  "version": "2.0.0",
   "author": {
     "name": "VanillaFairy"
   },

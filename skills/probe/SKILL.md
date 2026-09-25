@@ -39,7 +39,7 @@ premise defects, because the premises are the part not being questioned.
 ## Step 1 — Invoke
 
 ```
-Workflow({ name: 'vf-agentics:vfa-probe', args: { artifact, roots, context, plugin_root } })
+Workflow({ name: 'agentics:agentics-probe', args: { artifact, roots, context, plugin_root } })
 ```
 
 `artifact` is the path to the document. `roots` is the repository it would be implemented
@@ -88,7 +88,7 @@ transcripts.
 
 ## Where the findings go
 
-<!-- vfa:verbatim effort-store -->
+<!-- agentics:verbatim effort-store -->
 **Efforts — one directory for everything this piece of work produces.** A change moves through
 design, survey, probe and one or more runs, and every phase records what it returned in the
 effort's directory. Design and develop are separate sessions by recommendation, so this is how
@@ -114,7 +114,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" record <repo> <slug> survey|probe --
 ```
 
 Link a run and the design document as each comes into being. These are **pointers**: run state
-stays at `.claude/vfa/runs/<runstamp>/` where every other part of this pipeline reads and writes
+stays at `.claude/agentics/runs/<runstamp>/` where every other part of this pipeline reads and writes
 it, and a design stays in the source tree, because it is source:
 
 ```bash
@@ -141,7 +141,7 @@ uncommitted edit has reached its ground since. Hand `develop` the effort's name 
 beside `settled_shape: true`, and the run asks that question itself: a standing survey is used
 instead of buying a second one, and one that does not stand is bought again in full. The session
 never decides that a survey stands; the program does.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 Record the probe's whole return before the disposition below, not after. A disposition
 is a conversation, and a conversation that runs out of room takes the findings with it if
@@ -149,7 +149,7 @@ they live nowhere else.
 
 ## Step 2 — Report
 
-<!-- vfa:verbatim design-severity-ladder -->
+<!-- agentics:verbatim design-severity-ladder -->
 - **ambiguity** — a term, contract, or interface the design leaves readable two ways. Blocks
   ratification. The archetype is one name with two incompatible definitions in the same
   document: every consumer implements one of them, the mismatch is invisible until
@@ -157,7 +157,7 @@ they live nowhere else.
 - **gap** — a growth axis or requirement the design names but cannot absorb without rework.
   Resolved, or explicitly accepted by the user with the cost stated. Never silently carried.
 - **note** — advisory. Recorded in the design document, never blocks, never loops.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 Lead with `ambiguities` — they block. Then gaps, then notes. For each: the axis, the section,
 the claim, and the evidence. Never soften a finding and never merge two into one.
@@ -174,7 +174,7 @@ Every **ambiguity** is resolved with the user before the artefact is ratified. E
 is either designed away or accepted out loud, in the document, in the user's words with the
 cost stated. **Notes** are recorded and left alone.
 
-<!-- vfa:verbatim probe-disposition -->
+<!-- agentics:verbatim probe-disposition -->
 **Summarise before you ask anything.** A probe returns findings per axis and the axes
 overlap, so handed over raw it is a wall of text that costs more attention than the artefact
 did. Open with a count and a table — one row per topic, never one per finding:
@@ -211,7 +211,7 @@ recommended answer marked `(Recommended)`, with the reason in the option's descr
 because each answer changes what is worth asking next and the tree is discovered as it is
 walked. A disposition has no such tree: the findings are computed, independent, and all on
 the table before the first question. One at a time is not care here, it is forty turns.
-<!-- /vfa:verbatim -->
+<!-- /agentics:verbatim -->
 
 Then write the dispositions into the artefact itself — a findings table with what each one
 changed. A probe whose findings live only in a conversation has to be run again by the next

@@ -39,10 +39,10 @@ export const applies = /^skills\/(design|programme|find-existing-solutions)\/SKI
 
 const DESIGN_CLAUSES = [
   {
-    pattern: /\bvf-agentics:develop\b/,
+    pattern: /\bagentics:develop\b/,
     message:
       `The design skill never names its terminal handoff. A design phase that does not end ` +
-      `by invoking "vf-agentics:develop" produces a document and stops: the ratified change ` +
+      `by invoking "agentics:develop" produces a document and stops: the ratified change ` +
       `it exists to create is never implemented by the pipeline it was written for.`,
   },
   {

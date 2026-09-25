@@ -29,8 +29,8 @@ test('the ratified law section matches its pinned hash', () => {
 
   assert.equal(
     createHash('sha256').update(law).digest('hex'),
-    // Amended 2026-09-18: the enforcement table names the files that enforce each clause
-    // instead of plan task ids, whose plans no longer exist. The eight clauses are unchanged.
-    '1a6d0f76cb6bf98c6dbfcee1aefa595424e7c486c0d3dc842d428bdb44920b7e',
+    // Amended 2026-09-25: the enforcement table follows the vfa → agentics rename of the
+    // workflows. The eight clauses are unchanged.
+    '1adf61774afc027f55d0efd11488ce47b0ec1f4cb573825f1b051d1412b77f85',
   )
 })

@@ -591,22 +591,22 @@ test('delivery is event-sourced, so an archived run does not undo it', () => {
 
 const LEAF = [
   '# walk',
-  '<!-- vfa:section change -->',
+  '<!-- agentics:section change -->',
   'Make the meadow walkable on the tablet.',
-  '<!-- /vfa:section -->',
-  '<!-- vfa:section decisions -->',
+  '<!-- /agentics:section -->',
+  '<!-- agentics:section decisions -->',
   'Tap to move, because the user ruled against a joystick.',
-  '<!-- /vfa:section -->',
-  '<!-- vfa:section settled-evidence -->',
+  '<!-- /agentics:section -->',
+  '<!-- agentics:section settled-evidence -->',
   'Godot 4.5; the build command is `just build`.',
-  '<!-- /vfa:section -->',
+  '<!-- /agentics:section -->',
 ].join('\n')
 
 const ROOT = [
   '# system',
-  '<!-- vfa:section settled-evidence -->',
+  '<!-- agentics:section settled-evidence -->',
   'The tablet is the only target.',
-  '<!-- /vfa:section -->',
+  '<!-- /agentics:section -->',
 ].join('\n')
 
 test('sections are extracted by marker, never inferred from headings', () => {
@@ -621,7 +621,7 @@ test('a document with no markers yields nothing rather than a guess', () => {
 })
 
 test('an unclosed marker ends the scan instead of swallowing the rest of the file', () => {
-  const found = sectionsOf('<!-- vfa:section change -->\nno close marker here')
+  const found = sectionsOf('<!-- agentics:section change -->\nno close marker here')
 
   assert.equal(found.size, 0)
 })
@@ -652,7 +652,7 @@ test('notes concatenate the marked sections byte for byte', () => {
 })
 
 test('a missing marker fails loudly and by name', () => {
-  const noDecisions = LEAF.replace('<!-- vfa:section decisions -->', '<!-- vfa:section other -->')
+  const noDecisions = LEAF.replace('<!-- agentics:section decisions -->', '<!-- agentics:section other -->')
 
   const assembled = assembleNotes({ slice: 'walk', rootText: ROOT, leafText: noDecisions, deps: [] })
 
@@ -680,7 +680,7 @@ test('a slice with no predecessors says so rather than emitting an empty list', 
 // on the next read of the programme.
 
 test('the ground marker is emitted when present', () => {
-  const withGround = LEAF + '\n<!-- vfa:section ground -->\nsrc/game/ui, src/game/input\n<!-- /vfa:section -->\n'
+  const withGround = LEAF + '\n<!-- agentics:section ground -->\nsrc/game/ui, src/game/input\n<!-- /agentics:section -->\n'
 
   const assembled = assembleNotes({ slice: 'walk', rootText: ROOT, leafText: withGround, deps: [] })
 
@@ -699,7 +699,7 @@ test('a design with no ground section is finished, and always was', () => {
 })
 
 test('an empty ground section emits nothing rather than an empty heading', () => {
-  const hollow = LEAF + '\n<!-- vfa:section ground -->\n   \n<!-- /vfa:section -->\n'
+  const hollow = LEAF + '\n<!-- agentics:section ground -->\n   \n<!-- /agentics:section -->\n'
 
   assert.doesNotMatch(
     assembleNotes({ slice: 'walk', rootText: ROOT, leafText: hollow, deps: [] }).notes,
@@ -729,7 +729,7 @@ test('a degraded programme says so at the top', () => {
 })
 
 test('the view splices between markers, leaving the authored prose alone', () => {
-  const before = '# plan\n\nWhy this decomposition.\n\n<!-- vfa:graph -->\nold\n<!-- /vfa:graph -->\n\ntail\n'
+  const before = '# plan\n\nWhy this decomposition.\n\n<!-- agentics:graph -->\nold\n<!-- /agentics:graph -->\n\ntail\n'
   const after = spliceView(before, 'new')
 
   assert.ok(after.includes('Why this decomposition.'))
@@ -745,7 +745,7 @@ test('a plan.md with no markers gets the section appended once, then spliced', (
   assert.ok(first.includes('v1'))
   assert.ok(second.includes('v2'))
   assert.ok(!second.includes('v1'))
-  assert.equal(second.split('vfa:graph').length, 3, 'appended once, never repeatedly')
+  assert.equal(second.split('agentics:graph').length, 3, 'appended once, never repeatedly')
 })
 
 // ============================================================ CLI argument arithmetic

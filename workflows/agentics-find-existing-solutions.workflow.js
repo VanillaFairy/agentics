@@ -1,7 +1,7 @@
 export const meta = {
-  name: 'vfa-find-existing-solutions',
+  name: 'agentics-find-existing-solutions',
   description: 'Before building something, find what already exists that does it: libraries, tools, standards, services, and whatever this repository already depends on. Returns candidates with licence, version and fit facts plus a coverage block — never a recommendation.',
-  whenToUse: 'The build-or-adopt evidence phase. Called by the design skill before approaches are drawn up, and invocable on its own. Distinct from vfa-survey, which searches the code you already have; this one searches the world outside it.',
+  whenToUse: 'The build-or-adopt evidence phase. Called by the design skill before approaches are drawn up, and invocable on its own. Distinct from agentics-survey, which searches the code you already have; this one searches the world outside it.',
   phases: [
     { title: 'Frame', detail: 'analyst: the capability, its hard constraints, and what disqualifies a candidate' },
     { title: 'Search', detail: 'one researcher per ecosystem angle, plus a scout over your existing dependencies' },
@@ -11,7 +11,7 @@ export const meta = {
 
 // ---------------------------------------------------------------- what this is for
 //
-// `vfa-survey` answers "how does the code we have work". This workflow answers a question
+// `agentics-survey` answers "how does the code we have work". This workflow answers a question
 // nothing else in the plugin asks: **should we write this at all?** By the time `develop`
 // runs, the change is ratified and the planner decomposes what to build; build-or-adopt is
 // already settled. Design is the only stage where the question is still cheap, and it needs
@@ -39,7 +39,7 @@ export const meta = {
 // Field semantics go in `description`, never in a comment: comments are stripped before a
 // schema reaches the model, so a contract written only in a comment binds nobody.
 
-// The coverage contract every search channel answers to, identical in spirit to vfa-survey's.
+// The coverage contract every search channel answers to, identical in spirit to agentics-survey's.
 // `no_match` and `not_reached` stay apart on purpose, and here the distinction is the whole
 // point of the workflow: "I searched npm and nothing there does this" is a FINDING that
 // supports building. "I never searched npm" is a HOLE that supports nothing at all.
@@ -92,7 +92,7 @@ const coverageFields = (searchedDescription) => ({
 // Only the payload field goes in `required`: the coverage fields are demanded by their
 // descriptions and normalized in JS after the call, because a required field with
 // conditional semantics is a validation deadlock that drops a finished search whole —
-// see the same note in vfa-survey, where it was observed in the field.
+// see the same note in agentics-survey, where it was observed in the field.
 
 const FRAME = {
   type: 'object',
@@ -385,7 +385,7 @@ const frame = await agent(
   `provides some of this. Something already on the dependency list beats every candidate ` +
   `the search will turn up, and it costs one scout to check.\n\n` +
   `Do not search anything yourself. Frame only.`,
-  { agentType: 'vf-agentics:analyst', effort: 'medium', schema: FRAME, label: 'frame', ...judge },
+  { agentType: 'agentics:analyst', effort: 'medium', schema: FRAME, label: 'frame', ...judge },
 ).catch((e) => {
   log(`WARNING: framing failed: ${e && e.message}`)
   return null
@@ -473,7 +473,7 @@ async function searchUntilComplete(angle) {
         `search was exhausted. Put what you covered in searched, what is genuinely absent in ` +
         `no_match, and what you never got to in not_reached, and never merge the last two.`,
         {
-          agentType: 'vf-agentics:doc-researcher', effort: 'low', schema: CANDIDATES,
+          agentType: 'agentics:doc-researcher', effort: 'low', schema: CANDIDATES,
           phase: 'Search', label: `find:${angle.key}${round > 1 ? `#${round}` : ''}`,
         },
       )
@@ -535,7 +535,7 @@ const repoChannel = agent(
   `to anyone grepping only for implementation code.\n\n` +
   `Report locations. Do not judge whether what you find is good enough; that is not your ` +
   `question and not your call.`,
-  { agentType: 'vf-agentics:scout', effort: 'low', schema: PRESENT,
+  { agentType: 'agentics:scout', effort: 'low', schema: PRESENT,
     phase: 'Search', label: 'repo' },
 ).then(
   (result) => result ? { result, error: '' } : { result: null, error: 'the scout returned no result' },
@@ -654,7 +654,7 @@ if (gathered.length > 0) {
     `the fact, that belongs in notes as an open question. Whether the remaining candidates ` +
     `are worth adopting is the caller's decision and rests on things you cannot see: their ` +
     `dependency appetite, their licence policy, whether they want to own this code.`,
-    { agentType: 'vf-agentics:analyst', effort: 'high', schema: ASSESSMENT, label: 'assess', ...judge },
+    { agentType: 'agentics:analyst', effort: 'high', schema: ASSESSMENT, label: 'assess', ...judge },
   ).catch((e) => {
     log(`WARNING: assessment failed: ${e && e.message}`)
     return null

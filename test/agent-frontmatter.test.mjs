@@ -25,7 +25,7 @@ const good = [
 test('it applies to agents/*.md only', () => {
   assert.ok(applies.test('agents/scout.md'))
   assert.ok(!applies.test('skills/investigate/SKILL.md'))
-  assert.ok(!applies.test('workflows/vfa-survey.workflow.js'))
+  assert.ok(!applies.test('workflows/agentics-survey.workflow.js'))
   assert.ok(!applies.test('CLAUDE.md'))
 })
 

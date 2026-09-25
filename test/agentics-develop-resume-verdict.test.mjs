@@ -1,4 +1,4 @@
-// test/vfa-develop-resume-verdict.test.mjs — the single-verdict transport ladder.
+// test/agentics-develop-resume-verdict.test.mjs — the single-verdict transport ladder.
 //
 // This file used to be about a fan. Three designs stood here, and the first two failed the
 // same way:
@@ -37,16 +37,16 @@ import { resumeVerdict, gitFacts } from './harness/resume-fixture.mjs'
 
 const resumeLoad = resumeVerdict
 
-const WF = fileURLToPath(new URL('../workflows/vfa-develop.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../workflows/agentics-develop.workflow.js', import.meta.url))
 
 const A40 = 'a'.repeat(40)
 const B40 = 'b'.repeat(40)
 const M40 = 'e'.repeat(40)
 const N40 = 'f'.repeat(40)
 
-const RUN_DIR = 'C:/repo/.claude/vfa/runs/20260819-062330'
+const RUN_DIR = 'C:/repo/.claude/agentics/runs/20260819-062330'
 // These scenarios pin the per-order review loop, so they ask for it on every order; the default,
-// which reviews only yardstick orders per order, is pinned in vfa-develop-review-scope.
+// which reviews only yardstick orders per order, is pinned in agentics-develop-review-scope.
 const ARGS = { change: 'add the thing', roots: '.', plugin_root: 'C:/plugin', review_every_order: true }
 
 const order = (id, over = {}) => ({
@@ -88,8 +88,8 @@ const cast = (over = {}) => scriptedAgents({
   worktrees: { stop_reason: 'completed', made: [], notes: 'no branch needed a tree' },
   'integration-setup': {
     stop_reason: 'completed',
-    worktree: 'C:/repo/.claude/worktrees/vfa-20260819-062330-integration',
-    branch: 'vfa/20260819-062330-integration', head_sha: M40, notes: 'attached',
+    worktree: 'C:/repo/.claude/worktrees/agentics-20260819-062330-integration',
+    branch: 'agentics/20260819-062330-integration', head_sha: M40, notes: 'attached',
   },
   'merge:': { stop_reason: 'completed', merged_sha: N40, conflicts: [], notes: 'merged' },
   'wave-verify:': carriedPayload({
@@ -98,7 +98,7 @@ const cast = (over = {}) => scriptedAgents({
   }),
   'record:': { stop_reason: 'recorded', path: RUN_DIR + '/state.jsonl', notes: 'appended' },
   'kb-chain': carriedChain(),
-  'kb-write': { stop_reason: 'recorded', path: '.claude/vfa/kb', notes: 'appended' },
+  'kb-write': { stop_reason: 'recorded', path: '.claude/agentics/kb', notes: 'appended' },
   'review:integration': { findings: [], fix_verdicts: [] },
   'code:': {
     status: 'done', worktree: 'C:/wt/w2', branch: 'wo-w2', base_sha: A40, head_sha: B40,
@@ -303,7 +303,7 @@ const halfBuilt = (over = {}) => ({
     commits: [{ sha: M40, subject: 'feat: w1' }],
   }),
   git: gitFacts([{
-    id: 'W2', branch: 'vfa/20260819-062330-W2', head_sha: C40, base_sha: M40,
+    id: 'W2', branch: 'agentics/20260819-062330-W2', head_sha: C40, base_sha: M40,
     commits: [{ sha: C40, subject: 'feat: w2, partly' }],
     worktree: 'C:/wt/w2', dirty: [], already_merged: false,
   }]),
@@ -313,7 +313,7 @@ const halfBuilt = (over = {}) => ({
 test('an unfinished series is continued from its last commit, never rebuilt', async () => {
   const { prompts } = await resumed({
     'continue:W2': {
-      status: 'done', worktree: 'C:/wt/w2', branch: 'vfa/20260819-062330-W2',
+      status: 'done', worktree: 'C:/wt/w2', branch: 'agentics/20260819-062330-W2',
       base_sha: M40, head_sha: B40,
       commits: [{ sha: C40, subject: 'feat: w2, partly' }, { sha: B40, subject: 'feat: w2, rest' }],
       concerns: [], discovered: [], summary: 'carried on',
@@ -338,7 +338,7 @@ test('a continuation that finds nothing left to add is a real answer, not an esc
   // identical, so escalating the honest one would throw away a finished order.
   const { result, prompts } = await resumed({
     'continue:W2': {
-      status: 'done', worktree: 'C:/wt/w2', branch: 'vfa/20260819-062330-W2',
+      status: 'done', worktree: 'C:/wt/w2', branch: 'agentics/20260819-062330-W2',
       base_sha: M40, head_sha: C40, commits: [], concerns: [],
       discovered: [], summary: 'the series was already complete against every criterion',
     },

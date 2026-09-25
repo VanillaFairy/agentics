@@ -1,7 +1,7 @@
 export const meta = {
-  name: 'vfa-survey',
+  name: 'agentics-survey',
   description: 'Gather evidence about a question across the local repos, git history, and vendor documentation. Returns structured findings plus a coverage block — never a conclusion.',
-  whenToUse: 'The shared evidence phase for investigate, develop, find-existing-solutions and design. Call it via workflow("vfa-survey", args) as a nested step; it is rarely invoked directly.',
+  whenToUse: 'The shared evidence phase for investigate, develop, find-existing-solutions and design. Call it via workflow("agentics-survey", args) as a nested step; it is rarely invoked directly.',
   phases: [
     { title: 'Plan' },
     { title: 'Scout' },
@@ -200,7 +200,7 @@ const DOCS = evidenceSchema(
 )
 
 // What a knowledge-base courier hands back: one command's stdout, byte-exact, in one string.
-// Copied from `vfa-develop`'s CARRIED rather than shared, because a workflow script cannot
+// Copied from `agentics-develop`'s CARRIED rather than shared, because a workflow script cannot
 // import — the two are diffed against each other and against `lib/kb.mjs`'s output, never
 // re-derived from memory.
 //
@@ -218,7 +218,7 @@ const CARRIED = {
   },
 }
 
-// What the knowledge-base courier hands back after a DEPOSIT. Copied from `vfa-develop`'s
+// What the knowledge-base courier hands back after a DEPOSIT. Copied from `agentics-develop`'s
 // RECORDED, for the same reason every other copy here is one: a workflow script cannot import.
 //
 // `unwritable` is the writer refusing, or the shell truncating the command — either way what the
@@ -264,7 +264,7 @@ const roots = input.roots || '.'
 const notes = input.notes || ''
 const maxTopics = input.max_topics || 8
 
-// What an earlier phase of the same effort found, read out of `.claude/vfa/efforts/<effort>/` by
+// What an earlier phase of the same effort found, read out of `.claude/agentics/efforts/<effort>/` by
 // the session that invoked this survey. It is DURABLE SCRATCH and it reaches exactly one place:
 // the planner's prompt, where it can only change how the ground is decomposed.
 //
@@ -291,7 +291,7 @@ const judge = JUDGE_TIER[intelligence]
 
 // ---------------------------------------------------------------- the knowledge base
 //
-// Where `lib/kb.mjs` lives, resolved the way `vfa-develop` resolves it: the caller's value, then
+// Where `lib/kb.mjs` lives, resolved the way `agentics-develop` resolves it: the caller's value, then
 // the environment, then the shell form expanded in the agent's own shell. A script's cwd is not
 // the agent's, so a relative path is never guessed at — and when the shell form is used, the
 // dispatch carries an instruction to halt loudly rather than substitute one.
@@ -359,7 +359,7 @@ function fnv1a(text) {
 
 // The other direction of the same transport. A line this script mints whole travels base64 on one
 // argv slot — no path to escape, no apostrophe to close, no heredoc delimiter to indent — and the
-// writer recomputes the digest after decoding. Copies of `vfa-develop`'s, for the same reason
+// writer recomputes the digest after decoding. Copies of `agentics-develop`'s, for the same reason
 // every other copy in this file is one: a workflow script cannot import.
 function utf8Bytes(text) {
   const out = []
@@ -538,7 +538,7 @@ const kbIndex = await (async () => {
     `A repository with no knowledge base prints an index holding nothing, and that IS the good ` +
     `case. Return stop_reason failed ONLY when the command could not be run at all, with what ` +
     `the shell reported in notes.`,
-    { agentType: 'vf-agentics:kb', effort: 'low', model: 'haiku', schema: CARRIED,
+    { agentType: 'agentics:kb', effort: 'low', model: 'haiku', schema: CARRIED,
       phase: 'Plan', label: 'kb-index' },
   ).catch((e) => {
     log(`WARNING: the knowledge-base index failed to run: ${e && e.message}`)
@@ -628,7 +628,7 @@ const plan = await agent(
   `the matching question must be non-empty — a true flag with no question skips the track ` +
   `entirely and the answer silently loses that evidence.\n` +
   `Do not search anything yourself. Plan only.`,
-  { agentType: 'vf-agentics:analyst', effort: 'medium', schema: PLAN, label: 'plan', ...judge },
+  { agentType: 'agentics:analyst', effort: 'medium', schema: PLAN, label: 'plan', ...judge },
 ).catch((e) => {
   log(`WARNING: planning failed: ${e && e.message}`)
   return null
@@ -698,7 +698,7 @@ if (kbFetch.length > 0) {
     `disagree with those and you never re-check one.\n\n` +
     `Return stop_reason failed ONLY when the command could not be run at all, with what the ` +
     `shell reported in notes.`,
-    { agentType: 'vf-agentics:kb', effort: 'low', model: 'haiku', schema: CARRIED,
+    { agentType: 'agentics:kb', effort: 'low', model: 'haiku', schema: CARRIED,
       phase: 'Plan', label: 'kb-chain' },
   ).catch((e) => {
     log(`WARNING: the knowledge-base chain read failed to run: ${e && e.message}`)
@@ -912,7 +912,7 @@ const historyChannel = sideChannel(
     key: 'history',
     first: `${ask}\n\nRepositories: ${roots}\nContext: ${question}`,
     launch: (p, round) => agent(p, {
-      agentType: 'vf-agentics:historian', effort: 'low', schema: HISTORY,
+      agentType: 'agentics:historian', effort: 'low', schema: HISTORY,
       phase: 'History', label: `history${round > 1 ? `#${round}` : ''}` }),
   }),
 )
@@ -924,7 +924,7 @@ const docsChannel = sideChannel(
     first: `Research this against primary sources and report the facts with URLs.\n\n` +
       `${ask}\n\nContext: ${question}`,
     launch: (p, round) => agent(p, {
-      agentType: 'vf-agentics:doc-researcher', effort: 'low', schema: DOCS,
+      agentType: 'agentics:doc-researcher', effort: 'low', schema: DOCS,
       phase: 'Docs', label: `docs${round > 1 ? `#${round}` : ''}` }),
   }),
 )
@@ -1011,7 +1011,7 @@ async function scoutUntilComplete(topic) {
       `\n\nSTILL NOT REACHED — this is your job now:\n${prev.not_reached}`
 
   const launch = (p, round) => agent(p, {
-    agentType: 'vf-agentics:scout', effort: 'low', schema: HITS,
+    agentType: 'agentics:scout', effort: 'low', schema: HITS,
     phase: 'Scout', label: `scout:${topic.key}${round > 1 ? `#${round}` : ''}`,
   })
 
@@ -1090,7 +1090,7 @@ const findings = await pipeline(
       : `\n\nWARNING: the search did NOT finish and is not exhaustive. Your conclusion ` +
         `inherits that limit — state what it rests on and what would change it.`) +
     `\n\nDo not search yourself. Judge what these show. Set topic to exactly "${topic.key}".`,
-    { agentType: 'vf-agentics:analyst', effort: 'high', schema: VERDICT,
+    { agentType: 'agentics:analyst', effort: 'high', schema: VERDICT,
       phase: 'Analyze', label: `analyze:${topic.key}`, ...judge },
   ).catch((e) => {
     // The only unguarded agent call would be this one. The reconciliation below already
@@ -1186,7 +1186,7 @@ const incomplete = partial.filter((k) => !droppedKeys.has(k)).concat(truncatedCh
 // precisely the failure that keeps `structural` unwritten: a model-authored sentence rehashes
 // every time, so the base grows without ever consolidating.
 //
-// This is an addition, not the relocation an earlier draft proposed: `vfa-develop`'s run-end
+// This is an addition, not the relocation an earlier draft proposed: `agentics-develop`'s run-end
 // deposit is untouched, and its two producers — `gotcha` from an approved order's discovered set,
 // `command` from a verification — keep working exactly as they do, because both are built from
 // run-time material that does not exist when a survey runs.
@@ -1279,7 +1279,7 @@ if (absences.length > 0) {
   // does not land costs this result nothing it was going to have. It is still said out loud —
   // silently learning nothing durable is how a repository stays as ignorant on run 20 as on run 1.
   const held = await agent(absencePrompt(absences), {
-    agentType: 'vf-agentics:kb', effort: 'low', model: 'haiku', schema: DEPOSIT,
+    agentType: 'agentics:kb', effort: 'low', model: 'haiku', schema: DEPOSIT,
     phase: 'Analyze', label: 'kb-deposit',
   }).catch((e) => {
     log(`WARNING: the knowledge-base deposit failed to run: ${e && e.message}`)

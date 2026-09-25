@@ -7,7 +7,7 @@ node --test test/    # WRONG: MODULE_NOT_FOUND, exit 1, nothing runs
 ```
 Both `node --test test/` and `node --test test` fail with:
 ```
-Error: Cannot find module 'C:\...\vf-agentics\test'
+Error: Cannot find module 'C:\...\agentics\test'
   code: 'MODULE_NOT_FOUND'
 ```
 Node resolves the bare positional argument as a module to load rather than a directory to scan,
@@ -35,7 +35,7 @@ Or compare with `.trim()` — never `line === '---'`.
 
 ## Worktrees must be siblings of the plugin root
 ```
-git worktree add ../vf-agentics-wt-<TASK> -b task/<TASK> <branch>
+git worktree add ../agentics-wt-<TASK> -b task/<TASK> <branch>
 ```
 Not `.worktrees/` inside the repo. `test/plugin-manifest.test.mjs` reads
 `../../.claude-plugin/marketplace.json` — two hops up from `test/`, i.e. the *parent of the plugin
@@ -86,19 +86,19 @@ author believes a bound is enforced when nothing enforces it. Put the bound in t
 enforce it in JS after the call. All of these are enforced by `tools/rules/`.
 
 ## The plan digest exists twice, on purpose, and the pin is a test
-`lib/plan-digest.mjs` and the `the plan digest` block inside `workflows/vfa-develop.workflow.js`
+`lib/plan-digest.mjs` and the `the plan digest` block inside `workflows/agentics-develop.workflow.js`
 implement the same FNV-1a-over-canonical-JSON algorithm. They have to: the planner runs the CLI
 to write a plan's manifest, and the workflow recomputes it in-script when a resume reads that
 plan back — and a workflow script cannot import the library.
 
 **If you change one, change both.** The failure is quiet and total: every resume halts on a
 digest mismatch that is not real corruption, and the halt names an order rather than the cause.
-The pin is behavioural, in `test/vfa-develop-scenarios.test.mjs` — one scenario feeds the
+The pin is behavioural, in `test/agentics-develop-scenarios.test.mjs` — one scenario feeds the
 workflow a manifest that `manifestOf()` computed and asserts the run proceeds. A comment asking
 two files to stay in step would not have caught anything.
 
 ## `git checkout -B <b>/W3` fails when the ref `<b>` exists
-Git stores refs as filesystem paths, so `refs/heads/vfa/…-integration` being a file means
-`refs/heads/vfa/…-integration/W3` cannot be a directory. Per-order branches are therefore
+Git stores refs as filesystem paths, so `refs/heads/agentics/…-integration` being a file means
+`refs/heads/agentics/…-integration/W3` cannot be a directory. Per-order branches are therefore
 `<integration branch>-<order id>` with a **dash**, not a slash. With a slash the run works for
 exactly one order and then fails on the second — the kind of bug that looks like a flake.

@@ -103,12 +103,15 @@ export function scriptedAgents(script) {
     const label = opts.label || ''
     const n = counts.get(label) || 0
     counts.set(label, n + 1)
-    for (const [key, value] of Object.entries(script)) {
-      if (label === key || (key.endsWith(':') && label.startsWith(key))) {
-        return typeof value === 'function' ? value(prompt, opts, n) : value
-      }
-    }
-    throw new Error('unscripted agent call: ' + (label || '(no label)'))
+    // An exact label beats a prefix, and a longer prefix beats a shorter one, whatever order the
+    // script's keys were spread in: a scenario overriding `verify:R1` on top of a base `verify:`
+    // must get its override.
+    const key = Object.keys(script)
+      .filter((k) => label === k || (k.endsWith(':') && label.startsWith(k)))
+      .sort((a, b) => (b === label) - (a === label) || b.length - a.length)[0]
+    if (key === undefined) throw new Error('unscripted agent call: ' + (label || '(no label)'))
+    const value = script[key]
+    return typeof value === 'function' ? value(prompt, opts, n) : value
   }
 }
 

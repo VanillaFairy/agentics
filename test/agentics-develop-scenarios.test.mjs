@@ -1273,13 +1273,15 @@ test('a red order implements at opus even when the dial says sonnet', async () =
         partition_raw: JSON.stringify({ waves: [['R1'], ['G1']], coupled: [] }),
       }),
       // A red order's suite is REQUIRED to fail; the ordinary verdict would spiral it.
-      'verify:R1': verified({ suite: 'failed', discriminator: [
-        { test_id: 'test/widget.test.js', failed_on_base: true, passes_now: false },
-      ] }),
+      'verify:R1': verified({
+        suite: 'failed',
+        failing_tests: [{ file: 'test/widget.test.js', id: 'widget > renders' }],
+        discriminator: [{ test_id: 'test/widget.test.js', failed_on_base: true, passes_now: false }],
+      }),
     }),
   })
 
-  const modelOf = (label) => (prompts.find((p) => p.opts.label === label) || { opts: {} }).opts.model
+  const modelOf = (label) => prompts.find((p) => p.opts.label === label).opts.model
 
   assert.equal(modelOf('code:R1'), 'opus', 'the floor holds under the dial')
 

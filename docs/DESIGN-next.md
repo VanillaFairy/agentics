@@ -6,161 +6,148 @@ It carries no history. Where a rule is not self-evident, a **Why** paragraph giv
 few sentences as the reason needs.
 
 Reading order: the Iron Laws bind everything and have no exceptions. The Guiding Principles decide
-every design question the laws leave open. Everything after them is the design those two produce.
+every question the laws leave open. Everything after them is the design those two produce.
 
 ---
 
 ## Iron Laws
 
-Four laws. Each is enforced by a mechanism named beside it; a law without one is a defect.
+Four laws. Each names the mechanism that enforces it; a law without one is a defect.
 
 ### IL1 — A set task is finished
 
 When a task is set, it is done, and done means **its intent is met and every unit of that intent
-is traced to work and to a check** (see [Traceability](#traceability)). Nothing stops work because
-a counter ran out: no turn, round, token or time limit ends anything. A budget, a limit or an
-agent that cannot proceed produces an **escalation** that carries what was established, what was
-tried, what remains and enough state to resume — never a result that reads as finished.
+is traced to work and to a check** (see [Traceability](#traceability)). No counter ends anything:
+no turn, round, token or time limit. A budget, a limit or an agent that cannot proceed produces an
+**escalation** carrying what was established, what was tried, what remains, and enough state to
+resume — never a result that reads as finished.
 
 *Enforced by:* the lint rule forbidding counter-based termination; typed escalation returns on
 every agent; the resume ladder.
 
 ### IL2 — A partial result never looks like a whole one
 
-Every search-shaped or execution-shaped output states its own completeness through a `stop_reason`
-enum and a coverage block: what was covered, what was not reached, what failed, what was recalled
-rather than observed. `complete` is computed from those fields, never reported. "Looked and found
-nothing" and "never looked" are different answers and never merge. Incomplete work is resumed on
-exactly what remains; what is still incomplete after exhaustion **leads** the report. A failing
-side channel keeps what was already paid for and marks what rests on it as unsupported.
+Every search-shaped or execution-shaped output states its own completeness: a `stop_reason` enum
+and a coverage block saying what was covered, not reached, failed, or recalled rather than
+observed. `complete` is computed from those fields, never reported. "Looked and found nothing" and
+"never looked" never merge. Incomplete work is resumed on exactly what remains; what stays
+incomplete after exhaustion **leads** the report. A failing side channel keeps what was already
+paid for and marks what rests on it as unsupported.
 
-*Enforced by:* the coverage-block lint rule; schemas with `stop_reason` enums; continuation
-loops keyed on `stop_reason`; `.catch` on every side channel.
+*Enforced by:* the coverage-block lint rule; `stop_reason` schemas; continuation loops keyed on
+`stop_reason`; a `.catch` on every side channel; the task-tool-fallback lint rule.
 
 ### IL3 — Nothing judges itself
 
-A verdict is computed by a script from recorded observations. The agent that produced a piece of
-work never certifies it; a reviewer has no approval to give, only findings; a coder has no pass to
-give, only commits and a status. Approval is the open-finding set being empty.
+A verdict is computed by a script from recorded observations. The producer of a piece of work never
+certifies it; a reviewer has findings and no approval to give; approval is the open-finding set
+being empty.
 
-*Enforced by:* schemas with no verdict fields (no-self-verdict lint); verdict predicates in code.
+*Enforced by:* agent schemas with no verdict fields (no-self-verdict lint); verdict predicates in
+code.
 
 **Why:** an agent that can approve can be persuaded, and an agent that certifies its own work is
 the examinee marking the exam.
 
 ### IL4 — The user owns decisions and their tree
 
-The user is the only author of design decisions; an unanswered recommendation is not adopted. The
-framework never mutates the user's branch or working tree: all work happens on branches and
-worktrees the framework owns, and the user's tree moves once, on an explicit go, with no open
-escalation.
+The user is the only author of design decisions; an unanswered recommendation is not adopted, and
+no replan may alter a decision the user made. The user's branch and working tree change only by
+the user's explicit act: an inline task the user asked for edits the files it was asked to edit;
+anything dispatched works on branches and worktrees the framework owns, and reaches the user's
+branch only at landing, on an explicit go, with no open escalation. A check that stashes or moves
+`HEAD` runs only in a linked worktree, never in the user's tree.
 
-*Enforced by:* the merge step being the session's act behind a gate; worktree environment checks
-that refuse to run a mutating check in a non-linked tree.
+*Enforced by:* landing is the session's act behind a gate; `lib/verify.mjs` refuses to run outside
+a linked worktree; replans that touch a decision id return to the user (see
+[Replanning](#replanning)).
 
 ---
 
 ## Guiding Principles
 
-Seven principles. When two seem to conflict, GP1's order decides.
+Five principles. When two seem to conflict, GP1's order decides.
 
 ### GP1 — Fidelity first, then cost, then wall-clock
 
 The objective is lexicographic: (1) the work reflects the spec and the intent, (2) at the lowest
 total cost that still gives the assurance the work needs, (3) in the least wall-clock time that
-does not raise cost. **Parallelism is the instrument of (3), not a goal.** Running disjoint work
-side by side costs no extra tokens and is always taken. Running several agents over the *same*
-context multiplies its cost and is bought only when the user sets `pace: fast`.
+does not raise cost.
 
-`pace` is a user dial: `frugal` (no duplicated-context parallelism, fewest dispatches), `balanced`
-(default), `fast` (duplicated context accepted where it shortens the critical path).
+- **Parallelism of disjoint work** costs no extra tokens and is always taken.
+- **Parallelism over shared context** multiplies cost. It is bought for *independence* — separate
+  approach drafts, separate probe readers, a red author who never sees the green — because that
+  serves (1). It is bought for *speed* only when the user sets `pace: fast`.
 
-### GP2 — Everything is earned, and legibly
+`pace` (`frugal` | `balanced` | `fast`, default `balanced`) is read by the scheduler and by the
+evidence phases when they decide how many readers share a body of evidence.
 
-A stage, a dispatch, a model tier, a reviewer, a survey or a design level exists only because a
-nameable property of the node earned it. Three rules bind this:
+### GP2 — Everything is earned, legibly, and has a live consumer
 
-- **Leanness is legible.** Whatever ran names the property that earned it; whatever did not run
-  is stated. A report shows the cost of what ran, **measured**, never a projected constant.
-- **Leanness never touches verdicts.** What shrinks is the number of dispatches, tiers, phases and
-  levels. The predicates a verdict is computed from never shrink once a check runs.
-- **The judgment half and the arithmetic half of every "is this earned?" decision stay apart.**
-  Whether a shape is settled is judgment and stays with whoever holds the context; whether
-  evidence is fresh, a grain is exceeded or a tree is unchanged is arithmetic and is computed.
+A stage, dispatch, model tier, reviewer, survey, design level, field, record kind, agent or check
+exists only because a nameable property earned it, and only while something consumes it.
 
-**Why:** a pipeline element nobody can justify costs as much as a missed check and is harder to
-see; a topology nobody can audit grows back to the maximum.
+- **Leanness is legible.** Whatever ran names the property that earned it; whatever did not run is
+  stated. Cost is reported **measured**, never as a projected constant.
+- **Leanness never touches verdicts.** What shrinks is dispatches, tiers, phases and levels; the
+  predicates a verdict is computed from never shrink once a check runs.
+- **Judgment and arithmetic stay apart.** Whether a shape is settled is judgment and stays with
+  whoever holds the context; whether evidence is fresh, a grain is exceeded or a tree is unchanged
+  is computed.
+- **No mechanism outlives its consumer.** A format change ships a one-shot migration script, never
+  a permanent second reader. A check enforces this (see [Self-checks](#self-checks)).
+
+**Why:** an element nobody can justify costs as much as a missed check and is harder to see; a
+topology nobody can audit grows back to the maximum.
 
 ### GP3 — One execution tree, planned and scheduled dynamically
 
-All work is one tree. The repository is the root; an **effort** is a subtree; every node is either
-**composite** (it decomposes into children) or a **leaf** (an atomic task — see
-[Atomicity](#atomicity-when-to-stop-splitting)). The same node schema, triage, event log and
-derived status apply at every depth. Any node can be the root of an execution.
+All work is one tree. The repository is the root; an **effort** is a subtree; every node is a
+`design`, `composite` or `leaf` node, with the same schema, event log and derived status at every
+depth. Any node can be the root of an execution.
 
-- **Decompose until atomic, no further.** A node splits exactly while it violates the atomicity
-  rule.
-- **Replan locally and dynamically.** A node that discovers it is larger than its grain, rests on
-  a false premise, or needs a decision returns a typed result; its parent replans that subtree
-  only. Nothing else stops.
+- **Decompose until atomic, no further** (see [Atomicity](#atomicity-when-to-stop-splitting)).
+- **Replan locally.** A node that is larger than its grain, rests on a false premise, or needs a
+  decision returns a typed result, and its parent replans that subtree only. Nothing else stops.
 - **Schedule by readiness.** A node starts when its dependencies' outputs exist, never when a
   sibling group finishes. There are no global phases or waves.
 
-**Why:** fixed layers each grow their own vocabulary, store and scheduler, and work that fits
+**Why:** fixed layers each grow their own vocabulary, store and scheduler, and work that falls
 between two layers has nowhere to go. One recursive node makes depth a property of the work.
 
-### GP4 — Deterministic work is a script, and scripts are fused
+### GP4 — Scripts do the deterministic work; each agent gets only what it needs
 
 Anything computable is computed in `lib/`: partitions, digests, schedules, verdicts, merges,
-statuses, briefs, freshness. A workflow script has no filesystem, so disk crosses into it through
-an agent — a **courier** that runs one command and pastes its stdout. Two rules:
+statuses, briefs, excerpts, freshness. A workflow script has no filesystem, so disk crosses into it
+through a **courier**: an agent that runs one command and pastes its stdout.
 
-- **Bytes never ride a model; references and digests do.** Readers fetch content from disk
-  themselves; payloads that cross carry a digest the script re-checks; lines the workflow mints
-  whole travel encoded on one argv slot.
-- **One courier per boundary, not per fact.** Every deterministic step that happens at the same
-  boundary runs in one command, under one digest.
-
-**Why:** reading enters an agent's context byte-exact; writing through an agent is where
-corruption lives. And every courier is a round-trip on the critical path, so the count of
-boundaries, not of facts, sets the floor.
-
-### GP5 — Each agent gets only what it needs
-
-A dispatch costs context × turns, paid by every agent separately; what an agent returns is re-read
-on every later turn of whoever dispatched it.
-
+- **Bytes that cross a model carry a digest the receiver re-checks.** Lines the workflow mints
+  whole travel encoded on one argv slot (or a file path when an argv slot would overflow).
+- **One courier per boundary**, running every deterministic step of that boundary in one command.
 - **Briefs are assembled by script** from the node, its referenced evidence and role-scoped
-  knowledge — never retyped by a model, never a path "to go and read" for evidence the dispatcher
-  already holds.
-- **Shared evidence is resolved once** and handed inline as excerpts. An agent whose charge can be
-  answered from what it is handed gets no tools.
-- **One reader per body of evidence** unless its volume earns more; split heads only where
-  independence is the point, and say so.
-- **Returns are typed and short**; full reports go to files the next consumer opens only when it
-  acts on them.
-- **Agent definitions are sized to the role.** A courier's definition is a few lines. Runtime text
-  (skills, definitions, prompts) holds instructions and contracts; reasons live in this document.
+  knowledge. Shared evidence is resolved once into excerpts and handed inline; an agent whose
+  charge can be answered from what it is handed gets no tools.
+- **One reader per body of evidence** unless volume or independence (GP1) earns more.
+- **Returns are typed and short**; full reports go to files, opened only by a consumer acting on
+  them.
+- **Runtime text holds instructions and contracts; reasons live in this document.** Definitions
+  are sized to the role — a courier's is a few lines.
 
-### GP6 — Durability by the actor; state is derived, never stored
+**Why:** writing through an agent is where corruption lives, and every dispatch is paid in context
+× turns by that agent and re-read by whoever dispatched it. Every courier is also a round-trip on
+the critical path, so the count of boundaries, not of facts, sets the floor.
+
+### GP5 — Durability by the actor; state is derived, never stored
 
 Whoever performs an action records the observation, in the same execution. No agent records a
-verdict; verdicts are re-derived from observations by the same functions on every read. Status —
-of a node, a run, an effort, a knowledge entry — is computed from append-only logs and git on
-every read. One monotonic `seq` orders records across logs; it is a counter, never a clock.
-Resume names the single next undone action per node, trusting a stage only where the record and
-git agree.
+verdict; verdicts are re-derived from observations by the same functions on every read. The status
+of a node, an execution, an effort or a knowledge entry is computed from append-only logs and git
+on every read; anything that displays a status renders it, and nothing trusts a rendered status.
+One monotonic `seq` per effort orders records; it is a counter, never a clock. Resume names the
+single next undone action per node, trusting a stage only where the record and git agree.
 
 **Why:** a record written after the fact leaves a window where work exists and nothing says so; a
-status written down outlives the thing it described; a clock an agent can read is a clock it can
-invent.
-
-### GP7 — Every mechanism has a live consumer
-
-Every agent, stage, field, record kind, lint rule and library export has a producer and a consumer
-that exist today. A mechanism with neither is removed, not kept "for compatibility"; a change of
-format ships a one-shot migration script, not a permanent second reader. A check enforces this
-(see [Self-checks](#self-checks)).
+status written down outlives what it described; a clock an agent can read is a clock it can invent.
 
 ---
 
@@ -168,151 +155,162 @@ format ships a one-shot migration script, not a permanent second reader. A check
 
 ### Nodes
 
-A node is one file of authored facts plus an append-only event log. Authored facts:
+A node is one file of authored facts plus its events in the effort's log.
 
 | field | meaning |
 |---|---|
 | `id` | stable, path-like (`auth/session/refresh-token`) |
 | `intent` | what this node makes true, in the user's or the parent design's words |
 | `kind` | `design`, `composite`, `leaf` |
-| `level` | for design nodes: `context`, `container`, `component`, `leaf-spec` (see [Design](#design)) |
-| `decisions[]` | ids of the parent decisions this node realises (see [Traceability](#traceability)) |
+| `level` | design nodes: `context`, `container`, `component`, `leaf-spec` (see [Design](#design)) |
+| `decisions[]` | ids of the decisions this node realises (see [Traceability](#traceability)) |
 | `acceptance[]` | criteria, each naming its check; `HUMAN:` routes one to the user untouched |
-| `ground[]` | paths the node's evidence lives in (checked against the knowledge base) |
-| `locus[]` | leaf only: every file it may write |
-| `reads[]` | leaf only: files it builds against and never writes |
+| `ground[]` | paths the node's evidence lives in, checked against the knowledge base |
+| `locus[]` | leaf: every file it may write |
+| `reads[]` | leaf: files it builds against and never writes |
 | `deps[]` | node ids whose outputs this node consumes |
-| `provides[]`, `consumes[]` | named contracts (a name plus path prefixes) crossing between nodes |
-| `rigor` | leaf only: see [Rigor](#rigor) |
-| `tier` | model and effort per stage, set by the node's author (see [Model tier](#model-tier)) |
+| `provides[]`, `consumes[]` | named contracts (a name plus path prefixes); the prefixes drive [drift detection](#landing-and-drift) |
+| `rigor` | leaf: see [Rigor](#rigor) |
+| `role` | leaf: `none`, `red`, `green`, `audit` |
+| `dispatch` | model and effort per stage, set by the node's author (see [Model tier](#model-tier)) |
 
-Events: `planned`, `replanned`, `dispatched`, `observed` (journal facts), `approved`, `merged`,
-`escalated`, `parked`, `delivered`. Status is derived from them plus git.
+Events: `planned`, `replanned`, `dispatched`, `approved`, `merged`, `escalated`, `parked`,
+`landed`. A composite's status is derived from its children's.
 
 ### Storage
 
-The repository is the root node. Everything the framework writes lives under it:
-
 ```
-.claude/agentics/
-  kb/                         the knowledge base: the root node's child, shared by every effort
+.claude/agentics/                 the repository: the root node
+  kb/                             the knowledge base, shared by every effort
   efforts/<effort>/
-    node.json                 the effort's root node
-    events.jsonl
-    nodes/<id>/node.json      descendants, one directory per node, nested by id
-    nodes/<id>/events.jsonl
-    evidence/                 survey and probe returns, verbatim, anchored to commit + ground
-    runs/<runstamp>/          one execution of a subtree: plan snapshot, state.jsonl, journal.jsonl
-    reports/                  executor reports, one file per dispatch
+    nodes.jsonl                   authored node facts, append-only (a revision appends)
+    events.jsonl                  node events, append-only
+    evidence/                     survey and probe returns, verbatim, anchored to commit + ground
+    executions/<stamp>/           one execution of a subtree: state.jsonl, journal.jsonl
+    reports/                      executor reports, one file per dispatch
 ```
+
+`lib/ledger.mjs` is the only writer of every `.jsonl` here; it mints `seq` per effort under a lock
+file, and refuses a line that does not parse, lacks a kind or an integer `seq`, or fails its
+caller's digest. **One execution per effort is active at a time**; preflight refuses a second
+(checkpoint `existing_execution`). Parallelism lives inside the execution.
 
 Design documents are source and live in the source tree (`docs/agentics/designs/<effort>/`); a
 design node points at its document. Worktrees live under `.claude/worktrees/`. Branches:
-`agentics/<effort>/<node-id>` for a leaf, `agentics/<effort>/integration` for an effort's
-integration branch.
 
-**Why the knowledge base hangs on the root:** knowledge outlives efforts; an effort's discoveries
-are deposited upward, and every effort reads the same base.
+| branch | holds |
+|---|---|
+| `agentics/<effort>` | the effort branch: everything delivered for the effort, landed into the user's branch once |
+| `agentics/<effort>/<node-id>` | one leaf's commit series |
+
+The effort branch is the integration branch of every execution in the effort.
+
+**Why the knowledge base hangs on the root:** knowledge outlives efforts; every effort reads the
+same base and deposits upward into it.
 
 ### Triage
 
-Every node is triaged once, when it is created, by whoever creates it (the session for an
-effort's root, the planner for its children). Triage answers four questions and derives the kind:
+Every node is triaged when it is created — by the session for an effort's root, by the planner for
+its children. Two questions fix its **kind**; one more fixes its **mode**.
 
 | question | if **no** |
 |---|---|
-| Is the intent settled — no approach left to discover? | `design` node |
-| Is the ground known — finding where the change goes is not part of the work? | evidence (survey) is earned for this node |
-| Does it satisfy the atomicity rule? | `composite` — decompose |
-| Can it run inline in the session? (see [Tiers](#tiers)) | dispatched execution |
+| Is the intent settled — no approach left to discover? | kind `design` |
+| Does it satisfy the atomicity rule? | kind `composite` — decompose |
+| Is the ground known — finding where the change goes is not part of the work? | evidence is earned for this node |
 
-Triage is a recommendation to the user at the effort root; "run it anyway" ends the discussion.
-Inside the tree, triage is the planner's, and the user sees it in the plan.
+Mode (for an effort root, or any node about to execute): **inline** or **dispatched** — see
+[Execution modes](#execution-modes). At the effort root, triage is a recommendation to the user,
+and "run it anyway" ends the discussion; inside the tree it is the planner's, shown in the plan.
 
 ### Atomicity: when to stop splitting
 
-A **leaf** is the smallest unit that deserves a commit. A node is a leaf when **every** condition
-holds, and it is split while any fails:
+A **leaf** is the smallest unit that deserves its own commit series. A node is a leaf when **every**
+condition holds, and is split while any fails:
 
-1. **One concern.** Its change can be stated as one commit subject without a conjunction. Two
-   concerns are two leaves.
-2. **One rigor.** A single [rigor](#rigor) level applies to all of it. Parts needing different
-   rigor are different leaves.
-3. **Closed locus.** Every file it writes is declared in `locus`, and no file in it is written by a
-   node that can run concurrently with it (otherwise the two are ordered by a dependency or the
-   file is routed to the [coupled lane](#coupled-work)).
-4. **Checkable alone.** Each acceptance criterion names a check (a test, the build, a typecheck, a
-   command) that can be run on this leaf's branch alone and decides the criterion.
-5. **Green when done.** After the leaf, the tree builds and the suite passes — except the declared
-   failing tests of a `red` leaf, which never reach the integration head alone.
-6. **Decided.** The brief contains every decision the executor needs. A leaf that needs a decision
-   the brief does not carry is a design question, not a leaf.
-7. **Fits one executor.** Brief + locus files + expected diff fit within the executor model's
-   context budget with headroom for its turns. Computed by script from file sizes and the model's
-   limit, never guessed.
+1. **One concern.** Its change can be stated as one commit subject without a conjunction.
+2. **One rigor and one role.** A single [rigor](#rigor) applies to all of it, and it is authored
+   by one agent role.
+3. **Closed locus.** Every file it writes is in `locus`, and no file in it is held by another leaf
+   that is not yet merged (otherwise the two are ordered by a dependency, or the file goes to the
+   [coupled lane](#coupled-work)).
+4. **Checkable alone.** Each acceptance criterion, except a `HUMAN:` one, names a check (a test, the
+   build, a typecheck, a command) that runs on this leaf's branch alone and decides it.
+5. **Green when done.** After it merges, the tree builds and the suite passes — except the declared
+   failing tests of a `red` leaf, which never reach the effort branch without their green.
+6. **Decided.** Its brief carries every decision the executor needs.
+7. **Fits one executor.** Brief + locus files + reads fit the executor model's context budget with
+   headroom for its turns, computed by script from file sizes and the model's limit.
 
-**The stop rule:** a node that satisfies all seven is not split further, even if it could be — a
-split that yields a child failing condition 4 or 5 is forbidden, because a child that cannot be
-checked alone or leaves the tree red is not a unit of recovery.
+**Stop.** A node that satisfies all seven is not split further. A split that yields a child failing
+4 or 5 is forbidden. A node that fails a condition and has no permitted split — for example a
+change to a closed set whose every consumer must change with it — is **`unsplittable`**: it widens
+its locus to own every consumer, and if that breaks condition 7 it escalates, naming the condition.
 
-**Why:** the leaf is the recovery grain (a lost session costs one leaf), the review grain (one
-reader judges it whole) and the parallelism grain (disjoint loci run side by side). All three want
-the smallest unit that is still independently correct.
+**Recovery grain.** An executor commits at every passing step and marks an unfinished series with a
+checkpoint commit, so an interruption costs at most the uncommitted step, whatever the leaf's size.
+
+**Why:** the leaf is the recovery grain, the review grain (one reader judges it whole) and the
+parallelism grain (disjoint loci run side by side). All three want the smallest unit that is still
+independently correct.
 
 ### Replanning
 
-An executor or planner returns one of these instead of finishing, and the parent replans the
-subtree rooted at that node:
+A leaf's executor or a planner returns one of these instead of finishing:
 
-| return | meaning | parent action |
+| return | meaning | who acts |
 |---|---|---|
-| `decompose` | the leaf violates atomicity (usually 1, 3 or 7) | split it; siblings unaffected |
-| `premise_mismatch` | the brief's premise does not match the code | re-derive the node from evidence; surface to the user when the premise came from them |
-| `needs_decision` | condition 6 failed | the question goes to the user; the node waits, siblings proceed |
-| `contract_changed` | a `provides` contract cannot hold as written | re-brief every not-yet-started consumer; started ones get the change as a fix round |
+| `decompose` | the leaf violates atomicity | the planner splits it, preserving every decision id; siblings unaffected |
+| `unsplittable` | no permitted split exists | the planner widens the locus, or the node escalates |
+| `premise_mismatch` | the brief's premise does not match the code | the planner re-derives the node from evidence; a premise that came from the user goes to the user |
+| `needs_decision` | condition 6 failed | the user |
+| `contract_changed` | a `provides` contract cannot hold as written | the user — a contract is a decision |
 
-Replanning appends `replanned` events; nothing is rewritten. A replanned node's merged work stays.
+**A user-bound return parks the node.** The workflow cannot talk to the user, so it keeps running
+every leaf that does not depend on the parked one, then returns a checkpoint naming what it needs.
+The answer arrives on a resume, which re-briefs the parked node and any not-yet-started consumer.
+
+**Autonomous replans preserve decisions.** The planner may split, merge or re-derive nodes only
+while every decision id stays realised; anything else is user-bound. Replans append `replanned`
+events; nothing is rewritten, and merged work stays.
 
 ---
 
-## Tiers
+## Execution modes
 
-A node's tier is how much machinery surrounds its execution. It follows from triage; it is not a
-separate choice.
-
-| tier | earned when | what runs |
+| mode | earned when | what runs |
 |---|---|---|
-| **inline** | every leaf of the node is `verify` or `tdd` rigor, the locus is known, the intent settled, the whole node fits the session comfortably, and nothing is irreversible | the session does it — see [The simple task](#the-simple-task) |
-| **dispatched** | a leaf needs `pair`/`triad` rigor, or the node has independent leaves worth running side by side, or it needs resumability beyond the session | an execution: worktrees, executors per rigor, fused verification, review per rigor, dynamic merge |
-| **composite** | the node fails atomicity | decomposition, then each child is tiered on its own |
-| **design** | the intent is not settled | a design node at the right level (see [Design](#design)) |
+| **inline** | every leaf is `verify` or `tdd`, the locus is known, the intent settled, nothing is irreversible, and the leaves' summed fit (condition 7's computation) is within the session model's budget | the session does it — see [The simple task](#the-simple-task) |
+| **dispatched** | anything else | an execution: worktrees, executors per rigor, boundary couriers, review per rigor, dynamic merge |
 
-Every tier keeps two things: the check that each new test fails without the change, and an
-independent reader for any behaviour change — on the inline tier, one fresh reviewer over the diff
-when a leaf is `tdd`; none for `verify`, whose check is that no test outcome changed.
+A composite may run inline when all its leaves qualify. Every mode keeps two things for any
+behaviour change: the check that each new test fails without the change, and an independent reader
+(on the inline mode, one fresh reviewer over the diff when a leaf is `tdd`; `verify` needs none,
+because its check is that no test outcome changes).
 
 ### The simple task
 
-The inline tier is the framework's lightest path and has its own entry skill. Its rules:
+The inline mode has its own entry skill, `task`. Its rules:
 
-- **Verify the premises first.** Check every file, symbol and assumption the request names
-  against the code. A mismatch is surfaced before any plan.
+- **Verify the premises first.** Check every file, symbol and assumption the request names against
+  the code; surface a mismatch before any plan.
 - **Split within-scope from auxiliary.** Within-scope is what was asked, including the tests its
   rigor requires. Auxiliary is what the change makes desirable: stale docs, neighbouring cleanups.
   Auxiliary items are proposed as a separate list the user accepts or rejects; a rejected item does
   not exist. A consequence ("skipping this leaves the build red") is stated as information, never
   used to bypass the choice.
 - **Ask, do not assume.** A genuine within-scope decision goes to the user, batched in one round.
-- **The plan is the todo list.** No plan file, no worktree, no run directory. One item
-  `in_progress` at a time.
-- **Tripwire.** Raise it — and recommend the dispatched or design tier — when the work needs
+- **The plan is the todo list.** Each todo is one request item and names its check; that list is
+  the task's traceability. No plan file, no worktree for the edit, no execution directory.
+- **Discriminate in a throwaway worktree.** A `tdd` leaf's fails-without-the-change check runs in a
+  linked worktree at the pre-change commit, never in the user's tree.
+- **Tripwire.** Raise it — recommending the dispatched mode or a design node — when the work needs
   design exploration, is cross-cutting, adds a dependency or technology, is ambiguous enough to
-  iterate, is irreversible or risky, or plausibly outgrows the session. An override is honoured
-  without a second argument. During execution, growth past triage re-raises the tripwire.
+  iterate, is irreversible or risky, or outgrows the computed fit. An override is honoured without
+  a second argument. Growth during execution re-raises it.
 - **Verify before claiming done** with the project's own checks. Commit only when asked.
 
-**Why a separate entry:** the lightest path must not pay for loading the heaviest skill's text on
-every turn.
+**Why a separate entry:** the lightest path must not load the heaviest skill's text on every turn.
 
 ---
 
@@ -320,25 +318,29 @@ every turn.
 
 Every leaf carries a `rigor`, set by its author. Walk the table top-down; the first match wins.
 
-| rigor | the leaf… | executors | verification |
+| rigor | the work… | leaves | verification |
 |---|---|---|---|
-| `verify` | changes no behaviour: docs, comments, config values, renames behind an unchanged interface, dependency bumps, wiring | one implementer | the named check passes; no test outcome changes |
-| `tests-only` | only adds tests to code that is already correct | one test-author | each new test passes now and is shown able to fail by a declared mutation |
-| `tdd` | adds behaviour whose expected results the criteria state exactly | one implementer, test first | each new test fails at base and passes now; **at least one new test** |
-| `pair` | adds behaviour where a wrong reading of the criteria would pass its author's own tests: edge-case rules, parsers, state machines, concurrency, contracts other nodes consume | a `red` test-author and a `green` implementer, separate agents | red: tests fail for want of the implementation; green: they pass, tests untouched |
-| `triad` | as `pair`, and a miss ships silently into durable state or is costly to find: persistence formats, migrations, data loss, security, money | red, green, and an auditor | as `pair`, plus the auditor's mutations bite |
+| `verify` | changes no behaviour: docs, comments, config values, renames behind an unchanged interface, dependency bumps, wiring | one implementer leaf | the named check passes; no test outcome changes |
+| `tests-only` | only adds tests to code that is already correct | one test-author leaf | each new test passes now and fails under a mutation the test-author declared |
+| `tdd` | adds behaviour whose expected results the criteria state exactly | one implementer leaf, test first | at least one new test; each fails at base and passes now |
+| `pair` | adds behaviour where a wrong reading of the criteria would pass its author's own tests: edge-case rules, parsers, state machines, concurrency, contracts other nodes consume | a `red` test-author leaf, then a `green` implementer leaf | red: its tests fail for want of the implementation; green: they pass, tests untouched |
+| `triad` | as `pair`, and a miss ships silently into durable state or is costly to find: persistence formats, migrations, data loss, security, money | red, green, then an `audit` leaf | as `pair`, plus the auditor's declared mutations are killed |
 
 Unsure between `tdd` and `pair`: `tdd` when the leaf is small, `pair` when it is not.
 
-- **No agent writes both a behaviour's tests and its code** at `pair` or `triad`. Separation is the
-  declared loci, checked post hoc by the commit-series check; green receives red's committed tests
-  as artifacts, never red's report.
-- **A red leaf never reaches the integration head alone.** Red and green merge together once green
-  is approved; green is cut from red's branch.
-- **`verify` claims no tests and needs none**; `tdd` with an empty discriminator fails.
-- **Review is per rigor.** `pair`, `triad` and any leaf that `provides` a contract get a review
-  loop of their own; `verify`, `tests-only` and `tdd` leaves are reviewed at integration against
-  their own criteria.
+- **`pair` and `triad` are separate leaves** with `deps` (green on red, audit on green), each with
+  its own branch, todo, review and resume action. Green is cut from red's branch and receives red's
+  committed tests as artifacts, never red's report. No agent authors both a behaviour's tests and
+  its code; the declared loci are the separation, checked by the commit-series check.
+- **A cycle lands as a unit.** Red is held on approval; its cycle merges together once the last
+  member is approved, so the effort branch is never red.
+- **Mutations are declarations.** A test-author or auditor declares `{file, find, replace,
+  expect_failing}`; leaf-close applies them by script and restores the file. Audit gaps return as
+  `decompose` with new `tests-only` or `pair` children.
+- **Review follows rigor.** `pair`, `triad` and any leaf that `provides` a contract get a review
+  loop of their own; `verify`, `tests-only` and `tdd` leaves are reviewed at integration.
+- **A fix round** on a test finding goes to a fresh test-author; on an implementation finding, to a
+  fresh implementer.
 
 **Why:** assurance should rise with the cost of a wrong reading, and the cheapest assurance that
 closes the specific hole is the right one.
@@ -347,46 +349,46 @@ closes the specific hole is the right one.
 
 ## Design
 
-Design is a subtree of design nodes, refined top-down in levels, as a C4 model is: each level
-states only what the level below needs, and a level is written only when a child reaches it.
+Design is a subtree of design nodes, refined top-down in levels as a C4 model is: each level states
+only what the level below needs, and a level is written only when a child reaches it.
 
-| level | states | ends when |
+| level | states | done when |
 |---|---|---|
-| `context` | the intent: who it is for, the outcome, success criteria, boundaries, what is out of scope | the user ratifies the intent |
-| `container` | which subsystems change and the contracts between them | every contract has a name and an owner |
-| `component` | per subsystem: components, interfaces, data shapes | the planner can write leaves that satisfy atomicity |
-| `leaf-spec` | per leaf: acceptance criteria and their checks | it is a leaf |
+| `context` | the intent: who it is for, the outcome, success criteria, boundaries, what is out of scope | the user ratifies it |
+| `container` | which subsystems change, and the contracts between them | every contract has a name, an owner and path prefixes |
+| `component` | per subsystem: components, interfaces, data shapes | the planner can write children that satisfy atomicity |
+| `leaf-spec` | per leaf: acceptance criteria and their checks | the node is a leaf |
 
-- **A level is earned.** A change within one subsystem skips `container`; a change within one
-  component skips `component`. The skip is recorded.
+- **A level is earned.** A change inside one subsystem skips `container`; inside one component,
+  `component`. The skip is recorded.
 - **Evidence is scoped to the level.** Each level surveys only the ground it needs, reuses fresh
   knowledge and standing evidence, and runs the outward search (does this already exist?)
-  alongside the survey, never after it.
+  concurrently with the survey when it would build a capability.
 - **Decisions are the user's and carry ids.** One question at a time, dependency order first, each
   with a recommendation and its reason. Open questions are graded `blocking`, `parked`, `lookup`,
   `compost`; a level with an open `blocking` question does not hand down.
-- **Approaches in parallel, when the decision space is open.** Independent drafts from assigned
-  stances; skipped, and recorded as skipped, when the level has one obvious shape.
-- **The probe is earned.** A level's document is probed when it is long enough to hide an
-  ambiguity or carries a contract other nodes consume. One analyst holds every axis unless length
-  earns more. A second round is earned only by a resolution that reshaped the design.
-- **Just in time.** Only the frontier's lower levels are written. A sibling reaching the frontier
-  gets its level written then, with its ancestors and delivered siblings as settled context.
+- **Approaches in parallel when the decision space is open.** Independent drafts from assigned
+  stances (GP1: bought for independence); skipped and recorded when the level has one obvious
+  shape.
+- **The probe is earned** by length or by a contract other nodes consume. One analyst holds every
+  axis unless length earns more; a second round is earned only by a resolution that reshaped the
+  design.
+- **Just in time.** Only the frontier's lower levels are written; a sibling reaching the frontier
+  gets its level then, with its ancestors and delivered siblings as settled context.
 
 **Why:** most design errors are errors of intent or of contract, and both are cheapest to catch at
-the level that states them; writing lower levels ahead of need pays for detail the upper levels
-will change.
+the level that states them; writing lower levels early pays for detail the upper levels will change.
 
 ### Traceability
 
-Every decision at every level has an id. Every child node lists the decision ids it realises; every
-leaf's criteria trace to them. A script computes, before anything is dispatched:
+Every decision at every level has an id. When an effort has no design node, its root's decision
+list is the request's items as triage stated them. Every child lists the decision ids it realises;
+every leaf's criteria trace to them. Before anything is dispatched, a script computes:
 
 - decisions no child realises — a **blocking gap**;
 - criteria that trace to no decision — reported, for the user to accept or remove.
 
-The integration review receives the decision list of the subtree it reviews, not only the leaves'
-own criteria.
+The integration review receives the decision list of the subtree it reviews.
 
 **Why:** a plan that silently drops a decision passes every leaf-level gate, because each gate
 checks a leaf against its own criteria.
@@ -400,19 +402,19 @@ checks a leaf against its own criteria.
 The survey gathers evidence for one node and never concludes.
 
 1. **Plan.** One analyst decomposes the question into topics against the knowledge base's index,
-   names each topic's subtree, and names the common ground.
-2. **Scout.** One scout per topic, the common ground scouted once. Scouts return locations, a
-   `stop_reason`, `no_match` and `not_reached` kept apart, and are continued on exactly what
-   remains until exhausted.
-3. **Resolve.** A script reads the scouts' locations, merges overlapping windows and produces
-   excerpts, once.
-4. **Judge.** One analyst **without tools** judges every topic from the excerpts, unless volume
-   earns more readers; history and docs channels run in parallel with scouting when the plan asks
-   for them, each with its own `.catch`.
+   names each topic's subtree and the common ground.
+2. **Scout.** One scout per topic, the common ground scouted once. Scouts return locations and a
+   `stop_reason`, with `no_match` and `not_reached` kept apart, and are continued on exactly what
+   remains until exhausted. History and docs channels run alongside when the plan asks, each with
+   its own `.catch`.
+3. **Resolve.** A script reads the locations, merges overlapping windows and produces excerpts,
+   once, under a digest.
+4. **Judge.** One analyst **without tools** judges every topic from the excerpts, unless volume or
+   `pace` earns more readers.
 
 Fresh knowledge-base entries turn a topic into a verification; stale entries are leads for scouts
-only; a node whose whole ground is fresh and whose shape is settled buys no survey (the null
-survey), and says so. A recorded survey whose commit is an ancestor of HEAD, whose ground no commit
+only. A node whose shape is settled and whose whole ground is fresh buys no survey (the null
+survey) and says so. A recorded survey whose commit is an ancestor of HEAD, whose ground no commit
 or edit has touched since, and which reported complete coverage **stands** and is reused.
 
 ### Knowledge base
@@ -421,119 +423,147 @@ Anchored observations, one append-only log per source-tree node. Depth is the lo
 ancestor of what an entry is about; freshness is `git log <observed_at>..HEAD -- <about>` plus a
 dirty-tree check, computed on read. Fresh is evidence, stale is a lead, orphaned is a claim about
 ground that is gone. Only script-minted kinds are written. Executors are seeded with fresh entries
-on their locus chain; verification is seeded with nothing but established commands whose source is
-a verification.
+on their locus chain; verification is seeded only with established commands whose source is a
+verification.
 
 ---
 
 ## Execution
 
-An execution runs a subtree. It owns an integration worktree on `agentics/<effort>/integration`
-cut from the named base ref, and never touches the user's tree.
+An execution runs a subtree in the effort branch's worktree and in per-leaf worktrees, and never
+touches the user's tree.
 
 ### Boundaries
 
 Every deterministic step runs at one of five boundaries, each one courier dispatch running one
-`lib/` entry point under one digest:
+`lib/` entry point under one digest. Every entry point is **idempotent**: re-running it after an
+unobserved outcome converges on the same state, because each step first checks whether its effect
+already exists (a merge already in the branch, a line already in the log, a worktree already
+attached).
 
 | boundary | fused steps |
 |---|---|
-| **preflight** | find existing executions of this subtree; drift check against the plan's anchor; create or attach the integration worktree; free dead worktrees; read the knowledge chain for every locus |
-| **leaf-open** | create the leaf's worktree and branch; assemble its brief from the node, evidence and knowledge; record `dispatched` |
-| **leaf-close** | commit-series check, build, typecheck, suite, discriminator, mutations; journal the observation; append the state line |
-| **merge-batch** | merge every leaf approved since the last batch in dependency order; verify the merged head; append the state line; move progress |
+| **preflight** | refuse a second active execution; drift check against the plan's anchor; attach or create the effort worktree; free dead worktrees (clean ones only — a dirty worktree is reported, never forced); read the knowledge chain for every locus |
+| **leaf-open** | create or attach the leaf's worktree and branch; assemble its brief; append `dispatched` |
+| **leaf-close** | commit a shell-less author's files; commit-series check, build, typecheck, suite, discriminator, declared mutations; journal the observation; append the state line |
+| **merge-batch** | merge every approved leaf in dependency order; verify the merged head; append the state line |
 | **postflight** | deposit approved leaves' discoveries; report worktrees and branches eligible for cleanup |
 
-A merge-batch whose merged tree equals an already verified leaf tree skips re-verification; a
-failing batch is bisected by the script to the leaf that broke it.
+Long checks run detached inside the entry point and are polled to completion, so a host's shell
+timeout cannot cut a boundary short.
+
+**Retries are sized to what was observed.** A refusal (the writer says it wrote nothing) buys one
+fresh courier; a courier that threw or returned nothing is re-run only because the entry point is
+idempotent, and a payload that fails its digest buys one refetch on a stronger model before
+escalating as a transport failure.
+
+### Merging
+
+Merge follows the merge-result contract carried over from `docs/DESIGN.md`: success is computed
+from `stop_reason`, `merged_sha` and `conflicts` together, and a conflict stops the batch as a
+planner defect surfaced to the user. A merge-batch whose merged tree equals an already verified
+leaf tree skips re-verification.
+
+**A failing merged head** is reset to the last green head, and the script bisects the batch. A leaf
+that fails alone on the new head gets a fix round; leaves that each pass alone and fail together
+escalate as a **combination failure** naming all of them — it is a design question, not a leaf's.
 
 ### Scheduling
 
-A ready set, recomputed at every boundary: a leaf is ready when its dependencies are merged, its
-locus is free of any running leaf, and it is not blocked by an open escalation on its dependency
-chain. Ready leaves dispatch immediately. Merge-batches run whenever approved leaves are waiting
-and no batch is in flight. Red/green/audit chains are held and merge as a unit.
+A ready set, recomputed at every boundary. A leaf is ready when its dependencies are merged, no
+unmerged leaf holds any file of its locus, and no open escalation sits on its dependency chain.
+Ready leaves dispatch immediately. A merge-batch runs whenever approved leaves wait and no batch or
+coupled leaf is using the effort worktree. Cycles are held and land as a unit.
 
-`pause` stops at the next merge-batch boundary, where state is written and the next dispatch would
-branch from an existing head.
+When the session set a token target, the scheduler does not start a leaf that the remaining budget
+cannot cover at the effort's measured cost per leaf; it stops at the next merge-batch instead.
+`pause` is a launch flag with the same effect after the next merge-batch.
 
 ### Coupled work
 
-A leaf whose locus includes a designated shared file (lockfiles, configuration roots, barrel
-files) runs in the **coupled lane**: serially, on the integration head, under the same rigor,
-verification and review as any leaf. The lane runs alongside the ready set; only coupled leaves
-wait for one another.
+A leaf whose locus includes a designated shared file (lockfiles, configuration roots, barrel files)
+is **coupled**. It runs on its own branch cut from the effort head, under the same rigor,
+verification and review, and merges through a merge-batch. Coupled leaves run one at a time;
+everything else keeps running.
 
 ### Executors and review
 
-- **Executors** are standalone agents, one per role per leaf: implementer, test-author, auditor,
-  fixer. Each fetches its brief by reference and confirms its digest, writes a focused commit
-  series inside its locus (no amends, no rebases, early commits), writes its report to a file and
-  returns a short typed status: `done`, `done_with_concerns`, `blocked`, `needs_context`, or a
+- **Executors** are standalone agents, one per leaf per round: implementer, test-author, auditor.
+  Each fetches its brief by reference and confirms its digest, writes a focused commit series
+  inside its locus (no amends, no rebases), writes its report to a file, and returns a short typed
+  status: `done`, `done_with_concerns`, `blocked`, `needs_context`, or a
   [replanning](#replanning) return.
 - **Review** is a fresh reviewer each round, given the brief, the span, the executor's concerns and
-  the prior round's open findings. Findings sit on a severity ladder assigned by consequence
-  (`critical`, `major`, `minor`), each critical or major naming its failure scenario. The blocking
-  set is criticals, plus majors on a contract leaf. The loop exits when the open set is empty, and
-  escalates — computed — when a fix round lands no commits, the same finding is unfixed twice
-  running, or two rounds each fix every prior blocker and still mint new ones.
-- **Integration review** reads the merged diff of the subtree against its decision list and every
-  leaf reviewed there. Its criticals go to the user.
+  the prior round's open findings. The review-loop exit, the code severity ladder and the
+  fix-verdict vocabulary are carried over verbatim from `docs/DESIGN.md`: the open set includes
+  prior blockers ruled `not_fixed` or `regressed` and not re-reported; a major blocks only on a
+  contract leaf and only with a failure scenario.
+- **Integration review** runs per composite node, over the merged diff of its children, against its
+  decision list and the criteria of every child reviewed there. A diff too large for one reader
+  (condition 7's computation) is reviewed per child composite. When planned children did not land,
+  every finding carries that caveat. Its criticals go to the user.
+- **Establishing commands** is judgment: when no build or test command is established, leaf-close
+  returns `command_unknown`, and an investigator establishes them once for the execution.
 
 ### Model tier
 
-The node's author sets model and effort per stage, because it holds the context. Defaults: agents
-that **produce** (implementer, test-author, fixer) run the cheaper model, with effort scaled to the
-leaf's difficulty; agents that **gate** (reviewer, auditor, planner, analyst) run the stronger
-model at moderate effort. Output that becomes the yardstick for other work (`pair`, `triad`,
-contract leaves) never gates on the cheaper model. A fix round that failed to clear its blockers
-raises the producer one step. The user's intelligence dial is a ceiling, derived from the session's
-model unless the user moves it; couriers run the cheapest model at every position.
+The node's author sets `dispatch` per stage, because it holds the context. Defaults: **producers**
+(implementer, test-author) run the cheaper model, with effort scaled to the leaf's difficulty;
+**gates** (reviewer, auditor, planner, analyst) run the stronger model at moderate effort. A leaf
+whose output is a yardstick — `red`, `audit`, or one that `provides` a contract — runs its producer
+on the stronger model too. A fix round that failed to clear its blockers raises the producer one
+step, and that step may exceed the user's ceiling. The user's intelligence dial is otherwise a
+ceiling, derived from the session's model unless the user moves it. Couriers run the cheapest model.
 
-### The human gate
+### Landing and drift
 
-The execution returns its result in a fixed order: checkpoint, escalations, blocked nodes (naming
-the escalated root), then the integration branch. The session presents gaps first, surfaces every
-`HUMAN:` criterion verbatim, and merges the integration branch into the user's branch only on an
-explicit go with no open escalation. Cleanup of merged branches and worktrees follows on a go.
+An execution delivers into the effort branch without asking; the user's tree is not involved.
+After each merge-batch, the landed diff is intersected with the `consumes` path prefixes of every
+pending designed node; a hit goes to the user as facts, and they rule unaffected, re-design or
+re-slice. Undesigned nodes are reported as unexamined.
+
+**Landing is the one ask.** When the effort is complete, or the user says to land what exists, the
+session reports how the user's branch drifted since the effort branch was cut, asks, and merges the
+effort branch into the user's branch; the event is `landed`. The session presents gaps first,
+surfaces every `HUMAN:` criterion verbatim, and never lands over an open escalation. Cleanup of
+merged branches and worktrees follows on a go.
 
 ---
 
-## The ledger and resume
-
-Per execution: `state.jsonl` holds what the workflow decided (approvals, escalations, batch
-outcomes); `journal.jsonl` holds what actors observed (measurements, merges, finished series,
-review rounds). `lib/ledger.mjs` is the only writer; it refuses a line that does not parse, lacks a
-kind or an integer `seq`, or fails its caller's digest.
+## Resume and checkpoints
 
 Resume computes, on disk, one next action per leaf — `none`, `merge`, `review`, `verify`,
-`continue-series`, `code` — adopting a stage only where the record and git agree. A clean
+`continue-series`, `code` — adopting a stage only where the record and git agree. A checkpoint
+commit (the executor's mark on an unfinished series) means continue, never measure. A clean
 execution (empty ledger, no leaf branches) opens for the cost of one branch listing. Committed work
 is salvaged by right and reported as salvaged; uncommitted work is reported and adopted by nobody.
-Escalations carry forward until the user names them for retry. A resume adopts its envelope (base,
-tier, settled evidence) from disk, and a fresh request for a subtree that already has a planned or
-running execution returns a checkpoint instead of planning a duplicate.
+Escalations carry forward until the user names them in `retry_escalated`. A resume adopts its
+envelope (base, dial, settled evidence) from disk.
 
-Checkpoints: `existing_execution`, `blocking_gaps`, `parked`, `stale`. A checkpoint dispatches
-nothing.
+A checkpoint dispatches nothing new and says how to proceed:
+
+| checkpoint | meaning | to proceed |
+|---|---|---|
+| `existing_execution` | the effort already has an active or planned execution | resume it; or `confirmed_duplicate` |
+| `blocking_gaps` | untraced decisions, or evidence the node depends on was not reached | `confirmed_gaps` |
+| `parked` | the caller launched with `plan_only`, or nodes await a user-bound return | resume with the answers |
+| `stale` | the user's tree moved under the plan; per leaf, `writes` and `reads` that moved | `confirmed_stale` |
 
 ---
 
 ## Progress
 
-The user follows work through the host's todo list, and it moves at the moment a stage changes.
+The user follows work through the host's todo list, as in `vf-superpowers`' subagent-driven
+development: **one todo per leaf**, subject `<node-id> — <title>`, with the stage in `activeForm`
+(`implementing`, `writing tests`, `in review`, `fix round N`, `merging`, `waiting on user`),
+`completed` on merge, `pending` with the reason when deferred or escalated. Composite nodes appear
+as todos whose status is derived from their children.
 
-- **One todo per leaf**, created when the leaf is planned, subject `<node-id> — <title>`.
-- **Stage in `activeForm`:** `implementing`, `writing tests`, `in review`, `fix round N`,
-  `merging`, `waiting on user`. `completed` when merged; `pending` when deferred or escalated,
-  with the reason.
-- **Composite nodes** appear as a todo whose status is derived from their children.
-- **The mover is the boundary courier:** leaf-open and leaf-close move a leaf's todo, merge-batch
-  completes it, so progress costs no dispatch of its own.
-- **A checkpoint line** heads each execution's state: `Status: ONGOING | DONE | NEEDS_INPUT`, read
-  first by any resume.
-- **Whenever the session is awake** it can re-derive every todo from the event logs; the list is a
-  view and is never hand-edited.
+**The session is the mover.** The todos are derived from the event logs (`lib/status.mjs`) and
+written by the session when it launches an execution, whenever it is woken, and on the execution's
+return. The list is a view and is never hand-edited. While an execution runs, the workflow's log
+narrates every boundary live. A status header (`ONGOING`, `DONE`, `NEEDS_INPUT`) is rendered from
+derived status for display and never read as a fact.
 
 ---
 
@@ -542,65 +572,86 @@ The user follows work through the host's todo list, and it moves at the moment a
 | role | does | cannot | tools |
 |---|---|---|---|
 | scout, historian, doc-researcher | find, to exhaustion | conclude | search tools; historian read-only git |
-| analyst | judge excerpts it is handed | search | none by default |
-| planner | triage, decompose, set rigor and tier, write nodes | implement | read, search, write node files |
-| implementer | code one leaf as a focused series | leave its locus, amend, merge, certify | read, edit, shell |
-| test-author | write a leaf's tests | implement, run the suite as a verdict | read, edit, shell for committing |
-| auditor | mutate an implementation to test its tests | edit the implementation | read, shell |
+| analyst | judge what it is handed | search | none by default |
+| planner | triage, decompose, set rigor and dispatch, write nodes | implement | read, search, write node files |
+| implementer | code one leaf as a focused series, or its fix round | leave its locus, amend, merge, certify | read, edit, shell |
+| test-author | write a leaf's tests and declare mutations | implement, execute anything | read, edit |
+| auditor | declare mutations against an implementation | edit anything, execute anything | read |
 | reviewer | attack a span | approve, edit | read, read-only git |
+| investigator | establish build and test commands when none are known | judge quality, fix anything | read, shell |
 | courier | run one command, paste stdout | anything else | shell |
 
-Capability is the tool allowlist and nothing else — no hooks. Agents with a shell are restrained by
-their definitions; restraint is audited post hoc (locus by the commit-series check), and the
-criterion is zero breaches surviving to review.
+Capability is the tool allowlist and nothing else — no hooks. The test-author and auditor carry no
+shell, so the authors of every yardstick are structurally unable to run what they wrote; their
+files are committed and their mutations applied by leaf-close. Agents with a shell are restrained
+by their definitions and audited post hoc (the locus by the commit-series check): the criterion is
+zero breaches surviving to review.
 
 ---
 
 ## Skills
 
-Entry points, each loading only what its path needs:
-
 | skill | entry for |
 |---|---|
-| `task` | the inline tier: premise check, gated auxiliary, todo plan, project checks |
+| `task` | the inline mode |
 | `design` | a design node at any level |
-| `develop` | executing any subtree: triage, launch, result walk, human gate |
+| `develop` | executing any subtree: triage, launch, result walk, landing |
 | `probe` | attacking a written artefact |
 | `investigate` | answering a question from evidence |
 | `find-existing-solutions` | the outward search |
-| `status` | listing efforts and executions with derived status; handing one to `develop` |
+| `status` | listing efforts, nodes and executions with derived status; handing one to `develop` |
 
 A skill file holds the router and the steps; step detail lives in reference files loaded when the
-step is reached. A contract several files must state identically is a verbatim block, and each
-block appears only in the files whose reader acts on it.
+step is reached. A contract several files must state identically is a verbatim block, placed only
+in the files whose reader acts on it.
+
+---
+
+## Data contracts
+
+Each contract names its owner (the code that defines the shape) and every place it is restated; a
+change to a field list edits every place in the same commit series. New in this design: the node
+record, the node event, the boundary payloads (`preflight`, `leaf-open`, `leaf-close`,
+`merge-batch`, `postflight`) and the replanning returns. **Carried over verbatim** from
+`docs/DESIGN.md`: the digest convention, the state and journal lines, `seq`, the verify payload and
+its typed outcomes (`command_unknown`, `discriminator_undecidable`, `verify_oscillating`,
+`test_unrunnable`, `suite_failures_unnamed`, `tree_not_restored`; absent never inferred; typecheck
+never derived from the suite), the merge result, the resume verdict, the knowledge-base entry, the
+coverage block, the review-loop exit and both severity ladders.
 
 ---
 
 ## Self-checks
 
-- **Lint** checks form: no counter-based termination, coverage block on every exit, no verdict
-  fields in agent schemas, no imports in workflows, namespaced agent types, agent frontmatter.
-- **The scenario harness** runs the real workflows with scripted agents; every structural claim
-  about dispatch count is a harness assertion, not prose.
-- **Verbatim blocks** are compared across files.
-- **Liveness** (GP7): for every agent, record kind, schema field, lint rule and library export, a
+- **Lint** checks form: no counter-based termination, a coverage block on every exit, no verdict
+  fields in agent schemas, no schema bounds, no imports in workflows, namespaced agent types, valid
+  workflow `meta`, agent frontmatter, gate clauses in gated skills, a stated task-tool fallback.
+- **The scenario harness** runs the real workflows with scripted agents; every claim about dispatch
+  count is a harness assertion, not prose.
+- **Pins:** verbatim blocks match across files; every agent's tool allowlist is pinned; every
+  pointer into the design document resolves.
+- **Liveness** (GP2): for every agent, record kind, schema field, lint rule and library export, a
   check finds a producer and a consumer in the source; defined-never-dispatched,
   written-never-read and read-never-written fail the suite.
 - **Budgets:** each skill and agent definition has a size budget in one configuration file; lint
-  fails a file over its budget.
-- **Cost report:** every execution records its dispatches with model, effort and — where the host
-  reports it — tokens, so the next triage quotes measured figures.
+  fails a file over it.
+- **Cost report:** every execution records its dispatches with model, effort and, where the host
+  reports it, tokens, so the next triage quotes measured figures.
 
 ---
 
 ## Open questions
 
-1. **Progress from inside a workflow.** A workflow script cannot call the task tools; the design
-   moves todos from the boundary couriers. Whether a subagent's task-tool calls reach the session's
-   todo list while the session is blocked on a workflow must be verified on the host before this
-   is built. The fallback is the workflow's own log narration plus session-side derivation.
-2. **Tests on the inline tier.** The simple-task model writes no tests unless asked; this design
-   has the leaf's rigor decide (`tdd` writes them). Confirm rigor governs.
+1. **Live todo movement during an execution.** Moving todos from inside a running workflow needs
+   an agent's task-tool calls to reach the session's list while the session waits on the workflow;
+   that is unverified on this host. The design makes the session the mover (on launch, wake and
+   return) plus live log narration. If the host allows it, the boundary couriers could move todos
+   at no extra dispatch.
+2. **Tests on the inline mode.** The simple-task model writes no tests unless asked; this design
+   has rigor decide (`tdd` writes them, `verify` does not). Confirm rigor governs.
 3. **Knowledge base placement.** The design reads "kb is a child of the effort" as "kb is a child
    of the repository root node, of which every effort is a subtree", so knowledge survives across
    efforts. Confirm.
+4. **One active execution per effort.** Chosen for a single `seq` authority and one effort
+   worktree; independent subtrees still run in parallel inside it. Confirm, or ask for concurrent
+   executions on disjoint subtrees (which needs per-execution integration branches).

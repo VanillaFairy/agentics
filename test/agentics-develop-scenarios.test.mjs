@@ -246,3 +246,11 @@ test('contract drift parks the consumer until the user rules, and the rest keeps
   assert.ok(result.implemented.some((i) => i.id === 'c'))
   assert.deepEqual(result.drift, [{ node: 'b', contract: 'api', files: ['src/api.js'] }])
 })
+
+test('a leaf whose files are held by a stopped leaf is reported blocked, never re-dispatched in a loop', async () => {
+  const sim = simulate([composite('.'), row('a'), row('b')], { open: { b: ['stuck'] } })
+  const { result } = await run(sim)
+  assert.equal(sim.opens.filter((o) => o === 'b').length, 1)
+  assert.deepEqual(result.blocked, [{ id: 'b', blocked_by: 'x' }])
+  assert.equal(result.coverage.complete, false)
+})

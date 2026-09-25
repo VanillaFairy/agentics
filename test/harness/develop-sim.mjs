@@ -65,6 +65,8 @@ export function simulate(nodes, script = {}) {
       const plan = script.open && script.open[args.node]
       const n = count('open:' + args.node)
       const st = Array.isArray(plan) ? plan[n] || 'opened' : 'opened'
+      const stuck = st === 'stuck'
+      if (stuck) return { boundary: 'leaf-open', ok: true, error: null, status: 'locus_held', stuck: true, held_by: [{ node: 'x', status: 'escalated' }], todos: [] }
       return {
         boundary: 'leaf-open', ok: true, error: null, status: st, branch: 'agentics/e--' + args.node,
         worktree: '/wt/' + args.node, base_sha: 'b-' + args.node, head_sha: 'b-' + args.node,

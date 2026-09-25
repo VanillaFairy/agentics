@@ -246,6 +246,7 @@ const reviews = []
 const drift = []
 const integ = new Map()         // composite id -> {worktree, base, head, branch}
 const heads = new Map()         // leaf id -> the head it was approved at
+const lockedBy = new Map()      // leaf id -> the stopped leaf holding its files
 const composite = new Map()     // composite id -> 'open' | 'reviewing' | 'ripe' | 'merging' | 'held'
 let maxParallel = 4
 let cleanup = []
@@ -553,7 +554,7 @@ function readyLeaves() {
     const s = statusOf(id)
     if (s !== 'planned' && s !== 'active') continue
     if (planning.has(parentOf(id))) continue
-    if (blockedBy(id)) continue
+    if (blockedBy(id) || lockedBy.has(id)) continue
     if (!(row.deps || []).every((d) => depReady(id, d))) continue
     if (row.coupled && (coupledInFlight() || out.some((o) => rows.get(o).coupled))) continue
     out.push(id)
@@ -690,6 +691,13 @@ async function openLeaf(id, st, fix, mode) {
       if (!st.base || st.round === 1 || opened.rebased) st.base = opened.base_sha
       if (!st.head) st.head = opened.head_sha || opened.base_sha
       return opened
+    }
+    if (opened.status === 'locus_held' && opened.stuck) {
+      // Held by an escalated or parked leaf: it frees only when the user acts on that leaf.
+      const holder = (opened.held_by || [])[0] || {}
+      lockedBy.set(id, holder.node || '')
+      note(id + ': its files are held by ' + (holder.node || 'a stopped leaf') + ', which waits on the user')
+      return null
     }
     if (opened.status === 'no_slot' || opened.status === 'locus_held') {
       log('open:' + id + ': ' + opened.status + ' — waiting for ' + (opened.held_by ? JSON.stringify(opened.held_by) : 'the pool'))
@@ -1041,7 +1049,7 @@ function blockedList() {
   for (const [id, row] of rows) {
     if (row.kind !== 'leaf' || !inScope(id)) continue
     if (!['planned', 'active'].includes(statusOf(id))) continue
-    const by = blockedBy(id)
+    const by = blockedBy(id) || lockedBy.get(id)
     if (by) out.push({ id, blocked_by: by })
   }
   return out

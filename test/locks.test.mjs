@@ -128,7 +128,7 @@ test('all or nothing: one held locus path refuses the whole acquire, leaving no 
   const b = take(repo, 'b', { locus: ['src/b.js', 'src/shared.js'] })
   assert.equal(b.ok, false)
   assert.equal(b.reason, 'locus_held')
-  assert.deepEqual(b.held_by, [{ effort: E, path: 'src/shared.js', node: 'a', execution: X }])
+  assert.deepEqual(b.held_by, [{ effort: E, path: 'src/shared.js', node: 'a', execution: X, status: 'active' }])
   assert.equal(locusLockExists(repo, 'src/b.js'), false)
   assert.deepEqual(slotFiles(repo), ['1.lock'], 'b left no slot behind')
 
@@ -305,4 +305,16 @@ test('CLI: held prints the pool', () => {
     locus: [{ effort: E, path: 'src/a.js', node: 'a', execution: X }],
     notes: [],
   })
+})
+
+test('a locus held by an escalated leaf answers at once as stuck instead of waiting', () => {
+  const repo = effortRepo(['a', 'b'])
+  assert.equal(acquire(repo, { effort: E, execution: X, node: 'a', locus: ['src/shared.js'] }).ok, true)
+  event(repo, 'escalated', 'a', { reason: 'test' })
+  const started = Date.now()
+  const out = acquire(repo, { effort: E, execution: X, node: 'b', locus: ['src/shared.js'], waitMs: 60000, pollMs: 50 })
+  assert.equal(out.ok, false)
+  assert.equal(out.reason, 'locus_held')
+  assert.equal(out.stuck, true)
+  assert.ok(Date.now() - started < 5000, 'it did not wait out the minute')
 })

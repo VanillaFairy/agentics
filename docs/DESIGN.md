@@ -672,7 +672,9 @@ than the pool's current size. It cannot touch the pool, which is on disk, so *ad
 by `lib/locks.mjs` inside leaf-open: the entry point takes a slot and the locus locks atomically, or
 waits for them in-process (polling the lock files locally, costing no tokens) until they come free.
 A wait that reaches the host's shell-call limit returns `no_slot` or `locus_held`, and the script
-re-dispatches leaf-open for that leaf; nothing else stalls. The user controls the limit.
+re-dispatches leaf-open for that leaf; nothing else stalls. A lock held by an escalated or parked
+leaf frees only when the user acts, so leaf-open answers `stuck` at once and the leaf is reported
+blocked by that holder rather than waited on. The user controls the limit.
 
 When the session set a token target, the scheduler does not start a leaf that the remaining budget
 cannot cover at the execution's measured cost per leaf; it stops after the next merge-batch
@@ -1043,7 +1045,7 @@ notes}` plus:
   children, acceptance_n, human, own_review, coupled, integration}` — no prose.
 - **leaf-open** — `status` (`opened | no_slot | locus_held | refused`), `branch`, `worktree`,
   `base_sha`, `head_sha`, `rebased`, `brief_path`, `brief_digest`, `report_path`, `slot`,
-  `max_parallel`, `held_by`.
+  `max_parallel`, `held_by[{effort, path, node, execution, status}]`, `stuck`.
 - **leaf-close** — `status` (`done | pending`), `node`, `head_sha`, `measurement`, `decision {next,
   reason, failures[{check, claim, evidence}]}`, `gotchas_written`, `gotchas_deleted`, `mutations`,
   `committed`.

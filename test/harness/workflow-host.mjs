@@ -17,6 +17,7 @@
 
 import { readFileSync } from 'node:fs'
 
+import { parseLocations } from '../../lib/citations.mjs'
 import { canonical, fnv1a } from '../../lib/plan-digest.mjs'
 
 const AsyncFunction = (async function () {}).constructor
@@ -176,57 +177,35 @@ export function recordedLine(prompt) {
 }
 
 /**
- * The locations a `lib/citations.mjs excerpts` dispatch carries, decoded from its argv token.
+ * The locations a `lib/citations.mjs excerpts` dispatch carries, parsed by the library's own
+ * parser from its `--locs` list.
  *
- * @param {string} prompt a courier prompt carrying `--digest D --b64 T`
- * @returns {{ digest: string, locations: Array<{path: string, line: number}> }}
+ * @param {string} prompt a courier prompt carrying `--locs "L" --digest D`
+ * @returns {{ digest: string, list: string, locations: Array<{path: string, line: number}> }}
  */
 export function excerptLocations(prompt) {
-  const call = /--digest (\S+) --b64 (\S+)/.exec(prompt || '')
-  if (!call) throw new Error('this prompt carries no --digest/--b64 locations')
-  return { digest: call[1], locations: JSON.parse(Buffer.from(call[2], 'base64').toString('utf8')) }
+  const call = /--locs "([^"]*)" --digest (\S+)/.exec(prompt || '')
+  if (!call) throw new Error('this prompt carries no --locs/--digest location list')
+  return { digest: call[2], list: call[1], locations: parseLocations(call[1]) }
 }
 
 /**
- * `lib/citations.mjs excerpts`'s payload for the locations a prompt carries: a five-line window
- * around each location, merged when they touch, each line's text naming where it came from
- * (`text of <path>:<n>` unless `lineText` says otherwise). Wrap it in `carriedEnvelope` to answer
- * the courier; damage it first to exercise the transport ladder.
+ * `lib/citations.mjs excerpts`'s payload for the locations a prompt carries: one context file
+ * named by the list's digest, so each batch's file path is distinct and traceable to it. Wrap it
+ * in `carriedEnvelope` to answer the courier; damage it first to exercise the transport ladder.
  */
-export function excerptsPayload(prompt, { lineText = (path, n) => `text of ${path}:${n}` } = {}) {
-  const { locations } = excerptLocations(prompt)
-  const byPath = new Map()
-  for (const { path, line } of locations) {
-    if (!byPath.has(path)) byPath.set(path, [])
-    byPath.get(path).push({ from: Math.max(1, line - 2), to: line + 2 })
-  }
-
-  const files = [...byPath].map(([path, ranges]) => {
-    const merged = []
-    for (const r of ranges.sort((a, b) => a.from - b.from)) {
-      const last = merged[merged.length - 1]
-      if (last && r.from <= last.to + 1) last.to = Math.max(last.to, r.to)
-      else merged.push({ ...r })
-    }
-    return {
-      path,
-      lines: 999,
-      excerpts: merged.map((w) => ({
-        ...w,
-        text: Array.from({ length: w.to - w.from + 1 },
-          (_, i) => `${w.from + i}\t${lineText(path, w.from + i)}`).join('\n'),
-      })),
-    }
-  })
-
-  const windows = files.reduce((n, f) => n + f.excerpts.length, 0)
-  const bytes = files.reduce((n, f) => n + f.excerpts.reduce((m, e) => m + e.text.length, 0), 0)
+export function contextPayload(prompt) {
+  const { digest, locations } = excerptLocations(prompt)
   return {
-    repo: '.', files, unresolved: [],
-    counts: { locations: locations.length, files: files.length, excerpts: windows, bytes, unresolved: 0 },
-    notes: 'resolved ' + windows + ' window(s)',
+    repo: '.',
+    context: { digest, parts: [{ path: contextPathFor(digest), lines: 5 * locations.length, bytes: 100 }] },
+    counts: { locations: locations.length, files: 1, excerpts: locations.length, bytes: 100, unresolved: 0 },
+    notes: 'resolved ' + locations.length + ' window(s)',
   }
 }
 
-/** An excerpts courier that resolves every location its prompt carries. */
-export const carriedExcerpts = (prompt) => carriedEnvelope(excerptsPayload(prompt))
+/** The context file `contextPayload` names for a list with this digest. */
+export const contextPathFor = (digest) => `C:/repo/.claude/agentics/context/${digest}-1.md`
+
+/** A context courier that writes every location its prompt carries. */
+export const carriedContext = (prompt) => carriedEnvelope(contextPayload(prompt))

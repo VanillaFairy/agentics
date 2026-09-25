@@ -8,7 +8,7 @@ export const meta = {
     { title: 'Scout' },
     { title: 'History' },
     { title: 'Docs' },
-    { title: 'Assemble context for analysis', detail: 'one script reads every location once and merges the windows' },
+    { title: 'Assemble context for analysis', detail: 'per judge, one script reads its locations once and writes them to files it Reads' },
     { title: 'Judge', detail: 'one analyst without search tools, unless volume or pace earns more' },
   ],
 }
@@ -332,9 +332,9 @@ const repo = String(roots).split(/[,;\n]/)[0].trim() || '.'
 // ---------------------------------------------------------------- the transport
 //
 // A payload computed on disk arrives through a model, so it is re-digested here before a field of
-// it is believed; a line this script mints whole travels base64 on one argv slot with its digest
-// beside it. The functions are copies of `lib/plan-digest.mjs`'s and `agentics-develop`'s:
-// scripts cannot import, and the suite pins them together.
+// it is believed; a location list this script mints travels as plain text on one argv slot with
+// its digest beside it. The functions are copies of `lib/plan-digest.mjs`'s and
+// `agentics-develop`'s: scripts cannot import, and the suite pins them together.
 function canonical(value) {
   if (value === undefined) return 'null'
   if (value === null || typeof value !== 'object') return JSON.stringify(value)
@@ -354,41 +354,6 @@ function fnv1a(text) {
   }
 
   return (hash >>> 0).toString(16).padStart(8, '0')
-}
-
-function utf8Bytes(text) {
-  const out = []
-
-  for (const ch of String(text)) {
-    const c = ch.codePointAt(0)
-    if (c < 0x80) out.push(c)
-    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63))
-    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
-    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
-  }
-
-  return out
-}
-
-const B64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-
-/** Standard base64, padded. */
-function base64(text) {
-  const bytes = utf8Bytes(text)
-  let out = ''
-
-  for (let i = 0; i < bytes.length; i += 3) {
-    const b0 = bytes[i]
-    const b1 = i + 1 < bytes.length ? bytes[i + 1] : -1
-    const b2 = i + 2 < bytes.length ? bytes[i + 2] : -1
-
-    out += B64_ALPHABET[b0 >> 2]
-    out += B64_ALPHABET[((b0 & 3) << 4) | (b1 < 0 ? 0 : b1 >> 4)]
-    out += b1 < 0 ? '=' : B64_ALPHABET[((b1 & 15) << 2) | (b2 < 0 ? 0 : b2 >> 6)]
-    out += b2 < 0 ? '=' : B64_ALPHABET[b2 & 63]
-  }
-
-  return out
 }
 
 /** What a courier carried back: the payload, or why it cannot be believed and how to retry. */
@@ -941,37 +906,93 @@ const commonGround = commonFind
 const scouted = await parallel(topics.map((topic) => () => scoutUntilComplete(topic)))
 const common = await commonGround
 
-// ------------------------------------------------ 5. assemble context for analysis
+// ------------------------------------------------------------ 5. who judges what
 //
-// Every location the scouts found, read ONCE by a script, overlapping windows merged, and handed
-// to the judges as excerpts under a digest. A judge that is handed the lines spends its turns
-// judging; one handed paths spends them opening files, and several judges handed the same paths
-// open the same files each.
-//
-// A side channel with IRON LAW §5 treatment: a location that could not be resolved — its batch
-// was lost in transport, or the file is not in the first root — reaches the judge as a location
-// to read itself, which its constitution permits. That costs turns, not evidence.
+// One analyst without search tools judges every topic — one reader per body of evidence. More
+// are bought only when the volume would not fit one reader's attention, or when the caller set
+// `pace: fast` and pays for wall-clock with parallel readers. Volume is counted in distinct
+// locations, because the split is decided before any excerpt is read.
 
-phase('Assemble context for analysis')
+const LOCATIONS_PER_JUDGE = 60
 
-const locKey = (path, line) => String(path) + ':' + String(line)
+const normPath = (path) => String(path).split('\\').join('/')
+const locKey = (path, line) => normPath(path) + ':' + String(line)
 
-function locationsOf(found) {
-  return found ? found.hits.map((h) => ({ path: String(h.path), line: Number.isInteger(h.line) ? h.line : 0 })) : []
-}
-
-const allLocations = []
-{
+function locationsOf(hits) {
   const seen = new Set()
-  for (const loc of scouted.flatMap(locationsOf).concat(locationsOf(common))) {
+  const out = []
+  for (const h of hits) {
+    const loc = { path: normPath(h.path), line: Number.isInteger(h.line) ? h.line : 0 }
     const k = locKey(loc.path, loc.line)
-    if (!seen.has(k)) { seen.add(k); allLocations.push(loc) }
+    if (!seen.has(k)) { seen.add(k); out.push(loc) }
   }
+  return out
 }
 
-// One argv slot holds a finite token (cmd.exe caps a whole command line at 8191 characters), so
-// the locations travel in batches under this many base64 characters. Every location of one file
-// goes in the same batch, so no two batches ever hold overlapping windows.
+const scoutOf = (topic) => scouted[topics.indexOf(topic)]
+const commonHits = common ? common.hits : []
+const judged = topics.filter((t) => scoutOf(t))
+const hitsOf = (group) => group.flatMap((t) => scoutOf(t).hits).concat(commonHits)
+const total = locationsOf(hitsOf(judged)).length
+
+let groups
+if (judged.length === 0) {
+  groups = []
+} else if (pace === 'fast') {
+  groups = judged.map((t) => [t])
+  log(`Judge: pace is fast, so ${groups.length} analyst(s), one per topic, over ${total} ` +
+    `location(s) — readers bought for wall-clock, each paying for the shared ground.`)
+} else {
+  const readers = Math.min(judged.length, Math.max(1, Math.ceil(total / LOCATIONS_PER_JUDGE)))
+
+  // Heaviest topic first onto the lightest reader, then each reader's topics back in plan order.
+  const loads = Array.from({ length: readers }, () => ({ weight: 0, topics: [] }))
+  const weighed = judged.map((t) => ({ t, n: locationsOf(scoutOf(t).hits).length })).sort((a, b) => b.n - a.n)
+  for (const { t, n } of weighed) {
+    const lightest = loads.reduce((a, b) => (b.weight < a.weight ? b : a))
+    lightest.weight += n
+    lightest.topics.push(t)
+  }
+  groups = loads.map((l) => l.topics.sort((a, b) => topics.indexOf(a) - topics.indexOf(b)))
+
+  log(readers === 1
+    ? `Judge: one analyst holds all ${judged.length} topic(s) over ${total} location(s).`
+    : `Judge: ${total} location(s) earn ${readers} analysts (one per ${LOCATIONS_PER_JUDGE}): ` +
+      groups.map((g) => g.map((t) => t.key).join('+')).join(', ') + '.')
+}
+
+const groupName = (group) => (groups.length === 1 ? '' : group.map((t) => t.key).join('+'))
+
+// ------------------------------------------------ 6. assemble context for analysis
+//
+// Each judge's locations — its topics' and the shared ground's — read ONCE by a script, overlapping
+// windows merged, and written to context files the judge Reads whole. The courier carries only
+// their paths back, so no model ever retypes an excerpt. A judge handed the lines spends its
+// turns judging; one handed paths spends them opening files one by one. Two judges that share a
+// file each get their own window of it: a second read by a script costs nothing.
+//
+// A side channel with IRON LAW §5 treatment: a batch that could not be carried reaches the judge
+// as locations to read itself, which its constitution permits. That costs turns, not evidence.
+
+// A location list travels as plain text on one argv slot — `path:line:line,path:line` — because
+// paths and numbers are what a courier copies reliably, and its digest is taken over the exact
+// string. A path carrying anything outside these characters would need quoting, so it is not
+// sent: its locations reach the reader to open itself.
+const CARRIABLE = /^[A-Za-z0-9_.\/@+:-]+$/
+const carriable = (loc) => CARRIABLE.test(loc.path)
+
+function locationList(locations) {
+  const byPath = new Map()
+  for (const loc of locations) {
+    if (!byPath.has(loc.path)) byPath.set(loc.path, [])
+    byPath.get(loc.path).push(loc.line)
+  }
+  return [...byPath].map(([path, lines]) => path + ':' + lines.join(':')).join(',')
+}
+
+// cmd.exe caps a whole command line at 8191 characters, so a list travels in batches of at most
+// this many. Every location of one file goes in the same batch, so no two batches ever hold
+// overlapping windows.
 const COMMAND_BUDGET = 6000
 
 function batchesOf(locations) {
@@ -985,7 +1006,7 @@ function batchesOf(locations) {
   let current = []
   for (const group of byPath.values()) {
     const grown = current.concat(group)
-    if (current.length > 0 && base64(JSON.stringify(grown)).length > COMMAND_BUDGET) {
+    if (current.length > 0 && locationList(grown).length > COMMAND_BUDGET) {
       batches.push(current)
       current = group
     } else {
@@ -996,122 +1017,51 @@ function batchesOf(locations) {
   return batches
 }
 
-const excerptCommand = (batch) =>
-  `node "${pluginRoot}/lib/citations.mjs" excerpts --repo "${repo}" ` +
-  `--digest ${fnv1a(canonical(batch))} --b64 ${base64(JSON.stringify(batch))}`
+function locationsCommand(repoPath, batch) {
+  const list = locationList(batch)
+  return `node "${pluginRoot}/lib/citations.mjs" excerpts --repo "${repoPath}" --locs "${list}" --digest ${fnv1a(list)}`
+}
 
-const resolvedFiles = []
-const resolveFailures = []
+/** One judge's context files, and the locations that reached none of them. */
+async function assembleContext(group) {
+  const locations = locationsOf(hitsOf(group))
+  if (locations.length === 0) {
+    log(`No context to assemble${groupName(group) ? ' for ' + groupName(group) : ''}: no scout reported a location.`)
+    return { parts: [], unread: new Set() }
+  }
 
-if (allLocations.length === 0) {
-  log('No context to assemble: no scout reported a location.')
-} else {
-  const batches = batchesOf(allLocations)
+  const parts = []
+  const unread = new Set()
+  const failures = []
+
+  const unsent = locations.filter((loc) => !carriable(loc))
+  for (const loc of unsent) unread.add(locKey(loc.path, loc.line))
+  if (unsent.length > 0) failures.push(`${unsent.length} location(s): a path the list cannot carry unquoted`)
+
+  const batches = batchesOf(locations.filter(carriable))
+  const base = ['assemble', groupName(group)].filter(Boolean).join(':')
   const carried = await Promise.all(batches.map((batch, i) =>
-    carry(excerptCommand(batch), batches.length === 1 ? 'assemble' : `assemble:${i + 1}`,
+    carry(locationsCommand(repo, batch), batches.length === 1 ? base : `${base}:${i + 1}`,
       'Assemble context for analysis')))
 
   carried.forEach((held, i) => {
-    if (held.payload) resolvedFiles.push(...(held.payload.files || []))
-    else resolveFailures.push(`${batches[i].length} location(s): ${held.why}`)
+    const context = held.payload && held.payload.context
+    if (context && Array.isArray(context.parts)) {
+      parts.push(...context.parts)
+    } else {
+      for (const loc of batches[i]) unread.add(locKey(loc.path, loc.line))
+      failures.push(`${batches[i].length} location(s): ${held.why || 'no context files came back'}`)
+    }
   })
 
-  if (resolveFailures.length > 0) {
-    log(`WARNING: some locations were not resolved (${resolveFailures.join('; ')}); the judges ` +
-      `read those themselves. More turns, not less evidence.`)
+  if (failures.length > 0) {
+    log(`WARNING: some locations were not assembled (${failures.join('; ')}); the judge reads ` +
+      `those itself. More turns, not less evidence.`)
   }
+  return { parts, unread }
 }
 
-// The window a location falls in. A scout may report an absolute path, or one relative to a
-// directory above the repository; the script resolved it relative to the repository, so a
-// reported path that ends in a resolved one is the same file.
-function windowOf(hit) {
-  const reported = String(hit.path).split('\\').join('/').replace(/^\.\//, '')
-  for (const file of resolvedFiles) {
-    if (reported !== file.path && !reported.endsWith('/' + file.path)) continue
-    const excerpt = (file.excerpts || []).find((e) => hit.line >= e.from && hit.line <= e.to)
-    if (excerpt) return { file, excerpt }
-  }
-  return null
-}
-
-const windowId = (w) => w.file.path + '#' + w.excerpt.from
-
-/** The windows a set of hits falls in, and the hits that fall in none. */
-function coverOf(hits) {
-  const windows = new Map()
-  const bare = []
-  for (const h of hits) {
-    const w = windowOf(h)
-    if (w) windows.set(windowId(w), w)
-    else bare.push(h)
-  }
-  return { windows, bare }
-}
-
-// ------------------------------------------------------------ 6. judge
-//
-// One analyst without search tools judges every topic from the excerpts — one reader per body of
-// evidence. More are bought only when the volume would not fit one reader's attention, or when
-// the caller set `pace: fast` and pays for wall-clock with parallel readers.
-
-phase('Judge')
-
-const WINDOWS_PER_JUDGE = 60
-const BYTES_PER_JUDGE = 150000
-
-const scoutOf = (topic) => scouted[topics.indexOf(topic)]
-const volumeOf = (hits) => {
-  const cover = coverOf(hits)
-  const bytes = [...cover.windows.values()].reduce((n, w) => n + String(w.excerpt.text || '').length, 0)
-  return { windows: cover.windows.size + cover.bare.length, bytes }
-}
-
-const commonHits = common ? common.hits : []
-const judged = topics.filter((t) => scoutOf(t))
-const total = volumeOf(judged.flatMap((t) => scoutOf(t).hits).concat(commonHits))
-
-let groups
-if (judged.length === 0) {
-  groups = []
-} else if (pace === 'fast') {
-  groups = judged.map((t) => [t])
-  log(`Judge: pace is fast, so ${groups.length} analyst(s), one per topic, over ${total.windows} ` +
-    `window(s) — readers bought for wall-clock, each paying for the shared ground.`)
-} else {
-  const earned = Math.max(1, Math.ceil(total.windows / WINDOWS_PER_JUDGE), Math.ceil(total.bytes / BYTES_PER_JUDGE))
-  const readers = Math.min(judged.length, earned)
-
-  // Heaviest topic first onto the lightest reader, then each reader's topics back in plan order.
-  const loads = Array.from({ length: readers }, () => ({ weight: 0, topics: [] }))
-  const weighed = judged.map((t) => ({ t, v: volumeOf(scoutOf(t).hits) }))
-    .sort((a, b) => (b.v.windows - a.v.windows) || (b.v.bytes - a.v.bytes))
-  for (const { t, v } of weighed) {
-    const lightest = loads.reduce((a, b) => (b.weight < a.weight ? b : a))
-    lightest.weight += v.windows + v.bytes / 2500
-    lightest.topics.push(t)
-  }
-  groups = loads.map((l) => l.topics.sort((a, b) => topics.indexOf(a) - topics.indexOf(b)))
-
-  log(readers === 1
-    ? `Judge: one analyst holds all ${judged.length} topic(s) over ${total.windows} window(s), ` +
-      `~${Math.round(total.bytes / 1000)}KB of excerpts.`
-    : `Judge: ${total.windows} window(s), ~${Math.round(total.bytes / 1000)}KB of excerpts earn ` +
-      `${readers} analysts (one per ${WINDOWS_PER_JUDGE} windows or ${BYTES_PER_JUDGE / 1000}KB): ` +
-      groups.map((g) => g.map((t) => t.key).join('+')).join(', ') + '.')
-}
-
-function excerptBlock(windows) {
-  const byFile = new Map()
-  for (const w of windows.values()) {
-    if (!byFile.has(w.file.path)) byFile.set(w.file.path, { file: w.file, excerpts: [] })
-    byFile.get(w.file.path).excerpts.push(w.excerpt)
-  }
-  return [...byFile.values()]
-    .map(({ file, excerpts }) => `--- ${file.path} (${file.lines} line(s))\n` +
-      excerpts.sort((a, b) => a.from - b.from).map((e) => e.text).join('\n     …\n'))
-    .join('\n\n')
-}
+// ------------------------------------------------------------ 7. judge
 
 const hitLine = (h) => `  ${h.path}:${h.line} — ${h.note || ''}`
 
@@ -1146,8 +1096,9 @@ function sharedGroundSection() {
         `limit — state what your conclusion rests on.`)
 }
 
-function judgePrompt(group, continued) {
-  const cover = coverOf(group.flatMap((t) => scoutOf(t).hits).concat(commonHits))
+function judgePrompt(group, context, continued) {
+  const unread = hitsOf(group)
+    .filter((h) => context.unread.has(locKey(h.path, Number.isInteger(h.line) ? h.line : 0)))
   const many = group.length > 1
 
   return `Judge ${many ? `these ${group.length} topics` : 'this topic'} of a larger question from ` +
@@ -1160,15 +1111,17 @@ function judgePrompt(group, continued) {
     `TOPICS — return exactly one verdict for each, with topic set to its key:\n\n` +
     group.map(topicSection).join('\n\n') +
     sharedGroundSection() +
-    (cover.windows.size > 0
-      ? `\n\nEXCERPTS — every location above, read once for you by a script, overlapping windows ` +
-        `merged. Do not open these files again to find these lines:\n\n` + excerptBlock(cover.windows)
+    (context.parts.length > 0
+      ? `\n\nCONTEXT FILES — every location above, read once for you by a script, overlapping ` +
+        `windows merged. Read each file below whole before judging, and do not open the source ` +
+        `files again to find these lines; a file's closing section names any location the ` +
+        `script could not read:\n` +
+        context.parts.map((p) => `  ${p.path} (${p.lines} line(s))`).join('\n')
       : '') +
-    (cover.bare.length > 0
-      ? `\n\nLOCATIONS NOT EXCERPTED — the script could not read these for you (another ` +
-        `repository, a lost transport, or a line past the end of its file). Read each one ` +
-        `yourself, in a line range around it, and nothing else; a location that does not exist ` +
-        `is itself worth a line in risks:\n` + cover.bare.map(hitLine).join('\n')
+    (unread.length > 0
+      ? `\n\nLOCATIONS NOT EXCERPTED — the script could not read these for you (a lost ` +
+        `transport, or a path it could not carry). Read each one yourself, in a line range around it, and nothing else; a ` +
+        `location that does not exist is itself worth a line in risks:\n` + unread.map(hitLine).join('\n')
       : '') +
     `\n\nYou have no search tools. Judge what these show; where they are not enough to decide ` +
     `a topic, say what is missing in its risks rather than guessing.` +
@@ -1176,12 +1129,14 @@ function judgePrompt(group, continued) {
 }
 
 /**
- * One judge's whole charge: a first pass, then a continuation on exactly the topics it returned
- * no verdict for, for as long as each pass rules on at least one more. No counter ends it
- * (IRON LAW §1); a pass that adds nothing ends it, and what it left is dropped, loudly.
+ * One judge's whole charge: its context assembled, a first pass, then a continuation on exactly
+ * the topics it returned no verdict for, for as long as each pass rules on at least one more. No
+ * counter ends it (IRON LAW §1); a pass that adds nothing ends it, and what it left is dropped,
+ * loudly.
  */
 async function judgeGroup(group) {
-  const label = groups.length === 1 ? 'judge' : `judge:${group.map((t) => t.key).join('+')}`
+  const context = await assembleContext(group)
+  const label = ['judge', groupName(group)].filter(Boolean).join(':')
   const ruled = new Map()
   let remaining = group
   let pass = 0
@@ -1189,7 +1144,7 @@ async function judgeGroup(group) {
   while (remaining.length > 0) {
     pass++
     const keys = remaining.map((t) => t.key)
-    const out = await agent(judgePrompt(remaining, pass > 1), {
+    const out = await agent(judgePrompt(remaining, context, pass > 1), {
       agentType: 'agentics:analyst', schema: verdictsSchema(keys),
       phase: 'Judge', label: label + (pass > 1 ? `#${pass}` : ''), ...tiered(judge, 'high'),
     }).catch((e) => {
@@ -1226,11 +1181,12 @@ async function judgeGroup(group) {
   return ruled
 }
 
+phase('Assemble context for analysis')
 const rulings = await Promise.all(groups.map((group) => judgeGroup(group)))
 const ruledBy = new Map()
 for (const r of rulings) for (const [k, v] of r) ruledBy.set(k, v)
 
-// ---------------------------------------------------------------- 7. account
+// ---------------------------------------------------------------- 8. account
 
 const verdicts = []
 const dropped = []

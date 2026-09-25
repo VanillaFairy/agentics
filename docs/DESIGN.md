@@ -37,6 +37,7 @@ courier pastes back under a digest the script re-checks (GP4).
 |---|---|
 | `.claude/agentics/efforts/<effort>/` | One effort: its nodes, events, evidence, gotchas, executions, reports and locks ([Storage](#storage)) |
 | `.claude/agentics/slots/` | The parallelism pool every execution on the machine shares |
+| `.claude/agentics/context/` | Context files the survey and the probe write for their readers |
 | `.claude/worktrees/` | Integration and leaf worktrees |
 | `docs/agentics/designs/<effort>/` | Design documents — source, committed |
 
@@ -249,6 +250,7 @@ traceability gaps come back as warnings. It refuses; it never repairs.
 ```
 .claude/agentics/
   .gitignore                      `*`, written by mkdirState
+  context/                        context files for survey and probe readers, pruned after a week
   slots/                          the parallelism pool, shared by every execution (see Scheduling)
     config.json                   {max_parallel}, edited by the user
   efforts/<effort>/
@@ -281,6 +283,20 @@ Lines the workflow mints whole travel base64 on one argv slot with a digest, so 
 to escape and no apostrophe to close. A line only the observing agent can fill in (a finished
 series) goes by heredoc on stdin and carries no digest; the writer still refuses what does not
 parse. A digest makes corruption detectable; the encoding makes it unlikely.
+
+A location list is the exception: it is only paths and line numbers, so it travels as plain text
+(`path:line:line,path:line`) with a digest over the exact string, because a courier copies paths
+reliably and base64 badly. The workflow sends no path outside `[A-Za-z0-9_./@+:-]`, so the list
+needs no quoting; such a location goes to its reader to open.
+
+### Context files
+
+What a courier would otherwise carry back — excerpts for a survey judge, a probe's guidance, its
+located ground and the document's own citations — `lib/citations.mjs` writes to
+`.claude/agentics/context/<digest>-<n>.md` instead. It prints only the files' paths under a
+digest, and the reader Reads them. No model retypes an excerpt. Each part is small enough for one
+Read (40 KB, 800 lines). Files are named by the digest of their text, so a retried courier
+rewrites the same files, and files a week old are pruned on each write.
 
 ### Integration branches
 
@@ -535,6 +551,11 @@ and sixteen analysts each independently located the same lines. So the probe res
 document's cited evidence once (`lib/citations.mjs`) and hands every analyst the excerpts, and the
 head count is earned by length rather than by axis count.
 
+The Ground phase writes three sets of [context files](#context-files): the document's own
+citations and the located repository ground, which every prober Reads, and the located guidance,
+which only the axes analyst Reads. Each set comes from one script run, so the probers share one
+read of the ground.
+
 ---
 
 ## Evidence
@@ -549,10 +570,13 @@ The survey (`agentics-survey`) gathers evidence for one node and never concludes
    `stop_reason`, with `no_match` and `not_reached` kept apart, and are continued on exactly what
    remains until exhausted. History and docs channels run alongside when the plan asks, each with
    its own `.catch`.
-3. **Assemble context for analysis.** A script (`lib/citations.mjs excerpts`) reads the locations, merges overlapping
-   windows and produces excerpts, once, under a digest.
-4. **Judge.** One analyst **without search tools** judges every topic from the excerpts, unless
-   volume or `pace` earns more readers.
+3. **Assemble context for analysis.** Judges are dealt first: one analyst for every topic,
+   unless `pace` or more than 60 distinct locations earns more. Then, per judge, a script
+   (`lib/citations.mjs excerpts`) reads that judge's locations and the shared ground's, merges
+   overlapping windows and writes them to [context files](#context-files). Two judges sharing
+   ground each get their own copy of it.
+4. **Judge.** Each analyst **without search tools** Reads its context files, then judges its
+   topics. A batch whose paths could not be carried reaches it as locations to read itself.
 
 A recorded survey **stands**, and is reused instead of bought again, when its commit is an ancestor
 of HEAD, no commit or uncommitted edit has touched its ground since, and it reported complete

@@ -3,7 +3,7 @@ export const meta = {
   description: 'Adversarially probe a written artefact — a design, a proposal, a spec — with independent analysts who receive the document and the target repository\'s own guidance and nothing from its author. Rules on the design severity ladder; the gate is computed.',
   phases: [
     { title: 'Locate', detail: 'one scout finds the repo\'s review guidance and the ground the artefact talks about' },
-    { title: 'Ground', detail: 'resolve the artefact\'s citations and the located ground, once, for every axis' },
+    { title: 'Ground', detail: 'write the artefact\'s citations, the located ground and the guidance to context files, once' },
     { title: 'Axes', detail: 'derive what to attack from the repo\'s own review guidance' },
     { title: 'Probe', detail: 'one analyst holding every axis unless the artefact\'s length earns more; artefact-only handoff' },
   ],
@@ -270,41 +270,6 @@ function fnv1a(text) {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
-function utf8Bytes(text) {
-  const out = []
-
-  for (const ch of String(text)) {
-    const c = ch.codePointAt(0)
-    if (c < 0x80) out.push(c)
-    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63))
-    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
-    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
-  }
-
-  return out
-}
-
-const B64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-
-/** Standard base64, padded — how the located ground travels to the excerpt reader. */
-function base64(text) {
-  const bytes = utf8Bytes(text)
-  let out = ''
-
-  for (let i = 0; i < bytes.length; i += 3) {
-    const b0 = bytes[i]
-    const b1 = i + 1 < bytes.length ? bytes[i + 1] : -1
-    const b2 = i + 2 < bytes.length ? bytes[i + 2] : -1
-
-    out += B64_ALPHABET[b0 >> 2]
-    out += B64_ALPHABET[((b0 & 3) << 4) | (b1 < 0 ? 0 : b1 >> 4)]
-    out += b1 < 0 ? '=' : B64_ALPHABET[((b1 & 15) << 2) | (b2 < 0 ? 0 : b2 >> 6)]
-    out += b2 < 0 ? '=' : B64_ALPHABET[b2 & 63]
-  }
-
-  return out
-}
-
 /** What a courier carried back: the payload, or why it cannot be believed and how to retry. */
 function carriedRead(held) {
   if (!held) return { payload: null, why: 'the dispatch returned nothing', retry: 'again' }
@@ -511,9 +476,25 @@ async function locate() {
   }
 }
 
-// One argv slot holds a finite token (cmd.exe caps a whole command line at 8191 characters), so
-// the located ground travels in batches under this many base64 characters, every location of one
-// file in the same batch so no two batches hold overlapping windows.
+// A location list travels as plain text on one argv slot — `path:line:line,path:line` — because
+// paths and numbers are what a courier copies reliably, and its digest is taken over the exact
+// string. A path carrying anything outside these characters would need quoting, so it is not
+// sent: its locations reach the reader to open itself.
+const CARRIABLE = /^[A-Za-z0-9_.\/@+:-]+$/
+const carriable = (loc) => CARRIABLE.test(loc.path)
+
+function locationList(locations) {
+  const byPath = new Map()
+  for (const loc of locations) {
+    if (!byPath.has(loc.path)) byPath.set(loc.path, [])
+    byPath.get(loc.path).push(loc.line)
+  }
+  return [...byPath].map(([path, lines]) => path + ':' + lines.join(':')).join(',')
+}
+
+// cmd.exe caps a whole command line at 8191 characters, so a list travels in batches of at most
+// this many. Every location of one file goes in the same batch, so no two batches ever hold
+// overlapping windows.
 const COMMAND_BUDGET = 6000
 
 function batchesOf(locations) {
@@ -527,7 +508,7 @@ function batchesOf(locations) {
   let current = []
   for (const group of byPath.values()) {
     const grown = current.concat(group)
-    if (current.length > 0 && base64(JSON.stringify(grown)).length > COMMAND_BUDGET) {
+    if (current.length > 0 && locationList(grown).length > COMMAND_BUDGET) {
       batches.push(current)
       current = group
     } else {
@@ -538,82 +519,74 @@ function batchesOf(locations) {
   return batches
 }
 
-/** Every location, read once by `lib/citations.mjs excerpts`; what could not be carried is named. */
-async function resolveLocated(hits) {
+function locationsCommand(repoPath, batch) {
+  const list = locationList(batch)
+  return `node "${pluginRoot}/lib/citations.mjs" excerpts --repo "${repoPath}" --locs "${list}" --digest ${fnv1a(list)}`
+}
+
+const normPath = (path) => String(path).split('\\').join('/')
+const locKey = (path, line) => normPath(path) + ':' + String(Number.isInteger(line) ? line : 0)
+
+/**
+ * One reader's located evidence, read once by `lib/citations.mjs excerpts` into context files. The
+ * courier carries back only their paths; the locations that reached none of them are named, so
+ * the reader opens those itself.
+ */
+async function assembleLocated(hits, label) {
   const locations = []
   const seen = new Set()
   for (const h of hits) {
-    const loc = { path: String(h.path), line: Number.isInteger(h.line) ? h.line : 0 }
-    const k = loc.path + ':' + loc.line
-    if (!seen.has(k)) { seen.add(k); locations.push(loc) }
+    const k = locKey(h.path, h.line)
+    if (!seen.has(k)) { seen.add(k); locations.push({ path: normPath(h.path), line: Number.isInteger(h.line) ? h.line : 0 }) }
   }
-  if (locations.length === 0) return { files: [], failures: [] }
 
-  const batches = batchesOf(locations)
-  const carried = await Promise.all(batches.map((batch, i) => carry(
-    `node "${pluginRoot}/lib/citations.mjs" excerpts --repo "${groundRepo}" ` +
-    `--digest ${fnv1a(canonical(batch))} --b64 ${base64(JSON.stringify(batch))}`,
-    batches.length === 1 ? 'excerpts' : `excerpts:${i + 1}`, 'Ground')))
-
-  const files = []
+  const parts = []
+  const unread = new Set()
   const failures = []
+
+  const unsent = locations.filter((loc) => !carriable(loc))
+  for (const loc of unsent) unread.add(locKey(loc.path, loc.line))
+  if (unsent.length > 0) failures.push(`${unsent.length} location(s): a path the list cannot carry unquoted`)
+
+  const batches = batchesOf(locations.filter(carriable))
+  const carried = await Promise.all(batches.map((batch, i) =>
+    carry(locationsCommand(groundRepo, batch), batches.length === 1 ? label : `${label}:${i + 1}`, 'Ground')))
+
   carried.forEach((held, i) => {
-    if (held.payload) files.push(...(held.payload.files || []))
-    else failures.push(`${batches[i].length} location(s): ${held.why}`)
-  })
-  return { files, failures }
-}
-
-/** The windows a set of hits falls in, and the hits that fall in none. */
-function coverOf(hits, files) {
-  const windows = new Map()
-  const bare = []
-  for (const h of hits) {
-    const reported = String(h.path).split('\\').join('/').replace(/^\.\//, '')
-    let hit = null
-    for (const file of files) {
-      if (reported !== file.path && !reported.endsWith('/' + file.path)) continue
-      const excerpt = (file.excerpts || []).find((e) => h.line >= e.from && h.line <= e.to)
-      if (excerpt) { hit = { file, excerpt }; break }
+    const context = held.payload && held.payload.context
+    if (context && Array.isArray(context.parts)) {
+      parts.push(...context.parts)
+    } else {
+      for (const loc of batches[i]) unread.add(locKey(loc.path, loc.line))
+      failures.push(`${batches[i].length} location(s): ${held.why || 'no context files came back'}`)
     }
-    if (hit) windows.set(hit.file.path + '#' + hit.excerpt.from, hit)
-    else bare.push(h)
-  }
-  return { windows, bare }
-}
-
-function excerptBlock(windows) {
-  const byFile = new Map()
-  for (const w of windows.values()) {
-    if (!byFile.has(w.file.path)) byFile.set(w.file.path, { file: w.file, excerpts: [] })
-    byFile.get(w.file.path).excerpts.push(w.excerpt)
-  }
-  return [...byFile.values()]
-    .map(({ file, excerpts }) => `--- ${file.path} (${file.lines} line(s))\n` +
-      excerpts.sort((a, b) => a.from - b.from).map((e) => e.text).join('\n     …\n'))
-    .join('\n\n')
+  })
+  return { parts, unread, failures }
 }
 
 const hitLine = (h) => `  ${h.path}:${h.line} — ${h.note || ''}`
+const partsList = (parts) => parts.map((p) => `  ${p.path} (${p.lines} line(s))`).join('\n')
 
-/** Located evidence as an analyst reads it: the excerpts, then whatever it must open itself. */
-function locatedBlock(cover) {
-  return (cover.windows.size > 0
-    ? `Read once for you by a script — do not open these files again to find these lines:\n\n` +
-      excerptBlock(cover.windows)
+/** Located evidence as a reader reads it: its context files, then whatever it must open itself. */
+function locatedBlock(hits, context) {
+  const bare = hits.filter((h) => context.unread.has(locKey(h.path, h.line)))
+  return (context.parts.length > 0
+    ? `CONTEXT FILES — read once for you by a script. Read each file below whole, and do not ` +
+      `open the source files again to find these lines; a file's closing section names any ` +
+      `location the script could not read:\n` + partsList(context.parts)
     : '') +
-    (cover.bare.length > 0
+    (bare.length > 0
       ? `\n\nLOCATIONS NOT EXCERPTED — the script could not read these for you. Read each one ` +
-        `yourself, in a line range around it, and nothing else:\n` + cover.bare.map(hitLine).join('\n')
+        `yourself, in a line range around it, and nothing else:\n` + bare.map(hitLine).join('\n')
       : '')
 }
 
-function axesPrompt(cover) {
+function axesPrompt(evidence) {
   return `Derive, from this repository's own guidance, what a design review here must attack. ` +
     `You are not reviewing anything yet.\n\n` +
     `REPOSITORY: ${roots}\n\n` +
     `THE GUIDANCE a scout located — its CLAUDE.md, AGENTS.md, specs and architecture notes, ` +
-    `contributing and review guides:\n\n` + locatedBlock(cover) + `\n\n` +
+    `contributing and review guides:\n\n` + evidence + `\n\n` +
     `You have no search tools: judge from what is above. Report the files your axes rest on in ` +
     `guidance_read — that list is what tells your caller whether the axes below rest on ` +
     `anything.\n\n` +
@@ -652,22 +625,12 @@ function groundSection(ground) {
       `around it. Nothing about your axis changes.\n\n`
   }
 
-  const p = ground.payload
-  const excerpts = (p.files || []).map((f) =>
-    `--- ${f.path} (${f.lines} line(s); the document cites ${(f.cited_at || []).join(', ')})\n` +
-    (f.excerpts || []).map((e) => e.text).join('\n     …\n')).join('\n\n')
+  const parts = (ground.payload.context && ground.payload.context.parts) || []
 
-  const broken = (p.unresolved || []).length === 0 ? '' :
-    `\n\nCITATIONS THAT RESOLVE TO NOTHING — read these as evidence about the DOCUMENT, ` +
-    `because that is what they are. A document about to be built from that points at a file ` +
-    `nobody can open, or past the end of one that exists, is making a claim its reader cannot ` +
-    `check:\n` +
-    p.unresolved.map((u) => `- ${u.detail}`).join('\n')
-
-  return `\n\nWHAT THE DOCUMENT POINTS AT — resolved once, by a script, for every axis. These ` +
-    `are the exact lines the artefact cites, so you do not have to go and find them:\n\n` +
-    (excerpts || '(the document cites no location in this repository)') +
-    broken +
+  return `\n\nWHAT THE DOCUMENT POINTS AT — resolved once, by a script, for every axis: the exact ` +
+    `lines the artefact cites, so you do not have to go and find them, and last any citation ` +
+    `that resolves to nothing, which is evidence about the DOCUMENT. Read each file below whole:\n` +
+    (parts.length > 0 ? partsList(parts) : '  (the document cites no location in this repository)') +
     `\n\nThis is what the document POINTS AT and it is NOT the repository. Ground it never ` +
     `cites is not here, and on your axis that silence may be the finding — the ground located ` +
     `below is where to look for it.\n\n`
@@ -681,10 +644,9 @@ function repoGroundSection() {
       `beyond them states that it could not be checked, in its evidence; never present it as ` +
       `checked.\n\n`
   }
-  const cover = groundCover
   return `REPOSITORY GROUND — what a scout located as the code and docs this document talks ` +
     `about, and whatever already exists here that does what it proposes:\n\n` +
-    (cover.windows.size + cover.bare.length > 0 ? locatedBlock(cover) : '(nothing located)') +
+    (groundHits.length > 0 ? locatedBlock(groundHits, groundContext) : '(nothing located)') +
     (located.noMatch ? `\n\nSEARCHED AND NOT FOUND (evidence of absence):\n${located.noMatch}` : '') +
     (located.complete
       ? ''
@@ -805,13 +767,17 @@ if (!located) {
 
 phase('Ground')
 
-const resolved = await resolveLocated(guidanceHits.concat(groundHits))
-if (resolved.failures.length > 0) {
-  log(`The located ground was not all resolved (${resolved.failures.join('; ')}); the analysts ` +
+// Guidance and ground have different readers — the axes analyst and the probes — so each is its
+// own context. Every probe Reads the same ground files: one read by a script, shared by all.
+const [guidanceContext, groundContext] = await Promise.all([
+  assembleLocated(guidanceHits, 'guidance-context'),
+  assembleLocated(groundHits, 'ground-context'),
+])
+const locatedFailures = guidanceContext.failures.concat(groundContext.failures)
+if (locatedFailures.length > 0) {
+  log(`The located ground was not all resolved (${locatedFailures.join('; ')}); the analysts ` +
     `read those locations themselves. More turns, not less evidence.`)
 }
-const guidanceCover = coverOf(guidanceHits, resolved.files)
-const groundCover = coverOf(groundHits, resolved.files)
 
 const ground = await groundHeld
 
@@ -834,7 +800,7 @@ phase('Axes')
 // bought to say so. A search that did not finish is its own incompleteness, recorded below.
 const discovered = guidanceHits.length === 0
   ? (located ? { stop_reason: 'no_guidance_found', axes: [], guidance_read: [], notes: located.noMatch } : null)
-  : await agent(axesPrompt(guidanceCover), {
+  : await agent(axesPrompt(locatedBlock(guidanceHits, guidanceContext)), {
     agentType: 'agentics:analyst', effort: 'low', schema: AXES,
     phase: 'Axes', label: 'axes',
   }).catch((e) => {
@@ -1010,8 +976,8 @@ const coverage = {
       ? ['locate: the search for the repository\'s guidance and the ground this document talks ' +
          'about stopped before it was exhausted, never reaching: ' + located.notReached]
       : [])
-    .concat(resolved.failures.length > 0
-      ? ['some located ground was not resolved for the analysts (' + resolved.failures.join('; ') +
+    .concat(locatedFailures.length > 0
+      ? ['some located ground was not resolved for the analysts (' + locatedFailures.join('; ') +
          '), so they read those locations themselves — this cost turns, not coverage']
       : [])
     .concat(!ground.payload
@@ -1060,7 +1026,7 @@ return {
     ? discovered.guidance_read
     : [...new Set(guidanceHits.map((h) => String(h.path)))],
   repo_ground: located
-    ? { located: groundHits.length, complete: located.complete, unresolved_batches: resolved.failures.length }
+    ? { located: groundHits.length, complete: located.complete, unresolved_batches: locatedFailures.length }
     : { located: 0, complete: false, unresolved_batches: 0 },
   findings,
   ambiguities,

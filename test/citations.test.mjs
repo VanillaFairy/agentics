@@ -6,20 +6,23 @@
 //   merging      overlapping windows in one file collapse into the fewest that cover them
 //   the three    resolved / out_of_range / missing, kept apart
 //   discipline   nothing outside the repository is read, and a dead citation is a FINDING
-//   locations    the survey's Assemble-context step: scout locations in, merged excerpts out, under a
-//                digest on both sides of the courier
+//   locations    the survey's Assemble-context step: scout locations in, merged excerpts written
+//                to context files, their paths out under a digest on both sides of the courier
 //
 // Design: docs/DESIGN.md#what-a-probe-costs, docs/DESIGN.md#survey.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { citationsIn, mergeRanges, resolveCitations, resolveLocations, safePath } from '../lib/citations.mjs'
+import {
+  citationsIn, mergeRanges, parseLocations, renderLocations, resolveCitations, resolveLocations, safePath, splitParts,
+  writeContext,
+} from '../lib/citations.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/citations.mjs', import.meta.url))
@@ -116,16 +119,6 @@ test('a document citing nothing resolvable is a clean empty payload, not an erro
   assert.equal(out.counts.cited, 0)
 })
 
-test('the CLI prints the payload under its own digest', () => {
-  const dir = repo({ 'src/a.js': numbered(20, 'line') })
-  const artifact = writeArtifact(dir, 'see src/a.js:10')
-  const out = JSON.parse(execFileSync(process.execPath, [CLI, dir, artifact, '--context', '2'],
-    { encoding: 'utf8' }))
-
-  assert.match(out.payload_digest, /^[0-9a-f]{8}$/)
-  assert.deepEqual(out.payload.files[0].excerpts.map((e) => [e.from, e.to]), [[8, 12]])
-})
-
 // ------------------------------------------------------------------ scout locations
 
 test('locations in one file merge into the fewest windows, whichever scout reported them', () => {
@@ -142,7 +135,7 @@ test('locations in one file merge into the fewest windows, whichever scout repor
   assert.match(out.files[1].excerpts[0].text, /^\s+1\tb1\n/)
   assert.equal(out.counts.excerpts, 3)
   assert.equal(out.counts.locations, 5)
-  assert.ok(out.counts.bytes > 0, 'the judge split is earned by bytes too, so they are counted')
+  assert.ok(out.counts.bytes > 0)
   assert.deepEqual(Object.keys(out).sort(), ['counts', 'files', 'notes', 'repo', 'unresolved'])
 })
 
@@ -172,32 +165,88 @@ test('an absolute path inside the repository is read as the relative one it is',
   assert.deepEqual(out.unresolved, [])
 })
 
-const b64 = (value) => Buffer.from(JSON.stringify(value), 'utf8').toString('base64')
 const excerptsCli = (args) => JSON.parse(execFileSync(process.execPath, [CLI, 'excerpts', ...args], { encoding: 'utf8' }))
+const minted = (list) => ['--locs', list, '--digest', fnv1a(list)]
 
-test('the excerpts CLI decodes the minted locations, checks their digest, and prints an envelope', () => {
-  const dir = repo({ 'src/a.js': numbered(20, 'line') })
-  const locations = [{ path: 'src/a.js', line: 10 }]
-  const out = excerptsCli(['--repo', dir, '--b64', b64(locations), '--digest', fnv1a(canonical(locations)), '--context', '2'])
-
-  assert.equal(out.payload_digest, fnv1a(canonical(out.payload)))
-  assert.deepEqual(out.payload.files[0].excerpts.map((e) => [e.from, e.to]), [[8, 12]])
+test('a location list is path:line segments, a path\'s own colons kept', () => {
+  assert.deepEqual(parseLocations('src/a.js:10:42,C:/repo/b.js:3'), [
+    { path: 'src/a.js', line: 10 }, { path: 'src/a.js', line: 42 }, { path: 'C:/repo/b.js', line: 3 },
+  ])
+  assert.equal(parseLocations('src/a.js'), null, 'a segment with no line is not a location')
+  assert.equal(parseLocations(''), null)
 })
 
-test('the excerpts CLI refuses a token that changed in transit, and reads nothing', () => {
+test('the excerpts CLI writes the excerpts to context files and prints only their paths', () => {
   const dir = repo({ 'src/a.js': numbered(20, 'line') })
-  const out = excerptsCli(['--repo', dir, '--b64', b64([{ path: 'src/a.js', line: 10 }]), '--digest', 'deadbeef'])
+  const out = excerptsCli(['--repo', dir, ...minted('src/a.js:10,src/ghost.js:3'), '--context', '2'])
+
+  assert.equal(out.payload_digest, fnv1a(canonical(out.payload)))
+  assert.ok(!('files' in out.payload), 'no excerpt travels on stdout')
+  const [part] = out.payload.context.parts
+  assert.ok(part.path.startsWith(dir + '/.claude/agentics/context/'))
+
+  const text = readFileSync(part.path, 'utf8')
+  assert.match(text, /--- src\/a\.js \(20 line\(s\)\)\n\s+8\tline8\n/)
+  assert.match(text, /NOT EXCERPTED[\s\S]*src\/ghost\.js:3 — missing/, 'what was not read is named in the file')
+  const expected = renderLocations(resolveLocations(dir, parseLocations('src/a.js:10,src/ghost.js:3'), 2))
+  assert.equal(out.payload.context.digest, fnv1a(expected))
+})
+
+test('the excerpts CLI refuses a list that changed in transit, and reads nothing', () => {
+  const dir = repo({ 'src/a.js': numbered(20, 'line') })
+  const out = excerptsCli(['--repo', dir, '--locs', 'src/a.js:10', '--digest', fnv1a('src/a.js:1')])
 
   assert.equal(out.payload.ok, false)
   assert.equal(out.payload.error.kind, 'digest_mismatch')
   assert.equal(out.payload_digest, fnv1a(canonical(out.payload)), 'a refusal is a payload, carried like any other')
+  assert.ok(!existsSync(join(dir, '.claude')))
 })
 
-test('the excerpts CLI refuses an argument that is not a list of locations', () => {
+test('the excerpts CLI refuses a list that is not path:line segments', () => {
   const dir = repo({ 'src/a.js': 'x\n' })
-  const value = { path: 'src/a.js', line: 1 }
-  const out = excerptsCli(['--repo', dir, '--b64', b64(value), '--digest', fnv1a(canonical(value))])
-  assert.equal(out.payload.error.kind, 'bad_args')
+  assert.equal(excerptsCli(['--repo', dir, ...minted('src/a.js')]).payload.error.kind, 'bad_args')
+})
+
+test('the citations CLI writes the document\'s cited lines, dead citations last, and prints their paths', () => {
+  const dir = repo({ 'src/a.js': numbered(20, 'line') })
+  const artifact = writeArtifact(dir, 'see src/a.js:10 and src/gone.js:4')
+  const out = JSON.parse(execFileSync(process.execPath, [CLI, dir, artifact, '--context', '2'], { encoding: 'utf8' }))
+
+  assert.equal(out.payload_digest, fnv1a(canonical(out.payload)))
+  assert.ok(!('files' in out.payload))
+  assert.equal(out.payload.unresolved.length, 1, 'dead citations stay on stdout: the probe reports them')
+  const text = readFileSync(out.payload.context.parts[0].path, 'utf8')
+  assert.match(text, /--- src\/a\.js \(20 line\(s\); the document cites 10\)\n\s+8\tline8\n/)
+  assert.match(text, /CITATIONS THAT RESOLVE TO NOTHING[\s\S]*src\/gone\.js/)
+})
+
+test('the same text written twice lands in the same files, not new ones', () => {
+  const dir = repo({})
+  const first = writeContext(dir, 'the same text\n')
+  const second = writeContext(dir, 'the same text\n')
+  assert.deepEqual(second.parts, first.parts)
+  assert.equal(readdirSync(join(dir, '.claude/agentics/context')).length, 1)
+})
+
+test('context is cut into parts one Read returns whole, at line boundaries', () => {
+  const text = Array.from({ length: 50 }, (_, i) => 'x'.repeat(99) + i).join('\n')
+  const parts = splitParts(text, 1000, 30)
+  assert.equal(parts.join('\n'), text, 'nothing is lost or duplicated at a cut')
+  assert.ok(parts.every((p) => Buffer.byteLength(p) <= 1000))
+  assert.ok(splitParts(text, 1e9, 30).every((p) => p.split('\n').length <= 30))
+})
+
+test('context files a week old are pruned when a new one is written', () => {
+  const dir = repo({})
+  const stale = join(dir, '.claude/agentics/context/old-1.md')
+  mkdirSync(dirname(stale), { recursive: true })
+  writeFileSync(stale, 'old', 'utf8')
+  const week = 7 * 24 * 60 * 60 * 1000
+
+  writeContext(dir, 'a\n', Date.now() + week - 60000)
+  assert.ok(existsSync(stale), 'younger than a week, kept')
+  writeContext(dir, 'b\n', Date.now() + week + 60000)
+  assert.ok(!existsSync(stale))
 })
 
 function writeArtifact(dir, text) {

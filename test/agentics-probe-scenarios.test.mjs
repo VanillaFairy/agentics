@@ -9,7 +9,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import {
-  carriedEnvelope, carriedExcerpts, excerptLocations, runWorkflow, scriptedAgents,
+  carriedContext, carriedEnvelope, contextPathFor, excerptLocations, runWorkflow, scriptedAgents,
 } from './harness/workflow-host.mjs'
 
 const WF = fileURLToPath(new URL('../workflows/agentics-probe.workflow.js', import.meta.url))
@@ -58,7 +58,7 @@ const probeAgents = ({ ...over } = {}) => {
   const catchAll = over['probe:'] || found()
   delete over['probe:']
   return scriptedAgents({
-    locate: located(), excerpts: carriedExcerpts, axes: axesResult(), ...over, 'probe:': catchAll,
+    locate: located(), 'guidance-context': carriedContext, 'ground-context': carriedContext, axes: axesResult(), ...over, 'probe:': catchAll,
   })
 }
 
@@ -267,16 +267,13 @@ test('every probe reads the repository, not only the document', async () => {
 // evidence. What is pinned here is that the resolution happens once, reaches every axis, and
 // degrades into "locate it yourself" rather than into a quieter probe.
 
+const CITED_PATH = 'C:/repo/.claude/agentics/context/c17ed000-1.md'
+
 const groundPayload = (over = {}) => carriedEnvelope({
   artifact: 'docs/proposal.md',
   repo: 'C:/repo',
   read_error: '',
-  files: [{
-    path: 'lib/kb.mjs',
-    lines: 778,
-    cited_at: ['61'],
-    excerpts: [{ from: 51, to: 71, text: '    61\texport const KINDS = [...]' }],
-  }],
+  context: { digest: 'c17ed000', parts: [{ path: CITED_PATH, lines: 22, bytes: 700 }] },
   unresolved: [],
   counts: { cited: 1, files: 1, excerpts: 1, unresolved: 0 },
   notes: 'resolved 1 excerpt(s)',
@@ -294,7 +291,7 @@ test('the document\'s cited evidence is resolved once and reaches every axis', a
 
   for (const p of prompts.filter((x) => /^probe:/.test(x.opts.label))) {
     assert.match(p.prompt, /WHAT THE DOCUMENT POINTS AT/, `${p.opts.label} got no shared ground`)
-    assert.match(p.prompt, /export const KINDS/, `${p.opts.label} got no excerpt`)
+    assert.ok(p.prompt.includes(CITED_PATH), `${p.opts.label} was not handed the cited context file`)
     assert.match(p.prompt, /is NOT the repository/,
       `${p.opts.label} was not told the excerpts are a starting point rather than the evidence`)
   }
@@ -313,7 +310,7 @@ test('a citation that resolves to nothing reaches every axis as a finding to rul
 
   assert.equal(result.shared_ground.unresolved.length, 1)
   assert.match(prompts.find((p) => p.opts.label === 'probe:yagni').prompt,
-    /CITATIONS THAT RESOLVE TO NOTHING/)
+    /any citation that resolves to nothing, which is evidence about the DOCUMENT/)
   assert.match(result.coverage.unreached.join(' '), /resolve to nothing/)
   assert.equal(result.coverage.complete, true,
     'a broken citation is a fact about the document, not a hole in this probe')
@@ -495,31 +492,34 @@ test('a continuation that dies leaves its whole analyst\'s axes incomplete, not 
 // ------------------------------------------------------- locating, for analysts that cannot search
 //
 // The analysts carry `Read` and nothing that searches. So the repository's review guidance and the
-// ground the document talks about are located by ONE scout, read once by a script, and handed
-// over as excerpts; nothing downstream relies on an analyst finding anything for itself.
+// ground the document talks about are located by ONE scout, read once by a script into context
+// files, and handed over as their paths; nothing downstream relies on an analyst finding anything
+// for itself.
 
-test('one scout locates the guidance and the ground, one courier reads it, and both reach their readers', async () => {
+test('one scout locates the guidance and the ground, a courier per reader writes it, and both reach their readers', async () => {
   const { prompts } = await runWorkflow(WF, { args: DEFAULT_ARGS, agent: probeAgents() })
 
   const locate = prompts.find((p) => p.opts.label === 'locate')
   assert.equal(locate.opts.agentType, 'agentics:scout')
   assert.match(locate.prompt, /docs\/proposal\.md/)
 
-  const excerpts = prompts.filter((p) => /^excerpts/.test(p.opts.label))
-  assert.equal(excerpts.length, 1)
-  assert.equal(excerpts[0].opts.agentType, 'agentics:courier')
-  assert.match(excerpts[0].prompt, /lib\/citations\.mjs" excerpts --repo "C:\/repo"/)
-  assert.deepEqual(excerptLocations(excerpts[0].prompt).locations.map((l) => l.path).sort(),
-    ['CLAUDE.md', 'lib/loader.mjs'])
+  const courier = (label) => prompts.find((p) => p.opts.label === label)
+  for (const label of ['guidance-context', 'ground-context']) {
+    assert.equal(courier(label).opts.agentType, 'agentics:courier')
+    assert.match(courier(label).prompt, /lib\/citations\.mjs" excerpts --repo "C:\/repo" --locs "/)
+  }
+  const pathOf = (label) => contextPathFor(excerptLocations(courier(label).prompt).digest)
+  assert.deepEqual(excerptLocations(courier('guidance-context').prompt).locations.map((l) => l.path), ['CLAUDE.md'])
+  assert.deepEqual(excerptLocations(courier('ground-context').prompt).locations.map((l) => l.path), ['lib/loader.mjs'])
 
   const axes = prompts.find((p) => p.opts.label === 'axes')
   assert.equal(axes.opts.agentType, 'agentics:analyst')
-  assert.match(axes.prompt, /text of CLAUDE\.md:40/, 'the guidance arrives read, not as a path to go find')
-  assert.doesNotMatch(axes.prompt, /text of lib\/loader\.mjs/, 'ground is the probers\', not the axes\'')
+  assert.ok(axes.prompt.includes(pathOf('guidance-context')), 'the guidance arrives read, not as a path to go find')
+  assert.ok(!axes.prompt.includes(pathOf('ground-context')), 'ground is the probers\', not the axes\'')
 
   const probe = prompts.find((p) => /^probe:/.test(p.opts.label))
   assert.match(probe.prompt, /REPOSITORY GROUND/)
-  assert.match(probe.prompt, /text of lib\/loader\.mjs:12/)
+  assert.ok(probe.prompt.includes(pathOf('ground-context')))
   assert.match(probe.prompt, /nothing that searches/)
 })
 
@@ -551,7 +551,7 @@ test('a locating scout that never reports leaves both halves unread, and the gat
     agent: probeAgents({ locate: () => { throw new Error('model unavailable') } }),
   })
 
-  assert.ok(!prompts.some((p) => p.opts.label === 'axes' || /^excerpts/.test(p.opts.label)))
+  assert.ok(!prompts.some((p) => p.opts.label === 'axes' || /-context/.test(p.opts.label)))
   assert.deepEqual(result.coverage.failed_channels.sort(), ['repo-axes', 'repo-ground'])
   assert.equal(result.ratifiable, false, 'analysts that cannot search were handed no repository')
   assert.match(prompts.find((p) => /^probe:/.test(p.opts.label)).prompt, /REPOSITORY GROUND: NOT LOCATED/)
@@ -575,7 +575,10 @@ test('an unfinished locating search is resumed, and a stuck one is incomplete wo
 test('located ground the courier could not carry reaches the analysts as locations to read', async () => {
   const failed = { stop_reason: 'failed', payload_raw: '', task_ids: [], task_tools: 'skipped', notes: 'no node' }
   const { result, prompts } = await runWorkflow(WF, {
-    args: DEFAULT_ARGS, agent: probeAgents({ excerpts: failed, 'excerpts#2': failed }),
+    args: DEFAULT_ARGS,
+    agent: probeAgents({
+      'guidance-context': failed, 'guidance-context#2': failed, 'ground-context': failed, 'ground-context#2': failed,
+    }),
   })
 
   assert.match(prompts.find((p) => p.opts.label === 'axes').prompt,

@@ -11,9 +11,9 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import {
-  carriedEnvelope, carriedExcerpts, excerptLocations, excerptsPayload, runWorkflow, scriptedAgents,
+  carriedContext, carriedEnvelope, contextPathFor, contextPayload, excerptLocations, runWorkflow, scriptedAgents,
 } from './harness/workflow-host.mjs'
-import { canonical, fnv1a } from '../lib/plan-digest.mjs'
+import { fnv1a } from '../lib/plan-digest.mjs'
 
 const WF = fileURLToPath(new URL('../workflows/agentics-survey.workflow.js', import.meta.url))
 
@@ -44,9 +44,8 @@ const keysOf = (opts) => opts.schema.properties.verdicts.items.properties.topic.
 /** A judge that rules on every topic it holds. */
 const judgeAll = (prompt, opts) => ({ verdicts: keysOf(opts).map(VERDICT) })
 
-const resolveAll = carriedExcerpts
+const resolveAll = carriedContext
 const locationsIn = excerptLocations
-const resolvePayload = excerptsPayload
 
 // Every survey that finds a location resolves it and judges it, so every scenario scripts the
 // courier and the judge with the ordinary case — every location read, every topic ruled on —
@@ -446,7 +445,9 @@ test('shared ground is scouted once, kept out of the topic scouts, and reaches e
   assert.match(judged, /SHARED GROUND \(scouted once for every topic — treat it as part of your evidence\):/)
   assert.match(judged, /src\/main\.ts:12 — the game config/,
     'excluding the shared ground from a scout only works if the judge is handed it')
-  assert.match(judged, /text of src\/main\.ts:12/, 'and its lines are excerpted with the rest')
+  const courier = prompts.find((p) => p.opts.label === 'assemble')
+  assert.ok(locationsIn(courier.prompt).locations.some((l) => l.path === 'src/main.ts' && l.line === 12),
+    'and its lines are assembled with the rest')
   assert.ok(judged.indexOf('SHARED GROUND') < judged.indexOf('You have no search tools'),
     'the shared ground is evidence, so it belongs before the closing instructions')
 
@@ -588,11 +589,14 @@ test('nothing about the knowledge base survives in the coverage block', async ()
 
 // ------------------------------------------------------------------ assemble
 //
-// Every location the scouts found is read ONCE, by a script, and handed to the judge as merged
-// excerpts under a digest. The workflow mints the locations whole, base64 on one argv slot with
-// their digest beside them, and believes what comes back only after recomputing its digest.
+// Each judge's locations are read ONCE, by a script, and written to context files the judge
+// Reads. The workflow mints the locations as a plain-text list on one argv slot with its digest
+// beside it, and believes the file paths that come back only after recomputing their digest.
 
-test('every location, the shared ground included, is resolved once by a courier', async () => {
+const assemblies = (prompts) => prompts.filter((p) => /^assemble/.test(p.opts.label))
+const contextPathOf = (prompt) => contextPathFor(locationsIn(prompt).digest)
+
+test('a judge\'s locations, the shared ground included, are written once to a file it reads', async () => {
   const { prompts } = await run({
     plan: PLAN({
       topics: [{ key: 'a', find: 'find a' }, { key: 'b', find: 'find b' }],
@@ -603,39 +607,38 @@ test('every location, the shared ground included, is resolved once by a courier'
     'scout:b': HITS({ hits: [{ path: 'src/x.js', line: 1, note: 'x again' }] }),
   })
 
-  const resolves = prompts.filter((p) => /^assemble/.test(p.opts.label))
-  assert.equal(resolves.length, 1, 'one read for every topic, not one per topic')
-  assert.equal(resolves[0].opts.agentType, 'agentics:courier')
-  assert.equal(resolves[0].opts.model, 'haiku', 'pasting stdout back is not judgment')
-  assert.match(resolves[0].prompt, /node "C:\/plugin\/lib\/citations\.mjs" excerpts --repo "\." --digest/)
+  const couriers = assemblies(prompts)
+  assert.deepEqual(couriers.map((p) => p.opts.label), ['assemble'], 'one judge, one courier')
+  assert.equal(couriers[0].opts.agentType, 'agentics:courier')
+  assert.equal(couriers[0].opts.model, 'haiku', 'carrying a file path back is not judgment')
+  assert.match(couriers[0].prompt, /node "C:\/plugin\/lib\/citations\.mjs" excerpts --repo "\." --locs "[^"]+" --digest [0-9a-f]{8}\n/)
 
-  const { digest, locations } = locationsIn(resolves[0].prompt)
-  assert.equal(digest, fnv1a(canonical(locations)), 'the digest is taken over exactly what was minted')
+  const { digest, list, locations } = locationsIn(couriers[0].prompt)
+  assert.equal(digest, fnv1a(list), 'the digest is taken over exactly the list the courier copies')
   assert.deepEqual(locations.map((l) => l.path + ':' + l.line).sort(),
     ['src/a.js:10', 'src/config.js:7', 'src/x.js:1'], 'a location two scouts found is read once')
 
   const judged = promptFor(prompts, 'judge')
-  assert.match(judged, /EXCERPTS — every location above, read once for you by a script/)
-  assert.match(judged, /text of src\/a\.js:10/)
-  assert.match(judged, /text of src\/config\.js:7/)
+  assert.match(judged, /CONTEXT FILES — every location above, read once for you by a script/)
+  assert.ok(judged.includes(contextPathOf(couriers[0].prompt)))
   assert.doesNotMatch(judged, /LOCATIONS NOT EXCERPTED/)
 })
 
-test('a search that found nothing resolves nothing and is still judged', async () => {
+test('a search that found nothing assembles nothing and is still judged', async () => {
   const { result, prompts, logs } = await run({
     plan: PLAN(), 'scout:': HITS({ hits: [], no_match: 'no retry helper anywhere' }),
   })
 
-  assert.ok(!labelsOf(prompts).some((l) => /^assemble/.test(l)), 'no locations, no courier')
+  assert.equal(assemblies(prompts).length, 0, 'no locations, no courier')
   assert.ok(logs.some((l) => /No context to assemble/.test(l)))
   assert.match(promptFor(prompts, 'judge'), /no retry helper anywhere/, 'absence is evidence to judge')
   assert.equal(result.coverage.complete, true)
 })
 
-test('excerpts damaged in transit are refetched on a stronger courier, then believed', async () => {
+test('a context payload damaged in transit is refetched on a stronger courier, then believed', async () => {
   const { result, prompts } = await run({
     plan: PLAN(), 'scout:': HITS(),
-    assemble: (p) => carriedEnvelope(resolvePayload(p), (env) => { env.payload.files[0].excerpts[0].text = 'forged' }),
+    assemble: (p) => carriedEnvelope(contextPayload(p), (env) => { env.payload.context.parts[0].path = 'C:/forged.md' }),
     'assemble#2': resolveAll,
   })
 
@@ -643,7 +646,7 @@ test('excerpts damaged in transit are refetched on a stronger courier, then beli
   assert.ok(retry, 'a digest mismatch buys a refetch')
   assert.equal(retry.opts.model, 'sonnet')
   assert.doesNotMatch(promptFor(prompts, 'judge'), /forged/)
-  assert.match(promptFor(prompts, 'judge'), /text of src\/x\.js:1/)
+  assert.ok(promptFor(prompts, 'judge').includes(contextPathOf(retry.prompt)))
   assert.equal(result.coverage.complete, true)
 })
 
@@ -655,22 +658,22 @@ test('a token the program refused as damaged on its way in is sent again', async
   })
 
   assert.equal(prompts.find((p) => p.opts.label === 'assemble#2').opts.model, 'haiku')
-  assert.match(promptFor(prompts, 'judge'), /EXCERPTS/)
+  assert.match(promptFor(prompts, 'judge'), /CONTEXT FILES/)
 })
 
-test('a resolve that cannot be carried is a side channel: the judge reads the locations itself', async () => {
+test('context that cannot be carried is a side channel: the judge reads the locations itself', async () => {
   const failed = { stop_reason: 'failed', payload_raw: '', task_ids: [], task_tools: 'skipped', notes: 'node is not on the PATH' }
   const { result, prompts, logs } = await run({
     plan: PLAN(), 'scout:': HITS({ hits: [{ path: 'src/x.js', line: 42, note: 'the thing' }] }),
     assemble: failed, 'assemble#2': failed,
   })
 
-  assert.equal(prompts.filter((p) => /^assemble/.test(p.opts.label)).length, 2, 'retried once, then let go')
-  assert.ok(logs.some((l) => /not resolved[\s\S]*node is not on the PATH/.test(l)))
+  assert.equal(assemblies(prompts).length, 2, 'retried once, then let go')
+  assert.ok(logs.some((l) => /not assembled[\s\S]*node is not on the PATH/.test(l)))
 
   const judged = promptFor(prompts, 'judge')
   assert.match(judged, /LOCATIONS NOT EXCERPTED[\s\S]*src\/x\.js:42 — the thing/)
-  assert.doesNotMatch(judged, /EXCERPTS —/)
+  assert.doesNotMatch(judged, /CONTEXT FILES/)
 
   // More turns for the judge, not less evidence: nothing was lost that a reader cannot get back.
   assert.deepEqual(result.coverage.failed_channels, [])
@@ -678,34 +681,31 @@ test('a resolve that cannot be carried is a side channel: the judge reads the lo
   assert.equal(result.verdicts.length, 1)
 })
 
-test('a location the script could not read reaches the judge as a location, beside the excerpts', async () => {
-  const { prompts } = await run({
+test('a path the list cannot carry unquoted is not sent: the judge reads it itself', async () => {
+  const { prompts, logs } = await run({
     plan: PLAN(),
-    'scout:': HITS({ hits: [{ path: 'src/x.js', line: 3, note: 'here' }, { path: 'other-repo/y.js', line: 9, note: 'there' }] }),
-    assemble: (p) => {
-      const payload = resolvePayload(p)
-      payload.files = payload.files.filter((f) => f.path === 'src/x.js')
-      payload.unresolved = [{ path: 'other-repo/y.js', why: 'missing', detail: 'no such file' }]
-      return carriedEnvelope(payload)
-    },
+    'scout:': HITS({ hits: [{ path: 'src/x.js', line: 3, note: 'here' }, { path: 'docs/my notes.md', line: 9, note: 'spaced' }] }),
   })
 
-  const judged = promptFor(prompts, 'judge')
-  assert.match(judged, /text of src\/x\.js:3/)
-  assert.match(judged, /LOCATIONS NOT EXCERPTED[\s\S]*other-repo\/y\.js:9 — there/)
+  assert.deepEqual(locationsIn(promptFor(prompts, 'assemble')).locations, [{ path: 'src/x.js', line: 3 }])
+  assert.match(promptFor(prompts, 'judge'), /LOCATIONS NOT EXCERPTED[\s\S]*docs\/my notes\.md:9 — spaced/)
+  assert.ok(logs.some((l) => /cannot carry unquoted/.test(l)))
 })
 
 test('locations too many for one argv slot travel in batches, one file never split across two', async () => {
-  const hits = Array.from({ length: 400 }, (_, i) => ({ path: `src/dir-${i % 40}/file-${i % 40}.js`, line: 10 * i + 1, note: 'n' }))
+  const hits = Array.from({ length: 400 }, (_, i) => ({ path: `src/dir-${i % 200}/file-${i % 200}.js`, line: 10 * i + 1, note: 'n' }))
   const { prompts } = await run({ plan: PLAN(), 'scout:': HITS({ hits }) })
 
-  const resolves = prompts.filter((p) => /^assemble/.test(p.opts.label))
-  assert.ok(resolves.length > 1)
-  const pathsPer = resolves.map((p) => new Set(locationsIn(p.prompt).locations.map((l) => l.path)))
+  const couriers = assemblies(prompts)
+  assert.ok(couriers.length > 1)
+  const pathsPer = couriers.map((p) => new Set(locationsIn(p.prompt).locations.map((l) => l.path)))
   const all = pathsPer.flatMap((set) => [...set])
   assert.equal(all.length, new Set(all).size, 'every location of one file rides the same batch')
-  assert.equal(resolves.reduce((n, p) => n + locationsIn(p.prompt).locations.length, 0), 400)
-  for (const p of resolves) assert.ok(/--b64 (\S+)/.exec(p.prompt)[1].length <= 6000)
+  assert.equal(couriers.reduce((n, p) => n + locationsIn(p.prompt).locations.length, 0), 400)
+  for (const p of couriers) assert.ok(locationsIn(p.prompt).list.length <= 6000)
+
+  const judged = promptFor(prompts, 'judge')
+  for (const p of couriers) assert.ok(judged.includes(contextPathOf(p.prompt)), 'the judge reads every batch\'s file')
 })
 
 // ------------------------------------------------------------------ judge
@@ -726,8 +726,8 @@ test('one judge holds every topic by default, and says so', async () => {
   assert.equal(result.coverage.complete, true)
 })
 
-test('more than sixty windows earn a second judge, and every topic is still ruled on', async () => {
-  // Each topic's scout reports forty separate locations, so eighty windows across two topics.
+test('more than sixty locations earn a second judge, each with its own context', async () => {
+  // Each topic's scout reports forty separate locations, so eighty-one across three topics.
   const spread = (key) => HITS({ hits: Array.from({ length: 40 }, (_, i) => ({ path: `src/${key}.js`, line: 100 * i + 50, note: 'n' })) })
   const { result, prompts, logs } = await run({
     plan: PLAN({ topics: topicsOf(3) }),
@@ -739,27 +739,31 @@ test('more than sixty windows earn a second judge, and every topic is still rule
   assert.deepEqual(judges.map((j) => keysOf(j.opts)).flat().sort(), ['t1', 't2', 't3'],
     'the topics are dealt across the judges, each exactly once')
   assert.ok(judges.every((j) => /^judge:/.test(j.opts.label)))
-  assert.ok(logs.some((l) => /81 window\(s\).*earn 2 analysts/.test(l)))
+  assert.ok(logs.some((l) => /81 location\(s\) earn 2 analysts/.test(l)))
   assert.equal(result.verdicts.length, 3)
   assert.equal(result.coverage.complete, true)
 
-  // A judge is handed the windows of its own topics, not every judge's.
+  // A judge's courier carries the locations of its own topics, not every judge's.
   const holdsT1 = judges.find((j) => keysOf(j.opts).includes('t1'))
   assert.ok(!keysOf(holdsT1.opts).includes('t2'), 'the two heavy topics land on different judges')
-  assert.doesNotMatch(holdsT1.prompt, /text of src\/t2\.js/)
+  const courier = assemblies(prompts).find((p) => p.opts.label === holdsT1.opts.label.replace(/^judge/, 'assemble'))
+  assert.ok(courier, 'one courier per judge, named after it')
+  assert.ok(!locationsIn(courier.prompt).locations.some((l) => l.path === 'src/t2.js'))
+  assert.ok(holdsT1.prompt.includes(contextPathOf(courier.prompt)))
 })
 
-test('excerpt bytes earn judges too, not only windows', async () => {
-  const long = 'x'.repeat(8000)
-  const { prompts, logs } = await run({
-    plan: PLAN({ topics: topicsOf(2) }),
-    'scout:t1': HITS({ hits: Array.from({ length: 10 }, (_, i) => ({ path: 'src/big1.js', line: 100 * i + 50, note: 'n' })) }),
-    'scout:t2': HITS({ hits: Array.from({ length: 10 }, (_, i) => ({ path: 'src/big2.js', line: 100 * i + 50, note: 'n' })) }),
-    assemble: (p) => carriedEnvelope(resolvePayload(p, { lineText: () => long })),
-  })
+test('ground two judges share is written into each judge\'s own context', async () => {
+  const { prompts } = await run({
+    plan: PLAN({ topics: topicsOf(2), common_ground: 'the config' }),
+    'scout:common-ground': HITS({ hits: [{ path: 'src/config.js', line: 7, note: 'config' }] }),
+    'scout:': HITS(),
+  }, { pace: 'fast' })
 
-  assert.equal(prompts.filter((p) => /^judge/.test(p.opts.label)).length, 2)
-  assert.ok(logs.some((l) => /KB of excerpts earn 2 analysts/.test(l)))
+  const couriers = assemblies(prompts)
+  assert.deepEqual(couriers.map((p) => p.opts.label).sort(), ['assemble:t1', 'assemble:t2'])
+  for (const p of couriers) {
+    assert.ok(locationsIn(p.prompt).locations.some((l) => l.path === 'src/config.js'))
+  }
 })
 
 test('pace fast buys one judge per topic, and says it bought them for wall-clock', async () => {

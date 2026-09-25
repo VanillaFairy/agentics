@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -268,7 +269,7 @@ test('a long boundary runs detached: pending past the poll limit, collected by t
   const open = B(r, 'leaf-open', { node: 'a', role: 'implementer', round: 1 })
   commitIn(open.worktree, { 'test/a.test.mjs': A_TEST, 'src/a.mjs': 'export const a = () => 1\n' }, 'Add a')
   const args = { node: 'a', role: 'implementer', round: 1, base_sha: open.base_sha }
-  const run = (wait) => spawnSync('node', [new URL('../lib/boundary.mjs', import.meta.url).pathname, 'leaf-close', '--repo', r, '--effort', 'e1', '--execution', STAMP,
+  const run = (wait) => spawnSync('node', [fileURLToPath(new URL('../lib/boundary.mjs', import.meta.url)), 'leaf-close', '--repo', r, '--effort', 'e1', '--execution', STAMP,
     '--b64', Buffer.from(JSON.stringify(args)).toString('base64')], { encoding: 'utf8', env: { ...process.env, AGENTICS_INLINE_JOBS: '', AGENTICS_BOUNDARY_WAIT_MS: String(wait) } })
   const first = JSON.parse(run(1).stdout)
   assert.equal(first.payload.status, 'pending')
@@ -283,7 +284,7 @@ test('the CLI refuses a damaged argument token and prints an envelope either way
   const r = repo()
   addNodes(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs'] })], { by: 'session' })
   const token = Buffer.from(JSON.stringify({ root: '.' })).toString('base64')
-  const out = spawnSync('node', [new URL('../lib/boundary.mjs', import.meta.url).pathname, 'preflight', '--repo', r, '--effort', 'e1', '--execution', STAMP, '--digest', 'deadbeef', '--b64', token], { encoding: 'utf8' })
+  const out = spawnSync('node', [fileURLToPath(new URL('../lib/boundary.mjs', import.meta.url)), 'preflight', '--repo', r, '--effort', 'e1', '--execution', STAMP, '--digest', 'deadbeef', '--b64', token], { encoding: 'utf8' })
   assert.equal(out.status, 0)
   const env = JSON.parse(out.stdout)
   assert.equal(env.payload.error.kind, 'digest_mismatch')
@@ -306,7 +307,7 @@ test('drift: a landed diff under a contract a pending node consumes is flagged; 
   assert.deepEqual(driftOf(tree, ['p'], ['src/api.mjs']).drift, [], 'the provider landing its own contract is expected work')
 })
 
-const BOUNDARY = new URL('../lib/boundary.mjs', import.meta.url).pathname
+const BOUNDARY = fileURLToPath(new URL('../lib/boundary.mjs', import.meta.url))
 const cli = (r, name, args, env = {}) => {
   const out = spawnSync('node', [BOUNDARY, name, '--repo', r, '--effort', 'e1', '--execution', STAMP,
     '--b64', Buffer.from(JSON.stringify(args)).toString('base64')], { encoding: 'utf8', env: { ...process.env, ...env } })
@@ -322,7 +323,7 @@ test('a detached close re-measures once its inputs change: commands established 
   const args = { node: 'a', role: 'implementer', round: 1, base_sha: open.base_sha }
   const detachedEnv = { AGENTICS_INLINE_JOBS: '', AGENTICS_BOUNDARY_WAIT_MS: '60000' }
   assert.equal(cli(r, 'leaf-close', args, detachedEnv).decision.next, 'command_unknown')
-  const add = spawnSync('node', [new URL('../lib/gotchas.mjs', import.meta.url).pathname, 'add', '--repo', r, '--effort', 'e1', '--role', 'investigator', '--stdin'],
+  const add = spawnSync('node', [fileURLToPath(new URL('../lib/gotchas.mjs', import.meta.url)), 'add', '--repo', r, '--effort', 'e1', '--role', 'investigator', '--stdin'],
     { encoding: 'utf8', input: JSON.stringify(['build', 'typecheck', 'suite', 'test_one'].map((name) => ({
       kind: 'command', roles: ['implementer', 'investigator'], paths: [], trigger: 'running ' + name, action: 'use it',
       evidence: { command: name, output: 'ok' },

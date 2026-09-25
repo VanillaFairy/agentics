@@ -1,10 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { fileURLToPath } from 'node:url'
 
 import { runWorkflow } from './harness/workflow-host.mjs'
 import { agents, composite, recordsOf, row, simulate } from './harness/develop-sim.mjs'
 
-const WF = new URL('../workflows/agentics-develop.workflow.js', import.meta.url).pathname
+const WF = fileURLToPath(new URL('../workflows/agentics-develop.workflow.js', import.meta.url))
 const ARGS = { repo: '/repo', effort: 'e1', execution: '20260925-120000', plugin_root: '/plugin' }
 
 const run = (sim, handlers = {}, args = {}, extra = {}) =>

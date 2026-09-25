@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { fileURLToPath } from 'node:url'
 import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -9,7 +10,7 @@ import { append, digestEntries, fileFor, parseLog, readLog, seqMax } from '../li
 import { effortDir } from '../lib/store.mjs'
 
 const repo = () => mkdtempSync(join(tmpdir(), 'agentics-ledger-'))
-const LEDGER = new URL('../lib/ledger.mjs', import.meta.url).pathname
+const LEDGER = fileURLToPath(new URL('../lib/ledger.mjs', import.meta.url))
 
 test('seq is minted by the ledger, one counter across every log of an effort', () => {
   const r = repo()

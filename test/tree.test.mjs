@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import { append } from '../lib/ledger.mjs'
 import {
@@ -34,7 +34,7 @@ test('ids, parents, branches: the root is ".", nested ids are siblings of the ef
   assert.deepEqual(ancestorsOf('a/b/c'), ['a/b', 'a', '.'])
   assert.equal(branchOf('e1', '.'), 'agentics/e1')
   assert.equal(branchOf('e1', 'a/b'), 'agentics/e1--a.b')
-  assert.equal(worktreeOf('/r', 'e1', 'a/b'), '/r/.claude/worktrees/e1--a.b')
+  assert.equal(worktreeOf('/r', 'e1', 'a/b'), resolve('/r').replaceAll('\\', '/') + '/.claude/worktrees/e1--a.b')
   assert.equal(safeSlug('2026-09-25-fix-it'), '2026-09-25-fix-it')
   assert.equal(safeSlug('a--b'), null)
 })

@@ -162,7 +162,9 @@ test('a review records how much it examined and the ambiguities it raised, at th
     { complete: true, remaining: [], ambiguities: 'Iaaaaaaaa' },
     { complete: true, remaining: [], ambiguities: [''] },
   ]) assert.equal(recordReviewed(repo, E, '.', bad).ok, false, JSON.stringify(bad))
-  assert.equal(recordReviewed(effort({}), E, '.', { complete: true, remaining: [] }).ok, false, 'no spec, no review')
+  const noSpec = effort({})
+  assert.equal(recordReviewed(noSpec, E, '.', { complete: true, remaining: [] }).ok, false, 'no spec, no review')
+  assert.deepEqual(ledger(noSpec), [])
   assert.equal(ledger(repo).length, 2)
 })
 
@@ -287,6 +289,7 @@ test('a skipped review records its reason and the hash it was skipped at', () =>
   assert.equal(line.hash, hashSpec(ROOT))
   assert.match(line.reason, /no contract/)
   assert.equal(recordReviewSkipped(repo, E, '.', '').ok, false)
+  assert.equal(ledger(repo).length, 1)
 })
 
 test('writers refuse an effort name or folder id that breaks the segment rule', () => {
@@ -294,6 +297,7 @@ test('writers refuse an effort name or folder id that breaks the segment rule', 
   assert.equal(recordApproval(repo, 'Bad_Effort', '.').ok, false)
   assert.equal(recordApproval(repo, E, 'Store_Layout').ok, false)
   assert.equal(recordCompiled(repo, E, '../x', 'abc').ok, false)
+  assert.deepEqual(ledger(repo), [])
 })
 
 test('the ledger shares the effort\'s one seq counter', () => {

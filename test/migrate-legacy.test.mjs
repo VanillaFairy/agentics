@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 
 import { evidenceOf } from '../lib/effort.mjs'
 import { readLog, seqMax } from '../lib/ledger.mjs'
-import { heldBy } from '../lib/locks.mjs'
+import { heldBy, poolConfig } from '../lib/locks.mjs'
 import { efforts } from '../lib/status.mjs'
 import { agenticsRoot, configPath, effortStateDir, legacyDir, readConfig, safeSlug } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
@@ -284,4 +284,73 @@ test('apply never overwrites a target that appeared after planning', () => {
   writeFileSync(to, 'written in between\n')
   apply(p)
   assert.equal(readFileSync(to, 'utf8'), 'written in between\n')
+})
+
+test('committed lists only files of efforts that were migrated', () => {
+  const repo = legacyRepo()
+  put(repo, {
+    [OLD + '/efforts/old_name/nodes.jsonl']: jsonl({ kind: 'node', node: { id: '.', kind: 'composite', title: 't' }, seq: 1 }),
+    'docs/agentics/designs/old_name/root.md': '# Old\n',
+    'docs/agentics/designs/e2/root.md': '# Two\n',
+    '.agentics/e2/.legacy/root.md': 'other bytes\n',
+  })
+  git(repo, 'add', OLD, 'docs')
+  git(repo, 'commit', '-q', '-m', 'legacy state committed before it ignored itself')
+  const p = plan(repo)
+  assert.ok(p.refused.some((r) => r.name === 'e2'))
+  assert.ok(!p.committed.some((f) => f.includes('/old_name/')))
+  assert.ok(!p.committed.some((f) => f.includes('/designs/e2/')))
+  assert.ok(p.committed.includes(OLD + '/efforts/e1/nodes.jsonl'))
+})
+
+test('run from a linked worktree, sources come from the worktree and targets land in the main checkout', () => {
+  const repo = legacyRepo()
+  const wt = mkdtempSync(join(tmpdir(), 'agentics-migrate-wt-'))
+  git(repo, 'worktree', 'add', '-q', wt, '-b', 'side')
+  const text = jsonl({ kind: 'node', node: { id: '.', kind: 'composite', title: 'w' }, seq: 1 })
+  put(wt, { [OLD + '/efforts/w1/nodes.jsonl']: text })
+  apply(plan(wt))
+  assert.equal(readFileSync(join(effortStateDir(repo, 'w1'), 'nodes.jsonl'), 'utf8'), text)
+  assert.equal(existsSync(join(wt, '.agentics')), false)
+})
+
+for (const [label, legacy, existing] of [['identical', '{"max_parallel":3}', '{"max_parallel":3}'], ['different', '{"max_parallel":3}', '{"max_parallel":5}']]) {
+  test('an existing config.json ' + label + ' to slots/config.json is kept, and refused only when it differs', () => {
+    const repo = legacyRepo()
+    put(repo, { [OLD + '/slots/config.json']: legacy, '.agentics/config.json': existing })
+    const p = plan(repo)
+    assert.ok(!p.copies.some((c) => c.to === configPath(repo)))
+    assert.equal(p.refused.some((r) => r.name === 'config.json'), legacy !== existing)
+    apply(p)
+    assert.equal(readFileSync(configPath(repo), 'utf8'), existing)
+  })
+}
+
+test('a slots/config.json that is not JSON is copied as bytes, and poolConfig notes it', () => {
+  const repo = legacyRepo()
+  put(repo, { [OLD + '/slots/config.json']: 'not json\n' })
+  apply(plan(repo))
+  assert.equal(readFileSync(configPath(repo), 'utf8'), 'not json\n')
+  assert.notEqual(poolConfig(repo).note, '')
+})
+
+test('upper-case, double-dash and over-long names are each refused once, both halves left alone', () => {
+  const repo = legacyRepo()
+  const bad = ['Upper', 'a--b', 'x'.repeat(121)]
+  for (const name of bad) {
+    put(repo, {
+      [OLD + '/efforts/' + name + '/nodes.jsonl']: jsonl({ kind: 'node', node: { id: '.', kind: 'composite', title: 't' }, seq: 1 }),
+      ['docs/agentics/designs/' + name + '/root.md']: '# ' + name + '\n',
+    })
+  }
+  const p = plan(repo)
+  for (const name of bad) {
+    assert.equal(p.refused.filter((r) => r.name === name).length, 1, name)
+    assert.ok(!p.copies.some((c) => c.from.split('\\').join('/').includes('/' + name + '/')), name)
+  }
+})
+
+test('a note says nothing was deleted', () => {
+  const p = plan(legacyRepo())
+  assert.ok(p.notes.some((n) => /nothing/i.test(n) && /delet/i.test(n)))
 })

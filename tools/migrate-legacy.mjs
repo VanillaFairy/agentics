@@ -15,7 +15,7 @@
 // that already holds other bytes, refuses that effort whole. A second run finds every target
 // identical and copies nothing. The default is a dry run; `--yes` copies.
 
-import { copyFileSync, existsSync, readFileSync, readdirSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -96,13 +96,21 @@ export function plan(repo) {
   return out
 }
 
-/** Copy what the plan lists. Never deletes, moves or overwrites. */
-export function apply(p) {
+/** Copy what the plan lists. Never deletes, moves or overwrites a user's file: each copy is written
+ *  beside its target and renamed into place, so a stop mid-file leaves no partial target. */
+export function apply(p, { copy = copyFileSync } = {}) {
   let copied = 0
   for (const { from, to } of p.copies) {
     if (existsSync(to)) continue
     mkdirState(dirname(to))
-    copyFileSync(from, to)
+    const tmp = to + '.' + process.pid + '.migrating'
+    try {
+      copy(from, tmp)
+      renameSync(tmp, to)
+    } catch (err) {
+      rmSync(tmp, { force: true })
+      throw err
+    }
     copied++
   }
   return { copied }

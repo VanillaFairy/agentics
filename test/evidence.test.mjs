@@ -362,10 +362,15 @@ test('the CLI records a digest-checked token and prints an envelope, refusals in
   assert.equal(out.payload.ok, true)
   assert.deepEqual(out.payload.ids, [itemId(payload.items[0])])
 
+  const linesBefore = storedLines(repo).length
+  const returnsBefore = readdirSync(evidenceReturnsDir(repo)).length
+  assert.equal(returnsBefore, 1)
+
   const bad = run('deadbeef')
   assert.equal(bad.status, 0, 'a damaged token is a typed refusal, not a failed program')
   assert.equal(JSON.parse(bad.stdout).payload.error.kind, 'digest_mismatch')
-  assert.equal(liveItems(repo).size, 1, 'the damaged token wrote nothing')
+  assert.equal(storedLines(repo).length, linesBefore, 'the damaged token appended no item line')
+  assert.equal(readdirSync(evidenceReturnsDir(repo)).length, returnsBefore, 'the damaged token kept no raw return')
 })
 
 // ------------------------------------------------------------------ where the store lives

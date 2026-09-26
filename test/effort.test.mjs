@@ -39,12 +39,16 @@ test('names and stamps are lib/store.mjs\'s, not a second copy', () => {
   assert.equal(stampNow, store.stampNow)
 })
 
-test('a slug is dated, kebab, bounded by words, and never carries "--"', () => {
-  assert.equal(slugFor('Efforts, and what a probe should cost', '2026-09-04'),
-    '2026-09-04-efforts-and-what-a-probe-should')
-  assert.equal(slugFor('', '2026-09-04'), '2026-09-04-effort')
-  assert.equal(slugFor('x', ''), 'undated-x')
-  assert.equal(safeSlug(slugFor('a -- b', '2026-09-04')), '2026-09-04-a-b')
+test('a proposed name is the first four words, kebab, undated, and passes the segment rule', () => {
+  const about = 'Efforts, and what a probe should cost'
+  assert.equal(slugFor(about), about.toLowerCase().match(/[a-z0-9]+/g).slice(0, 4).join('-'))
+  assert.equal(slugFor(''), 'effort')
+  assert.equal(slugFor('a -- b'), 'a-b')
+  for (const text of [about, '', 'a -- b', 'x'.repeat(300) + ' y']) {
+    const name = slugFor(text)
+    assert.equal(safeSlug(name), name, text)
+    assert.ok(name.split('-').length <= 4, name)
+  }
 })
 
 test('a slug that could climb out of the store, or blur a branch prefix, is refused', () => {
@@ -226,10 +230,12 @@ test('the CLI refuses a return file that did not survive transcription', () => {
     { encoding: 'utf8', stdio: 'pipe' }))
 })
 
-test('the slug command needs no repository', () => {
-  const out = run('slug', 'Efforts and what a probe should cost')
+test('the slug command needs no repository and proposes an undated name', () => {
+  const words = 'Efforts and what a probe should cost'
+  const out = run('slug', words)
   assert.equal(out.ok, true)
-  assert.match(out.slug, /^\d{4}-\d{2}-\d{2}-efforts-and-what-a-probe-should$/)
+  assert.equal(out.slug, slugFor(words))
+  assert.doesNotMatch(out.slug, /^\d{4}-\d{2}-\d{2}-/)
 })
 
 // ------------------------------------------------------------------ standing

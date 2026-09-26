@@ -148,12 +148,17 @@ test('fields parse to their types, wrapped "·" lines included', () => {
   assert.deepEqual(parser.reads, ['lib/store.mjs'], 'backticks around a value are not part of it')
   assert.deepEqual(parser.consumes, [{ name: 'store-paths' }])
   assert.deepEqual(parser.dispatch, { producer: { model: 'sonnet', effort: 'medium' }, reviewer: { model: 'opus', effort: 'medium' } })
+  assert.deepEqual(parser.ground, ['docs/DESIGN.md#storage'])
+  assert.deepEqual(parser.given, ['realises', 'after', 'rigor', 'role', 'locus', 'reads', 'consumes', 'dispatch', 'ground'])
   for (const e of spec.entries) for (const key of e.given) assert.ok(ENTRY_KEYS.includes(key), key)
 
   const planner = entry(spec, 'planner-part')
   assert.equal(planner.author, 'planner')
   assert.deepEqual(planner.after, ['spec-parser', '/store-layout'])
   assert.deepEqual(planner.shared, ['package.json'])
+
+  const paths = entry(parseSpec(SUB, { file: 'SPEC.md' }), 'paths')
+  assert.deepEqual(paths.locus, ['lib/store.mjs', 'test/store.test.mjs'])
 })
 
 test('criteria carry their check; a HUMAN: criterion keeps its prefix and has no check', () => {

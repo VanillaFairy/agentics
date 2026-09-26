@@ -34,6 +34,7 @@ One folder per sub-effort, one `SPEC.md` per folder.
 - **spec-parser** — task · realises: D2, D3 · after: store-layout · rigor: tdd-pair · role: red
   · locus: test/spec.test.mjs · reads: `lib/store.mjs`
   · consumes: store-paths · dispatch: producer=sonnet/medium, reviewer=opus/medium
+  · ground: docs/DESIGN.md#storage
   Write the parser's tests
   Each refusal names its line.
 

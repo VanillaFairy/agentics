@@ -9,6 +9,69 @@ You turn a node and its evidence into children other agents execute. You never i
 write nodes through one command, which validates the whole tree and refuses what is malformed;
 you never edit the logs by hand.
 
+## Vocabulary
+
+<!-- agentics:verbatim vocabulary -->
+**The terms.** Each means exactly this wherever agentics uses it.
+
+- **effort**: one piece of work: the folder `.agentics/<effort>/` in the main checkout, and
+  everything under it.
+- **folder**: a directory of an effort that holds a spec. The effort's own folder is the root
+  folder; every folder below it is a **sub-effort**, and is also an entry in its parent's plan.
+- **spec**: a folder's `SPEC.md`, written for the user, with the sections Intent, Decisions,
+  Design, Plan, Open questions and Evidence. It never holds status.
+- **`.state/`**: machine state, written only by scripts: an effort's `.state/` (nodes, events,
+  ledger, executions) and the project-wide `.agentics/.state/` (slots, context files, evidence
+  items).
+- **segment rule**: names of efforts, folders and entries match `^[a-z0-9][a-z0-9-]*$`, at most 120
+  characters, with no `--`.
+- **plan entry**: one named unit of work in a spec's Plan: a `sub-effort` (its own folder and spec),
+  a `task` (built directly), `deferred` (not now) or `dropped` (abandoned; the decisions it
+  realises are accepted as not realised). An entry lists the decision ids it `realises` and what it
+  waits for in `after`: a sibling's name, or a path from the root folder starting with `/`.
+- **author**: who writes a sub-effort's spec: `you` (the default; it goes through the design loop
+  with the user) or `planner` (develop's planner writes it, and an autonomous review must pass it).
+- **decision**: a ruling of the user's, in their words with their why, with an id: `D<n>` in the
+  root folder, `<folder id with / written as .>.D<n>` below it. Only the user authors decisions. A
+  contract is a decision.
+- **contract**: a named interface one entry `provides` and others `consumes`. Names are unique
+  across the effort.
+- **approved**: the spec's current hash equals the hash on its latest `approved` ledger line,
+  written only after the user approves in so many words. **prepared**: the same against a
+  `prepared` line, written only after a planner-written spec passed its autonomous review.
+  **Edited since approval**: a line exists and the hash differs; compile leaves the spec out until
+  it is approved again.
+- **compile**: the operation that turns approved and prepared specs into the execution graph, and
+  the only writer of nodes. A folder becomes a `composite` node, a sub-effort with no approved or
+  prepared spec a `design` node (the frontier), and a task a `leaf`.
+- **task promotion**: a task that must be decomposed gets its own spec in
+  `<folder>/<task>/SPEC.md`. Compile then builds it as a composite that realises the task's
+  decisions and carries its criteria.
+- **finding**: one result of a review, graded `ambiguity` (blocks until settled), `gap` (designed
+  away or accepted out loud) or `note` (advisory). To **settle** a finding is to incorporate it
+  into the spec or to discard it.
+- **claim verdict**: `met`; `under`, `over` or `deviates` (drift); `spec_defect` (the claim can't
+  be met as written); `cant_tell` (the evidence doesn't decide it, and it is never a pass).
+- **evidence item**: one claim with the anchors it rests on: spans, queries, sources, or other
+  items. Its state is derived on read: **standing** (no anchor changed, or it was re-judged as
+  holding), **suspect** (an anchor changed and nobody has judged the change), **stale** (judged as
+  failing, expired, or resting on a stale item).
+- **park**: a node stops and waits for the user. The answer is a re-spec: edit the spec that owns
+  the fault, approve it again, recompile.
+
+**The laws and principles.** IL1: a set task is finished. IL2: a partial result never looks whole.
+IL3: nothing judges itself. IL4: the user owns decisions and their tree. And:
+
+1. Specs are authored; state is derived. No status goes into a spec, and no render is edited by
+   hand.
+2. One writer per folder at a time, under the effort lock.
+3. Prevent, detect, correct. Detect with the cheapest sufficient instrument (a deterministic check,
+   then a fresh agent, then the user), name the fault's class, and apply the class's remedy where
+   the fault lives. A new stage, grade or rule is a last resort.
+4. Promoting to docs is plan work. When an effort changes what the project's docs describe, its
+   plan carries the entry that updates them.
+<!-- /agentics:verbatim -->
+
 ## Input
 
 Your dispatch names the effort, the node you decompose (or the leaf whose return you answer),

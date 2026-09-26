@@ -6,14 +6,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { approvalState, recordApproval, recordPreparation } from '../lib/approval.mjs'
 import { compileEffort } from '../lib/compile.mjs'
-import { append, readLog } from '../lib/ledger.mjs'
+import { append, fileFor, readLog } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import { hashSpec, parseSpec } from '../lib/spec.mjs'
 import { specPath } from '../lib/store.mjs'
@@ -468,4 +468,183 @@ test('the CLI prints the result under its digest and exits 0 on a refusal', () =
   approve(repo, '.')
   const ok = JSON.parse(execFileSync(process.execPath, [CLI, '--repo', repo, '--effort', E, '--folder', '.'], { encoding: 'utf8' }))
   assert.equal(ok.payload.ok, true)
+})
+
+/** Run `fn` with the effort's `name` log read-only, so an append to it fails. */
+function readOnly(repo, name, fn) {
+  const path = fileFor(repo, E, name).path
+  chmodSync(path, 0o444)
+  try {
+    return fn()
+  } finally {
+    chmodSync(path, 0o666)
+  }
+}
+const parksOf = (repo, node) => readTree(repo, E).events.filter((e) => e.kind === 'parked' && e.node === node)
+const reapproveApi = (repo) => {
+  write(repo, 'api', API.replace('`load(path)`, then `parse(text)`.', '`load(path)` returns a frozen object.'))
+  approve(repo, 'api')
+}
+
+test('a merged consumer is not parked when the spec providing its contract is re-approved', () => {
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  append(repo, E, 'events', { kind: 'merged', node: 'cli', execution: '20260926-120000' })
+  reapproveApi(repo)
+  const out = compiled(repo)
+  assert.equal(out.parked.some((p) => p.node === 'cli'), false)
+  assert.equal(readTree(repo, E).status.get('cli').status, 'merged')
+})
+
+test('an approval older than a park does not answer it', () => {
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  write(repo, '.', ROOT.replace('Nothing else changes.', 'Nothing else changes, really.'))
+  approve(repo, '.')
+  append(repo, E, 'events', { kind: 'parked', node: 'cli', execution: '20260926-120000', return: 'needs_decision', question: 'which loader?' })
+  const out = compiled(repo)
+  assert.equal(out.answered.includes('cli'), false)
+  assert.equal(readTree(repo, E).status.get('cli').status, 'parked')
+})
+
+test('a composite\'s park is answered by approving its own spec', () => {
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  append(repo, E, 'events', { kind: 'parked', node: 'api', execution: '20260926-120000', return: 'needs_decision', question: 'which parser?' })
+  approve(repo, 'api')
+  const out = compiled(repo)
+  assert.ok(out.answered.includes('api'), JSON.stringify(out.answered))
+  assert.notEqual(readTree(repo, E).status.get('api').status, 'parked')
+})
+
+test('a prepared spec may not move a contract its entry provides', () => {
+  const TUNING = PARSE.replace('# Parse keys', '# Tune the messages').replace(/realises: D1/g, 'realises: D2')
+    .replace('locus: src/api/tokens.js, test/tokens.test.js', 'locus: src/api/tokens.js, test/tokens.test.js · provides: tune-tokens (src/tune/tokens.js)')
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  write(repo, 'tuning', TUNING)
+  prepare(repo, 'tuning')
+  compiled(repo)
+  const moved = TUNING.replace('(src/tune/tokens.js)', '(src/tune/lexer.js)')
+  write(repo, 'tuning', moved)
+  prepare(repo, 'tuning')
+  const before = sizes(repo)
+  const out = compileEffort(repo, E)
+  assert.equal(out.ok, false)
+  assert.ok(out.problems.some((p) => /tuning\/SPEC\.md$/.test(p.file) && p.line === lineIn(moved, '- **tokens**')), JSON.stringify(out.problems))
+  assert.deepEqual(sizes(repo), before)
+})
+
+test('a dropped entry in a prepared spec does not give up the decision it realised', () => {
+  const api = API.replace('realises: D2, api.D1', 'realises: api.D1')
+  const TUNING = PARSE.replace('# Parse keys', '# Tune the messages').replace(/realises: D1/g, 'realises: D2')
+  const repo = effort({ '.': ROOT, api })
+  approve(repo, '.')
+  approve(repo, 'api')
+  write(repo, 'tuning', TUNING)
+  prepare(repo, 'tuning')
+  compiled(repo)
+  const gaveUp = TUNING.replace('- **tokens** — task · realises: D2 · rigor: tdd · locus: src/api/tokens.js, test/tokens.test.js', '- **tokens** — dropped · realises: D2')
+    .replace(/ {2}- \[ \] tokens split on newlines.*\n/, '')
+    .replace('- **lookup** — task · realises: D2 · after: tokens ·', '- **lookup** — task ·')
+  write(repo, 'tuning', gaveUp)
+  prepare(repo, 'tuning')
+  const before = sizes(repo)
+  const out = compileEffort(repo, E)
+  assert.equal(out.ok, false, JSON.stringify(out))
+  assert.ok(out.problems.some((p) => /D2/.test(p.problem)), JSON.stringify(out.problems))
+  assert.deepEqual(sizes(repo), before)
+})
+
+test('a removed entry with merged work is refused by name', () => {
+  const withoutCli = ROOT.replace(/- \*\*cli\*\*[\s\S]*?(?=- \*\*reload\*\*)/, '')
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  append(repo, E, 'events', { kind: 'merged', node: 'cli', execution: '20260926-120000' })
+  write(repo, '.', withoutCli)
+  approve(repo, '.')
+  const before = sizes(repo)
+  const out = compileEffort(repo, E)
+  assert.equal(out.ok, false)
+  assert.ok(out.problems.some((p) => /\bcli\b/.test(p.problem)))
+  assert.equal(nodes(repo).has('cli'), true)
+  assert.deepEqual(sizes(repo), before)
+})
+
+test('--folder is refused when the parent spec is edited since approval', () => {
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  write(repo, 'api', API.replace('Declare the config type', 'Declare the config types'))
+  approve(repo, 'api')
+  write(repo, '.', ROOT.replace('Nothing else changes.', 'Nothing else changes, really.'))
+  const before = sizes(repo)
+  const out = compileEffort(repo, E, { folder: 'api' })
+  assert.equal(out.ok, false)
+  assert.ok(out.problems.some((p) => /SPEC\.md$/.test(p.file)))
+  assert.deepEqual(sizes(repo), before)
+})
+
+test('an after naming an entry dropped in the same re-approval is refused at its entry', () => {
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  const text = ROOT.replace('realises: D1 · after: api · consumes', 'realises: D1 · after: reload · consumes')
+    .replace('- **reload** — task · realises: D3 · after: api · rigor: tdd · locus: src/reload.js, test/reload.test.js', '- **reload** — dropped · realises: D3')
+    .replace(/ {2}- \[ \] a changed file reloads.*\n/, '')
+  write(repo, '.', text)
+  approve(repo, '.')
+  const before = sizes(repo)
+  const out = compileEffort(repo, E)
+  assert.equal(out.ok, false)
+  assert.ok(out.problems.some((p) => p.line === lineIn(text, '- **cli**') && /reload/.test(p.problem)), JSON.stringify(out.problems))
+  assert.deepEqual(sizes(repo), before)
+})
+
+test('reordering a spec\'s decisions and entries flags, parks and rewrites no leaf, and the next compile appends nothing', () => {
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  const cli = ROOT.match(/- \*\*cli\*\*[\s\S]*?(?=- \*\*reload\*\*)/)[0]
+  const reordered = ROOT.replace(/(\| D1 .*\n)(\| D2 .*\n)(\| D3 .*\n)/, '$3$2$1')
+    .replace(cli, '').replace('\n## Open questions', cli + '\n## Open questions')
+  assert.notEqual(reordered, ROOT)
+  write(repo, '.', reordered)
+  approve(repo, '.')
+  const out = compiled(repo)
+  assert.deepEqual(out.flagged, [])
+  assert.deepEqual(out.parked, [])
+  const leaves = [...nodes(repo).values()].filter((n) => n.kind === 'leaf').map((n) => n.id)
+  assert.deepEqual(out.written.filter((id) => leaves.includes(id)), [])
+  const before = sizes(repo)
+  assert.deepEqual(compiled(repo).written, [])
+  assert.deepEqual(sizes(repo), before)
+})
+
+test('parks that failed to land are appended by the next compile, once', () => {
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  reapproveApi(repo)
+  const failed = readOnly(repo, 'events', () => compileEffort(repo, E))
+  assert.equal(failed.ok, false)
+  assert.equal(parksOf(repo, 'cli').length, 0)
+  assert.notEqual(approvalState(repo, E, 'api').compiled_hash, approvalState(repo, E, 'api').hash)
+
+  compiled(repo)
+  assert.equal(parksOf(repo, 'cli').length, 1)
+  assert.equal(approvalState(repo, E, 'api').compiled_hash, approvalState(repo, E, 'api').hash)
 })

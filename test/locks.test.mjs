@@ -9,14 +9,14 @@ import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { append } from '../lib/ledger.mjs'
 import {
   acquire, heldBy, locusFileOf, maxParallel, poolConfig, releaseLocus, releaseSlots, withBranchLock,
 } from '../lib/locks.mjs'
-import { effortStateDir, slotsDir } from '../lib/store.mjs'
+import { configPath, effortStateDir, mkdirState, slotsDir } from '../lib/store.mjs'
 import { addNodes } from '../lib/tree.mjs'
 
 const LOCKS = fileURLToPath(new URL('../lib/locks.mjs', import.meta.url))
@@ -29,8 +29,8 @@ const X = '20260925-120000'
 const newRepo = () => mkdtempSync(join(tmpdir(), 'agentics-locks-'))
 
 const setMax = (repo, value) => {
-  mkdirSync(slotsDir(repo), { recursive: true })
-  writeFileSync(join(slotsDir(repo), 'config.json'), typeof value === 'string' ? value : JSON.stringify({ max_parallel: value }))
+  mkdirState(dirname(configPath(repo)))
+  writeFileSync(configPath(repo), typeof value === 'string' ? value : JSON.stringify({ max_parallel: value }))
 }
 
 // Every leaf declares the shared file too: a lock is held only on a path its holder still claims.
@@ -77,6 +77,21 @@ test('max_parallel: default 4, read from config on every call, malformed → def
     assert.match(c.note, /default/)
   }
   assert.match(heldBy(repo).notes[0], /default/)
+})
+
+test('the slot cap lives in the project settings, and a config left in slots/ is not read', () => {
+  const repo = newRepo()
+  mkdirSync(slotsDir(repo), { recursive: true })
+  writeFileSync(join(slotsDir(repo), 'config.json'), JSON.stringify({ max_parallel: 9 }))
+  assert.equal(maxParallel(repo), 4, 'the old place is nobody\'s settings any more')
+
+  setMax(repo, 6)
+  assert.equal(maxParallel(repo), 6)
+
+  setMax(repo, '{nope')
+  const c = poolConfig(repo)
+  assert.equal(c.max_parallel, 4)
+  assert.match(c.note, /config\.json/)
 })
 
 test('the pool limit is respected: the leaf past max_parallel gets no_slot and nothing is written for it', () => {

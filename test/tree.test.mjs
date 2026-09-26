@@ -300,6 +300,29 @@ test('a decision a dropped entry gives up is accepted from compile, and from no 
   assert.equal(addNodes(r, 'e1', dropped, compiled({}, { accepted: new Set(['D1']) })).ok, true)
 })
 
+test('compile may not empty a node\'s decisions without an approved entry for it', () => {
+  const r = repo()
+  const part = { id: 'p', kind: 'composite', title: 'p', decisions: ['D1'], defines: [{ id: 'p.D1', text: 'mine' }] }
+  assert.equal(seedTree(r, 'e1', [root(), leaf('a'), part, leaf('p/x')]).ok, true)
+  const out = addNodes(r, 'e1', [{ ...part, defines: [] }], { by: 'compile', approved: new Map([['.', [{ id: 'D1', text: 'do it' }]]]) })
+  assert.equal(out.ok, false, 'a missing entry is refused, never read as []')
+  assert.match(out.problems.map((p) => p.problem).join(), /approved/)
+})
+
+test('owned admits a contract change only on the nodes it names', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(), leaf('a', { provides: [{ name: 'api', paths: ['src/a.js'] }] }), leaf('b', { provides: [{ name: 'web', paths: ['src/b.js'] }] })])
+  const moved = leaf('a', { provides: [{ name: 'api', paths: ['src/api/'] }] })
+  const out = addNodes(r, 'e1', [moved], { by: 'compile', approved: new Map(), owned: new Set(['b']) })
+  assert.equal(out.ok, false)
+  assert.match(out.problems.map((p) => p.problem).join(), /contract/)
+})
+
+test('a contract name is provided by one node only', () => {
+  const found = treeProblems(tree(root(), leaf('a', { provides: [{ name: 'api', paths: ['src/a.js'] }] }), leaf('b', { provides: [{ name: 'api', paths: ['src/b.js'] }] })))
+  assert.ok(found.some((p) => p.node === 'b' && /api/.test(p.problem)), JSON.stringify(found))
+})
+
 test('a batch may give each node its own replan reason', () => {
   const r = repo()
   seedTree(r, 'e1', [root(), leaf('a'), leaf('b')])

@@ -410,6 +410,15 @@ test('an escalation repeated after a retry is recorded again, and a composite es
   assert.ok(check.open_escalations.some((e) => e.node === 'c'))
 })
 
+test('preflight rows carry each node\'s author', () => {
+  const r = repo()
+  assert.equal(seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs'] }), { id: 'later', kind: 'design', title: 'later part', author: 'planner' }]).ok, true)
+  const pre = B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const byId = new Map((pre.nodes || []).map((n) => [n.id, n]))
+  assert.equal(byId.get('later') && byId.get('later').author, 'planner', JSON.stringify(pre.error || pre.checkpoint))
+  assert.equal(byId.get('a').author, 'you')
+})
+
 test('a green is cut from its red and brought up to the parent head, so its other dependencies are there', () => {
   const r = repo()
   seedTree(r, 'e1', [root(),

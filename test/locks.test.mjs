@@ -18,6 +18,7 @@ import {
 } from '../lib/locks.mjs'
 import { configPath, effortStateDir, mkdirState, slotsDir } from '../lib/store.mjs'
 import { addNodes } from '../lib/tree.mjs'
+import { seedTree } from './harness/seed-tree.mjs'
 
 const LOCKS = fileURLToPath(new URL('../lib/locks.mjs', import.meta.url))
 const LEDGER_URL = pathToFileURL(fileURLToPath(new URL('../lib/ledger.mjs', import.meta.url))).href
@@ -42,10 +43,10 @@ const leaf = (id) => ({
 /** A repo with one effort whose leaves are dispatched (status `active`). */
 function effortRepo(ids, { max } = {}) {
   const repo = newRepo()
-  const out = addNodes(repo, E, [
+  const out = seedTree(repo, E, [
     { id: '.', kind: 'composite', title: 'the change', defines: [{ id: 'D1', text: 'do it' }] },
     ...ids.map(leaf),
-  ], { by: 'session' })
+  ])
   assert.ok(out.ok, JSON.stringify(out.problems))
   for (const id of ids) event(repo, 'dispatched', id, { role: 'implementer', round: 1, model: 'sonnet', effort: 'medium' })
   if (max !== undefined) setMax(repo, max)
@@ -111,7 +112,7 @@ test('the pool limit is respected: the leaf past max_parallel gets no_slot and n
 
 test('a planned holder (slot taken, dispatched not yet appended) still occupies its slot', () => {
   const repo = newRepo()
-  addNodes(repo, E, [{ id: '.', kind: 'composite', title: 't', defines: [{ id: 'D1', text: 'x' }] }, leaf('a'), leaf('b')], { by: 'session' })
+  seedTree(repo, E, [{ id: '.', kind: 'composite', title: 't', defines: [{ id: 'D1', text: 'x' }] }, leaf('a'), leaf('b')])
   setMax(repo, 1)
   assert.equal(take(repo, 'a').ok, true)
   assert.equal(take(repo, 'b').reason, 'no_slot')
@@ -161,7 +162,7 @@ test('a locus lock whose holder was retired by a replan is free', () => {
   const repo = effortRepo(['a', 'b'], { max: 4 })
   assert.equal(take(repo, 'a', { locus: ['src/shared.js'] }).ok, true)
   assert.equal(take(repo, 'b', { locus: ['src/shared.js'] }).reason, 'locus_held')
-  const r = addNodes(repo, E, [{ ...leaf('a'), retired: true }], { by: 'session', reason: 'retired' })
+  const r = addNodes(repo, E, [{ ...leaf('a'), retired: true }], { reason: 'retired' })
   assert.ok(r.ok, JSON.stringify(r.problems))
   assert.equal(take(repo, 'b', { locus: ['src/shared.js'] }).ok, true)
 })
@@ -169,7 +170,7 @@ test('a locus lock whose holder was retired by a replan is free', () => {
 test('a locus lock on a path its holder\'s revision dropped is free', () => {
   const repo = effortRepo(['a', 'b'], { max: 4 })
   assert.equal(take(repo, 'a', { locus: ['src/shared.js'] }).ok, true)
-  const r = addNodes(repo, E, [{ ...leaf('a'), locus: ['src/a.js'] }], { by: 'session', reason: 'revised' })
+  const r = addNodes(repo, E, [{ ...leaf('a'), locus: ['src/a.js'] }], { reason: 'revised' })
   assert.ok(r.ok, JSON.stringify(r.problems))
   assert.equal(take(repo, 'b', { locus: ['src/shared.js'] }).ok, true)
 })

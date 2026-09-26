@@ -6,7 +6,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -353,4 +353,40 @@ test('upper-case, double-dash and over-long names are each refused once, both ha
 test('a note says nothing was deleted', () => {
   const p = plan(legacyRepo())
   assert.ok(p.notes.some((n) => /nothing/i.test(n) && /delet/i.test(n)))
+})
+
+const filesUnder = (dir, base = dir, out = []) => {
+  if (!existsSync(dir)) return out
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, e.name)
+    if (e.isDirectory()) filesUnder(full, base, out)
+    else out.push(relative(base, full).split('\\').join('/'))
+  }
+  return out
+}
+
+test('an apply that stops mid-file leaves no partial target, and the next run finishes the copy', () => {
+  const repo = legacyRepo()
+  const p = plan(repo)
+  let calls = 0
+  const failing = (from, dest) => {
+    if (++calls < 3) return copyFileSync(from, dest)
+    const bytes = readFileSync(from)
+    writeFileSync(dest, bytes.subarray(0, Math.floor(bytes.length / 2)))
+    throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' })
+  }
+  assert.throws(() => apply(p, { copy: failing }), /ENOSPC/)
+  assert.equal(calls, 3)
+  for (const { from, to } of p.copies) {
+    if (existsSync(to)) assert.ok(readFileSync(to).equals(readFileSync(from)), to + ' is partial')
+  }
+  const root = agenticsRoot(repo)
+  const targets = new Set(p.copies.map((c) => relative(root, c.to).split('\\').join('/')))
+  for (const f of filesUnder(root)) if (f !== '.gitignore') assert.ok(targets.has(f), f + ' is no target')
+  const next = plan(repo)
+  assert.deepEqual(next.refused, [])
+  assert.ok(next.copies.length > 0)
+  apply(next)
+  assert.deepEqual(plan(repo).copies, [])
+  assert.equal(readTree(repo, 'e1').nodes.size, 3)
 })

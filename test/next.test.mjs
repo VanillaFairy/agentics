@@ -109,7 +109,9 @@ test('a partial review of the spec on disk goes back to the probe for the axes i
 
   write(r, 'e1', '.', text)
   assert.equal(recordReviewed(r, 'e1', '.', { complete: true, remaining: [] }).ok, true)
-  assert.equal(nextAction(r, 'e1').command, '/agentics:design e1', 'the latest review was whole')
+  const whole = nextAction(r, 'e1')
+  assert.equal(whole.command, '/agentics:design e1')
+  for (const axis of left) assert.ok(!whole.why.includes(axis), 'the latest review was whole: ' + axis)
 })
 
 test('an approved spec edited since: review the change (rule 4)', () => {

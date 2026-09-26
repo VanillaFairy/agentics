@@ -332,3 +332,29 @@ test('a batch may give each node its own replan reason', () => {
   const replans = readTree(r, 'e1').events.filter((e) => e.kind === 'replanned')
   assert.deepEqual(replans.map((e) => [e.node, e.reason, e.by]), [['a', 'compiled', 'compile'], ['b', 'decision_changed', 'compile']])
 })
+
+test('a retirement is no way round the guard: a contract or a decision leaves the tree only from compile', () => {
+  const r = repo()
+  const provider = leaf('a', { provides: [{ name: 'api', paths: ['src/a.js'] }] })
+  const part = { id: 'p', kind: 'composite', title: 'p', decisions: ['D1'], defines: [{ id: 'p.D2', text: 'the user said so' }] }
+  assert.equal(seedTree(r, 'e1', [root(), provider, leaf('b'), part, leaf('p/x', { decisions: ['D1', 'p.D2'] })]).ok, true)
+  const problems = (out) => out.problems.map((p) => p.problem).join()
+
+  const moved = addNodes(r, 'e1', [{ ...provider, retired: true }, leaf('c', { provides: [{ name: 'api', paths: ['src/elsewhere/'] }] })], { by: 'planner' })
+  assert.equal(moved.ok, false, 'retire the provider and add another under the same name, one batch')
+  assert.match(problems(moved), /contract/)
+
+  const alone = addNodes(r, 'e1', [{ ...provider, retired: true }], { by: 'planner' })
+  assert.equal(alone.ok, false, 'a retired provider drops the contract, and a later batch could re-add it changed')
+  assert.match(problems(alone), /contract/)
+
+  const gone = addNodes(r, 'e1', [{ id: 'p', retired: true }, { id: 'p/x', retired: true }], { by: 'planner' })
+  assert.equal(gone.ok, false, 'retiring the node that defines p.D2 drops the user\'s decision')
+  assert.match(problems(gone), /decision/)
+
+  const t = readTree(r, 'e1')
+  assert.ok(t.nodes.has('a') && t.nodes.has('p') && !t.nodes.has('c'), 'nothing was written')
+
+  const byCompile = addNodes(r, 'e1', [{ id: 'p', retired: true }, { id: 'p/x', retired: true }, { ...provider, retired: true }], { by: 'compile', approved: new Map() })
+  assert.equal(byCompile.ok, true, JSON.stringify(byCompile.problems))
+})

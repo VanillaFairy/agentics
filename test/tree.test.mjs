@@ -374,3 +374,16 @@ test('only compile sets or changes who designs a node', () => {
   const out = addNodes(r, 'e1', [{ ...later, author: 'planner' }], { by: 'compile', approved: new Map() })
   assert.equal(out.ok, true, JSON.stringify(out.problems))
 })
+
+test('a replan may not drop or re-path a contract a node consumes', () => {
+  const r = repo()
+  assert.equal(seedTree(r, 'e1', [root(), leaf('a', { provides: [{ name: 'api', paths: ['src/a.js'] }] }),
+    leaf('b', { consumes: [{ name: 'api', paths: ['src/a.js'] }] })]).ok, true)
+  for (const b of [leaf('b'), leaf('b', { consumes: [{ name: 'api', paths: ['nowhere/'] }] })]) {
+    const out = addNodes(r, 'e1', [b], { by: 'planner' })
+    assert.equal(out.ok, false, 'consumes=' + JSON.stringify(b.consumes))
+    assert.match(out.problems.map((p) => p.problem).join(), /contract/)
+  }
+  const out = addNodes(r, 'e1', [leaf('b')], { by: 'compile', approved: new Map(), owned: new Set(['b']) })
+  assert.equal(out.ok, true, JSON.stringify(out.problems))
+})

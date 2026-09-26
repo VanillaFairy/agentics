@@ -16,13 +16,14 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
   citationsIn, mergeRanges, parseLocations, renderLocations, resolveCitations, resolveLocations, safePath, splitParts,
   writeContext,
 } from '../lib/citations.mjs'
+import { contextDir } from '../lib/store.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/citations.mjs', import.meta.url))
@@ -183,7 +184,7 @@ test('the excerpts CLI writes the excerpts to context files and prints only thei
   assert.equal(out.payload_digest, fnv1a(canonical(out.payload)))
   assert.ok(!('files' in out.payload), 'no excerpt travels on stdout')
   const [part] = out.payload.context.parts
-  assert.ok(part.path.startsWith(dir + '/.claude/agentics/context/'))
+  assert.ok(part.path.startsWith(resolve(contextDir(dir)).split('\\').join('/') + '/'))
 
   const text = readFileSync(part.path, 'utf8')
   assert.match(text, /--- src\/a\.js \(20 line\(s\)\)\n\s+8\tline8\n/)
@@ -225,7 +226,7 @@ test('the same text written twice lands in the same files, not new ones', () => 
   const first = writeContext(dir, 'the same text\n')
   const second = writeContext(dir, 'the same text\n')
   assert.deepEqual(second.parts, first.parts)
-  assert.equal(readdirSync(join(dir, '.claude/agentics/context')).length, 1)
+  assert.equal(readdirSync(contextDir(dir)).length, 1)
 })
 
 test('context is cut into parts one Read returns whole, at line boundaries', () => {
@@ -238,7 +239,7 @@ test('context is cut into parts one Read returns whole, at line boundaries', () 
 
 test('context files a week old are pruned when a new one is written', () => {
   const dir = repo({})
-  const stale = join(dir, '.claude/agentics/context/old-1.md')
+  const stale = join(contextDir(dir), 'old-1.md')
   mkdirSync(dirname(stale), { recursive: true })
   writeFileSync(stale, 'old', 'utf8')
   const week = 7 * 24 * 60 * 60 * 1000

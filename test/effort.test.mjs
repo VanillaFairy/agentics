@@ -265,7 +265,7 @@ test('the store ignores itself: an opened effort and its records leave git statu
   recordReturn(repo, 'e1', 'probe', { question: 'q' }, new Date('2026-09-04T10:11:12Z'))
 
   assert.equal(git(repo, 'status', '--porcelain'), '', 'local state never shows up as a change to commit')
-  assert.equal(readFileSync(join(repo, '.claude/agentics/.gitignore'), 'utf8'), '*\n')
+  assert.equal(readFileSync(join(repo, store.AGENTICS_DIR, '.gitignore'), 'utf8'), '*\n')
 })
 
 const commitIn = (dir, files) => {
@@ -331,19 +331,19 @@ test('an uncommitted edit on the ground un-stands it; one elsewhere does not', (
   assert.deepEqual(out.dirty, ['src/a/new.js'])
 })
 
-test('a repository-wide survey is not un-stood by the pipeline\'s own state under .claude/agentics', () => {
+test('a repository-wide survey is not un-stood by the pipeline\'s own state under the store', () => {
   const dir = gitRepo()
   surveyed(dir, SURVEY({ ground: ['.'] }))
-  put(dir, { '.claude/agentics/efforts/e/executions/20260904-101112/state.jsonl': '{}\n' })
+  put(dir, { [store.AGENTICS_DIR + '/e/executions/20260904-101112/state.jsonl']: '{}\n' })
   // Committed despite the store's own ignore, as a repository from before it did.
-  put(dir, { '.claude/agentics/efforts/e/nodes.jsonl': '{}\n' })
-  git(dir, 'add', '-f', '.claude/agentics/efforts/e/nodes.jsonl')
+  put(dir, { [store.AGENTICS_DIR + '/e/nodes.jsonl']: '{}\n' })
+  git(dir, 'add', '-f', store.AGENTICS_DIR + '/e/nodes.jsonl')
   git(dir, 'commit', '-qm', 'state')
 
   assert.equal(standingSurvey(dir, 'e').standing, true)
 
   put(dir, { '.claude/notes.md': 'mine\n' })
-  assert.equal(standingSurvey(dir, 'e').standing, false, 'anything else under .claude is ground')
+  assert.equal(standingSurvey(dir, 'e').standing, false, 'anything under .claude is ground')
 })
 
 test('the newest survey is the one judged, even when an older one would stand', () => {

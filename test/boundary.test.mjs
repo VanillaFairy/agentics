@@ -11,7 +11,7 @@ import { append, readLog } from '../lib/ledger.mjs'
 import { heldBy } from '../lib/locks.mjs'
 import { addNodes, readTree } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
-import { branchExists, executionDir, worktreeOf } from '../lib/store.mjs'
+import { branchExists, executionDir, posix, specPath, worktreeOf } from '../lib/store.mjs'
 
 // The fixtures' own suites run `node --test`; a grandchild that sees this runner's marker runs
 // nothing and exits 0, which would make every measurement a pass.
@@ -417,6 +417,20 @@ test('preflight rows carry each node\'s author', () => {
   const byId = new Map((pre.nodes || []).map((n) => [n.id, n]))
   assert.equal(byId.get('later') && byId.get('later').author, 'planner', JSON.stringify(pre.error || pre.checkpoint))
   assert.equal(byId.get('a').author, 'you')
+})
+
+test("preflight rows carry each node's author and the path of its spec", () => {
+  const r = repo()
+  assert.equal(seedTree(r, 'e1', [
+    { id: '.', kind: 'composite', title: 'the change' },
+    { id: 'p', kind: 'design', title: 'plan p', author: 'planner' },
+  ]).ok, true)
+  const pre = B(r, 'preflight', { root: '.', commands: COMMANDS, task_ids: {} })
+  const rowOf = (id) => pre.nodes.find((n) => n.id === id)
+  assert.equal(rowOf('p').author, 'planner')
+  assert.equal(rowOf('.').author, 'you')
+  assert.equal(rowOf('p').spec_path, posix(specPath(r, 'e1', 'p')))
+  assert.equal(rowOf('.').spec_path, posix(specPath(r, 'e1', '.')))
 })
 
 test('a green is cut from its red and brought up to the parent head, so its other dependencies are there', () => {

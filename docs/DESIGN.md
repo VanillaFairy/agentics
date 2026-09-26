@@ -35,16 +35,17 @@ courier pastes back under a digest the script re-checks (GP4).
 
 | Path | What it holds |
 |---|---|
-| `.claude/agentics/efforts/<effort>/` | One effort: its nodes, events, evidence, gotchas, executions, reports and locks ([Storage](#storage)) |
-| `.claude/agentics/slots/` | The parallelism pool every execution on the machine shares |
-| `.claude/agentics/context/` | Context files the survey and the probe write for their readers |
+| `.agentics/<effort>/` | One effort: a `SPEC.md` per folder, and its `.state/` — nodes, events, ledger, evidence, gotchas, executions, reports and locks ([Storage](#storage)) |
+| `.agentics/.state/` | What every effort shares: the slot pool and the context files |
+| `.agentics/config.json` | The project's settings, edited by the user (`max_parallel`) |
 | `.claude/worktrees/` | Integration and leaf worktrees |
-| `docs/agentics/designs/<effort>/` | Design documents — source, committed |
 
-Everything under `.claude/agentics/` and `.claude/worktrees/` is scaffolding, local to the machine.
-`.claude/agentics/` ignores itself: every directory made under it goes through
-`lib/store.mjs mkdirState`, which writes a `.gitignore` of `*` at its root, whatever the target
-repository's own ignore rules say.
+Everything under `.agentics/` and `.claude/worktrees/` is local to the machine. `.agentics/`
+sits in the main checkout, where a writer in a linked worktree also lands, and it ignores itself:
+every directory made under it goes through `lib/store.mjs mkdirState`, which writes a
+`.gitignore` of `*` at its root, whatever the target repository's own ignore rules say. Specs are
+the user's documents but not the project's docs: carrying what an effort decided into the docs is
+a plan entry of its own.
 
 ### How the plugin checks itself
 
@@ -104,8 +105,10 @@ branch only at landing, on an explicit go, with no open escalation. A check that
 `HEAD` runs only in a linked worktree, never in the user's tree.
 
 *Enforced by:* landing is the session's act behind a gate (`lib/boundary.mjs land`);
-`lib/verify.mjs` refuses to run outside a linked worktree; replans that touch a decision id return
-to the user (see [Replanning](#replanning)).
+`lib/verify.mjs` refuses to run outside a linked worktree; `decisionProblems` in `lib/tree.mjs`
+admits a batch that states or changes a decision only from compile, as the approved copy on the
+ledger states it (see [Specs, approval and compile](#specs-approval-and-compile)), and refuses a
+replan that changes a contract or drops a realised decision (see [Replanning](#replanning)).
 
 ---
 
@@ -282,9 +285,9 @@ owns the record, its validation and every node's derived status.
 | `id` | stable, path-like (`auth/session/refresh-token`); `.` is the effort root; segments are lower-case letters, digits and dashes, so the parent is the id's prefix |
 | `title` | imperative; the todo subject |
 | `intent` | what this node makes true, in the user's or the parent design's words |
-| `kind` | `design`, `composite`, `leaf` |
-| `level` | design nodes: `context`, `container`, `component`, `leaf-spec` (see [Design](#design)) |
-| `defines[]` | `{id, text}` — the decisions this node states (a design node, or the root when there is no design node) |
+| `kind` | `design` (a sub-effort whose spec is not approved or prepared: the frontier), `composite` (a folder whose spec is), `leaf` (a task) |
+| `author` | design and composite nodes: who writes the folder's spec, `you` (the default) or `planner` |
+| `defines[]` | `{id, text}` — the decisions this node states: a composite's are its spec's Decisions rows |
 | `decisions[]` | ids of the decisions this node realises (see [Traceability](#traceability)) |
 | `acceptance[]` | `{text, check, decisions[]}` — each criterion names its check; `HUMAN:` routes one to the user untouched |
 | `ground[]`, `ground_known` | paths the node's evidence lives in; `false` earns a survey before planning |
@@ -297,7 +300,6 @@ owns the record, its validation and every node's derived status.
 | `role` | leaf: `none`, `red`, `green`, `audit` |
 | `dispatch` | `{producer?, reviewer?}` each `{model, effort}` — set by the node's author (see [Model tier](#model-tier)) |
 | `context` | self-contained prose for the executor |
-| `design_doc` | design nodes: the repo-relative path of the document |
 | `retired` | a replan removed it |
 
 Events: `planned`, `replanned`, `dispatched`, `approved`, `merged`, `escalated`, `parked`,
@@ -308,36 +310,85 @@ nothing terminal after it; `planned`. A composite is `merged` on its own event, 
 on its, `escalated` or `parked` on its own open event (cleared like a leaf's), and otherwise
 summarizes its children (`integrated` once all have merged).
 
-`lib/tree.mjs add` validates a batch of revisions against the tree on disk and appends it all or
-nothing: shape problems and tree problems (a missing parent, a dependency cycle, a decision nobody
-defined, a green without its red) refuse the batch; the computable atomicity conditions and
+Nodes are written through `lib/tree.mjs` `addNodes`, by compile from approved and prepared specs
+([Specs, approval and compile](#specs-approval-and-compile)) and by develop's planner. It
+validates a batch against the tree on disk and appends it all or nothing: shape problems, tree
+problems (a missing parent, a dependency cycle, a decision nobody defined, a green without its
+red) and the decision guard refuse the batch; the computable atomicity conditions and
 traceability gaps come back as warnings. It refuses; it never repairs.
 
 ### Storage
 
 ```
-.claude/agentics/
+.agentics/                        in the main checkout
   .gitignore                      `*`, written by mkdirState
-  context/                        context files for survey and probe readers, pruned after a week
-  slots/                          the parallelism pool, shared by every execution (see Scheduling)
-    config.json                   {max_parallel}, edited by the user
-  efforts/<effort>/
-    effort.json                   {about, roots, opened_at}, written once
-    nodes.jsonl                   authored node revisions, append-only
-    events.jsonl                  node events, append-only
-    seq, .lock                    the counter and the effort mutex
-    branch.json                   where the effort branch was cut, written once
-    evidence/                     survey and probe returns, verbatim, anchored to commit + ground
-    knowledge/                    gotchas (see Gotchas)
-    executions/<stamp>/           one execution of a subtree: execution.json, state.jsonl,
+  config.json                     {max_parallel}, edited by the user
+  .state/
+    slots/                        the parallelism pool, shared by every execution (see Scheduling)
+    context/                      context files for survey and probe readers, pruned after a week
+  <effort>/
+    SPEC.md                       the root folder's spec
+    <sub-effort>/SPEC.md          one folder per sub-effort, nested as the plan nests them
+    .legacy/                      design documents the migration copied
+    .state/
+      effort.json                 {about, roots, opened_at}, written once
+      nodes.jsonl                 node revisions, append-only
+      events.jsonl                node events, append-only
+      ledger.jsonl                approvals, preparations, compiles, dispositions
+      seq, .lock                  the counter and the effort mutex
+      branch.json                 where the effort branch was cut, written once
+      evidence/                   survey and probe returns, verbatim, anchored to commit + ground
+      knowledge/                  gotchas (see Gotchas)
+      executions/<stamp>/         one execution of a subtree: execution.json, state.jsonl,
                                   journal.jsonl, briefs/, jobs/
-    reports/                      executor reports, one file per dispatch
-    locks/                        locus and branch locks
+      reports/                    executor reports, one file per dispatch
+      locks/                      locus and branch locks
 ```
 
-`lib/store.mjs` computes every name and path; nothing types one. Design documents are source and
-live in the source tree (`docs/agentics/designs/<effort>/`); a design node points at its document.
-Worktrees live under `.claude/worktrees/`.
+`lib/store.mjs` computes every name and path; nothing else types one. Every path starts from the
+main checkout (`mainCheckout`: git's common directory, or a submodule's `core.worktree`), so a
+leaf recording from a linked worktree writes where the next session reads. A directory that is not
+the top of a working tree is its own root. Names of efforts, folders and entries follow the
+segment rule: `^[a-z0-9][a-z0-9-]*$`, at most 120 characters, no `--`; so no file the store writes
+can pass for one. Worktrees live under `.claude/worktrees/`.
+
+### Specs, approval and compile
+
+A folder's `SPEC.md` is the user's document: a title and the sections Intent, Decisions, Design,
+Plan, Open questions and Evidence, all prose except three parsed forms — the Decisions rows, the
+graded open questions and the plan entries ([Spec format](#spec-format)). No status is ever
+written into one. `lib/spec.mjs` parses a spec, checks it in its place in the effort (decision ids
+and their folder prefix, what each entry realises and waits for, which keys fit which kind, a
+planner-written spec stating no decision, every consumed contract provided somewhere, every
+decision it defines realised by one of its own entries — a sub-effort or a task lists it, or a
+dropped entry gives it up), and refuses with the file and the line. Approval refuses a spec with
+any such problem, so compile never meets an unrealised decision.
+
+Approval is a ledger line holding the spec's hash: `fnv1a` over its text, with `\r\n` read as
+`\n` and a byte-order mark dropped, so a checkout's line endings never read as an edit.
+`lib/approval.mjs` records it and derives the folder's state on every read: `approved` or
+`prepared` while the spec's hash equals the latest such line's, `edited` once it differs, `none`
+before. `approved` is recorded only after the user approves in so many words; `prepared` only for
+a planner-written spec, naming the review return it passed. The review gate is derived the same
+way (`approvalGate`): ratifiable once the latest review of the spec's current text examined every
+axis and each ambiguity it returned has a disposition, from any round. An edit leaves no review of
+the new text, so the gate stays shut until one reads it.
+
+`lib/compile.mjs` turns approved and prepared specs into nodes. A folder becomes a composite; a
+sub-effort with no approved or prepared spec, a design node; a task, a leaf; and a task whose own
+folder holds such a spec (task promotion), a composite that carries the task's criteria and must
+realise every decision the task did. It appends only what changed, through `addNodes` with
+`by: 'compile'`, and records the hash it built from, so a second run appends nothing. A spec
+edited since approval is left out, and develop keeps the last approved graph. When a spec is
+approved again with other text, compile parks every consumer of a contract it provides
+(`contract_changed`), gives every node realising a changed decision a `decision_changed`
+revision, parks the folder when work under it was dispatched (`spec_changed`), and retires the
+entries it no longer lists — refusing, by name, one with dispatched or merged work. A parked node
+whose spec was approved or prepared after the park gets a new revision (`answered`), which clears
+the park. Nothing is written when anything is refused.
+
+**Why:** the user reads and approves a document, never JSON. The graph is derived from what they
+approved, so the two cannot disagree about a decision.
 
 ### The ledger
 
@@ -361,7 +412,7 @@ needs no quoting; such a location goes to its reader to open.
 
 What a courier would otherwise carry back — excerpts for a survey judge, a probe's guidance, its
 located ground and the document's own citations — `lib/citations.mjs` writes to
-`.claude/agentics/context/<digest>-<n>.md` instead. It prints only the files' paths under a
+`.agentics/.state/context/<digest>-<n>.md` instead. It prints only the files' paths under a
 digest, and the reader Reads them. No model retypes an excerpt. Each part is small enough for one
 Read (40 KB, 800 lines). Files are named by the digest of their text, so a retried courier
 rewrites the same files, and files a week old are pruned on each write.
@@ -460,10 +511,12 @@ arrives as a node revision (`--reason answered`) and a resume, which re-briefs t
 any not-yet-started consumer.
 
 **Autonomous replans preserve decisions.** The planner may split, merge or re-derive nodes only
-while every decision id stays realised; anything else is user-bound. `lib/tree.mjs add` enforces
-it for every writer but the session: a batch that states or changes a `defines` entry, changes a
-contract a node provides, or leaves a decision some leaf realised before realised by no leaf after
-is refused, and the planner returns `needs_decision` or `contract_changed` instead. Replans append
+while every decision id stays realised; anything else is user-bound. `lib/tree.mjs` `addNodes`
+enforces it for every writer: a batch may state or change a `defines` entry only from compile, as
+the approved copy on the ledger states it; a changed contract is admitted only from compile, on a
+node whose entry sits in a spec the user approved; and a decision a leaf or a design node realised
+before must be realised by one after, unless a `dropped` entry of a spec the user approved gave it
+up. The planner returns `needs_decision` or `contract_changed` instead. Replans append
 `replanned` events; nothing is rewritten, and merged work stays. A replan that leaves a leaf exactly as it was
 escalates as `replan_not_converging` rather than sending the same executor back to the same wall.
 
@@ -674,7 +727,7 @@ agent fell into while working, recorded so the next agent does not.
 One distinguished kind, **`command`**, records how to build, typecheck and test; only an
 investigator writes it, and it is the one gotcha verification reads.
 
-**Where and how.** `.claude/agentics/efforts/<effort>/knowledge/<id>.md`, one file per gotcha, with
+**Where and how.** `.agentics/<effort>/.state/knowledge/<id>.md`, one file per gotcha, with
 a one-line JSON frontmatter: `kind` (`pitfall` | `command`), `roles` (who needs it), optional
 `paths` (locus prefixes it applies to), `observed_at` (commit) and `source` (node and role). The id
 is minted by script from the normalised trigger, so the same trap recorded twice is one file. An
@@ -768,8 +821,9 @@ slot can be had. A merge-batch runs whenever approved children wait on an integr
 nobody is merging into. Cycles are held and land as a unit.
 
 **Parallelism lives at the leaves and is controlled from outside the execution.** A slot is the
-right to run one leaf. The pool is `.claude/agentics/slots/`: its size comes from one configuration
-file the user edits (`max_parallel`, default 4), read at every leaf-open, so a change takes effect
+right to run one leaf. The pool is `.agentics/.state/slots/`: its size comes from the project's
+settings file, which the user edits (`.agentics/config.json`, `max_parallel`, default 4), read at
+every leaf-open, so a change takes effect
 on the next dispatch in every running execution at once. Slots are lock files naming their holder
 leaf, acquired at leaf-open. A slot is free when its holder's derived status is no longer active
 (approved, held, merged, escalated or parked) — or when it is no longer a leaf, because a replan
@@ -1072,7 +1126,8 @@ Two conventions hold throughout:
 - **Owner:** `normalizeNode`, `nodeProblems`, `treeProblems`, `deriveStatus` in `lib/tree.mjs`;
   `EVENT_KINDS` in `lib/ledger.mjs`.
 - **Restated in:** `agents/planner.md`; `skills/develop` and `skills/design` (the root and design
-  node JSON); the preflight row in `lib/boundary.mjs`; `todoFor` in `lib/status.mjs`.
+  node JSON); the preflight row in `lib/boundary.mjs` (it carries `author`); `todoFor` in
+  `lib/status.mjs`; the entry-to-node mapping in `lib/compile.mjs`.
 
 Fields as in [Nodes](#nodes). Event lines are `{kind, node, execution, seq, ...}`:
 `planned {by}` · `replanned {reason, by}` (also `retry_escalated` and `answered`) ·
@@ -1080,6 +1135,60 @@ Fields as in [Nodes](#nodes). Event lines are `{kind, node, execution, seq, ...}
 `merged {into, merged_sha, head_sha}` · `escalated {reason, detail}` · `parked {return, question}`
 (`return` is a replanning return, `needs_design`, `integration_critical` or `contract_drift`) ·
 `landed {into, merged_sha}`.
+
+### Spec format
+
+- **Owner:** `parseSpec`, `checkSpec`, `checkFolder` and `hashSpec` in `lib/spec.mjs`.
+- **Restated in:** the `vocabulary` block ([Vocabulary](#vocabulary), `agents/planner.md`); the
+  entry-to-node mapping in `lib/compile.mjs`.
+
+A `# ` title, then `## Intent`, `## Decisions`, `## Design`, `## Plan`, `## Open questions`,
+`## Evidence`, in that order. Decisions rows: `| <id> | <decision> | <why> |`, ids `D<n>` at the
+root and `<folder id with / as .>.D<n>` below it. Open questions: `- **blocking:** …`,
+`- **parked (reopens at <x>):** …`, `- **lookup:** …`, `- **compost:** …`. A plan entry:
+
+```
+- **<name>** — <kind> · key: value · key: value
+  · key: value
+  <title: one imperative line>
+  <context prose>
+  - [ ] <criterion> — check: `<command>`
+  - [ ] HUMAN: <criterion>
+```
+
+Kinds: `sub-effort`, `task`, `deferred`, `dropped`. Keys: `realises`, `after` (a sibling's name,
+or `/a/b` from the root folder), `provides` (`<name> (<path>, …)`), `consumes`, `ground`;
+`author` (`you` or `planner`) and `shared` on a sub-effort; `rigor`, `role`, `locus`, `reads` and
+`dispatch` (`producer=<model>/<effort>, reviewer=<model>/<effort>`) on a task, which also needs a
+criterion. A checked box is refused. Headings and forms inside a fenced block are prose.
+`node lib/spec.mjs check --repo <r> --effort <e> --folder <id>` prints `{folder, problems}`, each
+problem `{file, line, problem}`.
+
+### Ledger lines
+
+- **Owner:** `lib/approval.mjs`; the file names in `EFFORT_FILES` in `lib/ledger.mjs`.
+- **Restated in:** `lib/compile.mjs` (reads `approved`, `prepared` and `compiled`).
+
+`ledger.jsonl` shares the effort's `seq` counter with the node and event logs:
+`approved {folder, hash, decisions[{id, text}], by: user}` · `prepared {folder, hash, review, by:
+planner}` · `compiled {folder, hash}` · `disposition {folder, finding, outcome: incorporated |
+discarded, by: user | planner}` · `review_skipped {folder, hash, reason}` · `reviewed {folder,
+hash, complete, remaining[], ambiguities[]}` (one per review round; `lib/next.mjs` reads the
+latest, and the gate reads the latest at the current hash). A finding is named by its settlement
+id: its evidence item id, or `<hash>#<P-id>` when the review could not anchor it; `disposition`
+and `reviewed.ambiguities` both use it. A folder's approval state and its review gate are derived,
+never stored, and a spec with an open `blocking` question is refused approval.
+`node lib/approval.mjs approve|prepare|dispose|skip-review|reviewed|state|gate --repo <r>
+--effort <e> --folder <id>` prints each function's return under a digest.
+
+### Compile result
+
+- **Owner:** `compileEffort` in `lib/compile.mjs`.
+
+`{ok, problems[{file, line, problem}], written[], retired[], parked[{node, reason}],
+flagged[{node, decision}], skipped[{folder, why}], answered[]}`, printed by
+`node lib/compile.mjs --repo <r> --effort <e> [--folder <id>]` under a digest. `ok: false` means
+nothing was written.
 
 ### State and journal lines
 
@@ -1138,7 +1247,7 @@ Frontmatter `{id, kind, roles, paths, observed_at, source, command?}`; body `Whe
 
 - **Owner:** `lib/locks.mjs`, `withLock` in `lib/store.mjs`.
 
-`slots/config.json {max_parallel}`; `slots/<n>.lock {effort, execution, node}`;
+`.agentics/config.json {max_parallel}`; `slots/<n>.lock {effort, execution, node}`;
 `locks/locus/<fnv1a(path)>.lock {path, node, execution}`; branch and mutex locks hold `{pid, host,
 at}`. A lock on this host is broken exactly when its holder's pid is dead; one from another host
 after ten minutes.
@@ -1154,7 +1263,7 @@ notes}` plus:
 - **preflight** — `checkpoint`, `envelope {stamp, root, base_branch, base_sha, dial, pace,
   commands, resumed}`, `nodes[row]`, `leaves[{id, next_action, note, branch, worktree, head_sha,
   base_sha, approved_head, commits, dirty, rounds, brief_path}]`, `gaps`, `untraced`, `atomicity`, `coupled`, `stale`, `freed`,
-  `dirty_worktrees`, `commands`, `max_parallel`. A row is `{id, title, kind, level, rigor, role,
+  `dirty_worktrees`, `commands`, `max_parallel`. A row is `{id, title, kind, author, rigor, role,
   deps, locus, reads, provides, consumes, decisions, dispatch, ground_known, evidence, status,
   reason, rev, children, acceptance_n, human, own_review, coupled, integration}` — no prose.
 - **leaf-open** — `status` (`opened | no_slot | locus_held | busy | refused`), `branch`, `worktree`,
@@ -1229,9 +1338,11 @@ not — and no earned integration review or survey lost), `dropped[]`, `incomple
 - **Cost report:** every execution records its dispatches with model and effort (and tokens where
   the host reports them) as `dispatch` state lines; `lib/status.mjs cost` aggregates them so the
   next triage quotes measured figures.
-- **Migration:** `tools/migrate-legacy.mjs` is the one-shot move of a repository's pre-tree state
-  (runs, the knowledge base, programmes, effort links) out of the live paths; nothing reads the old
-  formats.
+- **Migration:** `tools/migrate-legacy.mjs` is the one-shot copy of a repository's 3.2.0 state
+  into `.agentics/`: each effort's files into its `.state/`, its design documents from
+  `docs/agentics/designs/` into its `.legacy/`, and `.claude/agentics/slots/config.json` into
+  `config.json`. It never deletes: it lists the committed files it copied for the user to remove,
+  and a second run copies nothing. Nothing reads the old layout.
 
 ---
 

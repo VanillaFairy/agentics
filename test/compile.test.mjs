@@ -1,7 +1,7 @@
 // test/compile.test.mjs — approved and prepared specs in, node revisions out: the mapping, the
 // refusals, idempotence, and what a re-approval does across the effort.
 //
-// Design: docs/DESIGN.md#storage.
+// Design: docs/DESIGN.md#specs-approval-and-compile.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

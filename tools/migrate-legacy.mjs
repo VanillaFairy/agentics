@@ -1,75 +1,111 @@
-// tools/migrate-legacy.mjs — the one-shot move of a repository's pre-tree agentics state out of
-// the live paths.
+// tools/migrate-legacy.mjs — the one-shot copy of a repository's 3.2.0 agentics state into
+// `.agentics/`, run once, on the user's go (D8).
 //
-// Design: docs/DESIGN.md#self-checks (GP2: a format change ships a one-shot migration, never a
+// Design: docs/DESIGN.md#self-checks (a format change ships a one-shot migration, never a
 // permanent second reader).
 //
-// What moves, and where:
-//   .claude/agentics/runs/          → .claude/agentics/legacy/<stamp>/runs/
-//   .claude/agentics/kb/            → .claude/agentics/legacy/<stamp>/kb/
-//   .claude/agentics/programmes/    → .claude/agentics/legacy/<stamp>/programmes/
-//   efforts/<e>/surveys/<s>.json    → efforts/<e>/evidence/<s>-survey.json (+ .anchor)
-//   efforts/<e>/probes/<s>.json     → efforts/<e>/evidence/<s>-probe.json
-//   efforts/<e>/links.jsonl         → .claude/agentics/legacy/<stamp>/links/<e>.jsonl
+// What is copied, and where:
+//   .claude/agentics/efforts/<e>/**      → .agentics/<e>/.state/**   (not the effort's own .lock)
+//   docs/agentics/designs/<e>/**         → .agentics/<e>/.legacy/**
+//   .claude/agentics/slots/config.json   → .agentics/config.json
 //
-// Nothing is converted into nodes: an old run's plan is a list of work orders under a change
-// string, and turning it into a tree would be this script authoring a plan nobody ratified. A run
-// that was still in flight is finished with the plugin version that started it, or re-planned
-// as an effort. Old branches (`agentics/<runstamp>-*`, `agentics/programme-*`) are listed and left
-// alone. The default is a dry run; `--yes` performs the moves.
+// It copies and never deletes: in-flight executions, parked nodes and the seq counter arrive
+// byte for byte, and the old paths stay until the user removes them. Committed files among the
+// sources are listed for the user to delete with git. A name the segment rule refuses, or a target
+// that already holds other bytes, refuses that effort whole. A second run finds every target
+// identical and copies nothing. The default is a dry run; `--yes` copies.
 
-import { existsSync, mkdirSync, readdirSync, renameSync } from 'node:fs'
-import { join } from 'node:path'
+import { copyFileSync, existsSync, readFileSync, readdirSync } from 'node:fs'
+import { dirname, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { spawnSync } from 'node:child_process'
 
-const stampNow = () => new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15)
+import { configPath, effortStateDir, git, legacyDir, mkdirState, posix, safeSlug } from '../lib/store.mjs'
 
-/**
- * The moves a repository needs, without performing them.
- * @returns {{moves: {from, to}[], branches: string[], notes: string[]}}
- */
-export function plan(repo, stamp = stampNow()) {
-  const base = join(repo, '.claude', 'agentics')
-  const legacy = join(base, 'legacy', stamp)
-  const moves = []
-  const notes = []
-  for (const dir of ['runs', 'kb', 'programmes']) {
-    if (existsSync(join(base, dir))) moves.push({ from: join(base, dir), to: join(legacy, dir) })
+const OLD = ['.claude', 'agentics']
+const DESIGNS = ['docs', 'agentics', 'designs']
+const LEFT = ['runs', 'kb', 'programmes', 'legacy', 'context']
+
+const dirsIn = (dir) => {
+  try {
+    return readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
+  } catch {
+    return []
   }
-  const runs = join(base, 'runs')
-  if (existsSync(runs)) {
-    const stamps = readdirSync(runs).filter((d) => /^\d{8}-\d{6}/.test(d))
-    if (stamps.length) notes.push(stamps.length + ' run(s) move to legacy; one still in flight is finished with the version that started it, or re-planned as an effort')
-  }
-  const efforts = join(base, 'efforts')
-  if (existsSync(efforts)) {
-    for (const e of readdirSync(efforts)) {
-      const dir = join(efforts, e)
-      for (const [kind, sub] of [['survey', 'surveys'], ['probe', 'probes']]) {
-        const from = join(dir, sub)
-        if (!existsSync(from)) continue
-        for (const f of readdirSync(from)) {
-          const m = /^(.+)\.(json|anchor)$/.exec(f)
-          if (!m) continue
-          moves.push({ from: join(from, f), to: join(dir, 'evidence', m[1] + '-' + kind + '.' + m[2]) })
-        }
-      }
-      if (existsSync(join(dir, 'links.jsonl'))) moves.push({ from: join(dir, 'links.jsonl'), to: join(legacy, 'links', e + '.jsonl') })
-    }
-  }
-  const listed = spawnSync('git', ['-C', repo, 'branch', '--list', 'agentics/*', '--format=%(refname:short)'], { encoding: 'utf8', windowsHide: true })
-  const branches = (listed.stdout || '').split('\n').filter((b) => /^agentics\/(\d{8}-\d{6}-|programme-)/.test(b))
-  if (branches.length) notes.push(branches.length + ' pre-tree branch(es) left in place; delete them with git once their work is accounted for')
-  return { moves, branches, notes }
 }
 
-/** Perform the plan's moves. */
-export function apply(moves) {
-  for (const { from, to } of moves) {
-    mkdirSync(join(to, '..'), { recursive: true })
-    renameSync(from, to)
+/** Every file below `dir`, as paths relative to it. */
+function filesBelow(dir, base = dir, out = []) {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, e.name)
+    if (e.isDirectory()) filesBelow(full, base, out)
+    else out.push(relative(base, full))
   }
+  return out
+}
+
+const sameBytes = (a, b) => readFileSync(a).equals(readFileSync(b))
+
+/** The copies a repository needs, without performing them. */
+export function plan(repo) {
+  const root = resolve(repo)
+  const oldEfforts = join(root, ...OLD, 'efforts')
+  const oldDesigns = join(root, ...DESIGNS)
+  const out = { efforts: [], copies: [], refused: [], committed: [], left: [], notes: [] }
+
+  const names = [...new Set([...dirsIn(oldEfforts), ...dirsIn(oldDesigns)])].sort()
+  const tracked = new Set(git(root, ['ls-files', '-z', '--', posix(join(...OLD)), posix(join(...DESIGNS))])
+    .stdout.split('\0').filter(Boolean))
+
+  for (const name of names) {
+    if (safeSlug(name) !== name) {
+      out.refused.push({ name, why: 'the name breaks the segment rule (lower-case letters, digits and single dashes) — rename the directory and run again' })
+      continue
+    }
+    const pairs = []
+    const state = join(oldEfforts, name)
+    if (existsSync(state)) {
+      for (const rel of filesBelow(state)) if (rel !== '.lock') pairs.push({ from: join(state, rel), to: join(effortStateDir(root, name), rel) })
+    }
+    const designs = join(oldDesigns, name)
+    if (existsSync(designs)) {
+      for (const rel of filesBelow(designs)) pairs.push({ from: join(designs, rel), to: join(legacyDir(root, name), rel) })
+    }
+    const clash = pairs.find((p) => existsSync(p.to) && !sameBytes(p.from, p.to))
+    if (clash) {
+      out.refused.push({ name, why: posix(clash.to) + ' exists and differs from ' + posix(clash.from) + ' — nothing of this effort was copied' })
+      continue
+    }
+    out.efforts.push({ name, state: existsSync(state), designs: existsSync(designs) })
+    out.copies.push(...pairs.filter((p) => !existsSync(p.to)))
+    for (const p of pairs) {
+      const rel = posix(relative(root, p.from))
+      if (tracked.has(rel)) out.committed.push(rel)
+    }
+  }
+
+  const config = join(root, ...OLD, 'slots', 'config.json')
+  if (existsSync(config)) {
+    if (!existsSync(configPath(root))) out.copies.push({ from: config, to: configPath(root) })
+    else if (!sameBytes(config, configPath(root))) out.refused.push({ name: 'config.json', why: posix(configPath(root)) + ' exists and differs — keep the one you want' })
+  }
+
+  for (const dir of LEFT) if (existsSync(join(root, ...OLD, dir))) out.left.push(posix(join(...OLD, dir)))
+
+  out.notes.push('Nothing was deleted. Once the copies are checked, remove ' + posix(join(...OLD)) + ' and ' + posix(join(...DESIGNS)) + ' yourself.')
+  if (out.committed.length) out.notes.push(out.committed.length + ' committed file(s) were copied; delete them with git rm when you are ready.')
+  return out
+}
+
+/** Copy what the plan lists. Never deletes, moves or overwrites. */
+export function apply(p) {
+  let copied = 0
+  for (const { from, to } of p.copies) {
+    if (existsSync(to)) continue
+    mkdirState(dirname(to))
+    copyFileSync(from, to)
+    copied++
+  }
+  return { copied }
 }
 
 const isMain = import.meta.main ??
@@ -79,6 +115,7 @@ if (isMain) {
   const argv = process.argv.slice(2)
   const repo = argv.find((a) => !a.startsWith('--')) || '.'
   const p = plan(repo)
-  if (argv.includes('--yes')) apply(p.moves)
-  console.log(JSON.stringify({ applied: argv.includes('--yes'), ...p }, null, 1))
+  const applied = argv.includes('--yes')
+  if (applied) apply(p)
+  console.log(JSON.stringify({ applied, ...p }, null, 1))
 }

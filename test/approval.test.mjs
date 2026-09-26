@@ -1,7 +1,7 @@
 // test/approval.test.mjs — approval is a hash on a ledger line, and a folder's approval state is
 // derived from the spec on disk and the ledger, never stored.
 //
-// Design: docs/DESIGN.md#storage.
+// Design: docs/DESIGN.md#specs-approval-and-compile.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

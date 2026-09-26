@@ -1,7 +1,7 @@
 // test/spec.test.mjs — a SPEC.md read as data: sections, Decisions rows, graded open questions and
 // plan entries; the checks that place a spec in its effort; and the hash approval rests on.
 //
-// Design: docs/DESIGN.md#storage.
+// Design: docs/DESIGN.md#spec-format.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

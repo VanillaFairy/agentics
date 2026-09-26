@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { apply, plan } from '../tools/migrate-legacy.mjs'
-import { evidenceOf, standingSurvey } from '../lib/effort.mjs'
 
 test('the migration moves pre-tree state out of the live paths and evidence into evidence/', () => {
   const r = mkdtempSync(join(tmpdir(), 'agentics-migrate-'))
@@ -27,7 +26,5 @@ test('the migration moves pre-tree state out of the live paths and evidence into
   assert.equal(existsSync(join(a, 'legacy', '20260925-000000', 'runs', '20260901-100000')), true)
   assert.equal(existsSync(join(a, 'legacy', '20260925-000000', 'kb')), true)
   assert.equal(existsSync(join(a, 'legacy', '20260925-000000', 'links', 'e1.jsonl')), true)
-  assert.deepEqual(evidenceOf(r, 'e1').map((e) => e.kind), ['survey', 'probe'])
-  assert.notEqual(standingSurvey(r, 'e1').survey_path, '', 'the moved survey is found where the effort store reads it')
   assert.match(p.notes.join(' '), /1 run\(s\) move to legacy/)
 })

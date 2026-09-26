@@ -358,3 +358,19 @@ test('a retirement is no way round the guard: a contract or a decision leaves th
   const byCompile = addNodes(r, 'e1', [{ id: 'p', retired: true }, { id: 'p/x', retired: true }, { ...provider, retired: true }], { by: 'compile', approved: new Map() })
   assert.equal(byCompile.ok, true, JSON.stringify(byCompile.problems))
 })
+
+test('only compile sets or changes who designs a node', () => {
+  const r = repo()
+  const later = { id: 'd', kind: 'design', title: 'later', decisions: ['D1'] }
+  assert.equal(seedTree(r, 'e1', [root(), leaf('a'), leaf('b'), later]).ok, true)
+  const refused = (batch) => {
+    const out = addNodes(r, 'e1', batch, { by: 'planner' })
+    assert.equal(out.ok, false, JSON.stringify(batch))
+    assert.match(out.problems.map((p) => p.problem).join(), /author/)
+  }
+  refused([{ ...later, author: 'planner' }])
+  refused([{ id: 'a', kind: 'design', title: 'a', decisions: ['D1'], author: 'planner' }])
+  refused([{ id: 'e', kind: 'design', title: 'more', decisions: ['D1'], author: 'planner' }])
+  const out = addNodes(r, 'e1', [{ ...later, author: 'planner' }], { by: 'compile', approved: new Map() })
+  assert.equal(out.ok, true, JSON.stringify(out.problems))
+})

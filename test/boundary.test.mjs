@@ -10,6 +10,7 @@ import { land, runBoundary } from '../lib/boundary.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
 import { heldBy } from '../lib/locks.mjs'
 import { addNodes, readTree } from '../lib/tree.mjs'
+import { seedTree } from './harness/seed-tree.mjs'
 import { branchExists, executionDir, worktreeOf } from '../lib/store.mjs'
 
 // The fixtures' own suites run `node --test`; a grandchild that sees this runner's marker runs
@@ -67,7 +68,7 @@ const A_TEST = "import { test } from 'node:test'\nimport assert from 'node:asser
 
 test('a leaf from preflight to landing: open, measure, merge, close, land, clean up', () => {
   const r = repo()
-  assert.equal(addNodes(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })], { by: 'session' }).ok, true)
+  assert.equal(seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })]).ok, true)
 
   const pre = B(r, 'preflight', { root: '.', commands: COMMANDS, task_ids: {} })
   assert.equal(pre.ok, true, JSON.stringify(pre.error))
@@ -125,7 +126,7 @@ test('a leaf from preflight to landing: open, measure, merge, close, land, clean
 
 test('a shell-less author: its locus files are committed, a stray file is reverted and reported', () => {
   const r = repo()
-  addNodes(r, 'e1', [root(), leaf('t', { rigor: 'tests-only', locus: ['test/more.test.mjs'] })], { by: 'session' })
+  seedTree(r, 'e1', [root(), leaf('t', { rigor: 'tests-only', locus: ['test/more.test.mjs'] })])
   B(r, 'preflight', { root: '.', commands: COMMANDS })
   const open = B(r, 'leaf-open', { node: 't', role: 'test-author', round: 1 })
   writeFileSync(join(open.worktree, 'test', 'more.test.mjs'), "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { add } from '../src/add.mjs'\ntest('adds negatives', () => assert.equal(add(-1, -2), -3))\n")
@@ -146,9 +147,9 @@ test('a shell-less author: its locus files are committed, a stray file is revert
 
 test('a red/green cycle: green is cut from red, measured on red\'s tests, and the pair merges through its tip', () => {
   const r = repo()
-  addNodes(r, 'e1', [root(),
+  seedTree(r, 'e1', [root(),
     leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'] }),
-    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], locus: ['src/r.mjs'] })], { by: 'session' })
+    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], locus: ['src/r.mjs'] })])
   B(r, 'preflight', { root: '.', commands: COMMANDS })
 
   const red = B(r, 'leaf-open', { node: 'r', role: 'test-author', round: 1 })
@@ -176,9 +177,9 @@ test('a red/green cycle: green is cut from red, measured on red\'s tests, and th
 
 test('a failing merged head is bisected: the leaf that fails alone is named, the rest merge', () => {
   const r = repo()
-  addNodes(r, 'e1', [root(),
+  seedTree(r, 'e1', [root(),
     leaf('x', { rigor: 'trivial', locus: ['src/add.mjs'] }),
-    leaf('y', { rigor: 'trivial', locus: ['README.md'] })], { by: 'session' })
+    leaf('y', { rigor: 'trivial', locus: ['README.md'] })])
   const pre = B(r, 'preflight', { root: '.', commands: COMMANDS })
   assert.equal(pre.ok, true)
   const x = B(r, 'leaf-open', { node: 'x', role: 'implementer', round: 1 })
@@ -199,7 +200,7 @@ test('children that pass alone and fail together are a combination failure, and 
   writeFileSync(join(r, 'test', 'pair.test.mjs'), "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { existsSync } from 'node:fs'\ntest('not both', () => assert.ok(!(existsSync('p.txt') && existsSync('q.txt'))))\n")
   git(r, 'add', '-A')
   git(r, 'commit', '-q', '-m', 'pair rule')
-  addNodes(r, 'e1', [root(), leaf('p', { rigor: 'trivial', locus: ['p.txt'] }), leaf('q', { rigor: 'trivial', locus: ['q.txt'] })], { by: 'session' })
+  seedTree(r, 'e1', [root(), leaf('p', { rigor: 'trivial', locus: ['p.txt'] }), leaf('q', { rigor: 'trivial', locus: ['q.txt'] })])
   B(r, 'preflight', { root: '.', commands: COMMANDS })
   const p = B(r, 'leaf-open', { node: 'p', role: 'implementer', round: 1 })
   const ps = commitIn(p.worktree, { 'p.txt': 'p\n' }, 'Add p')
@@ -213,7 +214,7 @@ test('children that pass alone and fail together are a combination failure, and 
 
 test('a conflict stops the batch and names the paths; what merged before it stays merged', () => {
   const r = repo()
-  addNodes(r, 'e1', [root(), leaf('m', { rigor: 'trivial', locus: ['README.md'] }), leaf('n', { rigor: 'trivial', locus: ['NOTES.md'] })], { by: 'session' })
+  seedTree(r, 'e1', [root(), leaf('m', { rigor: 'trivial', locus: ['README.md'] }), leaf('n', { rigor: 'trivial', locus: ['NOTES.md'] })])
   B(r, 'preflight', { root: '.', commands: COMMANDS })
   const m = B(r, 'leaf-open', { node: 'm', role: 'implementer', round: 1 })
   const ms = commitIn(m.worktree, { 'README.md': 'from m\n' }, 'Say m')
@@ -228,7 +229,7 @@ test('a conflict stops the batch and names the paths; what merged before it stay
 
 test('preflight checkpoints: an overlapping open execution, a blocking gap, a parked plan', () => {
   const r = repo()
-  addNodes(r, 'e1', [root({ defines: [{ id: 'D1', text: 'x' }, { id: 'D2', text: 'y' }] }), leaf('a', { locus: ['src/a.mjs'] })], { by: 'session' })
+  seedTree(r, 'e1', [root({ defines: [{ id: 'D1', text: 'x' }, { id: 'D2', text: 'y' }] }), leaf('a', { locus: ['src/a.mjs'] })])
   const gaps = B(r, 'preflight', { root: '.', commands: COMMANDS })
   assert.equal(gaps.checkpoint.reason, 'blocking_gaps')
   assert.match(gaps.checkpoint.detail, /D2/)
@@ -245,7 +246,7 @@ test('preflight checkpoints: an overlapping open execution, a blocking gap, a pa
 
 test('resume: a preflight after a lost invocation names each leaf\'s next undone action', () => {
   const r = repo()
-  addNodes(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] }), leaf('b', { rigor: 'trivial', locus: ['README.md'] })], { by: 'session' })
+  seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] }), leaf('b', { rigor: 'trivial', locus: ['README.md'] })])
   B(r, 'preflight', { root: '.', commands: COMMANDS })
   const open = B(r, 'leaf-open', { node: 'a', role: 'implementer', round: 1 })
   commitIn(open.worktree, { 'test/a.test.mjs': A_TEST, 'src/a.mjs': 'export const a = () => 1\n' }, 'Add a')
@@ -264,7 +265,7 @@ test('resume: a preflight after a lost invocation names each leaf\'s next undone
 
 test('a long boundary runs detached: pending past the poll limit, collected by the next call', () => {
   const r = repo()
-  addNodes(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })], { by: 'session' })
+  seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })])
   B(r, 'preflight', { root: '.', commands: COMMANDS })
   const open = B(r, 'leaf-open', { node: 'a', role: 'implementer', round: 1 })
   commitIn(open.worktree, { 'test/a.test.mjs': A_TEST, 'src/a.mjs': 'export const a = () => 1\n' }, 'Add a')
@@ -282,7 +283,7 @@ test('a long boundary runs detached: pending past the poll limit, collected by t
 
 test('the CLI refuses a damaged argument token and prints an envelope either way', () => {
   const r = repo()
-  addNodes(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs'] })], { by: 'session' })
+  seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs'] })])
   const token = Buffer.from(JSON.stringify({ root: '.' })).toString('base64')
   const out = spawnSync('node', [fileURLToPath(new URL('../lib/boundary.mjs', import.meta.url)), 'preflight', '--repo', r, '--effort', 'e1', '--execution', STAMP, '--digest', 'deadbeef', '--b64', token], { encoding: 'utf8' })
   assert.equal(out.status, 0)
@@ -294,12 +295,12 @@ test('the CLI refuses a damaged argument token and prints an envelope either way
 test('drift: a landed diff under a contract a pending node consumes is flagged; its own provider is not', async () => {
   const { driftOf } = await import('../lib/boundary.mjs')
   const r = repo()
-  addNodes(r, 'e1', [root(),
+  seedTree(r, 'e1', [root(),
     leaf('p', { rigor: 'trivial', locus: ['src/api.mjs'], provides: [{ name: 'api', paths: ['src/api.mjs'] }] }),
     leaf('c', { rigor: 'trivial', locus: ['src/use.mjs'], consumes: [{ name: 'api', paths: ['src/api.mjs'] }], deps: ['p'] }),
     leaf('x', { rigor: 'trivial', locus: ['src/other.mjs'] }),
     leaf('d', { rigor: 'trivial', locus: ['src/d.mjs'], consumes: [{ name: 'shape', paths: ['src/shape/'] }] }),
-    { id: 'later', kind: 'design', level: 'component', title: 'later part' }], { by: 'session' })
+    { id: 'later', kind: 'design', title: 'later part' }])
   const tree = readTree(r, 'e1')
   const out = driftOf(tree, ['x'], ['src/other.mjs', 'src/shape/one.mjs', 'src/api.mjs'])
   assert.deepEqual(out.drift.map((d) => [d.node, d.contract]).sort(), [['c', 'api'], ['d', 'shape']])
@@ -316,7 +317,7 @@ const cli = (r, name, args, env = {}) => {
 
 test('a detached close re-measures once its inputs change: commands established after command_unknown', () => {
   const r = repo()
-  addNodes(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })], { by: 'session' })
+  seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })])
   B(r, 'preflight', { root: '.' })
   const open = B(r, 'leaf-open', { node: 'a', role: 'implementer', round: 1 })
   commitIn(open.worktree, { 'test/a.test.mjs': A_TEST, 'src/a.mjs': 'export const a = () => 1\n' }, 'Add a')
@@ -335,7 +336,7 @@ test('a detached close re-measures once its inputs change: commands established 
 
 test('a merge-batch that died before recording its outcome is redone from where it started', () => {
   const r = repo()
-  addNodes(r, 'e1', [root(), leaf('x', { rigor: 'trivial', locus: ['src/add.mjs'] })], { by: 'session' })
+  seedTree(r, 'e1', [root(), leaf('x', { rigor: 'trivial', locus: ['src/add.mjs'] })])
   B(r, 'preflight', { root: '.', commands: COMMANDS })
   const x = B(r, 'leaf-open', { node: 'x', role: 'implementer', round: 1 })
   const xs = commitIn(x.worktree, { 'src/add.mjs': 'export const add = (a, b) => a - b\n' }, 'Break add')
@@ -353,7 +354,7 @@ test('a merge-batch that died before recording its outcome is redone from where 
 
 test('a leaf decomposed in place releases its claim: its children are not locked out by it', () => {
   const r = repo()
-  addNodes(r, 'e1', [root(), leaf('a', { rigor: 'trivial', locus: ['src/a.mjs', 'src/b.mjs'] })], { by: 'session' })
+  seedTree(r, 'e1', [root(), leaf('a', { rigor: 'trivial', locus: ['src/a.mjs', 'src/b.mjs'] })])
   B(r, 'preflight', { root: '.', commands: COMMANDS })
   assert.equal(B(r, 'leaf-open', { node: 'a', role: 'implementer', round: 1 }).status, 'opened')
   const split = addNodes(r, 'e1', [
@@ -366,8 +367,8 @@ test('a leaf decomposed in place releases its claim: its children are not locked
 
 test('concurrent leaf-opens under one fresh composite all open', async () => {
   const r = repo()
-  addNodes(r, 'e1', [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] },
-    ...['p', 'q', 's', 't'].map((id) => leaf('c/' + id, { rigor: 'trivial', locus: ['src/' + id + '.mjs'] }))], { by: 'session' })
+  seedTree(r, 'e1', [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] },
+    ...['p', 'q', 's', 't'].map((id) => leaf('c/' + id, { rigor: 'trivial', locus: ['src/' + id + '.mjs'] }))])
   B(r, 'preflight', { root: '.', commands: COMMANDS })
   const opens = await Promise.all(['p', 'q', 's', 't'].map((id) => new Promise((resolve) => {
     const child = spawn('node', [BOUNDARY, 'leaf-open', '--repo', r, '--effort', 'e1', '--execution', STAMP,
@@ -381,7 +382,7 @@ test('concurrent leaf-opens under one fresh composite all open', async () => {
 
 test('leaf-close never commits outside a linked worktree', () => {
   const r = repo()
-  addNodes(r, 'e1', [root(), leaf('t', { rigor: 'tests-only', locus: ['test/t.test.mjs'] })], { by: 'session' })
+  seedTree(r, 'e1', [root(), leaf('t', { rigor: 'tests-only', locus: ['test/t.test.mjs'] })])
   B(r, 'preflight', { root: '.', commands: COMMANDS })
   // The worktree path exists but is not a registered worktree: git -C would resolve to the user's repo.
   mkdirSync(worktreeOf(r, 'e1', 't'), { recursive: true })
@@ -394,7 +395,7 @@ test('leaf-close never commits outside a linked worktree', () => {
 
 test('an escalation repeated after a retry is recorded again, and a composite escalation stops landing', () => {
   const r = repo()
-  addNodes(r, 'e1', [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { rigor: 'trivial', locus: ['src/a.mjs'] })], { by: 'session' })
+  seedTree(r, 'e1', [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { rigor: 'trivial', locus: ['src/a.mjs'] })])
   B(r, 'preflight', { root: '.', commands: COMMANDS })
   const esc = { file: 'events', entry: { kind: 'escalated', node: 'c/a', reason: 'blocked', detail: '' } }
   B(r, 'postflight', { status: 'paused', records: [esc] })
@@ -411,10 +412,10 @@ test('an escalation repeated after a retry is recorded again, and a composite es
 
 test('a green is cut from its red and brought up to the parent head, so its other dependencies are there', () => {
   const r = repo()
-  addNodes(r, 'e1', [root(),
+  seedTree(r, 'e1', [root(),
     leaf('l', { rigor: 'trivial', locus: ['src/l.mjs'] }),
     leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'] }),
-    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r', 'l'], locus: ['src/r.mjs'] })], { by: 'session' })
+    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r', 'l'], locus: ['src/r.mjs'] })])
   B(r, 'preflight', { root: '.', commands: COMMANDS })
   const red = B(r, 'leaf-open', { node: 'r', role: 'test-author', round: 1 })
   const redHead = commitIn(red.worktree, { 'test/r.test.mjs': "import { test } from 'node:test'\ntest('r', () => {})\n" }, 'Pin r')

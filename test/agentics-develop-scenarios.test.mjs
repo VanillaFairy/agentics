@@ -148,7 +148,7 @@ test('decompose: the planner splits the leaf, the tree reloads, the children run
 
 test('an unplanned root is planned first; a design node is parked for the user', async () => {
   const sim = simulate([composite('.')], {
-    preflight: (args) => (args.reload ? { nodes: [composite('.'), row('a'), row('d', { kind: 'design', level: 'component' })] } : {}),
+    preflight: (args) => (args.reload ? { nodes: [composite('.'), row('a'), row('d', { kind: 'design' })] } : {}),
   })
   const { result } = await run(sim, {
     planner: () => ({ status: 'written', written: ['a', 'd'], accepted_warnings: [], uncovered: [], question: '', detail: '' }),

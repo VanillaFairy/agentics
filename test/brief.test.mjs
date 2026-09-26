@@ -10,7 +10,8 @@ import { assembleBrief, measuresFor } from '../lib/brief.mjs'
 import { writeGotcha } from '../lib/gotchas.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
 import { briefPath, effortStateDir, reportPath } from '../lib/store.mjs'
-import { addNodes, normalizeNode } from '../lib/tree.mjs'
+import { normalizeNode } from '../lib/tree.mjs'
+import { seedTree } from './harness/seed-tree.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/brief.mjs', import.meta.url))
 const E = 'e1'
@@ -20,7 +21,7 @@ const criterion = (text, decisions = ['D1']) => ({ text, check: 'node --test tes
 
 function effort() {
   const repo = mkdtempSync(join(tmpdir(), 'agentics-brief-'))
-  const added = addNodes(repo, E, [
+  const added = seedTree(repo, E, [
     { id: '.', kind: 'composite', title: 'Parse configs', intent: 'configs load from disk',
       defines: [{ id: 'D1', text: 'Keys are case-insensitive.' }, { id: 'D2', text: 'Unknown keys are an error.' }] },
     { id: 'api', kind: 'composite', title: 'The api layer', intent: 'the api reads configs', ground: ['src/api'] },
@@ -30,7 +31,7 @@ function effort() {
     { id: 'api/parse', kind: 'leaf', title: 'Parse keys', intent: 'keys parse case-insensitively', rigor: 'tdd',
       locus: ['src/api/parse.js', 'test/parse.test.mjs'], reads: ['src/api/types.js'], deps: ['api/types'],
       decisions: ['D1'], acceptance: [criterion('Key lookup ignores case')], context: 'Use the existing tokenizer.' },
-  ], { by: 'session' })
+  ])
   assert.equal(added.ok, true, JSON.stringify(added.problems))
   return repo
 }

@@ -9,6 +9,7 @@ import {
   addNodes, cycleOf, deriveStatus, executorRole, liveNodes, normalizeNode, ownReview, readTree,
   renderTree, subtreeOf, treeProblems,
 } from '../lib/tree.mjs'
+import { seedTree } from './harness/seed-tree.mjs'
 import { checkAtomicity, coupledOf, fitOf } from '../lib/atomicity.mjs'
 import { trace } from '../lib/traceability.mjs'
 import { ancestorsOf, branchOf, flat, nodeIdProblem, parentOf, safeSlug, worktreeOf } from '../lib/store.mjs'
@@ -145,7 +146,7 @@ test('atomicity: fit is computed from file sizes against the model budget', () =
 
 test('addNodes validates against the tree on disk, all or nothing, and logs planned/replanned', () => {
   const r = repo()
-  const first = addNodes(r, 'e1', [root(), leaf('a')], { by: 'session' })
+  const first = seedTree(r, 'e1', [root(), leaf('a')])
   assert.equal(first.ok, true, JSON.stringify(first.problems))
   const refused = addNodes(r, 'e1', [leaf('b', { deps: ['nope'] })])
   assert.equal(refused.ok, false)
@@ -166,14 +167,14 @@ test('addNodes validates against the tree on disk, all or nothing, and logs plan
 
 test('addNodes returns traceability and atomicity as warnings, not refusals', () => {
   const r = repo()
-  const out = addNodes(r, 'e1', [root({ defines: [{ id: 'D1', text: 'x' }, { id: 'D2', text: 'y' }] }), leaf('a')], { by: 'session' })
+  const out = seedTree(r, 'e1', [root({ defines: [{ id: 'D1', text: 'x' }, { id: 'D2', text: 'y' }] }), leaf('a')])
   assert.equal(out.ok, true)
   assert.deepEqual(out.warnings.gaps.map((g) => g.decision), ['D2'])
 })
 
 test('an autonomous replan preserves decisions: no new or changed defines, no changed contract, no dropped decision', () => {
   const r = repo()
-  assert.equal(addNodes(r, 'e1', [root(), leaf('a', { provides: [{ name: 'api', paths: ['src/a.js'] }] })], { by: 'session' }).ok, true)
+  assert.equal(seedTree(r, 'e1', [root(), leaf('a', { provides: [{ name: 'api', paths: ['src/a.js'] }] })]).ok, true)
 
   const defines = addNodes(r, 'e1', [root({ defines: [{ id: 'D1', text: 'do it differently' }] })], { by: 'planner' })
   assert.equal(defines.ok, false)
@@ -192,5 +193,119 @@ test('an autonomous replan preserves decisions: no new or changed defines, no ch
   assert.equal(split.ok, true, JSON.stringify(split.problems))
 
   const answered = addNodes(r, 'e1', [root({ defines: [{ id: 'D1', text: 'do it' }, { id: 'D2', text: 'the user said so' }] })], { by: 'session', reason: 'answered' })
-  assert.equal(answered.ok, true, 'the session writes the user\'s decisions')
+  assert.equal(answered.ok, false, 'no session writes a decision: compile does, from an approved spec')
+})
+
+// ------------------------------------------------------------------ the node record
+
+const compiled = (approved, extra = {}) => ({ by: 'compile', approved: new Map(Object.entries(approved)), ...extra })
+
+test('the node record has no level and no design_doc; author defaults to you', () => {
+  const n = normalizeNode({ id: 'd', kind: 'design', title: 'later', level: 'component', design_doc: 'docs/x.md' })
+  assert.equal('level' in n, false)
+  assert.equal('design_doc' in n, false)
+  assert.equal(n.author, 'you')
+  assert.equal(normalizeNode({ id: 'd', kind: 'design', title: 'later', author: 'planner' }).author, 'planner')
+})
+
+test('a design node needs no level, and renders as [design]', () => {
+  const nodes = tree(root(), { id: 'd', kind: 'design', title: 'later part', decisions: ['D1'] })
+  assert.deepEqual(treeProblems(nodes), [])
+  assert.match(renderTree(nodes, deriveStatus(nodes, [])), /d \[design\] — open — later part/)
+})
+
+test('author is you or planner, and no leaf is authored by the planner', () => {
+  const odd = treeProblems(tree(root(), { id: 'd', kind: 'design', title: 't', author: 'someone' }))
+  assert.match(odd.map((p) => p.problem).join(), /author/)
+  const leafy = treeProblems(tree(root(), leaf('a', { author: 'planner' })))
+  assert.match(leafy.map((p) => p.problem).join(), /author|planner/)
+  assert.deepEqual(treeProblems(tree(root(), { id: 'p', kind: 'composite', title: 'p', author: 'planner', decisions: ['D1'] }, leaf('p/x'))), [])
+})
+
+// ------------------------------------------------------------------ the decision guard (IL4)
+
+test('compile writes decisions equal to the approved copy, in any order', () => {
+  const r = repo()
+  const defines = [{ id: 'D1', text: 'do it' }, { id: 'D2', text: 'and this' }]
+  const out = addNodes(r, 'e1', [root({ defines }), leaf('a')], compiled({ '.': [...defines].reverse() }))
+  assert.equal(out.ok, true, JSON.stringify(out.problems))
+  assert.deepEqual(readTree(r, 'e1').nodes.get('.').defines.map((d) => d.id), ['D1', 'D2'])
+})
+
+test('compile is refused when its decisions differ from the approved copy, or there is none', () => {
+  const r = repo()
+  for (const approved of [
+    { '.': [{ id: 'D1', text: 'do it differently' }] },
+    { '.': [{ id: 'D1', text: 'do it' }, { id: 'D2', text: 'more' }] },
+    {},
+  ]) {
+    const out = addNodes(r, 'e1', [root(), leaf('a')], compiled(approved))
+    assert.equal(out.ok, false, JSON.stringify(approved))
+    assert.match(out.problems.map((p) => p.problem).join(), /approved/)
+  }
+  assert.equal(readTree(r, 'e1').nodes.size, 0, 'nothing was written')
+})
+
+test('a changed decision is admitted from compile against the new approved copy, and from no other writer', () => {
+  const r = repo()
+  assert.equal(seedTree(r, 'e1', [root(), leaf('a')]).ok, true)
+  const changed = [{ id: 'D1', text: 'do it the new way' }]
+  for (const by of ['planner', 'session', 'user']) {
+    const out = addNodes(r, 'e1', [root({ defines: changed })], { by, approved: new Map([['.', changed]]) })
+    assert.equal(out.ok, false, by + ' may not change a decision, approved copy or not')
+  }
+  assert.equal(addNodes(r, 'e1', [root({ defines: changed })], compiled({ '.': changed })).ok, true)
+  assert.equal(readTree(r, 'e1').nodes.get('.').defines[0].text, 'do it the new way')
+})
+
+test('the session has no exemption: stating a decision as the session is refused', () => {
+  const r = repo()
+  const out = addNodes(r, 'e1', [root(), leaf('a')], { by: 'session' })
+  assert.equal(out.ok, false)
+  assert.match(out.problems.map((p) => p.problem).join(), /decision/)
+})
+
+test('a node first seen in this batch cannot state a decision the approved copy lacks', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(), leaf('a')])
+  const sneaky = { id: 'b', kind: 'composite', title: 'b', decisions: ['D1'], defines: [{ id: 'D9', text: 'mine' }] }
+  const out = addNodes(r, 'e1', [sneaky, leaf('b/x')], compiled({ '.': [{ id: 'D1', text: 'do it' }] }))
+  assert.equal(out.ok, false)
+  assert.ok(out.problems.some((p) => p.node === 'b'))
+})
+
+test('compile may change a contract only on a node whose spec the user approved', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(), leaf('a', { provides: [{ name: 'api', paths: ['src/a.js'] }] })])
+  const moved = leaf('a', { provides: [{ name: 'api', paths: ['src/api/'] }] })
+  assert.match(addNodes(r, 'e1', [moved], compiled({})).problems.map((p) => p.problem).join(), /contract/,
+    'a prepared spec cannot change a contract')
+  assert.equal(addNodes(r, 'e1', [leaf('a')], { by: 'planner', owned: new Set(['a']) }).ok, false, 'owned is compile\'s alone')
+  assert.equal(addNodes(r, 'e1', [moved], compiled({}, { owned: new Set(['a']) })).ok, true)
+})
+
+test('a decision a design node realises is not lost', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(), leaf('a')])
+  const out = addNodes(r, 'e1', [{ ...leaf('a'), retired: true }, { id: 'b', kind: 'design', title: 'later', decisions: ['D1'] }], { by: 'planner' })
+  assert.equal(out.ok, true, JSON.stringify(out.problems))
+})
+
+test('a decision a dropped entry gives up is accepted from compile, and from no other writer', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(), leaf('a')])
+  const dropped = [{ ...leaf('a'), retired: true }]
+  assert.match(addNodes(r, 'e1', dropped, compiled({})).problems.map((p) => p.problem).join(), /D1 was realised/)
+  assert.equal(addNodes(r, 'e1', dropped, { by: 'planner', accepted: new Set(['D1']) }).ok, false)
+  assert.equal(addNodes(r, 'e1', dropped, compiled({}, { accepted: new Set(['D1']) })).ok, true)
+})
+
+test('a batch may give each node its own replan reason', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(), leaf('a'), leaf('b')])
+  const out = addNodes(r, 'e1', [leaf('a', { title: 'do a again' }), leaf('b', { title: 'do b again' })],
+    compiled({}, { reason: 'compiled', reasons: new Map([['b', 'decision_changed']]) }))
+  assert.equal(out.ok, true, JSON.stringify(out.problems))
+  const replans = readTree(r, 'e1').events.filter((e) => e.kind === 'replanned')
+  assert.deepEqual(replans.map((e) => [e.node, e.reason, e.by]), [['a', 'compiled', 'compile'], ['b', 'decision_changed', 'compile']])
 })

@@ -15,7 +15,7 @@ const decode = (token) => JSON.parse(Buffer.from(token, 'base64').toString('utf8
 export function row(id, extra = {}) {
   const leaf = extra.kind === undefined || extra.kind === 'leaf'
   return {
-    id, title: 'do ' + id, kind: 'leaf', level: '', rigor: leaf ? 'tdd' : '', role: 'none',
+    id, title: 'do ' + id, kind: 'leaf', author: 'you', rigor: leaf ? 'tdd' : '', role: 'none',
     deps: [], locus: leaf ? ['src/' + id + '.js'] : [], reads: [], provides: [], consumes: [],
     decisions: [], dispatch: {}, ground_known: true, evidence: 'none', status: 'planned',
     children: [], acceptance_n: 1, human: [], own_review: false, coupled: false, integration: null,

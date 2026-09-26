@@ -21,22 +21,22 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
-  EFFORTS_DIR, listEfforts, openEffort, readEffort, recordReturn, safeSlug, slugFor, stampNow,
+  listEfforts, openEffort, readEffort, recordReturn, safeSlug, slugFor, stampNow,
   standingSurvey,
 } from '../lib/effort.mjs'
 import { append } from '../lib/ledger.mjs'
+import { effortStateDir } from '../lib/store.mjs'
 import * as store from '../lib/store.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/effort.mjs', import.meta.url))
 const fresh = () => mkdtempSync(join(tmpdir(), 'agentics-effort-')).split('\\').join('/')
-const effortPath = (repo, slug, ...rest) => join(repo, ...EFFORTS_DIR.split('/'), slug, ...rest)
+const effortPath = (repo, slug, ...rest) => join(effortStateDir(repo, slug), ...rest)
 
 const run = (...args) => JSON.parse(execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8' }))
 
 test('names and stamps are lib/store.mjs\'s, not a second copy', () => {
   assert.equal(safeSlug, store.safeSlug)
   assert.equal(stampNow, store.stampNow)
-  assert.equal(EFFORTS_DIR, store.EFFORTS_DIR)
 })
 
 test('a slug is dated, kebab, bounded by words, and never carries "--"', () => {

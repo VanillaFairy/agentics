@@ -205,7 +205,7 @@ export function contextPayload(prompt) {
 }
 
 /** The context file `contextPayload` names for a list with this digest. */
-export const contextPathFor = (digest) => `C:/repo/.claude/agentics/context/${digest}-1.md`
+export const contextPathFor = (digest) => `C:/repo/.agentics/.state/context/${digest}-1.md`
 
 /** A context courier that writes every location its prompt carries. */
 export const carriedContext = (prompt) => carriedEnvelope(contextPayload(prompt))

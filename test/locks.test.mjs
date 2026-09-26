@@ -16,7 +16,7 @@ import { append } from '../lib/ledger.mjs'
 import {
   acquire, heldBy, locusFileOf, maxParallel, poolConfig, releaseLocus, releaseSlots, withBranchLock,
 } from '../lib/locks.mjs'
-import { effortDir, slotsDir } from '../lib/store.mjs'
+import { effortStateDir, slotsDir } from '../lib/store.mjs'
 import { addNodes } from '../lib/tree.mjs'
 
 const LOCKS = fileURLToPath(new URL('../lib/locks.mjs', import.meta.url))
@@ -60,7 +60,7 @@ const event = (repo, kind, node, extra = {}) => {
 const take = (repo, node, extra = {}) => acquire(repo, { effort: E, execution: X, node, waitMs: 0, ...extra })
 
 const slotFiles = (repo) => (existsSync(slotsDir(repo)) ? readdirSync(slotsDir(repo)).filter((f) => /^\d+\.lock$/.test(f)).sort() : [])
-const locusLockExists = (repo, path) => existsSync(join(effortDir(repo, E), 'locks', 'locus', locusFileOf(path)))
+const locusLockExists = (repo, path) => existsSync(join(effortStateDir(repo, E), 'locks', 'locus', locusFileOf(path)))
 
 test('max_parallel: default 4, read from config on every call, malformed → default with a note', () => {
   const repo = newRepo()

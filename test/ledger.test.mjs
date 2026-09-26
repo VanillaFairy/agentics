@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 
 import { append, digestEntries, fileFor, parseLog, readLog, seqMax } from '../lib/ledger.mjs'
-import { effortDir } from '../lib/store.mjs'
+import { effortStateDir } from '../lib/store.mjs'
 
 const repo = () => mkdtempSync(join(tmpdir(), 'agentics-ledger-'))
 const LEDGER = fileURLToPath(new URL('../lib/ledger.mjs', import.meta.url))
@@ -39,7 +39,7 @@ test('efforts count separately', () => {
 test('a lost counter file is rebuilt from the highest seq on disk', () => {
   const r = repo()
   append(r, 'e1', 'events', [{ kind: 'a' }, { kind: 'b' }, { kind: 'c' }])
-  rmSync(join(effortDir(r, 'e1'), 'seq'))
+  rmSync(join(effortStateDir(r, 'e1'), 'seq'))
   assert.deepEqual(append(r, 'e1', 'state:20260925-120000', { kind: 'closed' }).seqs, [4])
 })
 
@@ -104,6 +104,6 @@ test('concurrent writers never mint the same seq', async () => {
   const seqs = readLog(r, 'e1', 'events').entries.map((e) => e.seq).sort((a, b) => a - b)
   assert.equal(seqs.length, 60)
   assert.equal(new Set(seqs).size, 60)
-  assert.equal(existsSync(join(effortDir(r, 'e1'), '.lock')), false)
-  assert.equal(readFileSync(join(effortDir(r, 'e1'), 'seq'), 'utf8'), '60')
+  assert.equal(existsSync(join(effortStateDir(r, 'e1'), '.lock')), false)
+  assert.equal(readFileSync(join(effortStateDir(r, 'e1'), 'seq'), 'utf8'), '60')
 })

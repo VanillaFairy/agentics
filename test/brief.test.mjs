@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { assembleBrief, measuresFor } from '../lib/brief.mjs'
 import { writeGotcha } from '../lib/gotchas.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
-import { briefPath, effortDir, reportPath } from '../lib/store.mjs'
+import { briefPath, effortStateDir, reportPath } from '../lib/store.mjs'
 import { addNodes, normalizeNode } from '../lib/tree.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/brief.mjs', import.meta.url))
@@ -115,7 +115,7 @@ test('a fix round lists the failures and open findings it must clear', () => {
 
 test('survey verdicts whose topic ground meets the node ground or locus are excerpted, conclusions only', () => {
   const repo = effort()
-  const dir = join(effortDir(repo, E), 'evidence')
+  const dir = join(effortStateDir(repo, E), 'evidence')
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, '20260901-000000-survey.json'), JSON.stringify({
     question: 'q', ground: ['src'],

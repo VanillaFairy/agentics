@@ -5,7 +5,7 @@ description: Use when the user asks what agentics work exists or where it stands
 
 # status
 
-Every effort lives under `.claude/agentics/efforts/<effort>/`, and every status here is derived
+Every effort lives under `.agentics/<effort>/`, and every status here is derived
 from its logs and git on each call — nothing is stored, and nothing here is read back as state
 (`docs/DESIGN.md#progress`). This skill owns no judgment: it runs a CLI, shows what it prints, and
 hands the pick on.

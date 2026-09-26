@@ -41,20 +41,23 @@ document and in the node's `context`.
 
 <!-- agentics:verbatim effort-store -->
 **Efforts — one directory for everything a piece of work produces.** An effort is a subtree of
-the execution tree: its nodes, their events, its evidence and its executions all live under
-`.claude/agentics/efforts/<effort>/`. Design, probe and develop are separate sessions by
+the execution tree. It lives at `.agentics/<effort>/` in the main checkout, never in a worktree,
+and everything scripts write for it — its nodes, their events, its evidence and its executions —
+sits in that directory's `.state/`. Design, probe and develop are separate sessions by
 recommendation, and this directory is how a later one reads what an earlier one established.
 
-Open one at the start. The user may name it; if they do not, derive the name and use it:
+Open one at the start. Propose a short name from the user's words and confirm it;
+`effort.mjs open` validates it. `effort.mjs slug` turns the words into a first proposal of at
+most four words:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" slug "<the change or question, in the user's words>"
-node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" open <repo> <slug> --about "<the change or question>" --roots <roots>
+node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" open <repo> <name> --about "<the change or question>" --roots <roots>
 ```
 
 Opening is idempotent: a later phase adopts the identity the first one recorded.
 
-Record a survey's or a probe's return into the effort's `evidence/` by writing the workflow's
+Record a survey's or a probe's return into the effort's `.state/evidence/` by writing the workflow's
 result object to a file and passing the path — **verbatim, never summarised** — as soon as it
 returns, before anything spends it:
 

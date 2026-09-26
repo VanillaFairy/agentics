@@ -13,8 +13,9 @@ import { fileURLToPath } from 'node:url'
 
 import { evidenceOf } from '../lib/effort.mjs'
 import { readLog, seqMax } from '../lib/ledger.mjs'
+import { heldBy } from '../lib/locks.mjs'
 import { efforts } from '../lib/status.mjs'
-import { configPath, effortStateDir, legacyDir, readConfig, safeSlug } from '../lib/store.mjs'
+import { agenticsRoot, configPath, effortStateDir, legacyDir, readConfig, safeSlug } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
 import { apply, plan } from '../tools/migrate-legacy.mjs'
 
@@ -228,4 +229,59 @@ test('the CLI is a dry run without --yes, and copies with it', () => {
   const wet = JSON.parse(execFileSync(process.execPath, [CLI, repo, '--yes'], { encoding: 'utf8' }))
   assert.equal(wet.applied, true)
   assert.equal(readTree(repo, 'e1').nodes.size, 3)
+})
+
+const seqsIn = (text) => text.split('\n').flatMap((l) => {
+  try { const s = JSON.parse(l).seq; return Number.isInteger(s) ? [s] : [] } catch { return [] }
+})
+
+test('in-flight extras arrive byte for byte and read as before: a torn state line, a counter behind the logs, a job pid, a locus lock', () => {
+  const repo = legacyRepo()
+  const e = OLD + '/efforts/e1/'
+  const torn = jsonl({ kind: 'checkpoint', reason: 'session limit', seq: 7 }) + '{"kind":"chec'
+  put(repo, {
+    [e + 'seq']: '2',
+    [e + 'executions/' + STAMP + '/state.jsonl']: torn,
+    [e + 'executions/' + STAMP + '/jobs/verify.pid']: String(process.pid),
+  })
+  const old = snapshot(repo, OLD + '/efforts/e1')
+  const highest = Math.max(...[...old].filter(([p]) => p.endsWith('.jsonl')).flatMap(([, t]) => seqsIn(t)))
+  apply(plan(repo))
+  const state = effortStateDir(repo, 'e1')
+  assert.equal(readFileSync(join(state, 'executions', STAMP, 'state.jsonl'), 'utf8'), torn)
+  assert.equal(readFileSync(join(state, 'executions', STAMP, 'jobs', 'verify.pid'), 'utf8'), String(process.pid))
+  assert.equal(seqMax(repo, 'e1'), highest)
+  const [listed] = efforts(repo).efforts
+  assert.deepEqual(listed.executions.map((x) => [x.stamp, x.closed, x.status]), [[STAMP, false, 'checkpoint']])
+  const lock = heldBy(repo).locus.find((l) => l.effort === 'e1')
+  assert.deepEqual([lock.path, lock.node, lock.execution], ['src/a.js', 'a', STAMP])
+})
+
+test('a copy stopped halfway is finished by the next run, never refused for its own files', () => {
+  const repo = legacyRepo()
+  const p = plan(repo)
+  const half = Math.floor(p.copies.length / 2)
+  apply({ ...p, copies: p.copies.slice(0, half) })
+  const next = plan(repo)
+  assert.deepEqual(next.refused, [])
+  assert.deepEqual(next.copies.map((c) => c.to).sort(), p.copies.slice(half).map((c) => c.to).sort())
+  apply(next)
+  assert.deepEqual(plan(repo).copies, [])
+})
+
+test('an existing .agentics/.gitignore keeps its bytes', () => {
+  const repo = legacyRepo()
+  put(repo, { '.agentics/.gitignore': 'custom\n' })
+  apply(plan(repo))
+  assert.equal(readFileSync(join(agenticsRoot(repo), '.gitignore'), 'utf8'), 'custom\n')
+})
+
+test('apply never overwrites a target that appeared after planning', () => {
+  const repo = legacyRepo()
+  const p = plan(repo)
+  const { to } = p.copies[0]
+  mkdirSync(dirname(to), { recursive: true })
+  writeFileSync(to, 'written in between\n')
+  apply(p)
+  assert.equal(readFileSync(to, 'utf8'), 'written in between\n')
 })

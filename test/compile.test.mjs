@@ -689,3 +689,35 @@ test('renaming a contract under --folder parks its consumer outside that folder'
   const out = compiled(repo, { folder: 'api' })
   assert.ok(out.parked.some((p) => p.node === 'reload' && p.reason === 'contract_changed'), JSON.stringify(out.parked))
 })
+
+test('parks that landed are not appended again when the compiled line failed', () => {
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  reapproveApi(repo)
+  const failed = readOnly(repo, 'ledger', () => compileEffort(repo, E))
+  assert.equal(failed.ok, false)
+  assert.equal(parksOf(repo, 'cli').length, 1)
+
+  compiled(repo)
+  assert.equal(parksOf(repo, 'cli').length, 1, 'the park from the failed run already landed')
+  assert.equal(approvalState(repo, E, 'api').compiled_hash, approvalState(repo, E, 'api').hash)
+})
+
+test('decision_changed revisions whose events failed to land are flagged again by the next compile', () => {
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  write(repo, '.', ROOT.replace('| D1 | Keys are case-insensitive. |', '| D1 | Keys are case-insensitive, and so are values. |'))
+  approve(repo, '.')
+  const failed = readOnly(repo, 'events', () => compileEffort(repo, E))
+  assert.equal(failed.ok, false)
+
+  const out = compiled(repo)
+  const realising = [...nodes(repo).values()].filter((n) => n.decisions.includes('D1')).map((n) => n.id).sort()
+  assert.deepEqual(out.flagged.map((f) => f.node).sort(), realising)
+  const flaggedEvents = readTree(repo, E).events.filter((e) => e.kind === 'replanned' && e.reason === 'decision_changed').map((e) => e.node).sort()
+  assert.deepEqual(flaggedEvents, realising)
+})

@@ -769,3 +769,16 @@ test('a deleted spec with dispatched work below it is refused by name', () => {
   assert.equal(nodes(repo).get('api/parse').kind, 'composite')
   assert.deepEqual(sizes(repo), before)
 })
+
+test('re-approving the root with dispatched work below it does not park the root', () => {
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  append(repo, E, 'events', { kind: 'dispatched', node: 'cli', execution: '20260926-120000', role: 'implementer', round: 1 })
+  write(repo, '.', ROOT.replace('Nothing else changes.', 'Nothing else changes, really.'))
+  approve(repo, '.')
+  const out = compiled(repo)
+  assert.equal(out.parked.some((p) => p.node === '.'), false, JSON.stringify(out.parked))
+  assert.notEqual(readTree(repo, E).status.get('.').status, 'parked')
+})

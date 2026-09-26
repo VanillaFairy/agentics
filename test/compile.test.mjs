@@ -6,7 +6,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -720,4 +720,52 @@ test('decision_changed revisions whose events failed to land are flagged again b
   assert.deepEqual(out.flagged.map((f) => f.node).sort(), realising)
   const flaggedEvents = readTree(repo, E).events.filter((e) => e.kind === 'replanned' && e.reason === 'decision_changed').map((e) => e.node).sort()
   assert.deepEqual(flaggedEvents, realising)
+})
+
+test('a promoted task whose spec is deleted falls back to its leaf, and the promoted nodes retire', () => {
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  write(repo, 'api/parse', PARSE)
+  prepare(repo, 'api/parse')
+  compiled(repo)
+  rmSync(specPath(repo, E, 'api/parse'))
+  const out = compiled(repo)
+  assertLeafFrom(nodes(repo).get('api/parse'), entryOf(API, 'parse'))
+  assert.deepEqual([...out.retired].sort(), ['api/parse/lookup', 'api/parse/tokens'])
+  assert.deepEqual(childrenOf(nodes(repo), 'api/parse'), [])
+})
+
+test('a sub-effort whose approved spec is deleted is refused at its entry, never skipped as edited', () => {
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  rmSync(specPath(repo, E, 'api'))
+  const before = sizes(repo)
+  const out = compileEffort(repo, E)
+  assert.equal(out.ok, false)
+  assert.ok(out.problems.some((p) => /SPEC\.md$/.test(p.file) && p.line === lineIn(ROOT, '- **api**')), JSON.stringify(out.problems))
+  assert.equal(out.skipped.some((s) => s.folder === 'api'), false)
+  assert.equal(nodes(repo).get('api').kind, 'composite')
+  assert.deepEqual(sizes(repo), before)
+})
+
+test('a deleted spec with dispatched work below it is refused by name', () => {
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  write(repo, 'api/parse', PARSE)
+  prepare(repo, 'api/parse')
+  compiled(repo)
+  append(repo, E, 'events', { kind: 'dispatched', node: 'api/parse/tokens', execution: '20260926-120000', role: 'implementer', round: 1 })
+  rmSync(specPath(repo, E, 'api/parse'))
+  const before = sizes(repo)
+  const out = compileEffort(repo, E)
+  assert.equal(out.ok, false)
+  assert.ok(out.problems.some((p) => p.problem.includes('api/parse/tokens')), JSON.stringify(out.problems))
+  assert.equal(nodes(repo).get('api/parse').kind, 'composite')
+  assert.deepEqual(sizes(repo), before)
 })

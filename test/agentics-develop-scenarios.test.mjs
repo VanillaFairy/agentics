@@ -130,31 +130,39 @@ test('a user-bound return parks the leaf and the rest keeps running', async () =
   assert.deepEqual(recordsOf(sim, 'parked').map((e) => e.node), ['a'])
 })
 
-test('decompose: the planner splits the leaf, the tree reloads, the children run', async () => {
-  const sim = simulate([composite('.'), row('a')], {
-    preflight: (args, s, n) => (args.reload ? { nodes: [composite('.'), composite('a'), row('a/x'), row('a/y')] } : {}),
-  })
+const written = (path) => () => ({ status: 'written', written: [path], accepted_warnings: [], uncovered: [], question: '', detail: '' })
+
+test('decompose: the planner promotes the task to a folder of its own, and it waits for its review', async () => {
+  const sim = simulate([composite('.'), row('a')])
   const { result, prompts } = await run(sim, {
     'implementer:a#1': () => ({ status: 'decompose', detail: 'two concerns', concerns: [], commits: [] }),
-    planner: () => ({ status: 'written', written: ['a/x', 'a/y'], accepted_warnings: [], uncovered: [], question: '', detail: '' }),
+    'plan:': written(row('a').spec_path),
   })
-  assert.ok(labels(prompts).includes('plan:a'))
-  assert.ok(sim.opens.includes('a/x') && sim.opens.includes('a/y'))
-  const intoA = sim.batches.find((b) => b.target === 'a')
-  assert.deepEqual(intoA.children.map((c) => c.id).sort(), ['a/x', 'a/y'])
-  assert.ok(sim.batches.some((b) => b.target === '.' && b.children.some((c) => c.id === 'a')), 'the composite merged up')
-  assert.equal(result.coverage.complete, true, JSON.stringify(result.coverage.unreached))
+  const plan = prompts.find((p) => p.opts.label === 'plan:a')
+  assert.ok(plan, 'the planner was dispatched for the promoted task')
+  assert.ok(plan.prompt.includes(row('a').spec_path), 'the planner is told where the promoted spec goes')
+  assert.ok(!plan.prompt.includes('tree.mjs" add'), 'the planner no longer writes nodes')
+  assert.ok(plan.prompt.includes('lib/spec.mjs" check'), 'the planner checks its spec with the spec checker')
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['a', 'spec_unreviewed']])
+  assert.ok(result.parked[0].question.includes(row('a').spec_path), 'the seam names the spec awaiting review')
 })
 
-test('an unplanned root is planned first; a design node is parked for the user', async () => {
-  const sim = simulate([composite('.')], {
-    preflight: (args) => (args.reload ? { nodes: [composite('.'), row('a'), row('d', { kind: 'design' })] } : {}),
-  })
-  const { result } = await run(sim, {
-    planner: () => ({ status: 'written', written: ['a', 'd'], accepted_warnings: [], uncovered: [], question: '', detail: '' }),
-  })
-  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['d', 'needs_design']])
-  assert.ok(result.implemented.some((i) => i.id === 'a'))
+test('a design node you author is parked for design; one the planner authors goes to the planner', async () => {
+  const sim = simulate([composite('.'), row('a'),
+    row('d', { kind: 'design', author: 'you' }), row('p', { kind: 'design', author: 'planner' })])
+  const { result, prompts } = await run(sim, { 'plan:': written(row('p').spec_path) })
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return]).sort(), [['d', 'needs_design'], ['p', 'spec_unreviewed']])
+  assert.deepEqual(labels(prompts).filter((l) => l.startsWith('plan:')), ['plan:p'])
+  assert.ok(prompts.find((p) => p.opts.label === 'plan:p').prompt.includes(row('p').spec_path))
+  assert.ok(result.implemented.some((i) => i.id === 'a'), 'the rest keeps running')
+})
+
+test('a childless folder you authored is parked, never handed to the planner', async () => {
+  const sim = simulate([composite('.')])
+  const { result, prompts } = await run(sim)
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['.', 'needs_design']])
+  assert.ok(result.parked[0].question.includes(composite('.').spec_path), 'the question names the spec that needs a Plan')
+  assert.ok(!labels(prompts).some((l) => l.startsWith('plan:')))
 })
 
 test('a preflight checkpoint dispatches nothing but the two boundaries', async () => {
@@ -314,16 +322,24 @@ test('a resumed approval merges the approved head, not the branch tip', async ()
   assert.deepEqual(sim.batches[0].children, [{ id: 'a', head_sha: 'approved' }])
 })
 
-test('a replan that writes no new revision of the leaf escalates instead of looping', async () => {
-  const sim = simulate([composite('.'), row('a', { rev: 5 })], {
-    preflight: (args) => (args.reload ? { nodes: [composite('.'), row('a', { rev: 5, status: 'active' })] } : {}),
-  })
-  const { result, prompts } = await run(sim, {
-    implementer: () => ({ status: 'decompose', detail: 'too big', concerns: [], commits: [] }),
-    planner: () => ({ status: 'written', written: [], accepted_warnings: [], uncovered: [], question: '', detail: '' }),
-  })
-  assert.deepEqual(result.escalations.map((e) => e.reason), ['replan_not_converging'])
-  assert.equal(prompts.filter((p) => p.opts.label.startsWith('implementer:')).length, 1)
+const finding = { next: 'finding', reason: '', failures: [{ check: 'suite', claim: 'the premise is false', evidence: 'x:1' }] }
+
+test('a verify finding under a folder you authored parks that folder for a re-spec', async () => {
+  const sim = simulate([composite('.'), row('v', { rigor: 'verify' })], { close: { v: [finding] } })
+  const { result, prompts } = await run(sim)
+  assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['v', 'verify_finding']])
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['.', 'needs_respec']])
+  assert.ok(result.parked[0].question.includes(composite('.').spec_path), 'the question names the spec to edit')
+  assert.ok(!labels(prompts).some((l) => l.startsWith('plan:')))
+})
+
+test('a folder the planner authored is replanned by the planner, in its own spec', async () => {
+  const sim = simulate([composite('.'), composite('c', { author: 'planner' }), row('c/v', { rigor: 'verify' })],
+    { close: { 'c/v': [finding] } })
+  const { result, prompts } = await run(sim, { 'plan:': written(composite('c').spec_path) })
+  const plan = prompts.find((p) => p.opts.label === 'plan:c')
+  assert.ok(plan && plan.prompt.includes(composite('c').spec_path))
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['c', 'spec_unreviewed']])
 })
 
 test('a failed integration review makes the result incomplete', async () => {

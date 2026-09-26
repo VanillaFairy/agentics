@@ -479,14 +479,22 @@ function integrationPrompt(id, where, children, missing) {
 }
 
 function plannerPrompt(id, why, evidence) {
-  return 'Plan node ' + id + ' of effort ' + effort + ' (repository ' + repo + ').\n' +
-    (why ? 'Why: ' + why + '\n' : 'Decompose it into children until every leaf is atomic.\n') +
+  const row = rows.get(id)
+  const check = 'node "' + pluginRoot + '/lib/spec.mjs" check --repo "' + repo + '" --effort "' + effort + '" --folder "' + id + '"'
+  const charge = row.kind === 'leaf'
+    ? 'Task ' + id + ' ("' + row.title + '") is promoted to a folder of its own. Write its spec: ' + row.spec_path +
+      '. Its entries realise every decision the task realises (' + ((row.decisions || []).join(', ') || 'none') +
+      ') and carry its criteria forward. Do not touch the spec that holds the task\'s entry.\n'
+    : row.kind === 'design'
+      ? 'Sub-effort ' + id + ' ("' + row.title + '") has author: planner. Write its spec: ' + row.spec_path + '.\n'
+      : 'Folder ' + id + ' ("' + row.title + '") is yours (author: planner). Rewrite its spec in place: ' + row.spec_path + '.\n'
+  return 'Plan folder ' + id + ' of effort ' + effort + ' (repository ' + repo + ').\n' + charge +
+    (why ? 'Why: ' + why + '\n' : '') +
     'Read the tree: node "' + pluginRoot + '/lib/tree.mjs" show --repo "' + repo + '" --effort "' + effort + '" --json\n' +
-    'Write nodes: node "' + pluginRoot + '/lib/tree.mjs" add --repo "' + repo + '" --effort "' + effort +
-    '" --file <a JSON array you write under ' + repo + '/.agentics/' + effort + '/.state/reports/> --by planner' +
-    (why ? ' --reason replan' : '') + '\n' +
-    (evidence ? '\nEvidence (a survey of this node\'s ground):\n' + evidence + '\n' : '') +
-    '\nReturn status written with the ids you wrote, or the user-bound need.'
+    'Check the spec until it prints no problems: ' + check + '\n' +
+    'Never write a Decisions row: a decision you need is a needs_decision return.\n' +
+    (evidence ? '\nEvidence (a survey of this folder\'s ground):\n' + evidence + '\n' : '') +
+    '\nReturn status written with the spec\'s path in written, or the user-bound need.'
 }
 
 // ---------------------------------------------------------------- records
@@ -612,58 +620,70 @@ function unplanned() {
   return out
 }
 
-async function reload(label) {
-  const payload = await boundary('preflight', { root: rootId, reload: true }, { phase: 'Plan', label })
-  absorbTree(payload)
-}
-
+/**
+ * Plan a node by writing a spec. A task is promoted by the planner; a folder is replanned by it
+ * only when the planner wrote that folder. A folder the user wrote is theirs to re-spec.
+ */
 async function planNode(id, why) {
   const row = rows.get(id)
-  if (!why && row.kind === 'design') {
-    park(id, 'needs_design', 'design node ' + id + ' has no children: run the design skill on it')
+  if (row.kind !== 'leaf' && row.author !== 'planner') {
+    if (why) park(id, 'needs_respec', why + ' — edit ' + row.spec_path + ', re-approve it and recompile')
+    else park(id, 'needs_design', row.kind === 'design'
+      ? 'sub-effort ' + id + ' has no approved spec: run the design skill on it'
+      : 'folder ' + id + ' plans nothing: its spec ' + row.spec_path + ' needs a Plan')
     return null
   }
   planning.add(id)
   try {
-    let evidence = ''
-    if (!why && row.ground_known === false && row.evidence !== 'standing') {
-      phase('Plan')
-      const survey = await workflow('agentics-survey', {
-        question: 'Where and how does this change land: ' + row.title + ' — ' + (row.intent || ''),
-        roots: repo, notes: '', pace, intelligence: DIAL, plugin_root: pluginRoot,
-      }).catch((err) => {
-        failedChannels.push('survey')
-        note('survey for ' + id + ' failed: ' + (err && err.message) + ' — planning on the tree alone')
-        return null
-      })
-      if (survey) {
-        evidence = JSON.stringify({ verdicts: survey.verdicts, coverage: survey.coverage })
-        if (survey.coverage && survey.coverage.complete !== true) note('survey for ' + id + ' is incomplete: ' + (survey.coverage.unreached || []).join('; '))
-      }
-    }
-    const tier = tierFor(JUDGE, 'high')
-    const res = await dispatch(plannerPrompt(id, why, evidence), {
-      agentType: 'agentics:planner', schema: PLANNED, phase: 'Plan', label: 'plan:' + id, ...tier,
-    }, id)
-    if (!res) throw new Error('the planner returned nothing')
-    if (res.status === 'written') {
-      log('plan:' + id + ' wrote ' + (res.written || []).length + ' node(s): ' + (res.written || []).join(', '))
-      if ((res.accepted_warnings || []).length) note('planner for ' + id + ' accepted: ' + res.accepted_warnings.join('; '))
-      if ((res.uncovered || []).length) note('planner for ' + id + ' did not cover: ' + res.uncovered.join('; '))
-      await reload('reload:' + id)
-      if (childrenOf(id).length === 0 && rows.get(id) && rows.get(id).kind !== 'leaf') {
-        escalate(id, 'planner_wrote_nothing', res.detail)
-      }
-      return null
-    }
-    if (['needs_decision', 'contract_changed', 'premise_mismatch'].includes(res.status)) {
-      park(id, res.status, res.question || res.detail)
-      return null
-    }
-    escalate(id, 'plan_' + res.status, res.detail)
+    const spec = await writeSpec(id, why)
+    if (spec) await reviewSpec(id, spec)
   } finally {
     planning.delete(id)
   }
+  return null
+}
+
+/** The planner writes the node's spec; the path it wrote, or null once the node is parked or escalated. */
+async function writeSpec(id, why) {
+  const row = rows.get(id)
+  let evidence = ''
+  if (!why && row.ground_known === false && row.evidence !== 'standing') {
+    phase('Plan')
+    const survey = await workflow('agentics-survey', {
+      question: 'Where and how does this change land: ' + row.title + ' — ' + (row.intent || ''),
+      roots: repo, notes: '', pace, intelligence: DIAL, plugin_root: pluginRoot,
+    }).catch((err) => {
+      failedChannels.push('survey')
+      note('survey for ' + id + ' failed: ' + (err && err.message) + ' — planning on the tree alone')
+      return null
+    })
+    if (survey) {
+      evidence = JSON.stringify({ verdicts: survey.verdicts, coverage: survey.coverage })
+      if (survey.coverage && survey.coverage.complete !== true) note('survey for ' + id + ' is incomplete: ' + (survey.coverage.unreached || []).join('; '))
+    }
+  }
+  const tier = tierFor(JUDGE, 'high')
+  const res = await dispatch(plannerPrompt(id, why, evidence), {
+    agentType: 'agentics:planner', schema: PLANNED, phase: 'Plan', label: 'plan:' + id, ...tier,
+  }, id)
+  if (!res) throw new Error('the planner returned nothing')
+  if (res.status === 'written') {
+    log('plan:' + id + ' wrote ' + ((res.written || []).join(', ') || row.spec_path))
+    if ((res.accepted_warnings || []).length) note('planner for ' + id + ' accepted: ' + res.accepted_warnings.join('; '))
+    if ((res.uncovered || []).length) note('planner for ' + id + ' did not cover: ' + res.uncovered.join('; '))
+    return { path: row.spec_path, written: res.written || [] }
+  }
+  if (['needs_decision', 'contract_changed', 'premise_mismatch'].includes(res.status)) {
+    park(id, res.status, res.question || res.detail)
+    return null
+  }
+  escalate(id, 'plan_' + res.status, res.detail)
+  return null
+}
+
+/** The seam the autonomous review fills: a planner-written spec is never compiled unreviewed. */
+async function reviewSpec(id, spec) {
+  park(id, 'spec_unreviewed', spec.path + ' was written by the planner and has not passed its autonomous review')
 }
 
 // ---------------------------------------------------------------- commands

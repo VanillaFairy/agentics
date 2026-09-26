@@ -267,7 +267,7 @@ test('every probe reads the repository, not only the document', async () => {
 // evidence. What is pinned here is that the resolution happens once, reaches every axis, and
 // degrades into "locate it yourself" rather than into a quieter probe.
 
-const CITED_PATH = 'C:/repo/.claude/agentics/context/c17ed000-1.md'
+const CITED_PATH = 'C:/repo/.agentics/.state/context/c17ed000-1.md'
 
 const groundPayload = (over = {}) => carriedEnvelope({
   artifact: 'docs/proposal.md',

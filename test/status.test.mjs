@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { append } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import { costOf, efforts, renderTodos, todosOf } from '../lib/status.mjs'
-import { effortDir, executionDir } from '../lib/store.mjs'
+import { effortDir, effortStateDir, executionDir } from '../lib/store.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/status.mjs', import.meta.url))
 const fresh = () => mkdtempSync(join(tmpdir(), 'agentics-status-')).split('\\').join('/')
@@ -147,8 +147,8 @@ test('an execution without an envelope lists the whole effort', () => {
 
 test('the efforts list derives root status, counts, executions and the last seq', () => {
   const repo = effortWith(TREE)
-  mkdirSync(effortDir(repo, E), { recursive: true })
-  writeFileSync(join(effortDir(repo, E), 'effort.json'), JSON.stringify({ about: 'the change' }))
+  mkdirSync(effortStateDir(repo, E), { recursive: true })
+  writeFileSync(join(effortStateDir(repo, E), 'effort.json'), JSON.stringify({ about: 'the change' }))
   dispatched(repo, 'a/impl', 'implementer')
   append(repo, E, 'state:' + X1, { kind: 'closed', status: 'done' })
   mkdirSync(executionDir(repo, E, X2), { recursive: true })

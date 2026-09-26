@@ -483,7 +483,7 @@ function plannerPrompt(id, why, evidence) {
     (why ? 'Why: ' + why + '\n' : 'Decompose it into children until every leaf is atomic.\n') +
     'Read the tree: node "' + pluginRoot + '/lib/tree.mjs" show --repo "' + repo + '" --effort "' + effort + '" --json\n' +
     'Write nodes: node "' + pluginRoot + '/lib/tree.mjs" add --repo "' + repo + '" --effort "' + effort +
-    '" --file <a JSON array you write under ' + repo + '/.claude/agentics/efforts/' + effort + '/reports/> --by planner' +
+    '" --file <a JSON array you write under ' + repo + '/.agentics/' + effort + '/.state/reports/> --by planner' +
     (why ? ' --reason replan' : '') + '\n' +
     (evidence ? '\nEvidence (a survey of this node\'s ground):\n' + evidence + '\n' : '') +
     '\nReturn status written with the ids you wrote, or the user-bound need.'

@@ -32,8 +32,8 @@ Run the checks with:
   point into it as `docs/DESIGN.md#<anchor>`, and `test/design-doc.test.mjs` fails on any pointer
   whose heading is gone.
 - **Data contracts are registered in `docs/DESIGN.md#data-contracts`** — the node record and
-  events, the state and journal lines, `seq`, the verify payload, the gotcha file, slots and locks,
-  the boundary payloads, the replanning returns, the coverage block and the workflow returns — each
+  events, the spec format, the ledger lines, the compile result, the state and journal lines,
+  `seq`, the verify payload, the gotcha file, slots and locks, the boundary payloads, the replanning returns, the coverage block and the workflow returns — each
   with the code that owns it and every place it is restated. **Any change to one of those field
   lists updates its entry there and edits every copy the entry names, in the same commit series;
   any change to an agent's `tools:` line edits `test/agent-allowlists.test.mjs` in the same
@@ -112,5 +112,5 @@ The laws themselves are in `docs/DESIGN.md#iron-laws`.
 | IL1 — a set task is finished; no counter ends anything | `tools/rules/no-turn-caps.mjs`; typed escalations on every agent; the resume ladder (`lib/resume.mjs`) |
 | IL2 — a partial result never looks like a whole one | `tools/rules/coverage-block.mjs`; `stop_reason` schemas; continuation loops in `agentics-survey`; a `.catch` on every side channel; `tools/rules/task-tool-fallback.mjs` |
 | IL3 — nothing judges itself | `tools/rules/no-self-verdict.mjs`; `lib/verdict.mjs`; the computed review-loop exit in `agentics-develop` |
-| IL4 — the user owns decisions and their tree | `lib/boundary.mjs land` behind the session's gate; `lib/verify.mjs`'s linked-worktree refusal; `decisionProblems` in `lib/tree.mjs`, which refuses a replan that touches a decision |
+| IL4 — the user owns decisions and their tree | `lib/boundary.mjs land` behind the session's gate; `lib/verify.mjs`'s linked-worktree refusal; `decisionProblems` in `lib/tree.mjs`, which admits a decision only from compile, against the approved copy on the ledger (`lib/approval.mjs`), and refuses a replan that changes a contract or drops a realised decision |
 | GP2 — nothing outlives its consumer | `test/liveness.test.mjs`; `tools/rules/size-budget.mjs` |

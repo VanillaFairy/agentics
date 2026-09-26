@@ -648,3 +648,44 @@ test('parks that failed to land are appended by the next compile, once', () => {
   assert.equal(parksOf(repo, 'cli').length, 1)
   assert.equal(approvalState(repo, E, 'api').compiled_hash, approvalState(repo, E, 'api').hash)
 })
+
+/** The root and api fixtures with `reload` providing a contract that api's `parse` consumes. */
+const HOOKED_ROOT = ROOT.replace('locus: src/reload.js, test/reload.test.js', 'locus: src/reload.js, test/reload.test.js · provides: reload-hook (src/reload.js)')
+const HOOKED_API = API.replace('consumes: config-type', 'consumes: config-type, reload-hook')
+
+test('renaming a contract parks its consumer in a folder edited since approval', () => {
+  const repo = effort({ '.': HOOKED_ROOT, api: HOOKED_API })
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  write(repo, 'api', HOOKED_API.replace('Use the existing tokenizer.', 'Use the new tokenizer.'))
+  write(repo, '.', HOOKED_ROOT.replace('provides: reload-hook (src/reload.js)', 'provides: hook (src/reload.js)'))
+  approve(repo, '.')
+  const out = compiled(repo)
+  assert.ok(out.parked.some((p) => p.node === 'api/parse' && p.reason === 'contract_changed'), JSON.stringify(out.parked))
+  assert.equal(readTree(repo, E).status.get('api/parse').status, 'parked')
+})
+
+test('removing a contract parks its consumer in a folder edited since approval', () => {
+  const repo = effort({ '.': HOOKED_ROOT, api: HOOKED_API })
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  write(repo, 'api', HOOKED_API.replace('Use the existing tokenizer.', 'Use the new tokenizer.'))
+  write(repo, '.', HOOKED_ROOT.replace(' · provides: reload-hook (src/reload.js)', ''))
+  approve(repo, '.')
+  const out = compiled(repo)
+  assert.ok(out.parked.some((p) => p.node === 'api/parse' && p.reason === 'contract_changed'), JSON.stringify(out.parked))
+})
+
+test('renaming a contract under --folder parks its consumer outside that folder', () => {
+  const root = ROOT.replace('realises: D3 · after: api · rigor: tdd', 'realises: D3 · after: api · consumes: config-type · rigor: tdd')
+  const repo = effort({ '.': root, api: API })
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  write(repo, 'api', API.replace('provides: config-type (src/api/types.js)', 'provides: cfg-type (src/api/types.js)').replace('consumes: config-type', 'consumes: cfg-type'))
+  approve(repo, 'api')
+  const out = compiled(repo, { folder: 'api' })
+  assert.ok(out.parked.some((p) => p.node === 'reload' && p.reason === 'contract_changed'), JSON.stringify(out.parked))
+})

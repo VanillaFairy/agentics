@@ -22,7 +22,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const design = readFileSync(join(ROOT, 'docs', 'DESIGN.md'), 'utf8')
 
 // `superpowers` is gitignored planning scratch under docs/; nothing in it is part of the design.
-const SKIP_DIRS = new Set(['.git', 'node_modules', 'superpowers'])
+const SKIP_DIRS = new Set(['.git', 'node_modules', '.agentics', 'superpowers'])
 const SOURCE = /\.(md|mjs|js|json)$/
 
 /** GitHub's heading anchor: lowercase, punctuation dropped, each space a hyphen. */

@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url'
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 // `superpowers` is docs/superpowers/, gitignored planning scratch: a stale copy of a block there
 // must neither satisfy a pin nor fail one.
-const SKIP_DIRS = new Set(['.git', 'node_modules', '.claude', 'superpowers'])
+const SKIP_DIRS = new Set(['.git', 'node_modules', '.claude', '.agentics', 'superpowers'])
 
 /** Ids that must exist somewhere; a refactor that deletes the markers fails loudly. */
 const REQUIRED_IDS = [
@@ -46,6 +46,9 @@ const REQUIRED_IDS = [
   'dispatch-economy', 'dispatched-economy',
   // Every phase that records into an effort says the same thing about what a record is worth.
   'effort-store',
+  // The glossary and principles every agent acting on specs, entries and approvals shares; a copy
+  // that drifts is an agent working to a different meaning of the same word.
+  'vocabulary',
 ]
 
 const OPEN = /<!--\s*agentics:verbatim\s+([a-z0-9-]+)\s*-->/g

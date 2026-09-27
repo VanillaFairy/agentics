@@ -461,6 +461,28 @@ test('checkFolder refuses a decision no entry of the spec realises, at its Decis
   }
 })
 
+test('checkFolder refuses a task whose node compile would refuse: no rigor, an unknown rigor, no locus, a role that does not fit its rigor (I3)', () => {
+  const at = (text) => effortOnDisk({ '.': ROOT, 'store-layout': text })
+  const line = (text) => lineOf(text, '**paths**')
+  const refusedAtLine = (problems, at, keyword) => assert.ok(
+    problems.some((p) => p.line === at && keyword.test(p.problem)),
+    'expected a problem at line ' + at + ' matching ' + keyword + ', got ' + JSON.stringify(problems))
+
+  const noRigor = SUB.replace('rigor: tdd · ', '')
+  refusedAtLine(checkFolder(at(noRigor), 'e1', 'store-layout').problems, line(noRigor), /rigor/)
+
+  const badRigor = SUB.replace('rigor: tdd', 'rigor: fancy')
+  refusedAtLine(checkFolder(at(badRigor), 'e1', 'store-layout').problems, line(badRigor), /rigor/)
+
+  const noLocus = SUB.replace(' · locus: lib/store.mjs, test/store.test.mjs', '')
+  refusedAtLine(checkFolder(at(noLocus), 'e1', 'store-layout').problems, line(noLocus), /locus/)
+
+  const wrongRole = SUB.replace('rigor: tdd', 'rigor: tdd · role: green')
+  refusedAtLine(checkFolder(at(wrongRole), 'e1', 'store-layout').problems, line(wrongRole), /role/)
+
+  assert.deepEqual(checkFolder(at(SUB), 'e1', 'store-layout').problems, [], 'the unmutated fixture stays clean')
+})
+
 test('the CLI prints {folder, problems} under its digest, and exits 0 even with problems', () => {
   const repo = effortOnDisk({ '.': ROOT, 'store-layout': swap(SUB, '| store-layout.D1 |', '| D4 | x | y |') })
   const clean = cli('check', '--repo', repo, '--effort', 'e1', '--folder', '.')

@@ -221,10 +221,24 @@ const caveats =
   (c.unreached.length > 0
     ? `NOTE: not reached at all: ${c.unreached.join('; ')}.\n\n` : '')
 
+/** One item as a reader reads it: id, topic, kind, claim, and what it rests on. */
+function itemLine(it) {
+  const anchors = [
+    ...(it.spans || []).map((s) => `${s.path}:${s.start}-${s.end}`),
+    ...(it.queries || []).map((q) => `search /${q.pattern}/ in ${(q.scope || []).join(', ') || 'the repository'}`),
+    ...(it.sources || []).map((s) => s.url + (s.version ? '@' + s.version : '')),
+    ...(it.rests_on || []).map((id) => 'rests on ' + id),
+  ]
+  return `- [${it.id}] (${it.topic}, ${it.kind}) ${it.claim}` + (anchors.length ? ` — ${anchors.join('; ')}` : '')
+}
+
 // The synthesizing analyst carries `Read` and nothing that searches, so everything it rules on is
-// in this block: the survey's verdicts already carry their path:line receipts.
+// in this block: the survey's items already carry their anchors.
 const evidence =
-  `PER-TOPIC FINDINGS:\n${JSON.stringify(survey.verdicts, null, 1)}\n\n` +
+  `EVIDENCE ITEMS — one claim each, with what it rests on:\n` +
+  `${(survey.items || []).map(itemLine).join('\n') || '(none)'}\n\n` +
+  (survey.risks && survey.risks.length
+    ? `RISKS THE JUDGES NAMED:\n${survey.risks.map((r) => `- [${r.topic}] ${r.text}`).join('\n')}\n\n` : '') +
   (survey.history ? `GIT HISTORY:\n${survey.history}\n\n` : '') +
   (survey.docs ? `EXTERNAL DOCUMENTATION:\n${survey.docs}\n\n` : '') +
   caveats +
@@ -234,11 +248,12 @@ const evidence =
 // What the survey established, handed back when synthesis dies.
 //
 // Synthesis is one agent at the end of a phase that may have cost several hundred thousand
-// tokens, and its death used to return coverage arrays and nothing else — the verdicts, the
-// history and the docs died inside the script. The session can hand-synthesize from these,
+// tokens, and its death used to return coverage arrays and nothing else — the items, risks,
+// history and docs died inside the script. The session can hand-synthesize from these,
 // or retry synthesis alone; either beats re-buying the survey to recover work already done.
 const gathered = () => ({
-  verdicts: survey.verdicts || [],
+  items: survey.items || [],
+  risks: survey.risks || [],
   history: survey.history || '',
   docs: survey.docs || '',
 })

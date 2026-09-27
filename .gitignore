@@ -1,3 +1,4 @@
 # Local planning scratch written by the vf-superpowers skills (specs, plans, progress).
 # It is not part of the design; docs/DESIGN.md is.
 docs/superpowers/
+.worktrees/

@@ -1,9 +1,13 @@
 Status: DONE
 # 2026-09-26-design-loop-redesign checkpoint
 
-Wave: 16 — T26c
-Integration head: 631ca4f
-Remaining: T27, T28a, T28b, T28d, T29
+Wave: 17 — T27
+Integration head: b5f8f4b
+Remaining: T28a, T28b, T28d, T29
+
+## Tasks (wave 17)
+| Task | Wave | Branch | State | Review cycles | Merge commit |
+| T27 | 17 | sdd/2026-09-26-design-loop-redesign/T27 | merged | 0 | b5f8f4b |
 
 ## Tasks (wave 16)
 | Task | Wave | Branch | State | Review cycles | Merge commit |
@@ -465,6 +469,24 @@ one `- Read:` line — watch it.)
 - (none — T26br's merge-permission question resolved: the user had the orchestrator run the merge
   directly. See Decisions and deviations, W14. T22d D1 answered: fix. See Decisions and
   deviations, W8.)
+
+- W17 T27: implemented straight through (8040f5d), rewriting `docs/DESIGN.md`'s `## Evidence`
+  section (items/anchors, drift ladder, survey, existing-solutions, cites/evidence.md), adding the
+  probe paragraph, correcting `### Storage`/`### Context files`, adding `### Evidence item store`
+  and `### Cites` data-contract sections, and rewriting the four evidence workflows'
+  `### Workflow returns` entries. The implementer flagged one concern: the acceptance grep for
+  `\.claude/agentics` prints one pre-existing, out-of-scope line in the Migration section
+  (`.claude/agentics/slots/config.json`, describing what `tools/migrate-legacy.mjs` copies) —
+  unrelated to evidence/survey wording and outside this task's Files list. Reviewer's SPEC verdict
+  was PASS (1 unverifiable) with no finding raised against it, so ruled a pre-existing false
+  positive in the task's own acceptance grep, not a defect; not fixed. Review: SPEC PASS,
+  QUALITY Approved (0 critical/important, 3 minor, left in `T27-review.md`, not fixed). Merged
+  b5f8f4b, clean `--no-ff`, no conflicts (git printed a harmless "Failed to parse repository
+  information" line from an unrelated hook alongside the successful merge). Full suite on
+  b5f8f4b: `node tools/lint.mjs` clean, `node --test` 1053/1053 (log at
+  `~/.superpowers/sdd/-c-work-claude-vanillafairy-agentics/plan/suite-b5f8f4b.log`). No triad
+  (rigor: verify), no audit, no gap task. Wave 17 is complete; no tasks carry into wave 18 from
+  this wave.
 
 ## Knowledge entries
 - mutation-probe-baseline-scope (W4)

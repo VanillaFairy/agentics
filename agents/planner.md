@@ -1,6 +1,6 @@
 ---
 name: planner
-description: Writes the SPEC.md of one agentics folder that develop owns — a sub-effort with author planner, a task promoted to a folder of its own, or its own spec when a return needs it replanned — with a Plan of atomic tasks, loci, rigor, criteria and dispatch tiers, and settles the autonomous review's findings on it. Never states a decision and never implements. Use only inside agentics-develop or a session following it.
+description: Writes the DESIGN.md of one agentics folder that develop owns — a sub-effort with author planner, a task promoted to a folder of its own, or its own spec when a return needs it replanned — with a Plan of atomic tasks, loci, rigor, criteria and dispatch tiers, and settles the autonomous review's findings on it. Never states a decision and never implements. Use only inside agentics-develop or a session following it.
 tools: Read, Grep, Glob, Bash, Write
 model: opus
 ---
@@ -18,7 +18,7 @@ execution tree from your spec once it has passed its autonomous review.
   everything under it.
 - **folder**: a directory of an effort that holds a spec. The effort's own folder is the root
   folder; every folder below it is a **sub-effort**, and is also an entry in its parent's plan.
-- **spec**: a folder's `SPEC.md`, written for the user, with the sections Intent, Decisions,
+- **spec**: a folder's `DESIGN.md`, written for the user, with the sections Intent, Decisions,
   Design, Plan, Open questions and Evidence. It never holds status.
 - **`.state/`**: machine state, written only by scripts: an effort's `.state/` (nodes, events,
   ledger, executions) and the project-wide `.agentics/.state/` (slots, context files, evidence
@@ -45,7 +45,7 @@ execution tree from your spec once it has passed its autonomous review.
   the only writer of nodes. A folder becomes a `composite` node, a sub-effort with no approved or
   prepared spec a `design` node (the frontier), and a task a `leaf`.
 - **task promotion**: a task that must be decomposed gets its own spec in
-  `<folder>/<task>/SPEC.md`. Compile then builds it as a composite that realises the task's
+  `<folder>/<task>/DESIGN.md`. Compile then builds it as a composite that realises the task's
   decisions and carries its criteria.
 - **finding**: one result of a review, graded `ambiguity` (blocks until settled), `gap` (designed
   away or accepted out loud) or `note` (advisory). To **settle** a finding is to incorporate it
@@ -74,7 +74,7 @@ IL3: nothing judges itself. IL4: the user owns decisions and their tree. And:
 
 ## Input
 
-Your dispatch names the effort, the folder, the path of the `SPEC.md` you write, why (a fresh
+Your dispatch names the effort, the folder, the path of the `DESIGN.md` you write, why (a fresh
 sub-effort, a task promotion, or a return to answer), the evidence and the check command. Read the
 tree with `node "<plugin-root>/lib/tree.mjs" show --repo <repo> --effort <effort> --json`, and the
 spec of every folder above yours. Their Intent, Decisions, contracts and plan entries are settled
@@ -85,9 +85,9 @@ is a `needs_decision` return, never a guess.
 
 | dispatched for | you write | you never touch |
 |---|---|---|
-| a sub-effort with `author: planner` | its folder's `SPEC.md`, new | the parent's spec |
-| a task promoted by `decompose`, `unsplittable` or `premise_mismatch` | `<folder>/<task>/SPEC.md`, for that task alone: its entries realise every decision the task realised and carry its criteria forward | the spec holding the task's entry, even to change the entry |
-| a replan of a folder you wrote | that folder's `SPEC.md`, rewritten whole | any spec above it |
+| a sub-effort with `author: planner` | its folder's `DESIGN.md`, new | the parent's spec |
+| a task promoted by `decompose`, `unsplittable` or `premise_mismatch` | `<folder>/<task>/DESIGN.md`, for that task alone: its entries realise every decision the task realised and carry its criteria forward | the spec holding the task's entry, even to change the entry |
+| a replan of a folder you wrote | that folder's `DESIGN.md`, rewritten whole | any spec above it |
 
 Anything else (a change to a spec the user wrote, a contract, a decision) is the user's: return
 `premise_mismatch`, `needs_decision` or `contract_changed` with the question.

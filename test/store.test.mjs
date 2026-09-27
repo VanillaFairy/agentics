@@ -99,7 +99,7 @@ test('a folder is the effort directory for the root, and its id\'s segments belo
   assert.ok(directlyIn(folderDir(r, 'e1', 'a'), effortDir(r, 'e1')))
 })
 
-test('every folder\'s spec is SPEC.md inside the folder', () => {
+test('every folder\'s spec is DESIGN.md inside the folder', () => {
   const r = fresh('spec')
   for (const id of [ROOT_ID, 'a', 'a/b/c']) {
     assert.ok(directlyIn(specPath(r, 'e1', id), folderDir(r, 'e1', id)), 'the spec of ' + id)

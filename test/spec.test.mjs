@@ -1,4 +1,4 @@
-// test/spec.test.mjs — a SPEC.md read as data: sections, Decisions rows, graded open questions and
+// test/spec.test.mjs — a DESIGN.md read as data: sections, Decisions rows, graded open questions and
 // plan entries; the checks that place a spec in its effort; and the hash approval rests on.
 //
 // Design: docs/DESIGN.md#spec-format.
@@ -50,13 +50,13 @@ const AT_ROOT = { folderId: '.', definedAbove: new Set(), authoredBy: 'you' }
 
 /** Every problem the parse and a root-level check find. */
 function problemsOf(text, opts = {}) {
-  const spec = parseSpec(text, { file: 'SPEC.md' })
+  const spec = parseSpec(text, { file: 'DESIGN.md' })
   return [...spec.problems, ...checkSpec(spec, { ...AT_ROOT, ...opts })]
 }
 
-/** Some problem sits on `line`, names SPEC.md, and says `keyword`. */
+/** Some problem sits on `line`, names DESIGN.md, and says `keyword`. */
 function refusedAt(problems, line, keyword) {
-  assert.ok(problems.some((p) => p.line === line && p.file === 'SPEC.md' && keyword.test(p.problem)),
+  assert.ok(problems.some((p) => p.line === line && p.file === 'DESIGN.md' && keyword.test(p.problem)),
     'expected a problem at line ' + line + ' matching ' + keyword + ', got ' + JSON.stringify(problems))
 }
 
@@ -64,15 +64,15 @@ const entry = (spec, name) => spec.entries.find((e) => e.name === name)
 
 test('both fixtures are clean: no parse problem, no check problem', () => {
   assert.deepEqual(problemsOf(ROOT), [])
-  const sub = parseSpec(SUB, { file: 'SPEC.md' })
+  const sub = parseSpec(SUB, { file: 'DESIGN.md' })
   assert.deepEqual(sub.problems, [])
   assert.deepEqual(checkSpec(sub, { folderId: 'store-layout', definedAbove: new Set(['D1', 'D2', 'D3']), authoredBy: 'you' }), [])
 })
 
 test('the title is the first "# " heading, and every section is found at its line', () => {
-  const spec = parseSpec(ROOT, { file: 'SPEC.md' })
+  const spec = parseSpec(ROOT, { file: 'DESIGN.md' })
   assert.equal(spec.title, 'A readable design loop')
-  assert.equal(spec.file, 'SPEC.md')
+  assert.equal(spec.file, 'DESIGN.md')
   assert.deepEqual(Object.keys(spec.sections), SECTIONS)
   for (const name of SECTIONS) assert.equal(spec.sections[name].line, headingLine(ROOT, name), name)
   assert.match(spec.sections.Intent.body, /^Specs a person reads/)
@@ -80,7 +80,7 @@ test('the title is the first "# " heading, and every section is found at its lin
 })
 
 test('a heading or entry inside a fenced block is prose', () => {
-  const spec = parseSpec(ROOT, { file: 'SPEC.md' })
+  const spec = parseSpec(ROOT, { file: 'DESIGN.md' })
   assert.equal(spec.sections.Plan.line, lineOf(ROOT, '## Plan', lineOf(ROOT, '```text') + 2))
   assert.ok(spec.sections.Plan.line > lineOf(ROOT, '```text') + 3, 'the fenced "## Plan" is not the section')
   assert.equal(entry(spec, 'fenced'), undefined)
@@ -88,7 +88,7 @@ test('a heading or entry inside a fenced block is prose', () => {
 })
 
 test('Decisions rows parse into id, text and why; the header and separator are not rows', () => {
-  const spec = parseSpec(ROOT, { file: 'SPEC.md' })
+  const spec = parseSpec(ROOT, { file: 'DESIGN.md' })
   assert.deepEqual(spec.decisions.map((d) => d.id), ['D1', 'D2', 'D3'])
   const d1 = spec.decisions[0]
   assert.equal(d1.text, 'Efforts live in `.agentics/<effort>/`.')
@@ -98,13 +98,13 @@ test('Decisions rows parse into id, text and why; the header and separator are n
 
 test('a pipe escaped inside a cell stays in the cell', () => {
   const text = swap(ROOT, '| D3 |', '| D3 | Use `a \\| b` as the separator. | It reads well. |')
-  const d3 = parseSpec(text, { file: 'SPEC.md' }).decisions[2]
+  const d3 = parseSpec(text, { file: 'DESIGN.md' }).decisions[2]
   assert.equal(d3.text, 'Use `a | b` as the separator.')
   assert.equal(d3.why, 'It reads well.')
 })
 
 test('open questions carry one grade each; parked names what reopens it; indented lines continue', () => {
-  const spec = parseSpec(ROOT, { file: 'SPEC.md' })
+  const spec = parseSpec(ROOT, { file: 'DESIGN.md' })
   assert.deepEqual(spec.questions.map((q) => q.grade), ['blocking', 'parked', 'lookup', 'compost'])
   assert.ok(spec.questions.every((q) => GRADES.includes(q.grade)))
   const parked = spec.questions[1]
@@ -118,7 +118,7 @@ test('open questions carry one grade each; parked names what reopens it; indente
 })
 
 test('plan entries parse name, kind, line, title and context', () => {
-  const spec = parseSpec(ROOT, { file: 'SPEC.md' })
+  const spec = parseSpec(ROOT, { file: 'DESIGN.md' })
   assert.deepEqual(spec.entries.map((e) => [e.name, e.kind]),
     [['store-layout', 'sub-effort'], ['spec-parser', 'task'], ['planner-part', 'sub-effort'], ['later', 'deferred'], ['old-idea', 'dropped']])
   assert.ok(spec.entries.every((e) => ENTRY_KINDS.includes(e.kind)))
@@ -132,7 +132,7 @@ test('plan entries parse name, kind, line, title and context', () => {
 })
 
 test('fields parse to their types, wrapped "·" lines included', () => {
-  const spec = parseSpec(ROOT, { file: 'SPEC.md' })
+  const spec = parseSpec(ROOT, { file: 'DESIGN.md' })
   const layout = entry(spec, 'store-layout')
   assert.deepEqual(layout.realises, ['D1'])
   assert.deepEqual(layout.provides, [{ name: 'store-paths', paths: ['lib/store.mjs', 'lib/effort.mjs'] }])
@@ -157,12 +157,12 @@ test('fields parse to their types, wrapped "·" lines included', () => {
   assert.deepEqual(planner.after, ['spec-parser', '/store-layout'])
   assert.deepEqual(planner.shared, ['package.json'])
 
-  const paths = entry(parseSpec(SUB, { file: 'SPEC.md' }), 'paths')
+  const paths = entry(parseSpec(SUB, { file: 'DESIGN.md' }), 'paths')
   assert.deepEqual(paths.locus, ['lib/store.mjs', 'test/store.test.mjs'])
 })
 
 test('criteria carry their check; a HUMAN: criterion keeps its prefix and has no check', () => {
-  const parser = entry(parseSpec(ROOT, { file: 'SPEC.md' }), 'spec-parser')
+  const parser = entry(parseSpec(ROOT, { file: 'DESIGN.md' }), 'spec-parser')
   assert.equal(parser.criteria.length, 2)
   const [checked, human] = parser.criteria
   assert.equal(checked.text, 'every refusal names a line')
@@ -174,13 +174,13 @@ test('criteria carry their check; a HUMAN: criterion keeps its prefix and has no
 
 test('CRLF input parses exactly as LF input does, and hashes the same', () => {
   const crlf = ROOT.replace(/\n/g, '\r\n')
-  assert.deepEqual(parseSpec(crlf, { file: 'SPEC.md' }), parseSpec(ROOT, { file: 'SPEC.md' }))
+  assert.deepEqual(parseSpec(crlf, { file: 'DESIGN.md' }), parseSpec(ROOT, { file: 'DESIGN.md' }))
   assert.equal(hashSpec(crlf), hashSpec(ROOT))
 })
 
 test('a byte-order mark changes neither the parse nor the hash', () => {
   const bom = '﻿' + ROOT
-  assert.deepEqual(parseSpec(bom, { file: 'SPEC.md' }), parseSpec(ROOT, { file: 'SPEC.md' }))
+  assert.deepEqual(parseSpec(bom, { file: 'DESIGN.md' }), parseSpec(ROOT, { file: 'DESIGN.md' }))
   assert.equal(hashSpec(bom), hashSpec(ROOT))
 })
 
@@ -314,9 +314,9 @@ test('a column-0 bullet in the Plan that is not an entry is refused at its line'
 test('below the root, a decision id carries the folder\'s prefix; the root\'s carries none', () => {
   const at = { folderId: 'store-layout', definedAbove: new Set(['D1', 'D2', 'D3']), authoredBy: 'you' }
   const unprefixed = swap(SUB, '| store-layout.D1 |', '| D4 | Paths resolve from the main checkout. | Because. |')
-  refusedAt(checkSpec(parseSpec(unprefixed, { file: 'SPEC.md' }), at), lineOf(unprefixed, '| D4 |'), /store-layout\.D/)
+  refusedAt(checkSpec(parseSpec(unprefixed, { file: 'DESIGN.md' }), at), lineOf(unprefixed, '| D4 |'), /store-layout\.D/)
 
-  const nested = checkSpec(parseSpec(SUB, { file: 'SPEC.md' }), { ...at, folderId: 'a/store-layout' })
+  const nested = checkSpec(parseSpec(SUB, { file: 'DESIGN.md' }), { ...at, folderId: 'a/store-layout' })
   refusedAt(nested, lineOf(SUB, '| store-layout.D1 |'), /a\.store-layout\.D/)
 
   const prefixed = swap(ROOT, '| D3 |', '| store-layout.D3 | The parser refuses. | A person fixes it. |')
@@ -331,7 +331,7 @@ test('a decision id defined twice is refused at the second row', () => {
 test('realising an id neither this spec nor an ancestor defines is refused at the entry', () => {
   const text = swap(ROOT, '- **later** —', '- **later** — deferred · realises: D9')
   refusedAt(problemsOf(text), lineOf(text, '- **later**'), /D9/)
-  const sub = parseSpec(SUB, { file: 'SPEC.md' })
+  const sub = parseSpec(SUB, { file: 'DESIGN.md' })
   const alone = checkSpec(sub, { folderId: 'store-layout', definedAbove: new Set(), authoredBy: 'you' })
   refusedAt(alone, lineOf(SUB, '- **paths**'), /D1/)
 })
@@ -403,7 +403,7 @@ test('checkFolder reads the ancestors\' decisions and the parent entry\'s author
   assert.equal(out.authoredBy, 'you')
   assert.equal(out.entry.name, 'store-layout')
   assert.equal(out.hash, hashSpec(SUB))
-  assert.match(out.file, /store-layout\/SPEC\.md$/)
+  assert.match(out.file, /store-layout\/DESIGN\.md$/)
   assert.equal(out.spec.title, 'Store layout')
 })
 
@@ -447,7 +447,7 @@ test('checkFolder refuses a decision no entry of the spec realises, at its Decis
   const about = (problems) => problems.filter((p) => /D4/.test(p.problem))
 
   const refused = about(problemsAt(unrealised))
-  assert.ok(refused.some((p) => p.line === lineOf(unrealised, '| D4 |') && /SPEC\.md$/.test(p.file)), JSON.stringify(refused))
+  assert.ok(refused.some((p) => p.line === lineOf(unrealised, '| D4 |') && /DESIGN\.md$/.test(p.file)), JSON.stringify(refused))
   assert.notDeepEqual(about(problemsAt(unrealised.replace('deferred · realises: D2', 'deferred · realises: D2, D4'))), [],
     'a deferred entry realises nothing yet')
   for (const [from, to] of [
@@ -470,5 +470,5 @@ test('the CLI prints {folder, problems} under its digest, and exits 0 even with 
 
   const dirty = cli('check', '--repo', repo, '--effort', 'e1', '--folder', 'store-layout')
   assert.equal(dirty.payload.folder, 'store-layout')
-  assert.ok(dirty.payload.problems.some((p) => p.line > 0 && /store-layout\/SPEC\.md$/.test(p.file)))
+  assert.ok(dirty.payload.problems.some((p) => p.line > 0 && /store-layout\/DESIGN\.md$/.test(p.file)))
 })

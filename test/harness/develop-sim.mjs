@@ -19,7 +19,7 @@ export function row(id, extra = {}) {
     deps: [], locus: leaf ? ['src/' + id + '.js'] : [], reads: [], provides: [], consumes: [],
     decisions: [], dispatch: {}, ground_known: true, evidence: 'none', status: 'planned',
     children: [], acceptance_n: 1, human: [], own_review: false, coupled: false, integration: null,
-    spec_path: '/repo/.agentics/e1/' + (id === '.' ? '' : id + '/') + 'SPEC.md',
+    spec_path: '/repo/.agentics/e1/' + (id === '.' ? '' : id + '/') + 'DESIGN.md',
     ...extra,
   }
 }

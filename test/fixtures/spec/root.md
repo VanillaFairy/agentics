@@ -18,7 +18,7 @@ Success: starting design never needs an id or a flag.
 
 ### Layout
 
-One folder per sub-effort, one `SPEC.md` per folder.
+One folder per sub-effort, one `DESIGN.md` per folder.
 
 ```text
 ## Plan

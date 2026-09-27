@@ -1,12 +1,12 @@
 ---
 name: design
-description: Use when the intent of a change is not settled — a new subsystem, a migration, an API, a reshaping of something that exists — or when develop parks a sub-effort for design. Runs one loop (analyze, grill, draft, review, approve, move on) for one folder of an effort at a time, at any depth, writes that folder's SPEC.md with the user, records their approval and compiles it into the execution tree agentics:develop builds. Not for a settled change (develop, task), not for a question (investigate).
+description: Use when the intent of a change is not settled — a new subsystem, a migration, an API, a reshaping of something that exists — or when develop parks a sub-effort for design. Runs one loop (analyze, grill, draft, review, approve, move on) for one folder of an effort at a time, at any depth, writes that folder's DESIGN.md with the user, records their approval and compiles it into the execution tree agentics:develop builds. Not for a settled change (develop, task), not for a question (investigate).
 ---
 
 # design
 
 An effort is a folder hierarchy under `.agentics/<effort>/`, and every folder holds one spec,
-`SPEC.md`, which you write with the user. This skill runs the same loop for one folder at a time,
+`DESIGN.md`, which you write with the user. This skill runs the same loop for one folder at a time,
 at any depth. Each stage writes what it settles into the spec at once, so the spec is the
 session's memory and nothing needed later lives only in the conversation.
 Design: `docs/DESIGN.md#design`.
@@ -23,7 +23,7 @@ session-driven because grilling is interactive: no workflow or agent can talk to
   everything under it.
 - **folder**: a directory of an effort that holds a spec. The effort's own folder is the root
   folder; every folder below it is a **sub-effort**, and is also an entry in its parent's plan.
-- **spec**: a folder's `SPEC.md`, written for the user, with the sections Intent, Decisions,
+- **spec**: a folder's `DESIGN.md`, written for the user, with the sections Intent, Decisions,
   Design, Plan, Open questions and Evidence. It never holds status.
 - **`.state/`**: machine state, written only by scripts: an effort's `.state/` (nodes, events,
   ledger, executions) and the project-wide `.agentics/.state/` (slots, context files, evidence
@@ -50,7 +50,7 @@ session-driven because grilling is interactive: no workflow or agent can talk to
   the only writer of nodes. A folder becomes a `composite` node, a sub-effort with no approved or
   prepared spec a `design` node (the frontier), and a task a `leaf`.
 - **task promotion**: a task that must be decomposed gets its own spec in
-  `<folder>/<task>/SPEC.md`. Compile then builds it as a composite that realises the task's
+  `<folder>/<task>/DESIGN.md`. Compile then builds it as a composite that realises the task's
   decisions and carries its criteria.
 - **finding**: one result of a review, graded `ambiguity` (blocks until settled), `gap` (designed
   away or accepted out loud) or `note` (advisory). To **settle** a finding is to incorporate it
@@ -103,7 +103,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" open . <name> --about "<the change, 
 ```
 
 A sub-effort's folder sits under its parent's and carries the name its parent's plan entry gives
-it: `.agentics/<effort>/<path>/SPEC.md`. When its turn comes, create it; it starts as a skeleton
+it: `.agentics/<effort>/<path>/DESIGN.md`. When its turn comes, create it; it starts as a skeleton
 with the six headings, and the loop fills it:
 
 ```bash
@@ -127,7 +127,7 @@ develop's planner: say so and point to `/agentics:develop`.
 
 | the folder | resume at |
 |---|---|
-| no `SPEC.md`, or its Intent is empty | Analyze |
+| no `DESIGN.md`, or its Intent is empty | Analyze |
 | a `blocking` open question | Grill |
 | Design or Plan empty, or `check-plan-block` reports problems | Draft |
 | `state` is `none` or `edited` | Review |
@@ -326,7 +326,7 @@ When earned, challenge the spec. The reviewers get the spec and the repository a
 you; `context` is one line on what the spec is for, never your defence of it:
 
 ```
-Workflow({ name: 'agentics:agentics-probe', args: { artifact: '<the SPEC.md path>', roots: '.', context, plugin_root } })
+Workflow({ name: 'agentics:agentics-probe', args: { artifact: '<the DESIGN.md path>', roots: '.', context, plugin_root } })
 ```
 
 After every return, before anything else, record how much of the spec it examined and the
@@ -421,7 +421,7 @@ interface, a data shape, which part owns a decision); name the one that earned i
 cannot dispatch, say so, offer a self-review as the weaker instrument it is, and let the user
 decide. Never substitute one silently.
 
-**The HARD GATE.** Then the user reads `SPEC.md`, the file itself, not your summary of it. Nothing
+**The HARD GATE.** Then the user reads the folder's `DESIGN.md`, the file itself, not your summary of it. Nothing
 is approved until they have read it and approved it in as many words: not "looks good so far", not
 silence, not your judgment that it is obviously right. `approval.mjs gate` ratifiable or the
 review not earned, no `blocking` question open, and the user's words: all three.

@@ -35,7 +35,7 @@ courier pastes back under a digest the script re-checks (GP4).
 
 | Path | What it holds |
 |---|---|
-| `.agentics/<effort>/` | One effort: a `SPEC.md` per folder, and its `.state/` — nodes, events, ledger, evidence, gotchas, executions, reports and locks ([Storage](#storage)) |
+| `.agentics/<effort>/` | One effort: a `DESIGN.md` per folder, and its `.state/` — nodes, events, ledger, evidence, gotchas, executions, reports and locks ([Storage](#storage)) |
 | `.agentics/.state/` | What every effort shares: the slot pool and the context files |
 | `.agentics/config.json` | The project's settings, edited by the user (`max_parallel`) |
 | `.claude/worktrees/` | Integration and leaf worktrees |
@@ -216,7 +216,7 @@ thing in every prompt.
   everything under it.
 - **folder**: a directory of an effort that holds a spec. The effort's own folder is the root
   folder; every folder below it is a **sub-effort**, and is also an entry in its parent's plan.
-- **spec**: a folder's `SPEC.md`, written for the user, with the sections Intent, Decisions,
+- **spec**: a folder's `DESIGN.md`, written for the user, with the sections Intent, Decisions,
   Design, Plan, Open questions and Evidence. It never holds status.
 - **`.state/`**: machine state, written only by scripts: an effort's `.state/` (nodes, events,
   ledger, executions) and the project-wide `.agentics/.state/` (slots, context files, evidence
@@ -243,7 +243,7 @@ thing in every prompt.
   the only writer of nodes. A folder becomes a `composite` node, a sub-effort with no approved or
   prepared spec a `design` node (the frontier), and a task a `leaf`.
 - **task promotion**: a task that must be decomposed gets its own spec in
-  `<folder>/<task>/SPEC.md`. Compile then builds it as a composite that realises the task's
+  `<folder>/<task>/DESIGN.md`. Compile then builds it as a composite that realises the task's
   decisions and carries its criteria.
 - **finding**: one result of a review, graded `ambiguity` (blocks until settled), `gap` (designed
   away or accepted out loud) or `note` (advisory). To **settle** a finding is to incorporate it
@@ -327,8 +327,8 @@ traceability gaps come back as warnings. It refuses; it never repairs.
     slots/                        the parallelism pool, shared by every execution (see Scheduling)
     context/                      context files for survey and probe readers, pruned after a week
   <effort>/
-    SPEC.md                       the root folder's spec
-    <sub-effort>/SPEC.md          one folder per sub-effort, nested as the plan nests them
+    DESIGN.md                     the root folder's spec
+    <sub-effort>/DESIGN.md        one folder per sub-effort, nested as the plan nests them
     .legacy/                      design documents the migration copied
     .state/
       effort.json                 {about, roots, opened_at}, written once
@@ -354,7 +354,7 @@ can pass for one. Worktrees live under `.claude/worktrees/`.
 
 ### Specs, approval and compile
 
-A folder's `SPEC.md` is the user's document: a title and the sections Intent, Decisions, Design,
+A folder's `DESIGN.md` is the user's document: a title and the sections Intent, Decisions, Design,
 Plan, Open questions and Evidence, all prose except three parsed forms — the Decisions rows, the
 graded open questions and the plan entries ([Spec format](#spec-format)). No status is ever
 written into one. `lib/spec.mjs` parses a spec, checks it in its place in the effort (decision ids

@@ -124,7 +124,7 @@ test('approval refuses a missing spec and a spec with problems, and writes nothi
   const broken = effort({ '.': ROOT.replace('| D3 |', '| D3 | only two |\n| D4 |') })
   const out = recordApproval(broken, E, '.')
   assert.equal(out.ok, false)
-  assert.match(out.error, /SPEC\.md/)
+  assert.match(out.error, /DESIGN\.md/)
   assert.deepEqual(ledger(broken), [])
 })
 

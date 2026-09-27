@@ -83,7 +83,7 @@ const withLine = (ls, lineNo, value) => ls.map((l, i) => (i === lineNo - 1 ? val
 /** A gitignored 12-line spec with its span 3-5 recorded at a snapshot, and that snapshot's file. */
 function specFixture() {
   const repo = gitRepo({ 'src/a.js': text(lines(3)), '.agentics/.gitignore': '*\n' })
-  const path = '.agentics/e1/SPEC.md'
+  const path = '.agentics/e1/DESIGN.md'
   const spec = lines(12, 'spec')
   write(repo, path, text(spec))
   const at = snapshotSpec(repo, text(spec))
@@ -289,7 +289,7 @@ test('a comment typo inside a span makes the item suspect, not stale; one outsid
 
 test('a gitignored spec is diffed against its snapshot', () => {
   const repo = gitRepo({ 'src/a.js': text(lines(3)), '.agentics/.gitignore': '*\n' })
-  const path = '.agentics/e1/SPEC.md'
+  const path = '.agentics/e1/DESIGN.md'
   const spec = lines(40, 'spec')
   write(repo, path, text(spec))
   const at = snapshotSpec(repo, text(spec))
@@ -351,7 +351,7 @@ test('a span anchored at a commit the repository no longer has is stale, not thr
 
 test('a CRLF working copy of the snapshotted text is the same text', () => {
   const repo = gitRepo({ 'src/a.js': text(lines(3)), '.agentics/.gitignore': '*\n' })
-  const path = '.agentics/e1/SPEC.md'
+  const path = '.agentics/e1/DESIGN.md'
   const spec = lines(12, 'spec')
   write(repo, path, text(spec))
   const id = record(repo, {
@@ -578,7 +578,7 @@ test('itemsFor returns the items whose ground overlaps, with their state, standi
 
 test('reviewScope narrows a re-review to the changed lines and carries what no edit touched', () => {
   const repo = gitRepo({ 'src/a.js': text(lines(3)), '.agentics/.gitignore': '*\n' })
-  const path = '.agentics/e1/SPEC.md'
+  const path = '.agentics/e1/DESIGN.md'
   const v1 = lines(40, 'spec')
   write(repo, path, text(v1))
 
@@ -614,7 +614,7 @@ test('reviewScope narrows a re-review to the changed lines and carries what no e
 
 test('reviewScope carries a finding anchored two snapshots before since and untouched since; never one on another artefact', () => {
   const repo = gitRepo({ 'src/a.js': text(lines(3)), '.agentics/.gitignore': '*\n' })
-  const path = '.agentics/e1/SPEC.md'
+  const path = '.agentics/e1/DESIGN.md'
   const other = '.agentics/e1/NOTES.md'
   const v1 = lines(40, 'spec')
   write(repo, path, text(v1))
@@ -752,11 +752,11 @@ test('itemsFor and holds read the root they are given: a holds judged in a workt
 test('reviewScope reads the root it is given, and maps a worktree path to the same repository-relative path', () => {
   const repo = gitRepo({ 'src/a.js': text(lines(3)) })
   const wt = linkedWorktree(repo)
-  const spec = '.agentics/e1/SPEC.md'
+  const spec = '.agentics/e1/DESIGN.md'
   write(repo, '.agentics/.gitignore', '*\n')
   write(repo, spec, text(lines(12, 'spec')))
   write(wt, spec, text(lines(20, 'spec')))
-  for (const file of [join(wt, '.agentics', 'e1', 'SPEC.md'), spec]) {
+  for (const file of [join(wt, '.agentics', 'e1', 'DESIGN.md'), spec]) {
     const main = reviewScope(wt, file)
     assert.equal(main.ok, true, JSON.stringify(main))
     assert.deepEqual([main.path, main.lines], [spec, 12], 'without a root, the main checkout: ' + file)
@@ -919,7 +919,7 @@ test('G4: the latest judgement is the one with the highest seq, whatever the lin
 
 test('G5: reviewScope marks line 1 for a deleted first line, the new last line for a deleted last line, and merges touching ranges', () => {
   const repo = gitRepo({ 'src/a.js': text(lines(3)), '.agentics/.gitignore': '*\n' })
-  const path = '.agentics/e1/SPEC.md'
+  const path = '.agentics/e1/DESIGN.md'
   const v1 = lines(40, 'spec')
   write(repo, path, text(v1))
   const since = reviewScope(repo, path).snapshot
@@ -988,7 +988,7 @@ test('G8: a query never matches inside .agentics/, even with the store\'s ignore
 
 test('G9: reviewScope given a since snapshot that does not hash to its name gives a full review', () => {
   const repo = gitRepo({ 'src/a.js': text(lines(3)), '.agentics/.gitignore': '*\n' })
-  const path = '.agentics/e1/SPEC.md'
+  const path = '.agentics/e1/DESIGN.md'
   const v1 = lines(40, 'spec')
   write(repo, path, text(v1))
   const since = reviewScope(repo, path).snapshot

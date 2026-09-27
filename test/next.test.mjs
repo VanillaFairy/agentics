@@ -166,7 +166,7 @@ test('a parked node names what it waits on and the spec to edit (rule 2)', () =>
   event(r, 'e1', { kind: 'parked', node: 'x', return: 'needs_decision', question: 'which format?' })
   const n = nextAction(r, 'e1')
   assert.deepEqual([n.rule, n.folder, n.command], [2, '.', '/agentics:develop e1'])
-  for (const fact of ['x', 'needs_decision', 'which format?', 'SPEC.md']) assert.ok(n.why.includes(fact), fact)
+  for (const fact of ['x', 'needs_decision', 'which format?', 'DESIGN.md']) assert.ok(n.why.includes(fact), fact)
 })
 
 test('a sub-effort parked for design is designed (rule 2)', () => {

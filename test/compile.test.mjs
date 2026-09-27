@@ -52,7 +52,7 @@ function compiled(repo, opts) {
 /** Counts of every effort log, to prove a call appended nothing. */
 const sizes = (repo) => ['nodes', 'events', 'ledger'].map((f) => readLog(repo, E, f).entries.length)
 const nodes = (repo) => readTree(repo, E).nodes
-const entryOf = (text, name) => parseSpec(text, { file: 'SPEC.md' }).entries.find((e) => e.name === name)
+const entryOf = (text, name) => parseSpec(text, { file: 'DESIGN.md' }).entries.find((e) => e.name === name)
 const firstParagraph = (body) => body.split(/\n\s*\n/)[0].trim()
 const lineIn = (text, needle) => text.split('\n').findIndex((l) => l.includes(needle)) + 1
 
@@ -76,8 +76,8 @@ test('an approved root and sub-effort compile to composites and leaves, each fie
   approve(repo, 'api')
   const out = compiled(repo)
   const tree = nodes(repo)
-  const root = parseSpec(ROOT, { file: 'SPEC.md' })
-  const api = parseSpec(API, { file: 'SPEC.md' })
+  const root = parseSpec(ROOT, { file: 'DESIGN.md' })
+  const api = parseSpec(API, { file: 'DESIGN.md' })
 
   const r = tree.get('.')
   assert.equal(r.kind, 'composite')
@@ -171,7 +171,7 @@ test('a root that is not approved or prepared is refused, and nothing is written
   const repo = effort()
   const out = compileEffort(repo, E)
   assert.equal(out.ok, false)
-  assert.ok(out.problems.some((p) => /SPEC\.md$/.test(p.file) && /approved|prepared/.test(p.problem)))
+  assert.ok(out.problems.some((p) => /DESIGN\.md$/.test(p.file) && /approved|prepared/.test(p.problem)))
   assert.deepEqual(sizes(repo), [0, 0, 0])
 })
 
@@ -210,7 +210,7 @@ test('a spec that no longer checks in its place is refused at its file and line'
   const before = sizes(repo)
   const out = compileEffort(repo, E)
   assert.equal(out.ok, false)
-  assert.ok(out.problems.some((p) => /api\/SPEC\.md$/.test(p.file) && p.line === lineIn(API, '- **types**') && /D2/.test(p.problem)))
+  assert.ok(out.problems.some((p) => /api\/DESIGN\.md$/.test(p.file) && p.line === lineIn(API, '- **types**') && /D2/.test(p.problem)))
   assert.deepEqual(sizes(repo), before)
 })
 
@@ -219,7 +219,7 @@ test('a decision no entry realises is refused at approval, at its row, so compil
   const repo = effort({ '.': text, api: API })
   const out = recordApproval(repo, E, '.')
   assert.equal(out.ok, false)
-  assert.ok(/D4/.test(out.error) && out.error.includes('SPEC.md:' + lineIn(text, '| D4 |') + ' '), out.error)
+  assert.ok(/D4/.test(out.error) && out.error.includes('DESIGN.md:' + lineIn(text, '| D4 |') + ' '), out.error)
   assert.deepEqual(sizes(repo), [0, 0, 0])
   assert.equal(compileEffort(repo, E).ok, false, 'the root is not approved')
 })
@@ -241,7 +241,7 @@ test('a refusal from the tree comes back at the entry\'s line', () => {
   approve(repo, 'api')
   const out = compileEffort(repo, E)
   assert.equal(out.ok, false)
-  assert.ok(out.problems.some((p) => /SPEC\.md$/.test(p.file) && p.line === lineIn(text, '- **cli**') && /rigor/.test(p.problem)))
+  assert.ok(out.problems.some((p) => /DESIGN\.md$/.test(p.file) && p.line === lineIn(text, '- **cli**') && /rigor/.test(p.problem)))
   assert.deepEqual(readLog(repo, E, 'nodes').entries, [])
 })
 
@@ -298,7 +298,7 @@ test('a task whose own folder holds a prepared spec compiles as a composite carr
   const task = entryOf(API, 'parse')
   const p = tree.get('api/parse')
   assert.equal(p.kind, 'composite')
-  assert.equal(p.title, parseSpec(PARSE, { file: 'SPEC.md' }).title)
+  assert.equal(p.title, parseSpec(PARSE, { file: 'DESIGN.md' }).title)
   assert.equal(p.author, 'planner')
   assert.deepEqual(p.decisions, task.realises)
   assert.deepEqual(p.acceptance, task.criteria.map((c) => ({ text: c.text, check: c.check, decisions: task.realises })))
@@ -319,7 +319,7 @@ test('a promoted spec whose entries drop a decision the task realised is refused
   prepare(repo, 'api/parse')
   const out = compileEffort(repo, E)
   assert.equal(out.ok, false)
-  assert.ok(out.problems.some((p) => /api\/parse\/SPEC\.md$/.test(p.file) && /D1/.test(p.problem)))
+  assert.ok(out.problems.some((p) => /api\/parse\/DESIGN\.md$/.test(p.file) && /D1/.test(p.problem)))
 })
 
 test('re-approving a folder that provides a contract parks its consumers outside that spec', () => {
@@ -333,7 +333,7 @@ test('re-approving a folder that provides a contract parks its consumers outside
   assert.deepEqual(out.parked.map((p) => [p.node, p.reason]), [['cli', 'contract_changed']])
   const park = readTree(repo, E).events.find((e) => e.kind === 'parked' && e.node === 'cli')
   assert.equal(park.return, 'contract_changed')
-  assert.match(park.question, /api\/SPEC\.md/)
+  assert.match(park.question, /api\/DESIGN\.md/)
   assert.equal(readTree(repo, E).status.get('cli').status, 'parked')
   assert.notEqual(readTree(repo, E).status.get('api/parse').status, 'parked', 'its own entries were re-approved with it')
 })
@@ -424,7 +424,7 @@ test('--folder compiles a prepared planner sub-effort alone, from its parent ent
   const entry = entryOf(ROOT, 'tuning')
   const t = tree.get('tuning')
   assert.equal(t.kind, 'composite')
-  assert.equal(t.title, parseSpec(TUNING, { file: 'SPEC.md' }).title)
+  assert.equal(t.title, parseSpec(TUNING, { file: 'DESIGN.md' }).title)
   assert.equal(t.author, 'planner')
   assert.deepEqual(t.decisions, entry.realises)
   assert.deepEqual(t.defines, [])
@@ -538,7 +538,7 @@ test('a prepared spec may not move a contract its entry provides', () => {
   const before = sizes(repo)
   const out = compileEffort(repo, E)
   assert.equal(out.ok, false)
-  assert.ok(out.problems.some((p) => /tuning\/SPEC\.md$/.test(p.file) && p.line === lineIn(moved, '- **tokens**')), JSON.stringify(out.problems))
+  assert.ok(out.problems.some((p) => /tuning\/DESIGN\.md$/.test(p.file) && p.line === lineIn(moved, '- **tokens**')), JSON.stringify(out.problems))
   assert.deepEqual(sizes(repo), before)
 })
 
@@ -591,7 +591,7 @@ test('--folder is refused when the parent spec is edited since approval', () => 
   const before = sizes(repo)
   const out = compileEffort(repo, E, { folder: 'api' })
   assert.equal(out.ok, false)
-  assert.ok(out.problems.some((p) => /SPEC\.md$/.test(p.file)))
+  assert.ok(out.problems.some((p) => /DESIGN\.md$/.test(p.file)))
   assert.deepEqual(sizes(repo), before)
 })
 
@@ -746,7 +746,7 @@ test('a sub-effort whose approved spec is deleted is refused at its entry, never
   const before = sizes(repo)
   const out = compileEffort(repo, E)
   assert.equal(out.ok, false)
-  assert.ok(out.problems.some((p) => /SPEC\.md$/.test(p.file) && p.line === lineIn(ROOT, '- **api**')), JSON.stringify(out.problems))
+  assert.ok(out.problems.some((p) => /DESIGN\.md$/.test(p.file) && p.line === lineIn(ROOT, '- **api**')), JSON.stringify(out.problems))
   assert.equal(out.skipped.some((s) => s.folder === 'api'), false)
   assert.equal(nodes(repo).get('api').kind, 'composite')
   assert.deepEqual(sizes(repo), before)

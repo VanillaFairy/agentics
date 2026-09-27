@@ -1,9 +1,13 @@
 Status: DONE
 # 2026-09-26-design-loop-redesign checkpoint
 
-Wave: 17 — T27
-Integration head: b5f8f4b
-Remaining: T28a, T28b, T28d, T29
+Wave: 18 — T28a
+Integration head: ac52831
+Remaining: T28b, T28d, T29
+
+## Tasks (wave 18)
+| Task | Wave | Branch | State | Review cycles | Merge commit |
+| T28a | 18 | sdd/2026-09-26-design-loop-redesign/T28a | merged | 0 | ac52831 |
 
 ## Tasks (wave 17)
 | Task | Wave | Branch | State | Review cycles | Merge commit |
@@ -487,6 +491,30 @@ one `- Read:` line — watch it.)
   `~/.superpowers/sdd/-c-work-claude-vanillafairy-agentics/plan/suite-b5f8f4b.log`). No triad
   (rigor: verify), no audit, no gap task. Wave 17 is complete; no tasks carry into wave 18 from
   this wave.
+
+- W18 T28a: implemented straight through (2e08437), renaming `skills/probe/` → `skills/challenge-idea/`
+  and `skills/find-existing-solutions/` → `skills/search-for-existing-solutions-before-building/`
+  (with `user-invocable: false` added to the latter), rewriting every reference across
+  `tools/rules/design-gate.mjs`, `test/design-gate.test.mjs`, `tools/budgets.json` and
+  `docs/DESIGN.md`'s Skills table and menu-count sentence. One judgment call beyond the task's
+  explicit greps: the shared `effort-store` verbatim block's "Design, probe and develop are
+  separate sessions" sentence names the skill by name in a peer list, so it was renamed
+  identically in all three copies (`skills/challenge-idea/SKILL.md`, `skills/design/SKILL.md`,
+  `skills/develop/SKILL.md`) to keep the block byte-identical, per `test/verbatim-blocks.test.mjs`.
+  The implementer's report names this as a discovered action:
+  a skill-name sentence can hide inside a shared verbatim block copied into other files —
+  `grep -rn "agentics:verbatim <id>"` for every copy before editing prose inside one. Not written
+  to `knowledge/` this wave since T28a was the plan's last task to rename a skill by name; no
+  remaining task needs it. Review: SPEC PASS (1 unverifiable, not a defect), QUALITY Approved (0
+  critical/important, 4 minor, left in `T28a-review.md`, not fixed). Merged ac52831, clean
+  `--no-ff`, no conflicts (git printed the same harmless "Failed to parse repository information"
+  hook line seen at every prior merge in this plan). Full suite on ac52831: `node tools/lint.mjs`
+  clean, `node --test` 1052/1053 — the one failure is `concurrent writers never mint the same seq`
+  (`test/ledger.test.mjs`), the same pre-existing load-sensitive concurrency flake recorded under
+  W9 T25, W12 T17 and W13 (untouched by this task's diff: T28a touches only skill files, docs and
+  design-gate/budget rules, none of `appendProject`'s seq minting). Not a regression, not fixed,
+  not blocking. No triad (rigor: verify), no audit, no gap task. Wave 18 is complete; no tasks
+  carry into wave 19 from this wave.
 
 ## Knowledge entries
 - mutation-probe-baseline-scope (W4)

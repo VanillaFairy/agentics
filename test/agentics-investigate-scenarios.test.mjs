@@ -77,14 +77,20 @@ test('report mode hands back the synthesis verbatim with the survey coverage', a
 
 test('the survey is handed the pace and the plugin root, and the synthesis is told it cannot search', async () => {
   let handed = null
+  let handedRef = null
   const { prompts, result } = await runWorkflow(WF, {
     args: { question: 'how does X work', pace: 'fast', plugin_root: 'C:/plugin' },
     agent: scriptedAgents({ synthesize: 'the answer' }),
-    workflow: (ref, a) => { handed = a; return surveyResult() },
+    workflow: (ref, a) => { handedRef = ref; handed = a; return surveyResult() },
   })
 
   assert.equal(handed.pace, 'fast')
   assert.equal(handed.plugin_root, 'C:/plugin')
+  assert.ok(handedRef.scriptPath.startsWith('C:/plugin'), 'the survey is addressed under the given plugin_root')
+  assert.ok(
+    handedRef.scriptPath.endsWith('/service-workflows/gather-evidence-without-concluding.workflow.js'),
+    'the survey is addressed by its own file',
+  )
   assert.match(prompts.find((p) => p.opts.label === 'synthesize').prompt, /You have no search tools/)
   assert.equal(result.coverage.resumable.args.pace, 'fast', 'a resume re-passes what the survey was given')
 })

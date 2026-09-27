@@ -82,12 +82,28 @@ const tiered = (tier, base) => ({
   effort: tier.model === 'sonnet' ? SONNET_STEP[base] : intelligence === 'max' ? 'high' : 'medium',
 })
 
-// Passed through to the survey, which is where both are read: `pace` decides how many readers
-// share its excerpts, and `plugin_root` is where its couriers find `lib/`. The survey resolves an
-// absent root from the environment itself, so neither is required here.
+// Passed through to the survey, which is where `pace` is read: it decides how many readers
+// share its excerpts. `plugin_root` is also this workflow's own address for the nested survey's
+// scriptPath (below), so it resolves the same three-tier fallback its siblings use: the caller's
+// value, then the environment, then the shell form expanded in the courier's own shell.
 const PACES = ['frugal', 'balanced', 'fast']
 const pace = PACES.includes(input.pace) ? input.pace : 'balanced'
-const pluginRoot = typeof input.plugin_root === 'string' ? input.plugin_root.trim() : ''
+const SHELL_ROOT = '$CLAUDE_PLUGIN_ROOT'
+
+function resolvePluginRoot() {
+  if (typeof input.plugin_root === 'string' && input.plugin_root.trim()) {
+    return input.plugin_root.trim().split('\\').join('/')
+  }
+
+  const fromEnv = typeof process !== 'undefined' && process && process.env
+    ? process.env.CLAUDE_PLUGIN_ROOT
+    : ''
+
+  if (typeof fromEnv === 'string' && fromEnv.trim()) return fromEnv.trim().split('\\').join('/')
+  return SHELL_ROOT
+}
+
+const pluginRoot = resolvePluginRoot()
 
 const MAX_TASKS = 12
 

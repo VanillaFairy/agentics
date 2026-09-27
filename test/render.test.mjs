@@ -232,6 +232,16 @@ test('a cited id the store does not hold is listed as not in the store', () => {
   assert.match(text, /nothing is cached/)
 })
 
+test('a cites line with a repeated id is rendered once, whatever wrote the line', () => {
+  const { repo, cached } = citedFixture()
+  // recordCites already de-duplicates before it writes; append the line directly so the render's
+  // own de-duplication (a line no recordCites wrote could still carry a repeat) is what is tested.
+  assert.equal(append(repo, EFFORT, 'cites', { kind: 'cites', folder: 'dup', items: [cached, cached], gaps: [] }).ok, true)
+  const text = readFileSync(renderEvidence(repo, EFFORT, 'dup'), 'utf8')
+  const lines = text.split('\n').filter((l) => l.includes('nothing is cached'))
+  assert.equal(lines.length, 1, 'a repeated id renders once')
+})
+
 test('recordCites refuses an unknown item, a bad folder id and an empty citation, and writes nothing', () => {
   const { repo, reads } = citedFixture()
   const before = readLog(repo, EFFORT, 'cites').entries.length

@@ -197,8 +197,10 @@ itself, since the survey gathers and never concludes:
 Workflow({ name: 'agentics:agentics-survey', args: { question, roots, notes, ground, intelligence, plugin_root } })
 ```
 
-`ground` lets the survey reuse standing items instead of buying them again, and re-judge or
-re-survey only what drifted; it returns `items`, `reused`, `risks` and `coverage` — the search below returns `items` too.
+`ground` is the paths this layer's work touches, as far as they are known: it is what lets the
+survey reuse standing items from any effort instead of buying them again, and re-judge or
+re-survey only what drifted. The survey returns `items` (each with an `id`), `reused`, `risks`
+and `coverage`; the outward search below returns `items` too.
 
 When the layer would **build a capability** (a parser, a scheduler, a cache, a protocol client),
 launch the outward search in the same message, concurrently:
@@ -212,8 +214,9 @@ on ground the design would build from scratch is a `blocking` question. Whatever
 its history or vendor documentation can answer is answered by evidence; the user is asked only
 what only the user knows: intent, priorities, taste, real-world limits.
 
-Once confirmed, record what this folder rests on: `cite` the items it uses, each `coverage.unreached`
-entry as a `--gap`, then render `evidence.md` (commands in the effort-store block below).
+Once the user has confirmed the understanding, record what this folder rests on: `cite` the ids of
+the items it uses, passing every entry of the returns' `coverage.unreached` as a `--gap`, then
+render `evidence.md`. The commands are in the effort-store block below.
 
 <!-- agentics:verbatim intelligence-tier -->
 The dial follows the model this session is running, never how important the work feels:

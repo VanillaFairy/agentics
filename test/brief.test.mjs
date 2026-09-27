@@ -1,13 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { assembleBrief, measuresFor } from '../lib/brief.mjs'
-import { recordItems } from '../lib/evidence.mjs'
+import { recordItems, snapshotSpec } from '../lib/evidence.mjs'
 import { writeGotcha } from '../lib/gotchas.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
 import { briefPath, reportPath } from '../lib/store.mjs'
@@ -122,18 +122,32 @@ test('standing items whose ground meets the node ground or locus are excerpted, 
     spans: [], queries: [], rests_on: [],
     sources: [{ url: 'https://example.invalid/parsing', version: '1.0.0', retrieved }],
   })
+  mkdirSync(join(repo, 'src', 'api'), { recursive: true })
+  const notesPath = join(repo, 'src', 'api', 'notes.txt')
+  writeFileSync(notesPath, 'one\ntwo\nthree\n')
+  const at = snapshotSpec(repo, 'one\ntwo\nthree\n')
+  const suspect = {
+    question: 'how are configs parsed', topic: 'parsing', ground: ['src/api'], kind: 'behaviour',
+    claim: 'The parser walks the tree once.', spans: [{ path: 'src/api/notes.txt', start: 1, end: 1, at }],
+    queries: [], sources: [], rests_on: [],
+  }
+
   const out = recordItems(repo, '20260901-000000-survey', [
     external('The tokenizer already lower-cases.', ['src/api']),
     external('The UI never reads configs.', ['src/ui']),
     external('An expired fact about parsing.', ['src/api'], '2000-01-01'),
+    suspect,
   ])
   assert.equal(out.ok, true, JSON.stringify(out))
+
+  writeFileSync(notesPath, 'ONE\ntwo\nthree\n')
 
   const t = assembleBrief(repo, E, X, 'api/parse', {}).text
   assert.match(t, /\[parsing, external\] The tokenizer already lower-cases\./)
   assert.match(t, /\n  anchors: https:\/\/example\.invalid\/parsing 1\.0\.0/)
   assert.doesNotMatch(t, /UI never reads configs/, 'ground the node does not touch')
   assert.doesNotMatch(t, /expired fact/, 'only standing items reach a brief')
+  assert.doesNotMatch(t, /parser walks the tree once/, 'a suspect item is not standing')
 })
 
 test('measuresFor names the yardstick per rigor and role', () => {

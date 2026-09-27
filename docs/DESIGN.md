@@ -443,18 +443,19 @@ so the spelling is reversible. Worktrees follow the same names under `.claude/wo
 
 ### Triage
 
-Every node is triaged when it is created — by the session for an effort's root, by the planner for
-its children. Two questions fix its **kind**; one more fixes its **mode**.
+A request is triaged once, by `develop`, before its root spec is written. Two questions fix what
+its plan holds; one more fixes the **mode**.
 
 | question | if **no** |
 |---|---|
-| Is the intent settled — no approach left to discover? | kind `design` |
-| Does it satisfy the atomicity rule? | kind `composite` — decompose |
-| Is the ground known — finding where the change goes is not part of the work? | evidence is earned for this node (`ground_known: false`) |
+| Is the intent settled — no approach left to discover? | it goes to `design` |
+| Does the item satisfy the atomicity rule? | its entry is a `sub-effort` with `author: planner`: the planner writes that spec |
+| Is the ground known — finding where the change goes is not part of the work? | the same, and a survey runs before the planner writes (`ground_known: false`) |
 
-Mode (for an effort root, or any node about to execute): **inline** or **dispatched** — see
+Mode (for an effort root, or any folder about to execute): **inline** or **dispatched** — see
 [Execution modes](#execution-modes). At the effort root, triage is a recommendation to the user,
-and "run it anyway" ends the discussion; inside the tree it is the planner's, shown in the plan.
+and "run it anyway" ends the discussion; inside the tree the planner applies the same questions
+to the entries of the specs it writes.
 
 ### Atomicity: when to stop splitting
 
@@ -499,16 +500,24 @@ A leaf's executor or a planner returns one of these instead of finishing:
 
 | return | meaning | who acts |
 |---|---|---|
-| `decompose` | the leaf violates atomicity | the planner splits it, preserving every decision id; siblings unaffected |
-| `unsplittable` | no permitted split exists | the planner widens the locus, or the node escalates |
-| `premise_mismatch` | the brief's premise does not match the code | the planner re-derives the node from evidence; a premise that came from the user goes to the user |
+| `decompose` | the task violates atomicity | the planner promotes it: a spec of its own at `<folder>/<task>/DESIGN.md` that realises every decision the task realised; the spec holding the task's entry is not touched |
+| `unsplittable` | no permitted split exists | the planner promotes it with a widened locus, or it escalates |
+| `premise_mismatch` | the brief's premise does not match the code | the planner promotes it; a premise from a spec the user wrote goes to the user |
 | `needs_decision` | condition 6 failed | the user |
 | `contract_changed` | a `provides` contract cannot hold as written | the user — a contract is a decision |
 
+A verify task's finding replans its folder: the planner rewrites the folder's spec when the
+planner wrote it, and the folder parks `needs_respec` for the user when the user did. Every spec
+the planner writes passes the [autonomous review](#autonomous-review) before compile builds from
+it.
+
 **A user-bound return parks the node.** The workflow cannot talk to the user, so it keeps running
-every leaf that does not depend on the parked one, then returns naming what it needs. The answer
-arrives as a node revision (`--reason answered`) and a resume, which re-briefs the parked node and
-any not-yet-started consumer.
+every task that does not depend on the parked one, then returns naming what it needs. **The answer
+is a re-spec:** the session edits the spec that owns the fault (a decision only ever goes into a
+spec the user wrote), the user re-approves it, compile writes the revision that clears the park
+(its result's `answered`), and develop relaunches with the same execution stamp. A park no spec
+change answers (a `contract_drift` ruled unaffected) is cleared by the relaunch's
+`retry_escalated`.
 
 **Autonomous replans preserve decisions.** The planner may split, merge or re-derive nodes only
 while every decision id stays realised; anything else is user-bound. `lib/tree.mjs` `addNodes`
@@ -553,7 +562,7 @@ The inline mode has its own entry skill, `task`. Its rules:
   the task's traceability. No plan file, no worktree for the edit, no execution directory.
 - **Discriminate in a throwaway worktree.** A `tdd` leaf's fails-without-the-change check runs in a
   linked worktree at the pre-change commit, never in the user's tree.
-- **Tripwire.** Raise it — recommending the dispatched mode or a design node — when the work needs
+- **Tripwire.** Raise it — recommending the dispatched mode or design — when the work needs
   design exploration, is cross-cutting, adds a dependency or technology, is ambiguous enough to
   iterate, is irreversible or risky, or outgrows the computed fit. An override is honoured without
   a second argument. Growth during execution re-raises it.
@@ -607,46 +616,72 @@ closes the specific hole is the right one.
 
 ## Design
 
-Design is a subtree of design nodes, refined top-down in levels as a C4 model is: each level states
-only what the level below needs, and a level is written only when a child reaches it.
+An effort is a folder hierarchy under `.agentics/<effort>/`, and each folder holds one spec,
+`DESIGN.md`: the user's document, with fixed headings (Intent, Decisions, Design, Plan, Open
+questions, Evidence) and three parsed forms (Decisions rows, graded open-question bullets, plan
+entries). A spec never holds status. The `design` skill runs one loop for one folder at a time,
+at any depth, and each stage writes what it settles into the spec at once.
 
-| level | states | done when |
+| stage | what happens | gate |
 |---|---|---|
-| `context` | the intent: who it is for, the outcome, success criteria, boundaries, what is out of scope | the user ratifies it |
-| `container` | which subsystems change, and the contracts between them | every contract has a name, an owner and path prefixes |
-| `component` | per subsystem: components, interfaces, data shapes | the planner can write children that satisfy atomicity |
-| `leaf-spec` | per leaf: acceptance criteria and their checks | the node is a leaf |
+| Analyze | write back the understanding; survey this layer's question, and search for existing solutions when it would build a capability | the user confirms or corrects the understanding |
+| Grill | one question at a time, recommendation first; each answer is a Decisions row at once; a cheap choice nothing consumes is defaulted and ruled with the rest at Review; approach drafts when the decision space is open, each kept as a raw return as it arrives | no `blocking` question is open |
+| Draft | Design and Plan at this layer's level of detail, shown section by section | `check-plan-block` passes; no decision is unrealised |
+| Review | challenge-idea when earned (by length, or a contract other entries consume); every round recorded with its ambiguities; its findings settled with the user, incorporated or discarded, each a recorded disposition; then the user reads the spec | `lib/approval.mjs gate` ratifiable, or the review not earned; and the user approves in so many words |
+| Approve | `lib/approval.mjs approve`, then `lib/compile.mjs` | — |
+| Move on | `lib/next.mjs` offers: design a sub-effort, develop, or stop | the user picks |
 
-- **A level is earned.** A change inside one subsystem skips `container`; inside one component,
-  `component`. The skip is recorded.
-- **Evidence is scoped to the level.** Each level surveys only the ground it needs, reuses standing
-  evidence, and runs the outward search (`agentics-find-existing-solutions`: does this already
-  exist?) concurrently with the survey when it would build a capability.
-- **Decisions are the user's and carry ids.** One question at a time, dependency order first, each
-  with a recommendation and its reason. Open questions are graded `blocking`, `parked`, `lookup`,
-  `compost`; a level with an open `blocking` question does not hand down.
-- **Approaches in parallel when the decision space is open.** Independent drafts from assigned
-  stances (GP1: bought for independence); skipped and recorded when the level has one obvious
-  shape.
-- **The probe is earned** by length or by a contract other nodes consume (see [Probe](#probe)).
-- **Just in time.** Only the frontier's lower levels are written; a sibling reaching the frontier
-  gets its level then, with its ancestors and delivered siblings as settled context.
+- **Which folder.** `/agentics:design <words>` matches the words against every folder's name and
+  title (`lib/next.mjs folders`). One match resumes that folder at its earliest unfinished stage,
+  derived from its spec (`lib/spec.mjs check`) and the ledger (`lib/approval.mjs state`); several
+  are asked about; none proposes a new effort. No id, slug or flag. A sub-effort's folder is
+  created as a skeleton spec by `lib/effort.mjs folder`, and renamed among its siblings by
+  `lib/effort.mjs rename`, which rewrites every id and path naming it and carries each approval by
+  a new ledger line for the renamed text; it is refused once work under the folder was dispatched.
+- **Scale check.** Before the first question the session says whether the work looks small and
+  settled enough for `task`. The user can override; complexity found later never downgrades the
+  path.
+- **Level of detail.** A layer states only what the layer below needs: a high layer talks in parts
+  and how they interact, a low one in interfaces and data shapes. Depth comes from folders.
+- **Decisions are the user's and carry ids**: `D<n>` at the root, `<folder id with dots>.D<n>`
+  below. Open questions are graded `blocking`, `parked (reopens at <x>)`, `lookup`, `compost`, and
+  a spec with an open `blocking` question does not hand off. **The ancestor rule:** an answer that
+  contradicts an ancestor's decision becomes a `blocking` question citing it, and the fix happens
+  in the ancestor's spec.
+- **Just in time.** A sub-effort's spec is written when it is next. `author: you` brings it back
+  through this loop; `author: planner` lets develop's planner write it, under the
+  [autonomous review](#autonomous-review) instead of the user's approval.
+- **Approval is a hash.** A spec is *approved* when its current hash equals the one on its latest
+  `approved` ledger line, and *prepared* likewise for a planner-written spec. An edit makes it
+  *edited since approval*: it goes back to Review, and compile leaves it out until it is approved
+  again.
+- **The review gate is computed.** `lib/approval.mjs gate` (`approvalGate`) reads the latest
+  `reviewed` ledger line at the spec's current hash and the folder's dispositions: ratifiable when
+  that review examined every axis and each ambiguity it returned, carried ones included, has a
+  disposition from any round. An edit leaves no review of the new text, so the gate shuts until
+  one reads it. The design session and develop's autonomous review read the same gate.
 
-**Why:** most design errors are errors of intent or of contract, and both are cheapest to catch at
-the level that states them; writing lower levels early pays for detail the upper levels will change.
+**Why:** most design errors are errors of intent or of contract, and both are cheapest to catch in
+the layer that states them; writing lower layers early pays for detail the upper layers will
+change. The spec is the session's memory, so a design outlives the session that wrote it.
 
 ### Traceability
 
-Every decision at every level has an id. When an effort has no design node, its root's decision
-list is the request's items as triage stated them. Every child lists the decision ids it realises;
-every leaf's criteria trace to them. Before anything is dispatched, `lib/traceability.mjs`
-computes:
+Every decision in every spec has an id, and every plan entry lists in `realises` the ids it makes
+true. `check-plan-block` refuses a `realises` id that neither the spec nor an ancestor defines,
+and a decision the spec defines that none of its own entries realises: a `sub-effort` or a `task`
+realises what it lists (a sub-effort with no spec yet is the frontier), a `dropped` entry's
+decisions count as not realised, accepted, and a `deferred` entry realises nothing. Approval
+refuses such a spec, so compile never meets one. A settled request's root spec takes
+its Decisions from the request's items, written by develop and approved by the user. Before
+anything is dispatched, `lib/traceability.mjs` computes over the compiled tree:
 
-- decisions no child realises — a **blocking gap** (a node with no children yet is frontier, not a
-  gap);
+- decisions no child realises — a **blocking gap** (a `design` node with no spec yet is frontier,
+  not a gap);
 - criteria that trace to no decision — reported, for the user to accept or remove.
 
-The integration review receives the decision list of the subtree it reviews.
+The integration review receives the decision list of the subtree it reviews, and the folder's spec
+as its yardstick.
 
 **Why:** a plan that silently drops a decision passes every leaf-level gate, because each gate
 checks a leaf against its own criteria.
@@ -657,8 +692,9 @@ checks a leaf against its own criteria.
 from it. The probers are not the author: each receives the document and the repository's excerpts
 and nothing from the author. Findings sit on the design ladder (**ambiguity** blocks ratification;
 **gap** is designed away or accepted out loud; **note** is advisory), and `ratifiable` is computed:
-false while any ambiguity is open, and false when any axis went unexamined. There is no fix loop;
-the probe reports and a human rules. The ladder's and the disposition's wording are the verbatim
+false while any ambiguity is open, and false when any axis went unexamined. When a person drives it
+there is no fix loop: the probe reports and a human rules. The one loop is the
+[autonomous review](#autonomous-review) of a planner-written spec. The ladder's and the disposition's wording are the verbatim
 blocks `design-severity-ladder` and `probe-disposition` in the `design` and `probe` skills.
 
 One analyst holds every axis as a checklist; more are bought only when the document is long
@@ -676,6 +712,45 @@ The Ground phase writes three sets of [context files](#context-files): the docum
 citations and the located repository ground, which every prober Reads, and the located guidance,
 which only the axes analyst Reads. Each set comes from one script run, so the probers share one
 read of the ground.
+
+### Autonomous review
+
+A spec develop's planner writes (an `author: planner` sub-effort, a promoted task, or its own
+folder replanned) goes ahead without the user's approval, but only once an adversarial review
+passes. It runs inside `agentics-develop`, one folder at a time:
+
+1. **Check.** The `spec-check` boundary parses the spec with its ancestors' decisions in view. A
+   Decisions row parks the folder `needs_decision`, because only the user states decisions; any
+   other problem escalates `spec_refused`.
+2. **Attack.** A nested `agentics-probe` reviews the spec. After the first round, `since` (the
+   previous return's snapshot) narrows the review to the spans changed since. `spec-reviewed`
+   records every round as a `reviewed` ledger line with the settlement ids of its ambiguities; an
+   incomplete one escalates `review_incomplete`.
+3. **Settle.** The planner gives every new finding a disposition: incorporated (the spec
+   changed) or discarded. An `ambiguity` or a `gap` can only be incorporated; a discard of one is
+   refused and sent back once, and refused again it escalates `review_not_converging`. A finding
+   whose fix would state a decision parks the folder `needs_decision`. `spec-settle` records each
+   disposition, `by: planner`, under the finding's settlement id (its evidence-item id, or the
+   reviewed hash and its `P<n>` when it has none). A finding the probe carries
+   from an earlier round (its lines untouched since) stays settled and is not asked about again.
+4. **Converge.** A new finding with the same axis, section and claim as one the previous round
+   incorporated escalates `review_not_converging`: a computed exit, never a round counter (IL1).
+5. **Prepare.** The gate is the `spec-gate` boundary, `approvalGate` on the ledger, the one the
+   design session reads: the latest review of the spec as it stands is complete and every
+   ambiguity it returned has a disposition. An incorporation edited the spec, so it buys a
+   narrowed re-review; a gate still shut on a round that edited nothing escalates
+   `review_not_converging`. Then `spec-prepare` records the `prepared` ledger line naming the raw
+   return the passing review recorded (an empty one when it found nothing new; its snapshot, else
+   the spec hash, only when the probe's scope or record failed), and compiles the folder. A
+   compile refusal escalates `compile_refused`.
+
+A park or an escalation stops only that folder; develop keeps running whatever does not depend on
+it. A `spec_changed` park on a folder the planner wrote goes back to the planner, which re-derives
+it through these same steps; its preparation clears the park its own compile raises. The same
+park on a folder the user wrote waits for the user.
+
+**Why:** the parts the user lets go autonomously still get a reader that did not write them
+(IL3), and the planner may shape a plan but never a decision (IL4).
 
 ---
 
@@ -913,11 +988,17 @@ merge-batch. Coupled leaves run one at a time; everything else keeps running.
   look thorough.
 <!-- /agentics:verbatim -->
 
-- **Integration review** runs per composite node, over the merged diff of its children, against its
-  decision list and the criteria of every child reviewed there. It is earned when a child had no
-  review loop of its own, or when two or more children with work meet there; otherwise it is
-  skipped and the log says why. When planned children did not land, every finding carries that
-  caveat. Its criticals park the composite for the user.
+- **Integration review** runs per folder over the merged diff of its children, against its
+  decision list, the criteria of every child reviewed there, and the folder's spec as its
+  yardstick. It is earned at the root whenever something merged there (the landing view reads its
+  verdicts), and below the root when a child had no review loop of its own or two or more children
+  with work meet there; otherwise it is skipped and the log says why. When planned children did not
+  land, every finding carries that caveat. Besides findings it returns a **claim verdict** for each
+  claim the spec makes (a success criterion, a Design statement, a plan criterion): `met`, `under`,
+  `over`, `deviates`, `spec_defect` or `cant_tell`, recorded as a `claims` event. Routing is by
+  class, first match: any `spec_defect` parks the folder `spec_defect` on its spec (a re-spec);
+  any critical, or any `under`, `over` or `deviates`, parks it `integration_critical` (the user
+  routes the fix); any `cant_tell` parks it `cant_tell`, which never counts as a pass.
 - **Establishing commands** is judgment: when no build or test command is established, leaf-close
   returns `command_unknown`, and an investigator establishes them once for the execution, recorded
   as `command` gotchas.
@@ -945,12 +1026,15 @@ re-slice. Until they rule, the consumer is parked (`contract_drift`); everything
 running. Undesigned nodes are reported as unexamined.
 
 **Landing is the one ask.** When the effort is complete, or the user says to land what exists, the
-session runs `lib/boundary.mjs land --action check` — how the user's branch drifted since the
-effort branch was cut, open escalations and parked nodes, every `HUMAN:` criterion verbatim —
-asks, and runs `--action merge`, which merges the effort branch into the user's checked-out branch
-and appends `landed`. It refuses over an open escalation, a parked node or a dirty tree. Cleanup of
-merged branches and their clean worktrees (`--action cleanup`) follows on a go, and only from the
-checkout that took the merge.
+session runs `lib/boundary.mjs land --action check`: how the user's branch drifted since the
+effort branch was cut, open escalations and parked nodes, every `HUMAN:` criterion verbatim, the
+root's claim verdicts (`root_claims`) and the **landing view** (`landing`, from
+`lib/render.mjs renderLanding`: the root spec's success criteria beside those verdicts, what did
+not hold first, a `cant_tell` counted apart from `met`). The session shows it, asks, and runs
+`--action merge`, which merges the effort branch into the user's checked-out branch and appends
+`landed`. It refuses over an open escalation, a parked node or a dirty tree; untracked state under
+`.claude/` and `.agentics/` is not dirt. Cleanup of merged branches and their clean worktrees
+(`--action cleanup`) follows on a go, and only from the checkout that took the merge.
 
 ---
 
@@ -1056,6 +1140,33 @@ couriers that run the boundaries move it live while the workflow runs.
 **Why a flag:** each todo move is a turn on a courier, which is cheap but not free; a user who
 watches the log or checks in only at the end should not pay for it.
 
+### The Next line
+
+`lib/next.mjs` computes the one command to run next for an effort from its specs, the ledger, the
+node and event logs and its executions. First match wins:
+
+1. an open execution → `/agentics:develop <folder>`: resume it;
+2. a parked or escalated node → what it waits on and the spec to edit: `/agentics:design <node>`
+   for a `needs_design` park, `/agentics:develop <folder>` otherwise;
+3. a spec the user writes that has a `blocking` question or is not approved →
+   `/agentics:design <folder>`; one whose latest review of its current text was partial →
+   `/agentics:design <folder>`, which resumes its Review stage on the axes it left unexamined;
+4. a spec the user writes, edited since approval → `/agentics:design <folder>`;
+5. an approved plan naming an `author: you` sub-effort that has no spec →
+   `/agentics:design <entry>`;
+6. approved or prepared, with nothing dispatched beneath it → `/agentics:develop <folder>`;
+7. the root integrated → the landing view, then `/agentics:develop <effort>`.
+
+Ties go depth-first in sorted folder-id order and nothing else, so a fresh session computes the
+same line; up to two alternatives follow it. A folder is named by its path from the root, the root
+by the effort's name. Folders the planner writes never route to design. Every visible command ends
+by printing the line (the verbatim block `next-footer`), and one invoked where it does not fit
+prints the line and points there instead. `/agentics:next` shows every effort, where it stands and
+its line, and offers to run it.
+
+**Why:** "what now?" has one computed answer, so no session has to remember it and no two can
+disagree about it.
+
 ---
 
 ## Agents
@@ -1064,7 +1175,7 @@ watches the log or checks in only at the end should not pay for it.
 |---|---|---|---|
 | scout, historian, doc-researcher | find, to exhaustion | conclude | search tools; historian read-only git; doc-researcher the web |
 | analyst | judge what it is handed | search | `Read` only |
-| planner | triage, decompose, set rigor and dispatch, write nodes | implement | read, search, shell (for `lib/tree.mjs`), write |
+| planner | write the spec of a folder develop owns (an `author: planner` sub-effort, a promoted task, its own folder replanned) and settle its autonomous review | state a decision, implement | read, search, shell (for `lib/spec.mjs check`), write |
 | implementer | code one leaf as a focused series, or its fix round | leave its locus, amend, merge, certify | read, edit, shell |
 | test-author | write a leaf's tests and declare mutations | implement, execute anything | read, edit |
 | auditor | declare mutations against an implementation | edit source, execute anything | read, write (its report only) |
@@ -1093,12 +1204,12 @@ absent it says so and the session takes the `--no-progress` path.
 | skill | entry for |
 |---|---|
 | `task` | the inline mode |
-| `design` | a design node at any level |
-| `develop` | executing any subtree: triage, launch, result walk, landing |
+| `design` | one folder's spec at any depth: the loop from Analyze to Move on |
+| `develop` | building a folder or a settled request: the root spec, launch, result walk, re-specs, landing |
 | `probe` | attacking a written artefact |
 | `investigate` | answering a question from evidence (`agentics-investigate`) |
 | `find-existing-solutions` | the outward search (`agentics-find-existing-solutions`) |
-| `status` | listing efforts, nodes and executions with derived status; handing one to `develop` |
+| `next` | every effort, where it stands and its computed Next line; hands the pick on |
 
 A skill file holds the router and the steps; step detail lives in reference files loaded when the
 step is reached. A contract several files must state identically is a verbatim block, placed only
@@ -1123,24 +1234,27 @@ Two conventions hold throughout:
 
 ### Node record and events
 
-- **Owner:** `normalizeNode`, `nodeProblems`, `treeProblems`, `deriveStatus` in `lib/tree.mjs`;
-  `EVENT_KINDS` in `lib/ledger.mjs`.
+- **Owner:** `normalizeNode`, `nodeProblems`, `treeProblems`, `deriveStatus`, `claimsOf` in
+  `lib/tree.mjs`; `EVENT_KINDS` in `lib/ledger.mjs`.
 - **Restated in:** `agents/planner.md`; `skills/develop` and `skills/design` (the root and design
   node JSON); the preflight row in `lib/boundary.mjs` (it carries `author`); `todoFor` in
-  `lib/status.mjs`; the entry-to-node mapping in `lib/compile.mjs`.
+  `lib/status.mjs`; the entry-to-node mapping in `lib/compile.mjs`; `lib/next.mjs` and
+  `lib/render.mjs` (readers).
 
 Fields as in [Nodes](#nodes). Event lines are `{kind, node, execution, seq, ...}`:
 `planned {by}` · `replanned {reason, by}` (also `retry_escalated` and `answered`) ·
 `dispatched {role, round, model, effort}` · `approved {head_sha, review_rounds, at_integration}` ·
 `merged {into, merged_sha, head_sha}` · `escalated {reason, detail}` · `parked {return, question}`
-(`return` is a replanning return, `needs_design`, `integration_critical` or `contract_drift`) ·
-`landed {into, merged_sha}`.
+(`return` is a replanning return, `needs_design`, `needs_respec`, `integration_critical`,
+`spec_defect`, `cant_tell` or `contract_drift`) ·
+`landed {into, merged_sha}` · `claims {head_sha, claims[{claim, verdict, evidence}]}`.
 
 ### Spec format
 
 - **Owner:** `parseSpec`, `checkSpec`, `checkFolder` and `hashSpec` in `lib/spec.mjs`.
-- **Restated in:** the `vocabulary` block ([Vocabulary](#vocabulary), `agents/planner.md`); the
-  entry-to-node mapping in `lib/compile.mjs`.
+- **Restated in:** the `vocabulary` block ([Vocabulary](#vocabulary), naming every copy:
+  `docs/DESIGN.md`, `agents/planner.md`, `skills/design/SKILL.md` and `skills/develop/SKILL.md`);
+  the entry-to-node mapping in `lib/compile.mjs`.
 
 A `# ` title, then `## Intent`, `## Decisions`, `## Design`, `## Plan`, `## Open questions`,
 `## Evidence`, in that order. Decisions rows: `| <id> | <decision> | <why> |`, ids `D<n>` at the
@@ -1167,14 +1281,16 @@ problem `{file, line, problem}`.
 ### Ledger lines
 
 - **Owner:** `lib/approval.mjs`; the file names in `EFFORT_FILES` in `lib/ledger.mjs`.
-- **Restated in:** `lib/compile.mjs` (reads `approved`, `prepared` and `compiled`).
+- **Restated in:** `lib/compile.mjs` (reads `approved`, `prepared` and `compiled`); `lib/effort.mjs`
+  (`renameSubEffort` copies those lines).
 
 `ledger.jsonl` shares the effort's `seq` counter with the node and event logs:
-`approved {folder, hash, decisions[{id, text}], by: user}` · `prepared {folder, hash, review, by:
-planner}` · `compiled {folder, hash}` · `disposition {folder, finding, outcome: incorporated |
-discarded, by: user | planner}` · `review_skipped {folder, hash, reason}` · `reviewed {folder,
-hash, complete, remaining[], ambiguities[]}` (one per review round; `lib/next.mjs` reads the
-latest, and the gate reads the latest at the current hash). A finding is named by its settlement
+`approved {folder, hash, decisions[{id, text}], by: user, renamed_from?}` · `prepared {folder, hash,
+review, by: planner, renamed_from?}` · `compiled {folder, hash}` · `disposition {folder, finding,
+outcome: incorporated | discarded, by: user | planner}` · `review_skipped {folder, hash, reason}` ·
+`reviewed {folder, hash, complete, remaining[], ambiguities[]}` (one per review round; `lib/next.mjs`
+reads the latest, and the gate reads the latest at the current hash). `renamed_from` is the old
+folder id, on the line `effort.mjs rename` appends for a renamed folder. A finding is named by its settlement
 id: its evidence item id, or `<hash>#<P-id>` when the review could not anchor it; `disposition`
 and `reviewed.ambiguities` both use it. A folder's approval state and its review gate are derived,
 never stored, and a spec with an open `blocking` question is refused approval.
@@ -1265,7 +1381,7 @@ notes}` plus:
   base_sha, approved_head, commits, dirty, rounds, brief_path}]`, `gaps`, `untraced`, `atomicity`, `coupled`, `stale`, `freed`,
   `dirty_worktrees`, `commands`, `max_parallel`. A row is `{id, title, kind, author, rigor, role,
   deps, locus, reads, provides, consumes, decisions, dispatch, ground_known, evidence, status,
-  reason, rev, children, acceptance_n, human, own_review, coupled, integration}` — no prose.
+  reason, rev, spec_path, children, acceptance_n, human, own_review, coupled, integration}` — no prose.
 - **leaf-open** — `status` (`opened | no_slot | locus_held | busy | refused`), `branch`, `worktree`,
   `base_sha`, `head_sha`, `rebased`, `brief_path`, `brief_digest`, `report_path`, `slot`,
   `max_parallel`, `held_by[{effort, path, node, execution, status}]`, `stuck`.
@@ -1276,9 +1392,21 @@ notes}` plus:
   `merged[{id, merged_sha}]`, `conflict {node, nodes, paths, reason}`, `head_sha`, `verified`,
   `measurement`, `failed_alone[{id, ids, failures}]`, `combination[]`.
 - **postflight** — `cleanup[{node, branch, worktree, merged}]`, `unmerged`, `closed`.
+- **spec-check** — `node`, `spec_path`, `exists`, `hash`, `decisions_n`,
+  `problems[{file, line, problem}]`: a planner-written spec, checked with its ancestors' decisions
+  in view.
+- **spec-settle** — `recorded`: the dispositions appended, `by: planner`; one already in the
+  ledger for that folder is not appended again.
+- **spec-reviewed** — no fields beyond the common ones: it appends the round's `reviewed` ledger
+  line (`complete`, `remaining`, `ambiguities`).
+- **spec-gate** — `ratifiable`, `open`, `coverage_complete`, `remaining`, `reviewed`: the
+  `approvalGate` of the folder's spec as it stands.
+- **spec-prepare** — `status` (`prepared | refused`), `hash`, `compile` (the `compileEffort`
+  result), `problems`. A `spec_changed` park its compile raises on the prepared folder is cleared
+  by a `replanned` event, reason `spec_rederived`.
 - **land** (the session's, plain JSON) — `check`: `open_escalations`, `parked`, `human`,
-  `drift {base_sha, base_moved, commits, overlap}`, `root_status`; `merge`: `merged_sha`;
-  `cleanup`: `removed`, `kept`.
+  `drift {base_sha, base_moved, commits, overlap}`, `root_status`, `root_claims`, `landing`;
+  `merge`: `merged_sha`; `cleanup`: `removed`, `kept`.
 
 ### Replanning returns
 
@@ -1307,11 +1435,32 @@ not — and no earned integration review or survey lost), `dropped[]`, `incomple
   commands, plugin_root`. Returns `{effort, root, execution, checkpoint, nodes_n,
   implemented[{id, rigor, role, rounds, review_rounds, at_integration, salvaged}],
   escalations[{id, reason, detail}], parked[{id, return, question}], blocked[{id, blocked_by}],
-  integration{branch, head_sha, reviews[{target, findings, notes, reviewed}]}, drift, cleanup,
+  integration{branch, head_sha, reviews[{target, findings, claims, notes, reviewed}]}, drift, cleanup,
   cost{dispatches, by_model, tokens}, stopped, notes, coverage}`.
 - **`agentics-survey`**, **`agentics-probe`**, **`agentics-investigate`**,
   **`agentics-find-existing-solutions`** — their inputs and returns are stated at the top of each
   workflow and in the skill that launches it.
+
+### Review returns
+
+- **Owner:** `FINDINGS` in `agentics-develop`.
+- **Restated in:** `agents/reviewer.md` (the verdicts, and when a review returns them).
+  `skills/task` asks its own reviewer for `{findings, fix_verdicts, notes}` only.
+
+`{findings[{id, severity: critical|major|minor, claim, evidence, failure_scenario}],
+fix_verdicts[{id, status: fixed|not_fixed|regressed, evidence}], claims[{claim, verdict:
+met|under|over|deviates|spec_defect|cant_tell, evidence}], notes}`. A leaf review returns
+`claims: []`.
+
+### Planner returns
+
+- **Owner:** `PLANNED` and `SETTLED` in `agentics-develop`.
+- **Restated in:** `agents/planner.md`.
+
+Writing a spec: `{status: written|needs_decision|contract_changed|premise_mismatch|unsplittable|blocked,
+written[], accepted_warnings[], uncovered[], question, detail}`, with the spec's path in
+`written`. Settling a review: `{status: settled|needs_decision|blocked, dispositions[{finding,
+outcome: incorporated|discarded}], question, detail}`.
 
 ---
 

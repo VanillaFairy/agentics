@@ -462,3 +462,18 @@ answer. On a new session, give the one line to copy and stop; do not invoke `dev
 
 Report coverage on the way out: a survey or sweep that did not complete is named, with what rests
 on it.
+
+## The Next line
+
+<!-- agentics:verbatim next-footer -->
+**End with the Next line.** Whatever this command did, finished, stopped, refused or found itself
+in the wrong place, the last thing you print is the Next line, computed and never composed:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/next.mjs" --repo . --effort <effort>
+```
+
+Print its output as it stands. With no effort in hand, drop `--effort` and print every effort's
+line. **Invoked where it does not fit**, a folder not in the state this command acts on, run it
+first, before anything else, and point to the command it names instead of going on.
+<!-- /agentics:verbatim -->

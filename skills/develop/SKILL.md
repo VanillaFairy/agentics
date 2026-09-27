@@ -374,3 +374,18 @@ back. The list is a view: refresh it from the command, never move an item by han
 
 When the root folder is `integrated`, or the user says to land what exists, read `landing.md`
 beside this skill and follow it. That is the only place the user's branch moves.
+
+## The Next line
+
+<!-- agentics:verbatim next-footer -->
+**End with the Next line.** Whatever this command did, finished, stopped, refused or found itself
+in the wrong place, the last thing you print is the Next line, computed and never composed:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/next.mjs" --repo . --effort <effort>
+```
+
+Print its output as it stands. With no effort in hand, drop `--effort` and print every effort's
+line. **Invoked where it does not fit**, a folder not in the state this command acts on, run it
+first, before anything else, and point to the command it names instead of going on.
+<!-- /agentics:verbatim -->

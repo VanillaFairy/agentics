@@ -137,3 +137,18 @@ An answer built on two-thirds of the evidence looks identical to a complete one.
 one you are handing over is the whole job.
 
 Do not restate the task list or re-summarise the report. The user can see both.
+
+## The Next line
+
+<!-- agentics:verbatim next-footer -->
+**End with the Next line.** Whatever this command did, finished, stopped, refused or found itself
+in the wrong place, the last thing you print is the Next line, computed and never composed:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/next.mjs" --repo . --effort <effort>
+```
+
+Print its output as it stands. With no effort in hand, drop `--effort` and print every effort's
+line. **Invoked where it does not fit**, a folder not in the state this command acts on, run it
+first, before anything else, and point to the command it names instead of going on.
+<!-- /agentics:verbatim -->

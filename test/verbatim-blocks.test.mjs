@@ -46,6 +46,9 @@ const REQUIRED_IDS = [
   'dispatch-economy', 'dispatched-economy',
   // Every phase that records into an effort says the same thing about what a record is worth.
   'effort-store',
+  // Every visible command ends on the same computed Next line; a copy that drifts lets one command
+  // compose its own.
+  'next-footer',
   // The glossary and principles every agent acting on specs, entries and approvals shares; a copy
   // that drifts is an agent working to a different meaning of the same word.
   'vocabulary',

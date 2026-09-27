@@ -1,19 +1,82 @@
 ---
 name: develop
-description: Use when the user asks to build a change, feature or fix through agentics, or to carry on with one already under way — triage, then an execution of a subtree of the effort's tree in framework-owned worktrees (planned, implemented by rigor, reviewed, merged by composite), a walk of its result, and landing on the user's go. Hands small settled work to task and unsettled work to design. Not for questions (investigate).
+description: Use when the user asks to build a change, feature or fix through agentics, or to carry on with one already under way — a folder named in plain words, or a settled request. For a request, writes a short root DESIGN.md and builds it once the user approves it; for an approved or prepared folder, an execution in framework-owned worktrees (planned, implemented by rigor, reviewed, merged by folder), a walk of its result where every park is answered by editing a spec, and landing on the user's go. Hands small settled work to task and unsettled work to design. Not for questions (investigate).
 ---
 
 # develop
 
-The entry for executing any subtree of an effort: triage, launch, result walk, landing.
-Design: `docs/DESIGN.md#execution-modes`, `docs/DESIGN.md#execution`.
+The entry for building any folder of an effort: finding it, launching it, walking its result,
+landing it. Design: `docs/DESIGN.md#execution-modes`, `docs/DESIGN.md#execution`.
 
 Invoking this skill **is** the user's opt-in for the `Workflow` tool. Do not ask again.
 
+## Vocabulary
+
+<!-- agentics:verbatim vocabulary -->
+**The terms.** Each means exactly this wherever agentics uses it.
+
+- **effort**: one piece of work: the folder `.agentics/<effort>/` in the main checkout, and
+  everything under it.
+- **folder**: a directory of an effort that holds a spec. The effort's own folder is the root
+  folder; every folder below it is a **sub-effort**, and is also an entry in its parent's plan.
+- **spec**: a folder's `DESIGN.md`, written for the user, with the sections Intent, Decisions,
+  Design, Plan, Open questions and Evidence. It never holds status.
+- **`.state/`**: machine state, written only by scripts: an effort's `.state/` (nodes, events,
+  ledger, executions) and the project-wide `.agentics/.state/` (slots, context files, evidence
+  items).
+- **segment rule**: names of efforts, folders and entries match `^[a-z0-9][a-z0-9-]*$`, at most 120
+  characters, with no `--`.
+- **plan entry**: one named unit of work in a spec's Plan: a `sub-effort` (its own folder and spec),
+  a `task` (built directly), `deferred` (not now) or `dropped` (abandoned; the decisions it
+  realises are accepted as not realised). An entry lists the decision ids it `realises` and what it
+  waits for in `after`: a sibling's name, or a path from the root folder starting with `/`.
+- **author**: who writes a sub-effort's spec: `you` (the default; it goes through the design loop
+  with the user) or `planner` (develop's planner writes it, and an autonomous review must pass it).
+- **decision**: a ruling of the user's, in their words with their why, with an id: `D<n>` in the
+  root folder, `<folder id with / written as .>.D<n>` below it. Only the user authors decisions. A
+  contract is a decision.
+- **contract**: a named interface one entry `provides` and others `consumes`. Names are unique
+  across the effort.
+- **approved**: the spec's current hash equals the hash on its latest `approved` ledger line,
+  written only after the user approves in so many words. **prepared**: the same against a
+  `prepared` line, written only after a planner-written spec passed its autonomous review.
+  **Edited since approval**: a line exists and the hash differs; compile leaves the spec out until
+  it is approved again.
+- **compile**: the operation that turns approved and prepared specs into the execution graph, and
+  the only writer of nodes. A folder becomes a `composite` node, a sub-effort with no approved or
+  prepared spec a `design` node (the frontier), and a task a `leaf`.
+- **task promotion**: a task that must be decomposed gets its own spec in
+  `<folder>/<task>/DESIGN.md`. Compile then builds it as a composite that realises the task's
+  decisions and carries its criteria.
+- **finding**: one result of a review, graded `ambiguity` (blocks until settled), `gap` (designed
+  away or accepted out loud) or `note` (advisory). To **settle** a finding is to incorporate it
+  into the spec or to discard it.
+- **claim verdict**: `met`; `under`, `over` or `deviates` (drift); `spec_defect` (the claim can't
+  be met as written); `cant_tell` (the evidence doesn't decide it, and it is never a pass).
+- **evidence item**: one claim with the anchors it rests on: spans, queries, sources, or other
+  items. Its state is derived on read: **standing** (no anchor changed, or it was re-judged as
+  holding), **suspect** (an anchor changed and nobody has judged the change), **stale** (judged as
+  failing, expired, or resting on a stale item).
+- **park**: a node stops and waits for the user. The answer is a re-spec: edit the spec that owns
+  the fault, approve it again, recompile.
+
+**The laws and principles.** IL1: a set task is finished. IL2: a partial result never looks whole.
+IL3: nothing judges itself. IL4: the user owns decisions and their tree. And:
+
+1. Specs are authored; state is derived. No status goes into a spec, and no render is edited by
+   hand.
+2. One writer per folder at a time, under the effort lock.
+3. Prevent, detect, correct. Detect with the cheapest sufficient instrument (a deterministic check,
+   then a fresh agent, then the user), name the fault's class, and apply the class's remedy where
+   the fault lives. A new stage, grade or rule is a last resort.
+4. Promoting to docs is plan work. When an effort changes what the project's docs describe, its
+   plan carries the entry that updates them.
+<!-- /agentics:verbatim -->
+
 ## Arguments
 
-`[max|normal|low] [--intelligence=<tier>] [--effort <slug>] [--root <node-id>] [--resume <stamp>]
-[--land] [--plan-only] [--pause] [--no-progress] [--pace frugal|balanced|fast] [--base <ref>] <the request>`
+`[max|normal|low] [--intelligence=<tier>] [--resume <stamp>] [--plan-only] [--pause]
+[--no-progress] [--pace frugal|balanced|fast] [--base <ref>] <a folder, or the request, in plain words>`
 
 <!-- agentics:verbatim intelligence-tier -->
 The dial follows the model this session is running, never how important the work feels:
@@ -29,33 +92,51 @@ judgment nobody asked it for. Only the user moves it off that mapping — a bare
 <!-- /agentics:verbatim -->
 
 The dial is a ceiling on the gates (planner, reviewer, auditor, analyst); producers run the
-cheaper model unless their node's author set otherwise (`docs/DESIGN.md#model-tier`). At `low`,
+cheaper model unless their task's entry set otherwise (`docs/DESIGN.md#model-tier`). At `low`,
 say before launching that no strong reader remains anywhere in the loop.
 
-- `--effort` — an existing effort; a design hand-off always names one. Otherwise step 2 opens one.
-- `--root` — the subtree to execute; default `.`, the effort root.
-- `--resume <stamp>` — relaunch that execution: skip steps 1 and 2, go to step 3 with its stamp.
-- `--land` — go straight to step 6 for the effort.
-- `--plan-only` — plan the subtree and stop at a `parked` checkpoint; nothing is implemented.
-- `--pause` — start no new leaf after the next merge-batch.
-- `--no-progress` — the couriers do not move todos; the session derives the list (step 5).
-- `--pace` — `fast` buys parallelism over shared context for speed; default `balanced`.
-- `--base` — the named ref the effort branch is cut from; default the current HEAD. A branch or
+- `--resume <stamp>`: relaunch that execution: go to step 3 with its stamp.
+- `--plan-only`: plan the folder and stop at a `parked` checkpoint; nothing is implemented.
+- `--pause`: start no new task after the next merge-batch.
+- `--no-progress`: the couriers do not move todos; the session derives the list (step 5).
+- `--pace`: `fast` buys parallelism over shared context for speed; default `balanced`.
+- `--base`: the named ref the effort branch is cut from; default the current HEAD. A branch or
   tag, never a sha.
 
-## Step 1 — Triage (fresh work only)
+## Step 0 — Which folder
 
-A resume, or an effort whose root already has nodes, skips this: it was triaged when its root was
-written. Three questions fix the root's kind (`docs/DESIGN.md#triage`):
+Match the words against every folder of every effort:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/next.mjs" folders --repo .
+```
+
+A folder is named as commands name it: the effort's name for its root folder, otherwise its path
+from the root (`foundations/entities`). A name equal to the words is the match; otherwise every
+folder whose name or title contains them. **One match** is the folder this run builds. **Several**:
+ask which with `AskUserQuestion`. **None**: the words are a request, and step 1 takes them.
+
+For a matched folder, first match:
+
+| the folder | go to |
+|---|---|
+| an open execution is rooted at it (`node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" list --repo .` lists open executions and their roots) | step 3 with that execution's stamp: this is the resume |
+| it is the root folder and its status is `integrated` | step 6 |
+| its spec is approved or prepared (`node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" state --repo . --effort <e> --folder <id>`) | step 3, a fresh execution |
+| anything else | not develop's yet: print the Next line and stop |
+
+## Step 1 — Triage (a request only)
+
+Three questions decide what the root spec's plan holds (`docs/DESIGN.md#triage`):
 
 | question | if **no** |
 |---|---|
-| Is the intent settled — no approach left to discover? | a design node: recommend `agentics:design` |
-| Does it satisfy atomicity (`docs/DESIGN.md#atomicity-when-to-stop-splitting`)? | a composite: the planner decomposes it |
-| Is the ground known — finding where the change goes is not part of the work? | `ground_known: false`: a survey runs before planning |
+| Is the intent settled — no approach left to discover? | recommend `agentics:design` and stop |
+| Does each item satisfy atomicity (`docs/DESIGN.md#atomicity-when-to-stop-splitting`)? | its entry is a `sub-effort` with `author: planner`: develop's planner writes that spec |
+| Is the ground known — finding where the change goes is not part of the work? | its entry is a `sub-effort` with `author: planner` and no `ground`: a survey runs before its planner |
 
-The mode: **inline** when every leaf would be `verify`, `trivial`, `tests-only` or `tdd`, the locus
-is known, the intent settled, nothing is irreversible, and the leaves' summed fit (the task skill's
+The mode: **inline** when every task would be `verify`, `trivial`, `tests-only` or `tdd`, the locus
+is known, the intent settled, nothing is irreversible, and the tasks' summed fit (the task skill's
 computation) is within this session's budget — then hand over:
 `Skill({ skill: 'agentics:task', args: '<the request, verbatim>' })`. **Dispatched** otherwise.
 
@@ -84,7 +165,7 @@ it.
   Never re-run the whole pass.
 <!-- /agentics:verbatim -->
 
-## Step 2 — The effort and its root
+## Step 2 — The effort and its root spec (a request only)
 
 <!-- agentics:verbatim effort-store -->
 **Efforts — one directory for everything a piece of work produces.** An effort is a subtree of
@@ -124,37 +205,89 @@ a survey stands, never the session.
 
 Make sure `.claude/worktrees/` is gitignored; add the line yourself. `.agentics/` ignores itself.
 
-When the effort has no nodes yet (`node "${CLAUDE_PLUGIN_ROOT}/lib/tree.mjs" show --repo . --effort
-<e> --json` lists none), write its root — a composite `.` whose `defines` are the request's items
-as decisions, one per item, `D1`…`Dn`, in the user's words and nothing added:
-
-```json
-[{ "id": ".", "title": "<imperative>", "intent": "<what the request makes true, the user's words>",
-   "kind": "composite", "defines": [{ "id": "D1", "text": "<item 1, verbatim>" }],
-   "ground": ["<paths known>"], "ground_known": true }]
-```
-
-- `ground_known: false` when finding where the change goes is part of the work.
-- Children are the planner's. Only when triage already knows the one leaf, add it in the same
-  batch: `{id, title, intent, kind: 'leaf', decisions: ['D1', …], acceptance: [{text, check,
-  decisions}], locus, reads, rigor}` — every `Dn` realised, every criterion naming its check.
+Propose a short effort name the user confirms or changes (`^[a-z0-9][a-z0-9-]*$`, no `--`, at
+most 120 characters), and open it:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/lib/tree.mjs" add --repo . --effort <e> --file <path.json> --by session
+node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" open . <name> --about "<the request, in the user's words>" --roots .
 ```
 
-`ok: false` lists the problems and wrote nothing: fix the nodes. `warnings` (atomicity, gaps,
-untraced criteria) go to the user. A design node already at the root is left as it is.
+Write its root spec, `.agentics/<name>/DESIGN.md`. There is no Grill and no challenge here: a
+settled request is its own design, and the user approves the spec before anything is built.
+
+```markdown
+# <the change, as an imperative>
+
+## Intent
+
+<what the request makes true, in the user's words>. Success criteria: <each item, as the user
+put it>.
+
+## Decisions
+
+| id | decision | why |
+|---|---|---|
+| D1 | <item 1, verbatim> | the request |
+
+## Design
+
+<where the change goes, as triage established it; "Settled by the request." when that is all>
+
+## Plan
+
+- **<name>** — task · realises: D1 · rigor: <rigor> · locus: <path>, … · reads: <path>, …
+  <title: one imperative line>
+  <context: self-contained, for an executor who never saw this conversation>
+  - [ ] <criterion> — check: `<command>`
+
+## Open questions
+
+## Evidence
+
+No survey ran: the request named its ground.
+```
+
+- **Decisions** are the request's items, one per item, `D1`…`Dn`, in the user's words and nothing
+  added. Every `Dn` is realised by an entry.
+- **Plan**: a `task` for each item triage found atomic with known ground, rigor per
+  `docs/DESIGN.md#rigor`, every criterion naming its check or starting `HUMAN:`; otherwise one
+  `sub-effort` with `author: planner` realising the items it covers.
+- **Evidence**: when the ground is unknown, say so and name the sub-effort whose survey will find it.
+
+Check it until it prints no problems:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/spec.mjs" check --repo . --effort <e> --folder .
+```
+
+Show the spec to the user in full and ask, with `AskUserQuestion`: **Approve and build**, or
+**Change it**. Nothing is recorded until the user approves in so many words. A change is an edit
+and a new ask. On approval:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" approve --repo . --effort <e> --folder .
+```
+
+Step 3's compile builds it.
 
 ## Step 3 — Launch
 
-Mint the stamp with `date -u +%Y%m%d-%H%M%S`; a resume reuses its stamp. Then:
+Compile the folder first. It is idempotent: it builds what is approved or prepared and leaves out
+any spec edited since its approval, so the execution keeps the last approved graph:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/compile.mjs" --repo . --effort <e> --folder <id>
+```
+
+`ok: false` lists refusals by file and line and wrote nothing: show them and stop; the fix is a
+re-spec (step 4c). Then mint the stamp with `date -u +%Y%m%d-%H%M%S`; a resume reuses its stamp.
 
 ```
-Workflow({ name: 'agentics:agentics-develop', args: { repo: '.', effort, root, execution, plugin_root, intelligence, progress, pace, plan_only, pause, base_ref, commands, retry_escalated, confirmed_duplicate, confirmed_gaps, confirmed_stale } })
+Workflow({ name: 'agentics:agentics-develop', args: { repo: '.', effort, root: <folder id>, execution, plugin_root, intelligence, progress, pace, plan_only, pause, base_ref, commands, retry_escalated, confirmed_duplicate, confirmed_gaps, confirmed_stale } })
 ```
 
 - `plugin_root` is this plugin's absolute root (`${CLAUDE_PLUGIN_ROOT}`) — required.
+- `root` is the folder id: `.` for the root folder.
 - `intelligence` on a fresh execution only. A resume passes none: it adopts its envelope.
 - `commands` only when the user named them: `{build, typecheck, suite, test_one}`.
 - The confirmations and `retry_escalated` only as step 4 directs.
@@ -165,7 +298,7 @@ its base — say so when the tree is dirty. While it runs the todo list moves li
 
 **Resuming.** Inside this conversation, `resumeFromRunId` with the same args replays finished
 agents from cache. After a hard kill, or from another session, relaunch with the same `execution`:
-preflight adopts the envelope and each leaf resumes at its next undone action
+preflight adopts the envelope and each task resumes at its next undone action
 (`docs/DESIGN.md#resume-and-checkpoints`). Every resume is the same launch with the same stamp.
 
 ## Step 4 — Walk the result, in this order
@@ -175,9 +308,9 @@ preflight adopts the envelope and each leaf resumes at its next undone action
 | `checkpoint.reason` | means | to proceed |
 |---|---|---|
 | `existing_execution` | an open execution's root is an ancestor or descendant of this one (`detail`) | resume that one by its stamp (`lib/status.mjs list` shows it); relaunch with `confirmed_duplicate: true` only when both are meant to run |
-| `blocking_gaps` | a decision no child realises, or evidence a node needs was not reached (`detail`, `notes`) | fix the tree — a child realising the decision, through design or the planner — or, on the user's go, relaunch with `confirmed_gaps: true` |
+| `blocking_gaps` | a decision no entry realises, or evidence a node needs was not reached (`detail`, `notes`) | a re-spec (c): an entry that realises the decision — or, on the user's go, relaunch with `confirmed_gaps: true` |
 | `parked` | `plan_only`, or nodes await the user | show the plan (`lib/status.mjs show`) or answer them (c); relaunch |
-| `stale` | the user's branch moved under the plan; `drift` lists per leaf the `writes` and `reads` that moved | the user rules per leaf; relaunch with `confirmed_stale: true` for "still valid", revise a leaf (c) that needs replanning first |
+| `stale` | the user's branch moved under the plan; `drift` lists per task the `writes` and `reads` that moved | the user rules per task; relaunch with `confirmed_stale: true` for "still valid", or re-spec a task that needs replanning first (c) |
 | anything else | the launch failed (`bad_input`, `preflight_failed`, `no_such_node`, a refusal) | fix what `detail` says; relaunch |
 
 **b. Escalations** — `{id, reason, detail}`, each to the user. They are decisions, not
@@ -185,25 +318,28 @@ information; do not resolve them yourself. Once a cause is dealt with, relaunch 
 `execution` and `retry_escalated: [<ids>]`.
 
 **c. Parked nodes** — `{id, return, question}`. Ask the user each question, one topic at a time,
-with your recommendation marked `(Recommended)`. Never answer for them. Write each answer:
+with your recommendation marked `(Recommended)`. Never answer for them. **Every answer is a
+re-spec**: edit the spec that owns the fault, have it re-approved, recompile, relaunch.
 
-- **a fact the node needed** (a clarified criterion, a ruled premise): a revision of that node.
-  Take its row from `lib/tree.mjs show --repo . --effort <e> --root <id> --json`, change what the
-  answer changes (`context`, `acceptance`, `locus`), and write the **whole** node back — a revision
-  replaces the node — with `add … --by session --reason answered`;
-- **a decision** (`needs_decision`, `contract_changed`): a `defines` entry `{id, text}` in the
-  user's words on the design or composite node that owns it, and its id in the `decisions` of the
-  node that realises it — both revisions in one batch, `--reason answered`;
-- **`needs_design`**: run `agentics:design` on that node, and resume once it has children;
-- **`integration_critical`**: the user rules which child is wrong; write the ruling as a revision
-  of that composite (a fix leaf beneath it, or the ruling in its `context`), `--reason answered`.
+| `return` | the spec to edit |
+|---|---|
+| `needs_design` | none yet: run `agentics:design` on that folder; its Approve stage compiles it |
+| `needs_decision`, `contract_changed` | the nearest spec at or above the node that the user wrote: a Decisions row in the user's words, and its id in the `realises` of the entry that makes it true. A decision never goes into a spec develop's planner wrote |
+| `premise_mismatch`, `needs_respec` | the spec holding the node's entry: correct what the user rules wrong |
+| `integration_critical` | the folder's spec: the user rules which part is wrong; a `task` entry that fixes it, or the corrected criterion |
+| `contract_drift` | the consumer's entry: the user rules it unaffected (then relaunch with `retry_escalated: [<id>]` and edit nothing), re-designs it, or re-slices it |
+| `spec_changed` | compile parked a folder you wrote because its spec was re-approved while work under it was under way: the user rules whether the dispatched work still stands, and re-specs what does not. A folder develop's planner wrote never reaches you with this return: the run hands it back to the planner, which re-derives it |
 
-Then relaunch with the **same** `execution`.
+For each spec you edited: show the change, and on the user's approval in so many words run
+`approval.mjs approve` for that folder and the compile of step 3. Compile's `answered` lists the
+parks the re-approval cleared; a park it did not clear (no spec changed, as with a
+`contract_drift` ruled unaffected) is cleared by relaunching with `retry_escalated: [<id>]`. Then
+relaunch with the **same** `execution`.
 
 **d. Blocked** — `{id, blocked_by}`: never dispatched because what they depend on did not land.
 Name the root cause; do not relaunch for them while it is still escalated.
 
-**e. Integration.** `integration.branch` and `head_sha`, then `reviews` per composite: criticals
+**e. Integration.** `integration.branch` and `head_sha`, then `reviews` per folder: criticals
 were parked (c); majors are the user's decision queue, reported as returned. A review that ran with
 planned children missing carries that caveat on every finding — say so.
 
@@ -211,7 +347,7 @@ planned children missing carries that caveat on every finding — say so.
 --action check` is read-only; put every entry of its `human` in front of the user, verbatim, prefix
 included.
 
-**g. What was built.** `implemented` per leaf: rigor and role (a `red` leaf's tests are required to
+**g. What was built.** `implemented` per task: rigor and role (a `red` task's tests are required to
 fail), rounds, `salvaged` — adopted from an earlier invocation, not done now; say which.
 
 ### Reporting — binding
@@ -236,5 +372,5 @@ back. The list is a view: refresh it from the command, never move an item by han
 
 ## Step 6 — Landing
 
-When the execution's root is `integrated`, or the user says to land what exists, read
-`landing.md` beside this skill and follow it. That is the only place the user's branch moves.
+When the root folder is `integrated`, or the user says to land what exists, read `landing.md`
+beside this skill and follow it. That is the only place the user's branch moves.

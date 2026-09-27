@@ -1644,11 +1644,11 @@ outcome: incorporated|discarded}], question, detail}`.
 - **Cost report:** every execution records its dispatches with model and effort (and tokens where
   the host reports them) as `dispatch` state lines; `lib/status.mjs cost` aggregates them so the
   next triage quotes measured figures.
-- **Migration:** `tools/migrate-legacy.mjs` is the one-shot copy of a repository's 3.2.0 state
-  into `.agentics/`: each effort's files into its `.state/`, its design documents from
-  `docs/agentics/designs/` into its `.legacy/`, and `.claude/agentics/slots/config.json` into
-  `config.json`. It never deletes: it lists the committed files it copied for the user to remove,
-  and a second run copies nothing. Nothing reads the old layout.
+- **Migration:** `tools/migrate-legacy.mjs` is the one-shot copy of a repository's 3.2.0 layout
+  into `.agentics/`: each effort's files into its `.state/`, its design documents into its
+  `.legacy/`, and its slot configuration into `config.json`. It never deletes: it lists the
+  committed files it copied for the user to remove, and a second run copies nothing. Nothing
+  reads the old layout.
 
 ---
 

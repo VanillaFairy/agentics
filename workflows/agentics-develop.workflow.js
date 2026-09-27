@@ -658,7 +658,7 @@ async function writeSpec(id, why) {
       return null
     })
     if (survey) {
-      evidence = JSON.stringify({ verdicts: survey.verdicts, coverage: survey.coverage })
+      evidence = JSON.stringify({ items: survey.items, risks: survey.risks, coverage: survey.coverage })
       if (survey.coverage && survey.coverage.complete !== true) note('survey for ' + id + ' is incomplete: ' + (survey.coverage.unreached || []).join('; '))
     }
   }

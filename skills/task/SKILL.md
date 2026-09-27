@@ -153,3 +153,18 @@ and rejected; the reviewer's findings as returned; every `HUMAN:` item verbatim 
 judge. Anything unfinished leads the report.
 
 **Commit only when asked.** When asked: focused single-concern commits, only the task's files.
+
+## The Next line
+
+<!-- agentics:verbatim next-footer -->
+**End with the Next line.** Whatever this command did, finished, stopped, refused or found itself
+in the wrong place, the last thing you print is the Next line, computed and never composed:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/next.mjs" --repo . --effort <effort>
+```
+
+Print its output as it stands. With no effort in hand, drop `--effort` and print every effort's
+line. **Invoked where it does not fit**, a folder not in the state this command acts on, run it
+first, before anything else, and point to the command it names instead of going on.
+<!-- /agentics:verbatim -->

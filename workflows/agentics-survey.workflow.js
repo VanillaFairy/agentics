@@ -1526,7 +1526,15 @@ async function recordGroup(group, items) {
     if (out.why) why = out.why
     refused = out.refused
 
-    if (refused.length === 0 || !(refused.length < prevCount)) break
+    if (refused.length === 0 || !(refused.length < prevCount)) {
+      // The batch-mates of a refused item are never wrong themselves, only stuck in a refused
+      // batch; without this they'd vanish from every channel while their topic reports complete.
+      if (out.unwritten.length) {
+        unrecorded = unrecorded.concat(out.unwritten)
+        if (!why) why = 'a batch-mate of a refused item, never itself re-asked, once the re-ask loop stopped shrinking'
+      }
+      break
+    }
     prevCount = refused.length
     pass++
 
@@ -1536,7 +1544,13 @@ async function recordGroup(group, items) {
       phase: 'Judge', label: judgeLabel + ':anchors:' + pass, ...tiered(judge, 'high'),
     }).catch(() => null)
 
-    if (!answer) break
+    if (!answer) {
+      if (out.unwritten.length) {
+        unrecorded = unrecorded.concat(out.unwritten)
+        if (!why) why = 'a batch-mate of a refused item, never itself re-asked, once the re-ask dispatch failed'
+      }
+      break
+    }
 
     const raw = Array.isArray(answer.items) ? answer.items : []
     const corrected = resolveRests(raw.map(toItem), items)

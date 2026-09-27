@@ -310,12 +310,13 @@ nothing terminal after it; `planned`. A composite is `merged` on its own event, 
 on its, `escalated` or `parked` on its own open event (cleared like a leaf's), and otherwise
 summarizes its children (`integrated` once all have merged).
 
-Nodes are written through `lib/tree.mjs` `addNodes`, by compile from approved and prepared specs
-([Specs, approval and compile](#specs-approval-and-compile)) and by develop's planner. It
-validates a batch against the tree on disk and appends it all or nothing: shape problems, tree
-problems (a missing parent, a dependency cycle, a decision nobody defined, a green without its
-red) and the decision guard refuse the batch; the computable atomicity conditions and
-traceability gaps come back as warnings. It refuses; it never repairs.
+Nodes are written through `lib/tree.mjs` `addNodes`, by compile alone, from approved and prepared
+specs ([Specs, approval and compile](#specs-approval-and-compile)); develop's planner writes specs,
+never nodes. It validates a batch against the tree on disk and appends it all or nothing: shape
+problems, tree problems (a missing parent, a dependency cycle, a decision nobody defined, a green
+without its red) and the decision guard refuse the batch; the computable atomicity conditions and
+traceability gaps come back as warnings. It refuses; it never repairs. `lib/tree.mjs`'s CLI has one
+command, `show`: nothing outside compile calls `addNodes`, and there is no CLI verb to.
 
 ### Storage
 

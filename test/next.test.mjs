@@ -37,6 +37,7 @@ function spec({ title = 'The change', decisions = [['D1', 'do it']], plan = [], 
 }
 const subEffort = (name, realises, author = 'you') =>
   ['- **' + name + '** — sub-effort · realises: ' + realises.join(', ') + ' · author: ' + author, '  Build ' + name + '.']
+const skipped = (name, kind) => ['- **' + name + '** — ' + kind + ' · realises: ', '  Skip ' + name + '.']
 const task = (name, realises) => [
   '- **' + name + '** — task · realises: ' + realises.join(', ') + ' · rigor: tdd · locus: src/' + name + '.mjs',
   '  Add ' + name + '.',
@@ -148,6 +149,84 @@ test('approved with nothing dispatched: develop it (rule 6)', () => {
   approve(r, 'e1', '.')
   const n = nextAction(r, 'e1')
   assert.deepEqual([n.rule, n.folder, n.command], [6, '.', '/agentics:develop e1'])
+})
+
+test('a sub-effort dropped after its own spec was approved is never offered by rule 5 or 6', () => {
+  const r = repo()
+  write(r, 'e1', '.', spec({ decisions: [], plan: subEffort('x', []) }))
+  approve(r, 'e1', '.')
+  write(r, 'e1', 'x', spec({ title: 'X', decisions: [], plan: task('y', []) }))
+  approve(r, 'e1', 'x')
+  assert.equal(compileEffort(r, 'e1').ok, true)
+
+  write(r, 'e1', '.', spec({ decisions: [], plan: skipped('x', 'dropped') }))
+  approve(r, 'e1', '.')
+  const compiled = compileEffort(r, 'e1')
+  assert.equal(compiled.ok, true)
+  assert.ok(compiled.retired.includes('x'), compiled.retired.join(', '))
+
+  const n = nextAction(r, 'e1')
+  const commands = [n.command, ...n.alternatives.map((a) => a.command)]
+  assert.ok(!commands.includes('/agentics:design x'), commands.join(', '))
+  assert.ok(!commands.includes('/agentics:develop x'), commands.join(', '))
+})
+
+test('a sub-effort deferred after its own spec was approved is never offered by rule 5 or 6', () => {
+  const r = repo()
+  write(r, 'e1', '.', spec({ decisions: [], plan: subEffort('x', []) }))
+  approve(r, 'e1', '.')
+  write(r, 'e1', 'x', spec({ title: 'X', decisions: [], plan: task('y', []) }))
+  approve(r, 'e1', 'x')
+  assert.equal(compileEffort(r, 'e1').ok, true)
+
+  write(r, 'e1', '.', spec({ decisions: [], plan: skipped('x', 'deferred') }))
+  approve(r, 'e1', '.')
+  const compiled = compileEffort(r, 'e1')
+  assert.equal(compiled.ok, true)
+  assert.ok(compiled.retired.includes('x'), compiled.retired.join(', '))
+
+  const n = nextAction(r, 'e1')
+  const commands = [n.command, ...n.alternatives.map((a) => a.command)]
+  assert.ok(!commands.includes('/agentics:design x'), commands.join(', '))
+  assert.ok(!commands.includes('/agentics:develop x'), commands.join(', '))
+})
+
+test('a sub-effort of a dropped sub-effort is never offered by rule 5, even though its own folder is still approved', () => {
+  const r = repo()
+  write(r, 'e1', '.', spec({ decisions: [], plan: subEffort('a', []) }))
+  approve(r, 'e1', '.')
+  write(r, 'e1', 'a', spec({ title: 'A', decisions: [], plan: subEffort('b', []) }))
+  approve(r, 'e1', 'a')
+
+  const before = nextAction(r, 'e1')
+  assert.deepEqual([before.rule, before.folder, before.command], [5, 'a/b', '/agentics:design a/b'], 'b is offered before a is dropped')
+
+  write(r, 'e1', '.', spec({ decisions: [], plan: skipped('a', 'dropped') }))
+  approve(r, 'e1', '.')
+
+  const after = nextAction(r, 'e1')
+  const commands = [after.command, ...after.alternatives.map((c) => c.command)]
+  assert.ok(!commands.includes('/agentics:design a/b'), commands.join(', '))
+})
+
+test('a sub-effort whose entry is removed outright, not merely skipped, is an orphan never offered by rule 5 or 6', () => {
+  const r = repo()
+  write(r, 'e1', '.', spec({ decisions: [], plan: [...subEffort('x', []), ...task('z', [])] }))
+  approve(r, 'e1', '.')
+  write(r, 'e1', 'x', spec({ title: 'X', decisions: [], plan: task('y', []) }))
+  approve(r, 'e1', 'x')
+  assert.equal(compileEffort(r, 'e1').ok, true)
+
+  write(r, 'e1', '.', spec({ decisions: [], plan: task('z', []) }))
+  approve(r, 'e1', '.')
+  const compiled = compileEffort(r, 'e1')
+  assert.equal(compiled.ok, true)
+  assert.ok(compiled.retired.includes('x'), compiled.retired.join(', '))
+
+  const n = nextAction(r, 'e1')
+  const commands = [n.command, ...n.alternatives.map((a) => a.command)]
+  assert.ok(!commands.includes('/agentics:design x'), commands.join(', '))
+  assert.ok(!commands.includes('/agentics:develop x'), commands.join(', '))
 })
 
 test('an open execution wins over everything else (rule 1), and the rest become alternatives', () => {

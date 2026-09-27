@@ -58,7 +58,7 @@ different work. Otherwise state your assumption and continue.
 ## Step 2 — Run it
 
 ```
-Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/answer-codebase-question-from-evidence.workflow.js', args: { question, roots, notes, as_tasks, intelligence } })
+Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/answer-codebase-question-from-evidence.workflow.js', args: { question, roots, notes, as_tasks, intelligence, plugin_root } })
 ```
 
 Launch it by its path under the plugin root, the same `${CLAUDE_PLUGIN_ROOT}` that `plugin_root` carries. Record the

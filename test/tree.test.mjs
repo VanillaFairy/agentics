@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 import { append } from '../lib/ledger.mjs'
 import {
@@ -15,6 +17,7 @@ import { trace } from '../lib/traceability.mjs'
 import { ancestorsOf, branchOf, flat, nodeIdProblem, parentOf, safeSlug, worktreeOf } from '../lib/store.mjs'
 
 const repo = () => mkdtempSync(join(tmpdir(), 'agentics-tree-'))
+const TREE = fileURLToPath(new URL('../lib/tree.mjs', import.meta.url))
 
 const leaf = (id, extra = {}) => ({
   id, kind: 'leaf', title: 'do ' + id, rigor: 'tdd', locus: ['src/' + flat(id) + '.js'],
@@ -357,6 +360,25 @@ test('a retirement is no way round the guard: a contract or a decision leaves th
 
   const byCompile = addNodes(r, 'e1', [{ id: 'p', retired: true }, { id: 'p/x', retired: true }, { ...provider, retired: true }], { by: 'compile', approved: new Map() })
   assert.equal(byCompile.ok, true, JSON.stringify(byCompile.problems))
+})
+
+test('the CLI has no add verb: only compile, in-process, may claim to be compile (I1)', () => {
+  const r = repo()
+  const provider = leaf('p', {
+    provides: [{ name: 'api', paths: ['src/p.js'] }], decisions: [],
+    acceptance: [{ text: 'p works', check: 'node --test', decisions: [] }],
+  })
+  assert.equal(seedTree(r, 'e1', [root({ defines: [] }), provider]).ok, true)
+
+  const batchFile = join(r, 'batch.json')
+  writeFileSync(batchFile, JSON.stringify([{ ...provider, retired: true }]))
+  const out = spawnSync(process.execPath, [TREE, 'add', '--repo', r, '--effort', 'e1', '--by', 'compile', '--file', batchFile], { encoding: 'utf8' })
+  assert.equal(out.status, 1, out.stdout + out.stderr)
+  const payload = JSON.parse(out.stdout)
+  assert.notEqual(payload.ok, true, 'a CLI caller must never retire a contract provider by claiming --by compile')
+  assert.match(payload.error || (payload.problems || []).map((p) => p.problem).join(), /add|unknown/)
+
+  assert.ok(readTree(r, 'e1').nodes.has('p'), 'nothing was written')
 })
 
 test('only compile sets or changes who designs a node', () => {

@@ -1,15 +1,16 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { assembleBrief, measuresFor } from '../lib/brief.mjs'
+import { recordItems } from '../lib/evidence.mjs'
 import { writeGotcha } from '../lib/gotchas.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
-import { briefPath, effortStateDir, reportPath } from '../lib/store.mjs'
+import { briefPath, reportPath } from '../lib/store.mjs'
 import { normalizeNode } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 
@@ -114,23 +115,25 @@ test('a fix round lists the failures and open findings it must clear', () => {
   assert.ok(b.text.indexOf('## Fix round') < b.text.indexOf('## Report'))
 })
 
-test('survey verdicts whose topic ground meets the node ground or locus are excerpted, conclusions only', () => {
+test('standing items whose ground meets the node ground or locus are excerpted, and no others', () => {
   const repo = effort()
-  const dir = join(effortStateDir(repo, E), 'evidence')
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, '20260901-000000-survey.json'), JSON.stringify({
-    question: 'q', ground: ['src'],
-    topics: [{ key: 'parsing', find: 'x', kb_path: 'src/api' }, { key: 'ui', find: 'y', kb_path: 'src/ui' }],
-    verdicts: [
-      { topic: 'parsing', conclusion: 'The tokenizer already lower-cases.', evidence: [{ path: 'SECRET-EVIDENCE' }], risks: ['tabs are not trimmed'] },
-      { topic: 'ui', conclusion: 'The UI never reads configs.', evidence: [], risks: [] },
-    ],
-    coverage: { complete: true },
-  }))
+  const external = (claim, ground, retrieved = '') => ({
+    question: 'how are configs parsed', topic: 'parsing', ground, kind: 'external', claim,
+    spans: [], queries: [], rests_on: [],
+    sources: [{ url: 'https://example.invalid/parsing', version: '1.0.0', retrieved }],
+  })
+  const out = recordItems(repo, '20260901-000000-survey', [
+    external('The tokenizer already lower-cases.', ['src/api']),
+    external('The UI never reads configs.', ['src/ui']),
+    external('An expired fact about parsing.', ['src/api'], '2000-01-01'),
+  ])
+  assert.equal(out.ok, true, JSON.stringify(out))
+
   const t = assembleBrief(repo, E, X, 'api/parse', {}).text
-  assert.match(t, /\[survey 20260901-000000, parsing\] The tokenizer already lower-cases\.\n {2}risks: tabs are not trimmed/)
-  assert.doesNotMatch(t, /UI never reads configs/)
-  assert.doesNotMatch(t, /SECRET-EVIDENCE/)
+  assert.match(t, /\[parsing, external\] The tokenizer already lower-cases\./)
+  assert.match(t, /\n  anchors: https:\/\/example\.invalid\/parsing 1\.0\.0/)
+  assert.doesNotMatch(t, /UI never reads configs/, 'ground the node does not touch')
+  assert.doesNotMatch(t, /expired fact/, 'only standing items reach a brief')
 })
 
 test('measuresFor names the yardstick per rigor and role', () => {

@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'agentics-investigate',
+  name: 'answer-codebase-question-from-evidence',
   description: 'Answer one large question about the local codebase from evidence — current code, git history and vendor documentation — and return an ordered task list or a written report.',
   whenToUse: 'Use for "can we replace X with Y", "how does subsystem X work", "when did X break", or any question needing several parts of the codebase read, plus history or external documentation, before a decision.',
   phases: [
@@ -115,7 +115,7 @@ const resumable = (remaining) => ({ runId: RUN_ID, remaining, args: LAUNCH_ARGS,
 const carryArgs = (block) => ({ ...(block || { runId: RUN_ID, remaining: [] }), args: LAUNCH_ARGS, note: RESUME_NOTE })
 
 // The parameter is named `coverageBlock` so the key can be written out as `coverage:` without
-// reading as a redundant `coverage: coverage`. Style only, matching `agentics-survey` — the
+// reading as a redundant `coverage: coverage`. Style only, matching `gather-evidence-without-concluding` — the
 // `coverage-block` rule understands ES shorthand, so `{ …, coverage }` would lint clean too.
 function investigateResult(mode, tasks, report, coverageBlock, evidence = null) {
   return { question, mode, tasks, report, evidence, coverage: coverageBlock }
@@ -136,29 +136,21 @@ if (!question) {
 
 phase('Survey')
 
-// Registered workflows are plugin-namespaced, so the qualified name is tried first and the
-// bare name second. A lookup failure on both is a broken reference in this plugin —
-// unconditional on every machine — and it is reported as exactly that rather than as an
-// environmental survey failure: the two must stay distinguishable, or the defect hides in
-// a degrade path forever.
+// Service steps are launched by path (D19), not by a registered name. A script path that
+// doesn't resolve is still a broken reference in this plugin — unconditional on every
+// machine — and it is reported as exactly that rather than as an environmental survey
+// failure, naming the path that failed to resolve.
+const surveyScriptPath = pluginRoot + '/service-workflows/gather-evidence-without-concluding.workflow.js'
 const surveyArgs = { question, roots, notes, intelligence, pace, ...(pluginRoot ? { plugin_root: pluginRoot } : {}) }
 const notFound = (e) => /not found/i.test((e && e.message) || '')
 let survey = null
 let surveyUnresolved = false
 
 try {
-  survey = await workflow('agentics:agentics-survey', surveyArgs)
+  survey = await workflow({ scriptPath: surveyScriptPath }, surveyArgs)
 } catch (e) {
-  if (!notFound(e)) {
-    log(`WARNING: the survey threw: ${e && e.message}`)
-  } else {
-    try {
-      survey = await workflow('agentics-survey', surveyArgs)
-    } catch (e2) {
-      if (notFound(e2)) surveyUnresolved = true
-      else log(`WARNING: the survey threw: ${e2 && e2.message}`)
-    }
-  }
+  if (notFound(e)) surveyUnresolved = true
+  else log(`WARNING: the survey threw: ${e && e.message}`)
 }
 
 if (surveyUnresolved) {
@@ -168,9 +160,8 @@ if (surveyUnresolved) {
     incomplete: [],
     failed_channels: ['survey'],
     unreached: [
-      'the agentics-survey sub-workflow resolved under neither "agentics:agentics-survey" nor ' +
-      '"agentics-survey" — a broken reference in this plugin, not an environmental failure; ' +
-      'nothing was searched',
+      'the gather-evidence-without-concluding sub-workflow did not resolve at ' + surveyScriptPath +
+      ' — a broken reference in this plugin, not an environmental failure; nothing was searched',
     ],
     resumable: resumable([]),
   })
@@ -184,7 +175,7 @@ if (!survey || !survey.coverage) {
     dropped: [],
     incomplete: [],
     failed_channels: ['survey'],
-    unreached: ['agentics-survey returned no coverage block; the evidence phase did not complete'],
+    unreached: ['gather-evidence-without-concluding returned no coverage block; the evidence phase did not complete'],
     resumable: resumable([]),
   })
 }
@@ -291,7 +282,7 @@ if (asTasks) {
   // in `gaps` for the reader, and in the coverage block so `complete` goes false. Recording
   // it only in `gaps` would let a truncated task list come back `complete: true` — a partial
   // result indistinguishable from a whole one, which is the single failure this plugin
-  // exists to prevent. `agentics-survey` accounts for its own topic cap the same way, by putting
+  // exists to prevent. `gather-evidence-without-concluding` accounts for its own topic cap the same way, by putting
   // overflow into `dropped` rather than into a side note.
   let coverage = c
 

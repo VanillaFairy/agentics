@@ -287,7 +287,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/compile.mjs" --repo . --effort <e> --folder <id>
 re-spec (step 4c). Then mint the stamp with `date -u +%Y%m%d-%H%M%S`; a resume reuses its stamp.
 
 ```
-Workflow({ name: 'agentics:agentics-develop', args: { repo: '.', effort, root: <folder id>, execution, plugin_root, intelligence, progress, pace, plan_only, pause, base_ref, commands, retry_escalated, confirmed_duplicate, confirmed_gaps, confirmed_stale } })
+Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/execute-approved-plan-in-worktrees.workflow.js', args: { repo: '.', effort, root: <folder id>, execution, plugin_root, intelligence, progress, pace, plan_only, pause, base_ref, commands, retry_escalated, confirmed_duplicate, confirmed_gaps, confirmed_stale } })
 ```
 
 - `plugin_root` is this plugin's absolute root (`${CLAUDE_PLUGIN_ROOT}`) — required.

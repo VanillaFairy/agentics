@@ -58,10 +58,10 @@ different work. Otherwise state your assumption and continue.
 ## Step 2 — Run it
 
 ```
-Workflow({ name: 'agentics:agentics-investigate', args: { question, roots, notes, as_tasks, intelligence } })
+Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/answer-codebase-question-from-evidence.workflow.js', args: { question, roots, notes, as_tasks, intelligence } })
 ```
 
-The name is plugin-namespaced; the bare `agentics-investigate` does not resolve. Record the
+Launch it by its path under the plugin root, the same `${CLAUDE_PLUGIN_ROOT}` that `plugin_root` carries. Record the
 `runId` from the launch result — the script cannot read its own id, and `runId` is what
 pairs with `coverage.resumable.remaining` if the run needs resuming.
 
@@ -80,9 +80,10 @@ unreachable. The spent resume is the whole loss; there is no second one.
 Workflow({ scriptPath, resumeFromRunId, args })
 ```
 
-`args` is in `coverage.resumable.args` of the result you are resuming from, exactly as it was
-launched. When you no longer have that result, rebuild it from this step's argument list —
-`question` above all, since that is what the guard tests.
+`scriptPath` is the same path the launch used. `args` is in `coverage.resumable.args` of the
+result you are resuming from, exactly as it was launched. When you no longer have that result,
+rebuild it from this step's argument list — `question` above all, since that is what the guard
+tests.
 
 ## Step 3 — Land the result
 

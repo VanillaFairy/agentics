@@ -15,7 +15,7 @@ import { carriedEnvelope, recordedLine, runWorkflow, scriptedAgents } from './ha
 import { itemId } from '../lib/evidence.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 
-const WF = fileURLToPath(new URL('../workflows/agentics-find-existing-solutions.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../service-workflows/search-for-existing-solutions-before-building.workflow.js', import.meta.url))
 
 const ARGS = { capability: 'rate-limit inbound HTTP requests per API key', roots: '.' }
 

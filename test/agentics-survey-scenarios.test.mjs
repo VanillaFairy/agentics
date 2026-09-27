@@ -17,7 +17,7 @@ import {
 import { ITEM_KINDS, itemId } from '../lib/evidence.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 
-const WF = fileURLToPath(new URL('../workflows/agentics-survey.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../service-workflows/gather-evidence-without-concluding.workflow.js', import.meta.url))
 
 const PLAN = (over = {}) => ({
   topics: [{ key: 'a', find: 'find a', subtree: 'src/a' }],

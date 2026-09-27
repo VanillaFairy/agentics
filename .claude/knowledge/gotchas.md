@@ -62,7 +62,7 @@ author believes a bound is enforced when nothing enforces it. Put the bound in t
 enforce it in JS after the call. All of these are enforced by `tools/rules/`.
 
 ## The plan digest exists twice, on purpose, and the pin is a test
-`lib/plan-digest.mjs` and the `the plan digest` block inside `workflows/agentics-develop.workflow.js`
+`lib/plan-digest.mjs` and the `the plan digest` block inside `service-workflows/execute-approved-plan-in-worktrees.workflow.js`
 implement the same FNV-1a-over-canonical-JSON algorithm. They have to: the planner runs the CLI
 to write a plan's manifest, and the workflow recomputes it in-script when a resume reads that
 plan back — and a workflow script cannot import the library.

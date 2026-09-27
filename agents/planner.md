@@ -1,6 +1,6 @@
 ---
 name: planner
-description: Writes the DESIGN.md of one agentics folder that develop owns — a sub-effort with author planner, a task promoted to a folder of its own, or its own spec when a return needs it replanned — with a Plan of atomic tasks, loci, rigor, criteria and dispatch tiers, and settles the autonomous review's findings on it. Never states a decision and never implements. Use only inside agentics-develop or a session following it.
+description: Writes the DESIGN.md of one agentics folder that develop owns — a sub-effort with author planner, a task promoted to a folder of its own, or its own spec when a return needs it replanned — with a Plan of atomic tasks, loci, rigor, criteria and dispatch tiers, and settles the autonomous review's findings on it. Never states a decision and never implements. Use only inside execute-approved-plan-in-worktrees or a session following it.
 tools: Read, Grep, Glob, Bash, Write
 model: opus
 ---

@@ -8,8 +8,8 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import { compileWorkflow, runWorkflow, scriptedAgents } from './harness/workflow-host.mjs'
 
-const wf = (name) => fileURLToPath(new URL('../workflows/' + name, import.meta.url))
-const WF = wf('agentics-investigate.workflow.js')
+const wf = (name) => fileURLToPath(new URL('../service-workflows/' + name, import.meta.url))
+const WF = wf('answer-codebase-question-from-evidence.workflow.js')
 
 const surveyResult = (over = {}) => ({
   question: 'q', topics: [], ground: [], items: [], reused: [], unrecorded: [], risks: [], history: null, docs: null,
@@ -21,16 +21,16 @@ const surveyResult = (over = {}) => ({
 })
 
 test('all three workflow scripts compile as workflow bodies', () => {
-  compileWorkflow(wf('agentics-survey.workflow.js'))
-  compileWorkflow(wf('agentics-investigate.workflow.js'))
-  compileWorkflow(wf('agentics-develop.workflow.js'))
+  compileWorkflow(wf('gather-evidence-without-concluding.workflow.js'))
+  compileWorkflow(wf('answer-codebase-question-from-evidence.workflow.js'))
+  compileWorkflow(wf('execute-approved-plan-in-worktrees.workflow.js'))
 })
 
-test('a survey resolving under neither name is reported as a broken plugin reference', async () => {
+test('a survey script path that does not resolve is reported as a broken plugin reference', async () => {
   const { result, prompts } = await runWorkflow(WF, {
     args: { question: 'how does X work' },
     agent: scriptedAgents({}),
-    workflow: (name) => { throw new Error(`Workflow "${name}" not found.`) },
+    workflow: (ref) => { throw new Error(`Workflow "${ref.scriptPath}" not found.`) },
   })
 
   assert.equal(result.mode, 'report')
@@ -80,7 +80,7 @@ test('the survey is handed the pace and the plugin root, and the synthesis is to
   const { prompts, result } = await runWorkflow(WF, {
     args: { question: 'how does X work', pace: 'fast', plugin_root: 'C:/plugin' },
     agent: scriptedAgents({ synthesize: 'the answer' }),
-    workflow: (name, a) => { handed = a; return surveyResult() },
+    workflow: (ref, a) => { handed = a; return surveyResult() },
   })
 
   assert.equal(handed.pace, 'fast')

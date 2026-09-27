@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'agentics-develop',
+  name: 'execute-approved-plan-in-worktrees',
   description: 'Execute a subtree of an agentics effort: plan unplanned composites, run every leaf by its rigor in its own worktree, review, and merge by composite into framework-owned integration branches — scheduled by readiness, never by waves. Never touches the user\'s branch or working tree.',
   phases: [
     { title: 'Preflight', detail: 'refuse overlaps, resume ladder, drift, gaps, todos — one courier' },
@@ -711,7 +711,7 @@ async function writeSpec(id, why) {
   let evidence = ''
   if (!why && row.ground_known === false) {
     phase('Plan')
-    const survey = await workflow('agentics-survey', {
+    const survey = await workflow({ scriptPath: pluginRoot + '/service-workflows/gather-evidence-without-concluding.workflow.js' }, {
       question: 'Where and how does this change land: ' + row.title + ' — ' + (row.intent || ''),
       roots: repo, notes: '', pace, intelligence: DIAL, plugin_root: pluginRoot,
     }).catch((err) => {
@@ -772,7 +772,7 @@ async function reviewSpec(id, spec) {
       escalate(id, 'spec_refused', checked.problems.map((p) => p.file + ':' + p.line + ' ' + p.problem).join('; '))
       return null
     }
-    const review = await workflow('agentics-probe', {
+    const review = await workflow({ scriptPath: pluginRoot + '/service-workflows/attack-document-with-independent-reviewers.workflow.js' }, {
       artifact: checked.spec_path, roots: repo, plugin_root: pluginRoot,
       context: 'the spec develop\'s planner wrote for folder ' + id + ' of effort ' + effort,
       ...(since ? { since } : {}),

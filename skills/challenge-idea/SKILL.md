@@ -39,7 +39,7 @@ premise defects, because the premises are the part not being questioned.
 ## Step 1 — Invoke
 
 ```
-Workflow({ name: 'agentics:agentics-probe', args: { artifact, roots, context, plugin_root } })
+Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/attack-document-with-independent-reviewers.workflow.js', args: { artifact, roots, context, plugin_root } })
 ```
 
 `artifact` is the path to the document. `roots` is the repository it would be implemented

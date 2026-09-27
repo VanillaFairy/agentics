@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { runWorkflow } from './harness/workflow-host.mjs'
 import { agents, composite, recordsOf, row, simulate } from './harness/develop-sim.mjs'
 
-const WF = fileURLToPath(new URL('../workflows/agentics-develop.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../service-workflows/execute-approved-plan-in-worktrees.workflow.js', import.meta.url))
 const ARGS = { repo: '/repo', effort: 'e1', execution: '20260925-120000', plugin_root: '/plugin' }
 
 const run = (sim, handlers = {}, args = {}, extra = {}) =>
@@ -15,7 +15,7 @@ const labels = (prompts) => prompts.map((p) => p.opts.label)
 
 const COVERED = { complete: true, dropped: [], incomplete: [], failed_channels: [], unreached: [], resumable: { runId: 'r', remaining: [] } }
 
-/** A probe return as agentics-probe computes it: a carried ambiguity counts as open in its own gate. */
+/** A probe return as attack-document-with-independent-reviewers computes it: a carried ambiguity counts as open in its own gate. */
 function probeReturn(over = {}) {
   const findings = over.findings || []
   const coverage = over.coverage || COVERED
@@ -34,10 +34,10 @@ const probeFinding = (id, severity, claim, over = {}) => ({
 /** A scripted nested probe: each call answers the next return; an unscripted call throws. */
 function probes(returns) {
   const calls = []
-  const fn = (name, args) => {
-    calls.push({ name, args })
+  const fn = (ref, args) => {
+    calls.push({ scriptPath: ref && ref.scriptPath, args })
     const next = returns[calls.length - 1]
-    if (!next) throw new Error('unscripted workflow call ' + calls.length + ': ' + name)
+    if (!next) throw new Error('unscripted workflow call ' + calls.length + ': ' + (ref && ref.scriptPath))
     return next
   }
   fn.calls = calls
@@ -178,7 +178,7 @@ test('decompose: the promoted task passes its review, compiles, and its children
     'plan:': written(row('a').spec_path),
   }, {}, { workflow: probe })
   assert.equal(probe.calls.length, 1)
-  assert.equal(probe.calls[0].name, 'agentics-probe')
+  assert.match(probe.calls[0].scriptPath, /\/service-workflows\/attack-document-with-independent-reviewers\.workflow\.js$/)
   assert.deepEqual(sim.prepared.map((p) => p.node), ['a'])
   assert.ok(sim.opens.includes('a/x') && sim.opens.includes('a/y'))
   assert.deepEqual(sim.batches.find((b) => b.target === 'a').children.map((c) => c.id).sort(), ['a/x', 'a/y'])
@@ -699,9 +699,10 @@ test("develop's planner prompt carries the nested survey's items and risks, not 
     coverage: { complete: true, dropped: [], incomplete: [], failed_channels: [], unreached: [], resumable: { runId: 'r', remaining: [] } },
   }
   const { result, prompts } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, {
-    workflow: (name) => {
-      if (name === 'agentics-probe') return probeReturn()
-      if (name !== 'agentics-survey') throw new Error('no nested ' + name + ' in this scenario')
+    workflow: (ref) => {
+      const scriptPath = ref && ref.scriptPath
+      if (/attack-document-with-independent-reviewers\.workflow\.js$/.test(scriptPath)) return probeReturn()
+      if (!/gather-evidence-without-concluding\.workflow\.js$/.test(scriptPath)) throw new Error('no nested ' + scriptPath + ' in this scenario')
       return survey
     },
   })

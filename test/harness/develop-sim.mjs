@@ -1,5 +1,5 @@
 // test/harness/develop-sim.mjs — lib/boundary.mjs, simulated, for scenario tests of
-// agentics-develop.
+// execute-approved-plan-in-worktrees.
 //
 // The workflow's arithmetic — readiness, cycles, review-loop exits, merge routing, coverage — is
 // what these scenarios test, so the boundaries are answered from an in-memory tree rather than a

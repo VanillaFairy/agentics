@@ -1,7 +1,7 @@
 export const meta = {
-  name: 'agentics-find-existing-solutions',
+  name: 'search-for-existing-solutions-before-building',
   description: 'Before building something, find what already exists that does it: libraries, tools, standards, services, and whatever this repository already depends on. Returns candidates with licence, version and fit facts plus a coverage block — never a recommendation.',
-  whenToUse: 'The build-or-adopt evidence phase. Called by the design skill before approaches are drawn up, and invocable on its own. Distinct from agentics-survey, which searches the code you already have; this one searches the world outside it.',
+  whenToUse: 'The build-or-adopt evidence phase. Called by the design skill before approaches are drawn up, and invocable on its own. Distinct from gather-evidence-without-concluding, which searches the code you already have; this one searches the world outside it.',
   phases: [
     { title: 'Frame', detail: 'analyst: the capability, its hard constraints, and what disqualifies a candidate' },
     { title: 'Search', detail: 'one researcher per ecosystem angle, plus a scout over your existing dependencies' },
@@ -12,7 +12,7 @@ export const meta = {
 
 // ---------------------------------------------------------------- what this is for
 //
-// `agentics-survey` answers "how does the code we have work". This workflow answers a question
+// `gather-evidence-without-concluding` answers "how does the code we have work". This workflow answers a question
 // nothing else in the plugin asks: **should we write this at all?** By the time `develop`
 // runs, the change is ratified and the planner decomposes what to build; build-or-adopt is
 // already settled. Design is the only stage where the question is still cheap, and it needs
@@ -40,7 +40,7 @@ export const meta = {
 // Field semantics go in `description`, never in a comment: comments are stripped before a
 // schema reaches the model, so a contract written only in a comment binds nobody.
 
-// The coverage contract every search channel answers to, identical in spirit to agentics-survey's.
+// The coverage contract every search channel answers to, identical in spirit to gather-evidence-without-concluding's.
 // `no_match` and `not_reached` stay apart on purpose, and here the distinction is the whole
 // point of the workflow: "I searched npm and nothing there does this" is a FINDING that
 // supports building. "I never searched npm" is a HOLE that supports nothing at all.
@@ -93,7 +93,7 @@ const coverageFields = (searchedDescription) => ({
 // Only the payload field goes in `required`: the coverage fields are demanded by their
 // descriptions and normalized in JS after the call, because a required field with
 // conditional semantics is a validation deadlock that drops a finished search whole —
-// see the same note in agentics-survey, where it was observed in the field.
+// see the same note in gather-evidence-without-concluding, where it was observed in the field.
 
 const FRAME = {
   type: 'object',
@@ -334,7 +334,7 @@ const tiered = (tier, base) => ({
 // A payload computed on disk arrives through a model, so it is re-digested here before a field of
 // it is believed; a location list this script mints travels as plain text on one argv slot with
 // its digest beside it. The functions are copies of `lib/plan-digest.mjs`'s and
-// `agentics-survey`'s: scripts cannot import, and the suite pins them together.
+// `gather-evidence-without-concluding`'s: scripts cannot import, and the suite pins them together.
 function canonical(value) {
   if (value === undefined) return 'null'
   if (value === null || typeof value !== 'object') return JSON.stringify(value)
@@ -357,7 +357,7 @@ function fnv1a(text) {
 }
 
 // What a courier hands back: one command's stdout, byte-exact, in one string. The shape of
-// `agentics-develop`'s CARRIED, copied rather than shared because a workflow script cannot
+// `execute-approved-plan-in-worktrees`'s CARRIED, copied rather than shared because a workflow script cannot
 // import. This workflow moves no todos, so the two todo fields are left out of its shape.
 //
 // `failed` is the courier unable to run the command AT ALL — node missing, the path unreadable,
@@ -421,7 +421,7 @@ function courierPrompt(command) {
 /**
  * Carry one command's payload, believed only after its digest.
  *
- * Retries are sized to what was observed, as `agentics-develop`'s boundaries size them: a courier
+ * Retries are sized to what was observed, as `execute-approved-plan-in-worktrees`'s boundaries size them: a courier
  * that returned nothing or could not run the command is run again once; a payload damaged in
  * transit buys one refetch on a stronger model; a token the program refused as damaged on its way
  * IN is sent again; a program failure is not retried. What stays unbelievable comes back as
@@ -461,7 +461,7 @@ async function carry(command, label, phaseName) {
   return { payload: null, why }
 }
 
-// utf8Bytes, B64 and base64 are copies of `agentics-develop`'s: scripts cannot import, and this
+// utf8Bytes, B64 and base64 are copies of `execute-approved-plan-in-worktrees`'s: scripts cannot import, and this
 // keeps T25 independent of the ledger-append batching T23bs adds beside it.
 function utf8Bytes(text) {
   const out = []

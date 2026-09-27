@@ -1,15 +1,16 @@
 // tools/rules/workflow-meta.mjs — pins a workflow's meta literal against three silent failures.
 //
-// 1. An unprefixed name. The workflow namespace is flat and global across every installed
-//    plugin, so `survey` collides with anyone else's `survey`. The `reasonable` plugin already
-//    had to rename its audit workflow after exactly that. Every workflow here is `agentics-*`.
+// 1. A name that is not the file's own. The name a workflow is addressed by is spelled once,
+//    as its file's name — nothing else addresses this workflow. A service step lives outside
+//    the registered `workflows/` directory and is launched by path, from a skill or as a nested
+//    `workflow({ scriptPath }, args)` call, so it doesn't show in the `/` menu (D6).
 // 2. A `phase('X')` call with no matching `meta.phases` entry. `meta.phases` drives the progress
 //    display; an unmatched call silently gets its own ungrouped box. Nothing throws — the
 //    display is just quietly wrong, and no test run will ever show it.
 // 3. A meta literal that is not literal. The runtime reads this block STATICALLY and never
 //    evaluates it, so `description: 'a' + 'b'` is valid JavaScript that the runtime refuses —
 //    and a refused workflow does not register at all. Nothing anywhere says so; the workflow is
-//    simply absent when something tries to invoke it. That is not hypothetical: `agentics-probe`'s
+//    simply absent when something tries to invoke it. That is not hypothetical: `attack-document-with-independent-reviewers`'s
 //    description was a two-line concatenation, it passed every check in this file, and the
 //    installed plugin never had the workflow.
 //
@@ -35,8 +36,9 @@ const META_DECL = /export\s+const\s+meta\s*=\s*\{/
 /** `phases: [` inside the meta literal. The trailing `[` is where bracket matching starts. */
 const PHASES_DECL = /\bphases\s*:\s*\[/
 
-/** A workflow name must be `agentics-` plus something. `agentics-` alone names nothing. */
-const PREFIXED = /^agentics-.+/
+/** A workflow's name is kebab-case words — the shape every long service name (D19) takes. */
+const NAME_SHAPE = /^[a-z0-9]+(?:-[a-z0-9]+)+$/
+const NAME_SHAPE_TEXT = 'must be kebab-case words'
 
 // The `d` flag gives each match `.indices`, so the *original* text of a quoted value can be
 // sliced out of the source — the blanked copy has turned its contents into spaces. All three are
@@ -132,7 +134,7 @@ const within = (blanked, pattern, start, end) =>
 /** The original text of capture group 2 — the quoted value, before it was blanked. */
 const quotedValue = (source, match) => source.slice(...match.indices[2])
 
-export function check(source) {
+export function check(source, filePath) {
   const { blanked, strings } = scan(source)
 
   const meta = META_DECL.exec(blanked)
@@ -151,36 +153,40 @@ export function check(source) {
   const metaStart = meta.index + meta[0].length - 1
   const metaEnd = spanEnd(blanked, metaStart)
 
+  const registered = String(filePath || '').startsWith('workflows/')
+    ? [{
+        line: 0,
+        message:
+          `service steps are launched by path from service-workflows/; a script in the ` +
+          `registered workflows/ directory shows in the menu (D6)`,
+      }]
+    : []
+
   return [
-    ...checkName(source, blanked, metaStart, metaEnd),
+    ...registered,
+    ...checkName(source, blanked, metaStart, metaEnd, filePath),
     ...checkPhases(source, blanked, metaStart, metaEnd),
     ...checkLiteral(source, blanked, strings, metaStart, metaEnd),
   ]
 }
 
-/** V2: meta.name is present, non-empty, and carries the agentics- prefix. */
-function checkName(source, blanked, metaStart, metaEnd) {
+/** V2: meta.name is present and is the file's own name; nothing else addresses this workflow. */
+function checkName(source, blanked, metaStart, metaEnd, filePath) {
   const [match] = within(blanked, NAME, metaStart, metaEnd)
   const value = match ? quotedValue(source, match) : ''
+  const stem = String(filePath || '').split('/').pop().replace(/\.workflow\.js$/, '')
 
   if (value.trim() === '') {
-    return [{
-      line: 0,
-      message:
-        `meta has no name. Add name: 'agentics-<something>' — the workflow namespace is flat and ` +
-        `global across every installed plugin, so an unnamed workflow cannot be addressed and ` +
-        `an unprefixed one collides.`,
-    }]
+    return [{ line: 0, message: `meta has no name. Add name: '${stem}' — a workflow's name is its file's name.` }]
   }
 
-  if (PREFIXED.test(value)) return []
+  const problems = []
+  if (value !== stem) problems.push(`is not its file's name, "${stem}"`)
+  if (!NAME_SHAPE.test(value)) problems.push(NAME_SHAPE_TEXT)
 
-  return [{
+  return problems.length === 0 ? [] : [{
     line: lineOf(source, match.index),
-    message:
-      `meta.name "${value}" must be "agentics-" followed by a name of its own. The workflow ` +
-      `namespace is flat and global across every installed plugin, so an unprefixed name ` +
-      `collides with another plugin's workflow.`,
+    message: `meta.name "${value}" ${problems.join(', and ')}. A workflow is addressed by one name, spelled once.`,
   }]
 }
 

@@ -1,6 +1,6 @@
 ---
 name: implementer
-description: Implements exactly one leaf of an agentics execution tree inside its declared locus, as a series of focused single-concern commits, or answers one fix round against it. Use only from agentics-develop or a session driving the same pipeline. Not for exploration, planning, review, or anything outside the locus.
+description: Implements exactly one leaf of an agentics execution tree inside its declared locus, as a series of focused single-concern commits, or answers one fix round against it. Use only from execute-approved-plan-in-worktrees or a session driving the same pipeline. Not for exploration, planning, review, or anything outside the locus.
 tools: Read, Edit, Write, Bash, Grep, Glob
 model: sonnet
 ---

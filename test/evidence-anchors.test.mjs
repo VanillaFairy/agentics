@@ -15,7 +15,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import {
-  checkAnchors, hunksOf, itemId, itemsFor, liveItems, mapSpan, recordItems, recordJudgement, recordRaw, reviewScope, snapshotSpec,
+  checkAnchors, hunksOf, itemId, itemsFor, liveItems, mapSpan, recordCites, recordItems, recordJudgement, recordRaw, reviewScope, snapshotSpec,
 } from '../lib/evidence.mjs'
 import { appendProject, readProjectLog } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
@@ -567,6 +567,7 @@ test('itemsFor returns the items whose ground overlaps, with their state, standi
   const docs = record(repo, span('docs/x.md', 1, 2, { ground: ['docs'] }))
   const wide = record(repo, span('src/a.js', 1, 2, { ground: ['.'], claim: 'repository-wide' }))
   const wrong = record(repo, span('src/a.js', 20, 21, { ground: ['src'], claim: 'judged wrong' }))
+  assert.equal(recordCites(repo, 'e1', 'f', { items: [wrong] }).ok, true, 'cited, so the prune keeps it once stale')
   recordJudgement(repo, wrong, 'fails')
 
   const got = itemsFor(repo, { ground: ['src/a.js'] })

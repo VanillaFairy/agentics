@@ -1,13 +1,13 @@
-Status: NEEDS_INPUT
+Status: DONE
 # 2026-09-26-design-loop-redesign checkpoint
 
 Wave: 20 — T29
-Integration head: c3ce5a4
-Remaining: T29
+Integration head: 47fd8f3
+Remaining: (none — plan complete)
 
 ## Tasks (wave 20)
 | Task | Wave | Branch | State | Review cycles | Merge commit |
-| T29 | 20 | sdd/2026-09-26-design-loop-redesign/T29 | blocked | 1 | |
+| T29 | 20 | sdd/2026-09-26-design-loop-redesign/T29 | merged | 2 | 47fd8f3 (fix round 1: 5 lines, reworded DESIGN.md's migration bullet off literal legacy paths per user decision; re-review PASSED, ADDRESSED, 0 open, 0 new critical/important) |
 
 ## Tasks (wave 19)
 | Task | Wave | Branch | State | Review cycles | Merge commit |
@@ -584,3 +584,20 @@ one `- Read:` line — watch it.)
   Minor. T29's worktree (`.worktrees/2026-09-26-design-loop-redesign-T29`, branch
   `sdd/2026-09-26-design-loop-redesign/T29`, head 5726d57, unmerged) is kept for the resuming
   wave-controller.
+- W20 T29, resumed: the user answered the escalation — **reword.** A fresh implementer (fix round
+  1, commit 8a6900c, 5-line diff in `docs/DESIGN.md` only) rephrased the Migration bullet to say
+  "a repository's 3.2.0 layout" and "its slot configuration" instead of the two literal legacy
+  path strings, same meaning, no exemption. Step 2's second grep now prints nothing; `claude
+  plugin validate .` and `node tools/lint.mjs` both clean. Scoped re-review (dispatched per the
+  user's explicit instruction, despite the 5-line diff being under the 20-line skip-review
+  threshold, since this is the plan's last task): ADDRESSED, 0 open, 0 new critical/important
+  (`T29-re-review-1.md`). Merged `47fd8f3` (`--no-ff`), clean, no conflicts (git's usual harmless
+  "Failed to parse repository information" hook line). T29's worktree and branch removed. Full
+  suite on `47fd8f3`: `node tools/lint.mjs` clean, `node --test` 1054/1055 — the one failure is
+  `concurrent project writers never mint the same seq` (`test/evidence.test.mjs`), the same
+  pre-existing load-sensitive concurrency flake recorded under W9 T25, W12 T17, W13 and W18 T28a
+  (untouched by this task's diff: T29 touches only `.claude-plugin/plugin.json` and
+  `docs/DESIGN.md`, neither touching `appendProject`'s seq minting). Not a regression, not fixed,
+  not blocking. No triad (rigor: verify), no audit, no gap task. **The
+  2026-09-26-design-loop-redesign plan is complete: all 29 tasks (and their sub-tasks/gap chains)
+  are merged.**

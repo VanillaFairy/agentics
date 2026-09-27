@@ -17,7 +17,7 @@ export function row(id, extra = {}) {
   return {
     id, title: 'do ' + id, kind: 'leaf', author: 'you', rigor: leaf ? 'tdd' : '', role: 'none',
     deps: [], locus: leaf ? ['src/' + id + '.js'] : [], reads: [], provides: [], consumes: [],
-    decisions: [], dispatch: {}, ground_known: true, evidence: 'none', status: 'planned',
+    decisions: [], dispatch: {}, ground_known: true, status: 'planned',
     children: [], acceptance_n: 1, human: [], own_review: false, coupled: false, integration: null,
     spec_path: '/repo/.agentics/e1/' + (id === '.' ? '' : id + '/') + 'DESIGN.md',
     ...extra,

@@ -324,8 +324,11 @@ traceability gaps come back as warnings. It refuses; it never repairs.
   .gitignore                      `*`, written by mkdirState
   config.json                     {max_parallel}, edited by the user
   .state/
+    seq, .lock                   the project-wide counter and mutex
     slots/                        the parallelism pool, shared by every execution (see Scheduling)
     context/                      context files for survey and probe readers, pruned after a week
+    evidence/                     the evidence item store ([Evidence item store](#evidence-item-store)):
+                                  items.jsonl, returns/<stamp>[-<n>]-<kind>.json, snapshots/<hash>.txt
   <effort>/
     DESIGN.md                     the root folder's spec
     <sub-effort>/DESIGN.md        one folder per sub-effort, nested as the plan nests them
@@ -337,7 +340,7 @@ traceability gaps come back as warnings. It refuses; it never repairs.
       ledger.jsonl                approvals, preparations, compiles, dispositions
       seq, .lock                  the counter and the effort mutex
       branch.json                 where the effort branch was cut, written once
-      evidence/                   survey and probe returns, verbatim, anchored to commit + ground
+      cites.jsonl                 each folder's evidence citations ([Cites](#cites))
       knowledge/                  gotchas (see Gotchas)
       executions/<stamp>/         one execution of a subtree: execution.json, state.jsonl,
                                   journal.jsonl, briefs/, jobs/
@@ -697,6 +700,23 @@ there is no fix loop: the probe reports and a human rules. The one loop is the
 [autonomous review](#autonomous-review) of a planner-written spec. The ladder's and the disposition's wording are the verbatim
 blocks `design-severity-ladder` and `probe-disposition` in the `design` and `probe` skills.
 
+Findings are evidence items too. The probe first snapshots the artefact (`evidence.mjs
+review-scope`), and each new finding is recorded as a `behaviour` item anchored to its lines in
+that snapshot. Given `since` — the snapshot the last review judged — the probe attacks only the
+lines changed since, and carries forward every earlier finding whose lines no hunk touched: the
+same anchor check as all other evidence, with no mechanism of its own. An artefact unchanged since
+`since` buys no analyst. The gate is unchanged: a carried ambiguity is an open ambiguity.
+
+Every round records a raw `probe` return, a clean one included: a round with no new finding
+records an empty return (`items: []`), so the result's `review` always names the return the round
+recorded, and a `prepared` ledger line names a real review. `review` is empty only when the scope
+failed (nothing is recorded without a snapshot) or the store took no batch; develop then names the
+preparation by the result's `snapshot`, else the spec hash. The result's `snapshot` is the one to
+pass back as `since`, and it is empty when the scope failed or any new finding went unrecorded: an
+unrecorded finding is in no pool, so a round narrowed past it would never attack its lines again,
+and an empty `since` buys a full probe instead. The scope and the recorder run with `--root` set to
+the probe's first root, so a probe in a linked worktree reads and anchors the worktree's text.
+
 One analyst holds every axis as a checklist; more are bought only when the document is long
 enough to earn them. A second round is earned only by a resolution that reshaped the design.
 
@@ -756,28 +776,122 @@ park on a folder the user wrote waits for the user.
 
 ## Evidence
 
+Evidence is a project-wide pool of small items. Each item makes one claim and carries the anchors
+it rests on, and each item's drift is detected on its own, so an edit re-buys only the claims it
+broke. The pool is `.agentics/.state/evidence/`, because a fact about the code belongs to no
+single effort; `lib/evidence.mjs` owns it.
+
+### Items and anchors
+
+An item's **kind** decides the anchor it must carry, and `checkItem` refuses an item without it:
+
+| kind | claims | needs |
+|---|---|---|
+| `behaviour` | what some text does or says | a span: a path, a line range, and where it was read |
+| `absence` | that something doesn't exist | a query whose re-run finds nothing |
+| `enumeration` | the full list of something | a query and its result set |
+| `relation` | how two things connect | spans and a query |
+| `external` | a fact from outside the project | a source: URL or package, version, retrieval date |
+| `derived` | a conclusion from other items | `rests_on`: the ids it is built on |
+
+A judge supplies the claim and what to anchor it to. The recorder (`recordItems`) makes the
+observations a judge can't: a span's `at` is HEAD when the file is unchanged against it, and
+otherwise a snapshot of the text it was read from; a query's result is `git grep` re-run; a
+source's retrieval date is the recorder's own. A batch with one refused item is refused whole and
+goes back to the judge that wrote it, so nothing unanchored enters the pool. An item's id is its
+question, topic and claim; a new revision of the same claim is appended, and the latest by `seq`
+wins.
+
+### The drift ladder
+
+Whenever evidence is about to be used — before a survey plans, before a re-review, when a brief
+is written, when `evidence.md` is rendered — each relevant item's state is derived on read, never
+stored:
+
+1. **Anchor check** (deterministic, `checkAnchors`). A committed span is mapped through
+   `git diff -U0 -M <at>` to the working tree, so renames are followed and uncommitted edits count;
+   a snapshot span is diffed with `git diff --no-index` against its saved text. Both pass
+   `--ignore-cr-at-eol`. A hunk wholly above the span shifts it; a hunk overlapping it changes it;
+   a pure insertion counts as inside only between two of its lines. A query is re-run and its
+   `{path, text}` set compared, line numbers ignored. A source expires after
+   `evidence_max_age_days` in `.agentics/config.json` (30 by default). A derived item is stale when
+   what it rests on is stale and suspect when it is suspect. Untouched anchors are **standing**; a
+   changed one is **suspect**. A line that only gains or loses its final newline is no hunk under
+   `--ignore-cr-at-eol`, so it changes nothing.
+2. **Re-judge.** Suspect items go, up to twenty per call, to `agentics:analyst` on `haiku`, with
+   the claim and each changed anchor's old and new text. `holds` re-anchors the item where the text
+   now is; `fails` and `unsure` make it **stale**, because an unsure check is never a pass. This is
+   the stated exception to the intelligence tier: the question is narrow, and any doubt routes to
+   the full-tier survey, so being too cheap can cost money but never correctness. Whether text
+   changed is always the diff's call; the model rules only on whether the change matters.
+3. **Narrowed re-survey.** The survey searches the stale items' topics again, with every standing
+   item handed in as known ground, and nothing else is bought again. Its new items make new claims,
+   so they take new ids and the stale items stay in the log; a stale item is **superseded** once a
+   standing item of the same topic, sharing a ground path with it, was recorded at a higher `seq`.
+   A superseded item is neither reused nor searched again.
+
+A comment typo inside an anchored span costs one line of one batched re-judge; a typo outside
+every span costs nothing. Approved specs are not alarmed by drift: an effort's own development
+moves the ground its items describe, so drift is checked when evidence is used.
+
+Every rung reads the checkout the run is in. `recordItems`, `checkAnchors`, `itemsFor`,
+`reviewScope` and a `holds` re-anchor take an optional `root` (the CLI's `--root` on `record`,
+`items`, `judge` and `review-scope`), the main checkout by default, so a survey or a probe run in
+a linked worktree anchors, checks and re-anchors against the worktree's text and HEAD. The pool
+itself is always the main checkout's `.agentics/.state/evidence/`.
+
 ### Survey
 
-The survey (`agentics-survey`) gathers evidence for one node and never concludes.
+The survey (`agentics-survey`) gathers evidence for one question and never concludes.
 
-1. **Plan.** One analyst decomposes the question into topics, names each topic's subtree and the
-   common ground.
-2. **Scout.** One scout per topic, the common ground scouted once. Scouts return locations and a
+1. **Reuse.** When the caller names its `ground`, one courier runs `evidence.mjs items` for the
+   items of earlier surveys whose ground overlaps it. Standing items become known ground; suspect
+   ones are re-judged; stale ones, and any still suspect after the re-judge, send their topic to be
+   searched again.
+2. **Plan.** One analyst decomposes the question into topics, names each topic's subtree and the
+   common ground, and is told what the pool already establishes and which topics are searched
+   again regardless; it plans only what the pool leaves open. A pool that answers the question buys
+   no search.
+3. **Scout.** One scout per topic, the common ground scouted once. Scouts return locations and a
    `stop_reason`, with `no_match` and `not_reached` kept apart, and are continued on exactly what
    remains until exhausted. History and docs channels run alongside when the plan asks, each with
    its own `.catch`.
-3. **Assemble context for analysis.** Judges are dealt first: one analyst for every topic,
-   unless `pace` or more than 60 distinct locations earns more. Then, per judge, a script
-   (`lib/citations.mjs excerpts`) reads that judge's locations and the shared ground's, merges
-   overlapping windows and writes them to [context files](#context-files). Two judges sharing
-   ground each get their own copy of it.
-4. **Judge.** Each analyst **without search tools** Reads its context files, then judges its
-   topics. A batch whose paths could not be carried reaches it as locations to read itself.
+4. **Assemble context for analysis.** Judges are dealt first: one analyst for every topic, unless
+   `pace` or more than 60 distinct locations earns more. Then, per judge, `lib/citations.mjs
+   excerpts` reads that judge's locations and the shared ground's once into
+   [context files](#context-files).
+5. **Judge.** Each analyst **without search tools** returns items — one claim each, with the
+   anchor its kind needs — and risks. A topic with neither is dropped.
+6. **Record.** A courier runs `evidence.mjs record --kind survey` per batch. A refused item goes
+   back to its judge until a pass anchors no more; what never anchors is dropped and leaves its
+   topic incomplete, and so do items the recorder could not be reached to check.
 
-A recorded survey **stands**, and is reused instead of bought again, when its commit is an ancestor
-of HEAD, no commit or uncommitted edit has touched its ground since, and it reported complete
-coverage — all computed from git by `lib/effort.mjs standing`. A node whose shape is settled and
-whose ground a standing survey covers buys no survey, and says so.
+Coverage is complete when every topic reported complete coverage and all its items stand.
+
+### Existing solutions
+
+`agentics-find-existing-solutions` records what it establishes too: each assessed candidate as an
+`external` item anchored at the source it was read from, each hit the repository already carries as
+a `behaviour` item anchored at that line. Recording is a side channel: a candidate that can't be
+anchored or recorded is named in the result and costs no coverage. A sweep answers its capability
+whole, so once a later sweep records items for a question and topic, `itemsFor` leaves out every
+item an earlier sweep recorded for them. A sweep is dated by the `seq` its return first recorded
+at, and an item the later sweep repeats is the same item and stands. The log keeps every line.
+
+### Cites and evidence.md
+
+A folder records the items it rests on, with the coverage gaps it rests on them despite, as a
+`cites` line (`evidence.mjs cite`). The folder's latest line by `seq` is its whole citation, never
+merged with its earlier lines, so Analyze cites everything the folder rests on each time. Its
+`evidence.md` is rendered from that line and the items' states at render time (`render.mjs
+evidence`): grouped by topic, each item with its state and anchors, and every gap named. It is
+never edited and never read back. `effort.mjs rename` carries each renamed folder's latest line to
+its new id, marked `renamed_from`, approved or not.
+
+A folder is **retired** when compile retired its node: `nodes.jsonl` names it and the live tree
+doesn't, and its citation counts for nothing. An item that is stale and named by no live folder's
+latest line, in any effort, is **pruned**: `itemsFor` leaves it out whatever states it is asked
+for, and `recordCites` refuses it. Its lines stay in `items.jsonl`.
 
 ---
 
@@ -1428,6 +1542,34 @@ merged, the root integrated, nothing escalated or parked — carried from an ear
 not — and no earned integration review or survey lost), `dropped[]`, `incomplete[]`,
 `failed_channels[]`, `unreached[]` (prose, loss first), `resumable {runId, remaining, args?}`.
 
+### Evidence item store
+
+- **Owner:** `lib/evidence.mjs` (`checkItem`, `recordItems`, `recordJudgement`); written through
+  `lib/ledger.mjs appendProject`, which mints a project-wide `seq` under `.agentics/.state/.lock`.
+- **Restated in:** the item builders of `agentics-survey`, `agentics-probe` and
+  `agentics-find-existing-solutions`, and the survey's copy of `ITEM_KINDS`.
+
+`items.jsonl` holds `{kind: 'item', item, seq}` and `{kind: 'judged', id, verdict: holds|fails|unsure,
+at, seq}` (a `holds` that could not be re-anchored is stored as `unsure` with `requested` and
+`why`). An item is `{id, question, topic, ground[], kind, claim, spans[{path, start, end, at}],
+queries[{pattern, scope[], result[{path, text}]}], sources[{url, version, retrieved}], rests_on[],
+detail?, from_return}`; `at` is a commit sha or `snapshot:<hash>`. Raw returns sit in
+`returns/<stamp>[-<n>]-<kind>.json` (`survey`, `probe`, `solutions`, `approach`; an `approach`
+draft or a clean `probe` round carries no items), spec snapshots in `snapshots/<hash>.txt`. The
+CLI (`record`, `items`, `judge`, `review-scope`, `cite`) prints an envelope; `record`, `items`,
+`judge` and `review-scope` take `--root <checkout>`, the checkout whose tree they read, the main
+checkout by default.
+
+### Cites
+
+- **Owner:** `lib/evidence.mjs recordCites`; read by `lib/render.mjs renderEvidence`.
+- **Restated in:** the `effort-store` verbatim block.
+
+`cites.jsonl` in an effort's `.state/` holds `{kind: 'cites', folder, items[], gaps[],
+renamed_from?, seq}`. A folder's latest line by `seq` is its whole citation; `latestCites` reads
+each folder's. `renameSubEffort` appends a copy of a renamed folder's latest line under its new id,
+with `renamed_from`.
+
 ### Workflow returns
 
 - **`agentics-develop`** — takes `repo, effort, root, execution, intelligence, pace, plan_only,
@@ -1437,9 +1579,21 @@ not — and no earned integration review or survey lost), `dropped[]`, `incomple
   escalations[{id, reason, detail}], parked[{id, return, question}], blocked[{id, blocked_by}],
   integration{branch, head_sha, reviews[{target, findings, claims, notes, reviewed}]}, drift, cleanup,
   cost{dispatches, by_model, tokens}, stopped, notes, coverage}`.
-- **`agentics-survey`**, **`agentics-probe`**, **`agentics-investigate`**,
-  **`agentics-find-existing-solutions`** — their inputs and returns are stated at the top of each
-  workflow and in the skill that launches it.
+- **`agentics-survey`** — takes `question, roots, notes, prior, max_topics, intelligence, pace,
+  plugin_root, ground`. Returns `{question, topics, ground, items, reused, unrecorded,
+  risks[{topic, text}], history, docs, coverage}`: reused standing items first, then new ones in
+  plan order, each with its `id`.
+- **`agentics-probe`** — takes `artifact, roots, context, plugin_root, max_derived_axes, per_axis,
+  since`. Returns `{artifact, axes, axes_dropped, analysts, shared_ground, guidance_read,
+  repo_ground, findings[{axis, severity, section, claim, evidence, start, end, id, item, carried}],
+  ambiguities, ratifiable, snapshot, scope{full, changed}, unrecorded, review, coverage}`.
+- **`agentics-find-existing-solutions`** — takes `capability, roots, constraints, notes,
+  max_angles, intelligence, plugin_root`. Returns `{capability, constraints, frame,
+  already_present, candidates, viable, ruled_out, items, unrecorded, unanchored, coverage}`.
+- **`agentics-investigate`** — takes `question, roots, notes, as_tasks, intelligence, pace,
+  plugin_root`. Returns `{question, mode, tasks, report, evidence, coverage}`; `evidence` is
+  `{items, risks, history, docs}` when synthesis failed and the survey's work is handed back, null
+  otherwise.
 
 ### Review returns
 

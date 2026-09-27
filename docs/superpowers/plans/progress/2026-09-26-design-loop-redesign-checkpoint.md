@@ -1,9 +1,13 @@
-Status: DONE
+Status: NEEDS_INPUT
 # 2026-09-26-design-loop-redesign checkpoint
 
-Wave: 19 — T28b, T28d
+Wave: 20 — T29
 Integration head: c3ce5a4
 Remaining: T29
+
+## Tasks (wave 20)
+| Task | Wave | Branch | State | Review cycles | Merge commit |
+| T29 | 20 | sdd/2026-09-26-design-loop-redesign/T29 | blocked | 1 | |
 
 ## Tasks (wave 19)
 | Task | Wave | Branch | State | Review cycles | Merge commit |
@@ -554,3 +558,29 @@ one `- Read:` line — watch it.)
 ## Knowledge entries
 - mutation-probe-baseline-scope (W4)
 - mutation-probe-escaped-newline (W5)
+
+- W20 T29: implemented 5726d57 (version bump to 4.0.0 only; DESIGN.md and README.md needed no
+  edits per Step 2/3's checks — the implementer's report is explicit that the second Step 2 grep
+  (old store paths) hits one line and judged it a legitimate reference rather than a stale term).
+  Success criterion 5 confirmed MET: T28b took Branch A (`ls service-workflows` shows the five
+  long-named files, `workflows/` is gone; commit subject "refactor(workflows): service steps get
+  their long names and launch by path", 84230e4, merged via c3ce5a4).
+- W20 T29 review: SPEC FAIL (the one Step 2 hit means an acceptance line — "Each Step 2 check
+  prints nothing" — is literally unmet), QUALITY Needs fixes (0 critical, 1 important, 2 minor).
+  The Important finding: `docs/DESIGN.md:1647-1651`'s Migration bullet names
+  `docs/agentics/designs/` and `.claude/agentics/slots/config.json` as `tools/migrate-legacy.mjs`'s
+  legacy inputs — a correct, present-tense description of what the one-shot migration script
+  reads, not a stale/retired reference, but the literal grep still hits it. The task's own rule
+  ("For a hit you can't resolve without a design decision, stop and escalate it") applies: the
+  implementer should have escalated instead of self-grading the hit as acceptable and reporting
+  DONE. The reviewer names two possible fixes, either a user decision: (a) accept the migration
+  bullet must name its legacy paths and exempt this acceptance line, or (b) rephrase the bullet to
+  describe the 3.2.0 layout without literal paths, keeping the grep clean. Not decided by this
+  wave-controller — the task text itself reserves this call for escalation, not implementer or
+  wave-controller judgment. Full review at `T29-review.md`; a Minor finding also flagged
+  DESIGN.md:1651's "Nothing reads the old layout" as imprecise (migrate-legacy.mjs itself reads
+  it) and the pre-existing `test/ledger.test.mjs` concurrency flake (same class as W9/W12/W13,
+  passed on rerun, untouched by this diff) as a release-gate noise item, both left unfixed as
+  Minor. T29's worktree (`.worktrees/2026-09-26-design-loop-redesign-T29`, branch
+  `sdd/2026-09-26-design-loop-redesign/T29`, head 5726d57, unmerged) is kept for the resuming
+  wave-controller.

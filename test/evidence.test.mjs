@@ -603,3 +603,14 @@ test('a query scope is stored and searched as a repository-relative path', () =>
   assert.equal(listed.ok, true, JSON.stringify(listed))
   for (const p of storedLines(repo)[0].item.queries[0].scope) assert.equal(safePath(p), p, JSON.stringify(p) + ' is stored as given')
 })
+
+// ------------------------------------------------------------------ audit gaps: binary matches
+
+test('a match in a file git calls binary keeps its path and its whole line, NUL included', () => {
+  const repo = gitRepo({ 'src/a.js': numbered(3), 'src/b.dat': 'head\0tail needle\nplain\n' })
+  const out = recordItems(repo, RETURN, [
+    fresh({ kind: 'enumeration', claim: 'the needles', spans: [], queries: [{ pattern: 'needle', scope: ['src'] }] }),
+  ], { now: NOW })
+  assert.equal(out.ok, true, JSON.stringify(out))
+  assert.deepEqual(storedLines(repo)[0].item.queries[0].result, [{ path: 'src/b.dat', text: 'head\0tail needle' }])
+})

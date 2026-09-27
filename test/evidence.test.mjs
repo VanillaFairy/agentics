@@ -390,3 +390,164 @@ test('the store ignores itself: recording leaves git status clean', () => {
   recordRaw(repo, 'survey', { items: [fresh()] }, { now: NOW })
   assert.equal(git(repo, 'status', '--porcelain'), '')
 })
+
+// ------------------------------------------------------------------ audit gaps: what the recorder fills
+
+test('an untracked file and a staged edit are anchored at a snapshot of their text, never at HEAD', () => {
+  const repo = gitRepo()
+  const untracked = numbered(12, 'new')
+  const staged = numbered(30).replace('line 3\n', 'line three\n')
+  put(repo, { 'src/u.js': untracked, 'src/a.js': staged })
+  git(repo, 'add', 'src/a.js')
+  const out = recordItems(repo, RETURN, [
+    fresh({ claim: 'untracked', spans: [{ path: 'src/u.js', start: 1, end: 2, at: '' }] }),
+    fresh({ claim: 'staged' }),
+  ], { now: NOW })
+  assert.equal(out.ok, true, JSON.stringify(out))
+  assert.deepEqual(storedLines(repo).map((l) => l.item.spans[0].at),
+    ['snapshot:' + hashSpec(untracked), 'snapshot:' + hashSpec(staged)])
+})
+
+test('a CRLF working copy of an LF commit under core.autocrlf reads as unchanged, so it anchors at HEAD', () => {
+  const repo = gitRepo()
+  git(repo, 'config', 'core.autocrlf', 'true')
+  put(repo, { 'src/a.js': numbered(30).replace(/\n/g, '\r\n') })
+  const out = recordItems(repo, RETURN, [fresh()], { now: NOW })
+  assert.equal(out.ok, true, JSON.stringify(out))
+  assert.equal(storedLines(repo)[0].item.spans[0].at, git(repo, 'rev-parse', 'HEAD'))
+})
+
+test('an at the judge supplied is kept as given', () => {
+  const repo = gitRepo()
+  const head = git(repo, 'rev-parse', 'HEAD')
+  const snap = snapshotSpec(repo, numbered(30))
+  put(repo, { 'src/a.js': numbered(30).replace('line 1\n', 'line one\n') })
+  const out = recordItems(repo, RETURN, [
+    fresh({ claim: 'at head', spans: [{ path: 'src/a.js', start: 2, end: 3, at: head }] }),
+    fresh({ claim: 'at a snapshot', spans: [{ path: 'src/a.js', start: 2, end: 3, at: snap }] }),
+  ], { now: NOW })
+  assert.equal(out.ok, true, JSON.stringify(out))
+  assert.deepEqual(storedLines(repo).map((l) => l.item.spans[0].at), [head, snap])
+})
+
+test('a query result is the re-run search, de-duplicated on {path, text}, whatever the judge wrote', () => {
+  const repo = gitRepo({ 'src/a.js': 'dup\ndup\nkey: a:b\n' })
+  const out = recordItems(repo, RETURN, [
+    fresh({ kind: 'enumeration', claim: 'dups', spans: [], queries: [{ pattern: 'dup', scope: ['src'], result: [{ path: 'src/elsewhere.js', text: 'invented' }] }] }),
+    fresh({ kind: 'enumeration', claim: 'colons', spans: [], queries: [{ pattern: 'a:b', scope: ['src'] }] }),
+  ], { now: NOW })
+  assert.equal(out.ok, true, JSON.stringify(out))
+  const [dups, colons] = storedLines(repo).map((l) => l.item.queries[0].result)
+  assert.deepEqual(dups, [{ path: 'src/a.js', text: 'dup' }])
+  assert.deepEqual(colons, [{ path: 'src/a.js', text: 'key: a:b' }])
+})
+
+test('an empty retrieved is the UTC date of now, even where the local date has already turned', () => {
+  const repo = gitRepo()
+  const zone = process.env.TZ
+  process.env.TZ = 'Pacific/Kiritimati'
+  try {
+    const now = new Date('2026-09-26T10:30:00Z')
+    const utc = now.toISOString().slice(0, 10)
+    assert.notEqual(now.toLocaleDateString('sv'), utc, 'the fixture straddles midnight in UTC+14')
+    const out = recordItems(repo, RETURN, [
+      fresh({ kind: 'external', spans: [], sources: [{ url: 'https://example.org/spec', version: '', retrieved: '' }] }),
+    ], { now })
+    assert.equal(out.ok, true, JSON.stringify(out))
+    assert.equal(storedLines(repo)[0].item.sources[0].retrieved, utc)
+  } finally {
+    if (zone === undefined) delete process.env.TZ
+    else process.env.TZ = zone
+  }
+})
+
+test('ground and span paths are stored repository-relative and forward-slashed', () => {
+  const repo = gitRepo()
+  const out = recordItems(repo, RETURN, [
+    fresh({ ground: ['src\\sub', './src/'], spans: [{ path: 'src\\a.js', start: 1, end: 2, at: '' }] }),
+  ], { now: NOW })
+  assert.equal(out.ok, true, JSON.stringify(out))
+  const { item } = storedLines(repo)[0]
+  assert.deepEqual(item.ground, ['src/sub', 'src'])
+  assert.equal(item.spans[0].path, 'src/a.js')
+})
+
+test('an absolute or climbing ground, span path or query scope refuses its item', () => {
+  const repo = gitRepo()
+  const out = recordItems(repo, RETURN, [
+    fresh({ claim: 'ground', ground: ['C:\\work\\x'] }),
+    fresh({ claim: 'span', spans: [{ path: '/etc/passwd', start: 1, end: 1, at: '' }] }),
+    fresh({ claim: 'scope', kind: 'absence', spans: [], queries: [{ pattern: 'zzz', scope: ['..\\up'] }] }),
+  ], { now: NOW })
+  assert.equal(out.ok, false)
+  assert.deepEqual(out.refused.map((r) => r.index), [0, 1, 2])
+})
+
+test('a record made from a linked worktree reads the main checkout, not the worktree', () => {
+  const repo = gitRepo()
+  const wt = join(bare(), 'wt')
+  git(repo, 'worktree', 'add', '-q', wt, '-b', 'side')
+  put(wt, { 'src/a.js': numbered(5) })
+  const out = recordItems(wt, RETURN, [fresh({ spans: [{ path: 'src/a.js', start: 20, end: 22, at: '' }] })], { now: NOW })
+  assert.equal(out.ok, true, JSON.stringify(out))
+  assert.equal(storedLines(repo)[0].item.spans[0].at, git(repo, 'rev-parse', 'HEAD'))
+})
+
+// ------------------------------------------------------------------ audit gaps: the store and its returns
+
+test('liveItems takes the highest seq whatever the line order, and skips every line that is not an item', () => {
+  const repo = bare()
+  const id = itemId(VALID.behaviour)
+  const rev = (start, seq) => JSON.stringify({ kind: 'item', item: { ...VALID.behaviour, id, spans: [{ ...VALID.behaviour.spans[0], start, end: start }] }, seq })
+  const file = evidenceItemsPath(repo)
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, [
+    rev(9, 9),
+    rev(3, 3),
+    '{"kind":"item","item":',
+    JSON.stringify({ kind: 'judged', id, verdict: 'holds', at: SHA, seq: 12 }),
+    JSON.stringify({ kind: 'item', item: { ...VALID.behaviour, id: 'not-an-id', claim: 'other' }, seq: 20 }),
+    JSON.stringify({ kind: 'item', item: { ...VALID.behaviour, claim: 'no id' }, seq: 21 }),
+  ].join('\n') + '\n')
+  const live = liveItems(repo)
+  assert.deepEqual([...live.keys()], [id])
+  assert.equal(live.get(id).spans[0].start, 9)
+  assert.equal(live.get(id).seq, 9)
+})
+
+test('an unparseable project counter is rebuilt from the log, never reset to 0', () => {
+  const repo = bare()
+  appendProject(repo, 'items', [{ kind: 'judged', id: 'I00000001' }, { kind: 'judged', id: 'I00000002' }])
+  writeFileSync(join(projectStateDir(repo), 'seq'), 'not a number')
+  assert.deepEqual(appendProject(repo, 'items', { kind: 'judged', id: 'I00000003' }).seqs, [3])
+})
+
+test('a refused batch moves no counter', () => {
+  const repo = gitRepo()
+  const first = recordItems(repo, RETURN, [fresh()], { now: NOW })
+  const refused = recordItems(repo, RETURN, [fresh({ claim: 'another' }), fresh({ claim: 'no anchor', spans: [] })], { now: NOW })
+  assert.equal(refused.ok, false)
+  assert.equal(readFileSync(join(projectStateDir(repo), 'seq'), 'utf8'), String(first.seqs.at(-1)))
+  assert.equal(storedLines(repo).length, first.ids.length)
+})
+
+test('same-second recorders take -2 then -3, and a refused one deletes only its own file', () => {
+  const repo = gitRepo()
+  const payload = { items: [fresh()] }
+  const names = [1, 2, 3].map(() => recordRaw(repo, 'survey', payload, { now: NOW }).return)
+  const stem = names[0].replace(/-survey$/, '')
+  assert.deepEqual(names, [stem + '-survey', stem + '-2-survey', stem + '-3-survey'])
+  const refused = recordRaw(repo, 'survey', { items: [fresh({ claim: 'no anchor', spans: [] })] }, { now: NOW })
+  assert.equal(refused.ok, false)
+  const dir = evidenceReturnsDir(repo)
+  assert.deepEqual(readdirSync(dir).sort(), names.map((n) => n + '.json').sort())
+  for (const n of names) assert.deepEqual(JSON.parse(readFileSync(join(dir, n + '.json'), 'utf8')), payload)
+})
+
+test('an approach return that carries items records them like any other kind', () => {
+  const repo = gitRepo()
+  const out = recordRaw(repo, 'approach', { approach: 'minimal-change', cites: [], items: [fresh()] }, { now: NOW })
+  assert.equal(out.ok, true, JSON.stringify(out))
+  assert.deepEqual(out.ids, [itemId(fresh())])
+  assert.equal(liveItems(repo).get(out.ids[0]).from_return, out.return)
+})

@@ -709,7 +709,7 @@ async function planNode(id, why) {
 async function writeSpec(id, why) {
   const row = rows.get(id)
   let evidence = ''
-  if (!why && row.ground_known === false && row.evidence !== 'standing') {
+  if (!why && row.ground_known === false) {
     phase('Plan')
     const survey = await workflow('agentics-survey', {
       question: 'Where and how does this change land: ' + row.title + ' — ' + (row.intent || ''),

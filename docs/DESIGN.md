@@ -1380,8 +1380,8 @@ notes}` plus:
   commands, resumed}`, `nodes[row]`, `leaves[{id, next_action, note, branch, worktree, head_sha,
   base_sha, approved_head, commits, dirty, rounds, brief_path}]`, `gaps`, `untraced`, `atomicity`, `coupled`, `stale`, `freed`,
   `dirty_worktrees`, `commands`, `max_parallel`. A row is `{id, title, kind, author, rigor, role,
-  deps, locus, reads, provides, consumes, decisions, dispatch, ground_known, evidence, status,
-  reason, rev, spec_path, children, acceptance_n, human, own_review, coupled, integration}` — no prose.
+  deps, locus, reads, provides, consumes, decisions, dispatch, ground_known, status, reason, rev,
+  spec_path, children, acceptance_n, human, own_review, coupled, integration}` — no prose.
 - **leaf-open** — `status` (`opened | no_slot | locus_held | busy | refused`), `branch`, `worktree`,
   `base_sha`, `head_sha`, `rebased`, `brief_path`, `brief_digest`, `report_path`, `slot`,
   `max_parallel`, `held_by[{effort, path, node, execution, status}]`, `stuck`.

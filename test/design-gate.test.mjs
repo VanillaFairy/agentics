@@ -98,8 +98,8 @@ test('a file the map does not name is not judged at all', () => {
   assert.ok(!applies.test('skills/programme/SKILL.md'), 'the programme skill no longer exists')
 })
 
-test("design's clauses are not applied to find-existing-solutions, or the reverse", () => {
-  assert.equal(check(WHOLE, 'skills/find-existing-solutions/SKILL.md').length, 2)
+test("design's clauses are not applied to the existing-solutions search, or the reverse", () => {
+  assert.equal(check(WHOLE, 'skills/search-for-existing-solutions-before-building/SKILL.md').length, 2)
 })
 
 test('the shipped design skill passes its own rule', () => {

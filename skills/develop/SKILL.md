@@ -171,7 +171,7 @@ it.
 **Efforts — one directory for everything a piece of work produces.** An effort is a subtree of
 the execution tree. It lives at `.agentics/<effort>/` in the main checkout, never in a worktree,
 and everything scripts write for it — its nodes, their events and its executions —
-sits in that directory's `.state/`. Design, probe and develop are separate sessions by
+sits in that directory's `.state/`. Design, challenge-idea and develop are separate sessions by
 recommendation, and this directory is how a later one reads what an earlier one established.
 
 Open one at the start. Propose a short name from the user's words and confirm it;

@@ -20,7 +20,7 @@ judgment.
 
 | Directory | What lives there |
 |---|---|
-| `skills/` | The seven entry points a user invokes (see [Skills](#skills)). |
+| `skills/` | The six commands a user invokes and one hidden service step (see [Skills](#skills)). |
 | `workflows/` | Five workflow scripts, all named `agentics-*`, holding the orchestration. |
 | `agents/` | Eleven agent definitions, one narrow role each (see [Agents](#agents)). |
 | `lib/` | Node CLIs for everything deterministic that touches disk or git. |
@@ -698,7 +698,7 @@ and nothing from the author. Findings sit on the design ladder (**ambiguity** bl
 false while any ambiguity is open, and false when any axis went unexamined. When a person drives it
 there is no fix loop: the probe reports and a human rules. The one loop is the
 [autonomous review](#autonomous-review) of a planner-written spec. The ladder's and the disposition's wording are the verbatim
-blocks `design-severity-ladder` and `probe-disposition` in the `design` and `probe` skills.
+blocks `design-severity-ladder` and `probe-disposition` in the `design` and `challenge-idea` skills.
 
 Findings are evidence items too. The probe first snapshots the artefact (`evidence.mjs
 review-scope`), and each new finding is recorded as a `behaviour` item anchored to its lines in
@@ -1320,10 +1320,13 @@ absent it says so and the session takes the `--no-progress` path.
 | `task` | the inline mode |
 | `design` | one folder's spec at any depth: the loop from Analyze to Move on |
 | `develop` | building a folder or a settled request: the root spec, launch, result walk, re-specs, landing |
-| `probe` | attacking a written artefact |
+| `challenge-idea` | attacking a written artefact |
 | `investigate` | answering a question from evidence (`agentics-investigate`) |
-| `find-existing-solutions` | the outward search (`agentics-find-existing-solutions`) |
+| `search-for-existing-solutions-before-building` | service step, hidden (`user-invocable: false`) — the outward search (`agentics-find-existing-solutions`) |
 | `next` | every effort, where it stands and its computed Next line; hands the pick on |
+
+A service step carries `user-invocable: false`: it is gone from the `/` menu, and the model still
+runs it when asked in chat.
 
 A skill file holds the router and the steps; step detail lives in reference files loaded when the
 step is reached. A contract several files must state identically is a verbatim block, placed only

@@ -1,9 +1,10 @@
 ---
-name: find-existing-solutions
+name: search-for-existing-solutions-before-building
 description: Use before building something, when the question is whether it needs building at all — a library, tool, standard, service, or something this repository already depends on may already do it. Searches the world outside the codebase and returns candidates with licence, version and fit facts. Not for understanding code you already have (use investigate).
+user-invocable: false
 ---
 
-# find-existing-solutions
+# search-for-existing-solutions-before-building
 
 Answer one question, with evidence: **does this already exist?**
 

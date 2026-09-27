@@ -9,19 +9,23 @@ the user's branch here, on their explicit go, and nowhere else (`docs/DESIGN.md#
 node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" land --repo . --effort <e> --action check
 ```
 
-It prints `{payload, payload_digest}`; the payload carries `open_escalations`, `parked`, `human`
-and `drift: {base_moved, commits, files}`. It reads; it writes nothing.
+It prints the report as JSON: `open_escalations`, `parked`, `human`,
+`drift: {base_moved, commits, overlap}`, `root_claims` and `landing`. It reads; it writes nothing.
 
 ## 2. Present — gaps first
 
-1. **Open escalations and parked nodes.** Landing refuses over an open escalation; resolve those
+1. **The landing view.** `landing` is markdown: the root spec's success criteria beside the root
+   integration review's verdict on each claim, what did not hold first. Show it as printed. A
+   verdict other than `met`, or a view with no verdicts at all, is named before anything else: a
+   `cant_tell` is not a pass, and no review is not a clean review.
+2. **Open escalations and parked nodes.** Landing refuses over an open escalation; resolve those
    first (develop step 4b–c). A parked node is not landed work: name it.
-2. **What is not in the effort branch.** When the user asked to land what exists, name every
+3. **What is not in the effort branch.** When the user asked to land what exists, name every
    planned node that has not merged (`lib/status.mjs show --repo . --effort <e>`), so a partial
    landing never reads as the whole.
-3. **Drift.** How the user's branch moved since the effort branch was cut: the commits and the
+4. **Drift.** How the user's branch moved since the effort branch was cut: the commits and the
    files. A file on both sides is where a conflict will be.
-4. **Every `HUMAN:` criterion**, verbatim, prefix included. These are the user's to judge before
+5. **Every `HUMAN:` criterion**, verbatim, prefix included. These are the user's to judge before
    the go, and nobody else surfaces them.
 
 ## 3. Ask

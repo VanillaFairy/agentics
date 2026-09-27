@@ -554,3 +554,17 @@ test('an approach return that carries items records them like any other kind', (
   assert.deepEqual(out.ids, [itemId(fresh())])
   assert.equal(liveItems(repo).get(out.ids[0]).from_return, out.return)
 })
+
+// ------------------------------------------------------------------ audit gaps: the project counter
+
+test('a project counter behind the log is repaired, never minting a seq the log already holds', () => {
+  const repo = bare()
+  appendProject(repo, 'items', [{ kind: 'judged', id: 'I00000001' }, { kind: 'judged', id: 'I00000002' }, { kind: 'judged', id: 'I00000003' }])
+  // What a crash between the append and the counter write leaves: lines past the counter.
+  writeFileSync(join(projectStateDir(repo), 'seq'), '1')
+  const out = appendProject(repo, 'items', { kind: 'judged', id: 'I00000004' })
+  assert.equal(out.ok, true, JSON.stringify(out))
+  const seqs = storedLines(repo).map((l) => l.seq)
+  assert.equal(new Set(seqs).size, seqs.length, 'every seq is distinct: ' + seqs.join(', '))
+  assert.ok(out.seqs[0] > Math.max(...seqs.slice(0, -1)), 'the new line is the latest: ' + seqs.join(', '))
+})

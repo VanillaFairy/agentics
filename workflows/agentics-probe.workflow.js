@@ -2,10 +2,12 @@ export const meta = {
   name: 'agentics-probe',
   description: 'Adversarially probe a written artefact — a design, a proposal, a spec — with independent analysts who receive the document and the target repository\'s own guidance and nothing from its author. Rules on the design severity ladder; the gate is computed.',
   phases: [
+    { title: 'Scope', detail: 'snapshot the artefact; with since, the lines that changed and the findings no edit touched' },
     { title: 'Locate', detail: 'one scout finds the repo\'s review guidance and the ground the artefact talks about' },
     { title: 'Ground', detail: 'write the artefact\'s citations, the located ground and the guidance to context files, once' },
     { title: 'Axes', detail: 'derive what to attack from the repo\'s own review guidance' },
     { title: 'Probe', detail: 'one analyst holding every axis unless the artefact\'s length earns more; artefact-only handoff' },
+    { title: 'Record', detail: 'each new finding into the project-wide store, anchored to the snapshot' },
   ],
 }
 
@@ -162,13 +164,15 @@ function probeFindings(axisKeys) {
     properties: {
       findings: { type: 'array', items: {
         type: 'object', additionalProperties: false,
-        required: ['axis', 'severity', 'section', 'claim', 'evidence'],
+        required: ['axis', 'severity', 'section', 'claim', 'evidence', 'start', 'end'],
         properties: {
           axis: { type: 'string', enum: axisKeys },
           severity: { type: 'string', enum: ['ambiguity', 'gap', 'note'] },
           section: { type: 'string' },   // where in the artefact, as the artefact names it
           claim: { type: 'string' },     // the defect, falsifiably stated
           evidence: { type: 'string' },  // the text or code that makes it real
+          start: { type: 'integer' },    // first artefact line the finding is about, from 1
+          end: { type: 'integer' },      // last line; the whole document for something it never says
         } } },
       notes: { type: 'string' },
       // Not `required`: an exhausted prober with nothing to say must never be deadlocked by a
@@ -202,6 +206,13 @@ const input = typeof args === 'string' ? { artifact: args } : (args || {})
 const artifact = typeof input.artifact === 'string' ? input.artifact.trim() : ''
 const roots = input.roots || '.'
 const context = typeof input.context === 'string' ? input.context : ''
+
+// The snapshot the last review of this artefact judged. With it, only the lines changed since are
+// attacked, and earlier findings no edit touched are carried forward. Only a snapshot id goes into
+// a command; anything else buys a full probe.
+const SNAPSHOT_ID = /^snapshot:[0-9a-f]{8}$/
+const since = typeof input.since === 'string' && SNAPSHOT_ID.test(input.since.trim()) ? input.since.trim() : ''
+if (input.since && !since) log(`since ${JSON.stringify(input.since)} is not a snapshot id; probing in full.`)
 
 // The repository the artefact's citations and the located ground are resolved against — the
 // first root: a citation is repo-relative and there is one repository it is relative TO.
@@ -269,6 +280,46 @@ function fnv1a(text) {
 
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
+
+function utf8Bytes(text) {
+  const out = []
+  for (let i = 0; i < text.length; i++) {
+    let c = text.charCodeAt(i)
+    if (c >= 0xd800 && c <= 0xdbff && i + 1 < text.length) {
+      const low = text.charCodeAt(i + 1)
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        c = 0x10000 + ((c - 0xd800) << 10) + (low - 0xdc00)
+        i++
+      }
+    }
+    if (c < 0x80) out.push(c)
+    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63))
+    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+  }
+  return out
+}
+
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+/** Standard padded base64: one opaque argv slot, nothing in it for a shell to interpret. */
+function base64(text) {
+  const bytes = utf8Bytes(text)
+  let out = ''
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i]
+    const b1 = i + 1 < bytes.length ? bytes[i + 1] : -1
+    const b2 = i + 2 < bytes.length ? bytes[i + 2] : -1
+    out += B64[b0 >> 2]
+    out += B64[((b0 & 3) << 4) | (b1 < 0 ? 0 : b1 >> 4)]
+    out += b1 < 0 ? '=' : B64[((b1 & 15) << 2) | (b2 < 0 ? 0 : b2 >> 6)]
+    out += b2 < 0 ? '=' : B64[b2 & 63]
+  }
+  return out
+}
+
+/** An item's identity: its question, topic and claim — a copy of `lib/evidence.mjs`'s `itemId`. */
+const itemIdOf = (item) => 'I' + fnv1a(canonical({ question: item.question, topic: item.topic, claim: item.claim }))
 
 /** What a courier carried back: the payload, or why it cannot be believed and how to retry. */
 function carriedRead(held) {
@@ -683,6 +734,16 @@ function probePrompt(bundle, ground, remainder) {
         `Its findings are already recorded. Attack ONLY what it never reached:\n${remainder}\n` +
         `Read the rest of the document for context, but report only on that part.\n\n`
       : '') +
+    (narrow
+      ? `ATTACK ONLY THESE LINES — read the rest for context.\n` +
+        `A NARROWED RE-REVIEW. This artefact was attacked before, and since then it changed only in ` +
+        `these line ranges: ${narrow.changed.map((r) => `${r.start}-${r.end}`).join(', ')}.\n` +
+        `What earlier attacks found on lines no edit touched is settled and carried forward; do not ` +
+        `report it again:\n` +
+        (carriedFindings.length > 0
+          ? carriedFindings.map((f) => `- [${f.axis}, ${f.severity}] ${f.claim}`).join('\n')
+          : '(nothing was carried forward)') + '\n\n'
+      : '') +
     `THE ARTEFACT — read it in full before you write anything:\n${artifact}\n\n` +
     `REPOSITORY it will be implemented in: ${roots}\n` +
     `You carry Read and nothing that searches: the repository's ground was located and read ` +
@@ -696,7 +757,9 @@ function probePrompt(bundle, ground, remainder) {
     ladderText +
     `Every finding is falsifiable: claim states the defect so it could be shown wrong, and ` +
     `evidence quotes the document or cites the code that makes it real. section names where ` +
-    `in the artefact, using the artefact's own section names so a human can find it.\n\n` +
+    `in the artefact, using the artefact's own section names so a human can find it. start and ` +
+    `end are the artefact lines the finding is about, from 1; for something the document never ` +
+    `says, give the whole document.\n\n` +
     `You have the document and the repository. You do not have the author's reasoning, and ` +
     `that is deliberate: an author's account of what they meant talks you into reading the ` +
     `document as they intended rather than as it is written, and what gets implemented is ` +
@@ -737,6 +800,118 @@ if (!artifact) {
       unreached: ['no artefact path was supplied, so nothing was probed'],
       resumable: { runId: 'unknown-to-script', remaining: [] },
     },
+    snapshot: '',
+    scope: { full: true, changed: [] },
+    unrecorded: [],
+    review: '',
+  }
+}
+
+phase('Scope')
+
+const scopeHeld = await carry(
+  `node "${pluginRoot}/lib/evidence.mjs" review-scope --repo "${groundRepo}" --root "${groundRepo}" --file "${artifact}"` +
+    (since ? ` --since "${since}"` : ''),
+  'scope', 'Scope')
+const scope = scopeHeld.payload && scopeHeld.payload.ok === true ? scopeHeld.payload : null
+if (!scope) {
+  log(`The artefact was not snapshotted (${scopeHeld.why || 'no scope came back'}): probing in full, and ` +
+    `no finding can be recorded without a snapshot to anchor it to.`)
+}
+const narrow = scope && scope.full === false ? scope : null
+
+/** An earlier finding the scope carried forward: its item, as a finding. */
+function carriedFinding(it) {
+  const d = it.detail || {}
+  const s = (it.spans || [])[0] || {}
+  return {
+    axis: d.axis || String(it.topic || '').replace(/^challenge:/, ''), severity: d.severity || 'note',
+    section: d.section || '', claim: it.claim, evidence: d.evidence || '', start: s.start || 0, end: s.end || 0,
+    item: it.id, carried: true,
+  }
+}
+const carriedFindings = narrow ? (narrow.carried || []).map(carriedFinding) : []
+
+/**
+ * Record a round's items as one or more batches, each under the argv budget. `items` is empty for
+ * a round that found nothing new — the token `{items: []}` still records the round's return, so a
+ * clean review is a review return like any other (Design Decisions 9).
+ */
+async function recordRound(items) {
+  phase('Record')
+  const batches = []
+  let current = []
+  for (const item of items) {
+    const grown = current.concat(item)
+    if (current.length > 0 && base64(JSON.stringify({ items: grown })).length > COMMAND_BUDGET) {
+      batches.push(current)
+      current = [item]
+    } else {
+      current = grown
+    }
+  }
+  batches.push(current)
+
+  const unrecorded = []
+  let review = ''
+  for (let i = 0; i < batches.length; i++) {
+    const batch = batches[i]
+    const label = batches.length === 1 ? 'record' : `record:${i + 1}`
+    const token = { items: batch }
+    const held = await carry(
+      `node "${pluginRoot}/lib/evidence.mjs" record --repo "${groundRepo}" --root "${groundRepo}" --kind probe ` +
+        `--digest ${fnv1a(canonical(token))} --b64 ${base64(JSON.stringify(token))}`,
+      label, 'Record')
+    const ok = held.payload && held.payload.ok === true
+    if (ok) {
+      if (!review) review = held.payload.return || ''
+      continue
+    }
+    const why = held.why ||
+      (held.payload && Array.isArray(held.payload.refused)
+        ? held.payload.refused.length + ' item(s) refused: ' +
+          held.payload.refused.map((r) => r.problems.join('; ')).join(' | ')
+        : 'the result names no review return')
+    if (batch.length === 0) {
+      log(`the clean round was not recorded (${why}): the result names no review return`)
+    } else {
+      unrecorded.push(...batch.map(itemIdOf))
+      log(`${batch.length} finding(s) not recorded (${why}): the result names no snapshot, so the next ` +
+        `review of this artefact attacks it in full`)
+    }
+  }
+  return { review, unrecorded }
+}
+
+if (narrow && narrow.changed.length === 0) {
+  log(`The artefact is unchanged since ${since}: nothing to attack; ${carriedFindings.length} earlier ` +
+    `finding(s) carried forward.`)
+  const { review } = await recordRound([])
+  const unchangedFindings = carriedFindings.map((f, i) => ({ ...f, id: 'P' + (i + 1) }))
+  const unchangedAmbiguities = unchangedFindings.filter((f) => f.severity === 'ambiguity')
+  return {
+    artifact,
+    axes: [],
+    axes_dropped: [],
+    analysts: [],
+    shared_ground: null,
+    guidance_read: [],
+    repo_ground: { located: 0, complete: true, unresolved_batches: 0 },
+    findings: unchangedFindings,
+    ambiguities: unchangedAmbiguities,
+    ratifiable: unchangedAmbiguities.length === 0,
+    coverage: {
+      complete: true,
+      dropped: [],
+      incomplete: [],
+      failed_channels: [],
+      unreached: [],
+      resumable: { runId: 'unknown-to-script: pair with the runId from the Workflow launch result', remaining: [] },
+    },
+    snapshot: scope.snapshot,
+    scope: { full: false, changed: [] },
+    unrecorded: [],
+    review,
   }
 }
 
@@ -845,9 +1020,13 @@ phase('Probe')
 const artifactLines = ground.payload && Number.isInteger(ground.payload.artifact_lines)
   ? ground.payload.artifact_lines
   : 0
+// A narrowed re-review is sized by the lines it actually attacks, not by the whole artefact.
+const attackLines = narrow
+  ? narrow.changed.reduce((n, r) => n + (r.end - r.start + 1), 0)
+  : artifactLines
 const analysts = perAxis
   ? axes.length
-  : Math.max(1, Math.min(axes.length, Math.ceil(artifactLines / LINES_PER_ANALYST)))
+  : Math.max(1, Math.min(axes.length, Math.ceil(attackLines / LINES_PER_ANALYST)))
 
 // Dealt round-robin, so the standing four spread across analysts rather than all landing on one.
 const bundles = Array.from({ length: analysts }, () => [])
@@ -857,7 +1036,7 @@ const bundleLabel = (bundle) => `probe:${bundle.map((a) => a.key).join('+')}`
 
 log(`Probing ${artifact} on ${axes.length} axes with ${analysts} analyst(s) — ` +
   (perAxis ? 'one per axis, as the caller asked'
-    : artifactLines ? `${artifactLines} line(s) earn ${analysts}`
+    : attackLines ? `${attackLines} line(s) earn ${analysts}`
       : 'the artefact\'s length is unknown, so one') +
   `: ${bundles.map((b) => b.map((a) => a.key).join('+')).join(', ')}.`)
 
@@ -898,7 +1077,8 @@ const outcomes = await parallel(bundles.map((bundle) => () => attack(bundle)))
 // Reconcile by bundle. An axis whose analyst never reported is an axis nobody attacked, and it
 // has to be reported as unexamined rather than quietly counted among the ones that found
 // nothing — those two look identical in a findings list and mean opposite things.
-const findings = []
+const findings = carriedFindings.map((f, i) => ({ ...f, id: 'P' + (i + 1) }))
+const newItems = []
 const unexamined = []
 const partiallyExamined = []
 
@@ -911,7 +1091,16 @@ bundles.forEach((bundle, i) => {
   for (const report of passes) {
     for (const f of report.findings || []) {
       const axis = keys.length === 1 ? keys[0] : keys.includes(f.axis) ? f.axis : keys.join('+')
-      findings.push({ ...f, axis, id: `P${findings.length + 1}` })
+      // A finding's own range is trusted only inside the snapshot it is about to be anchored to;
+      // otherwise it is anchored to the whole document — the safe direction, re-reviewed on any edit.
+      const inRange = scope && Number.isInteger(f.start) && Number.isInteger(f.end) &&
+        f.start >= 1 && f.start <= f.end && f.end <= scope.lines
+      const start = inRange ? f.start : (scope ? 1 : f.start)
+      const end = inRange ? f.end : (scope ? scope.lines : f.end)
+      const withRange = { ...f, axis, start, end }
+      const item = scope ? itemOf(withRange) : null
+      if (item) newItems.push(item)
+      findings.push({ ...withRange, id: `P${findings.length + 1}`, item: item ? itemIdOf(item) : '', carried: false })
     }
   }
 
@@ -1006,6 +1195,18 @@ const coverage = {
 // implies coverage.complete, in one direction and by construction.
 const ratifiable = ambiguities.length === 0 && coverage.complete
 
+/** A new finding as an evidence item: a claim about what the document says, anchored in its snapshot. */
+function itemOf(f) {
+  return {
+    question: scope.path, topic: 'challenge:' + f.axis, ground: [scope.path], kind: 'behaviour', claim: f.claim,
+    spans: [{ path: scope.path, start: f.start, end: f.end, at: scope.snapshot }],
+    queries: [], sources: [], rests_on: [],
+    detail: { axis: f.axis, severity: f.severity, section: f.section, evidence: f.evidence },
+  }
+}
+
+const { review, unrecorded } = scope ? await recordRound(newItems) : { review: '', unrecorded: [] }
+
 return {
   artifact,
   axes: axes.map((a) => ({ key: a.key, source: a.source || '' })),
@@ -1032,4 +1233,10 @@ return {
   ambiguities,
   ratifiable,
   coverage,
+  // An unrecorded finding is in no pool, so a next round narrowed by this snapshot would carry
+  // nothing for it and never re-attack its lines: the snapshot names nothing until it does.
+  snapshot: scope && unrecorded.length === 0 ? scope.snapshot : '',
+  scope: scope ? { full: scope.full, changed: scope.changed } : { full: true, changed: [] },
+  unrecorded,
+  review,
 }

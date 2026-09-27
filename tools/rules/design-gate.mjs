@@ -2,7 +2,7 @@
 //
 // Two skills in this plugin carry a small number of sentences that are the whole of their
 // contract: design, which ends by handing a ratified design to develop, and
-// find-existing-solutions, whose one output is whether to build at all. All of them are the kind
+// search-for-existing-solutions-before-building, whose one output is whether to build at all. All of them are the kind
 // of thing an edit softens without meaning to, and none fails loudly when it goes: the skill still
 // reads well, still runs, and has quietly stopped doing the one thing it existed for.
 //
@@ -24,7 +24,7 @@
 
 export const id = 'design-gate'
 
-export const applies = /^skills\/(design|find-existing-solutions)\/SKILL\.md$/
+export const applies = /^skills\/(design|search-for-existing-solutions-before-building)\/SKILL\.md$/
 
 const DESIGN_CLAUSES = [
   {
@@ -73,7 +73,7 @@ const EXISTING_SOLUTIONS_CLAUSES = [
   {
     pattern: /coverage\.complete/,
     message:
-      `The find-existing-solutions skill never ties its verdict to coverage.complete. The ` +
+      `The search-for-existing-solutions-before-building skill never ties its verdict to coverage.complete. The ` +
       `binding rule is that "nothing exists, build it" may not be reported while the sweep ` +
       `is incomplete — without it, a search nobody finished reads exactly like a search that ` +
       `found nothing, which is the one conclusion this skill exists to make safe.`,
@@ -82,7 +82,7 @@ const EXISTING_SOLUTIONS_CLAUSES = [
     // Tolerant of how the pair gets phrased; what must survive is the distinction itself.
     pattern: /never reached/i,
     message:
-      `The find-existing-solutions skill does not separate "searched and found nothing" from ` +
+      `The search-for-existing-solutions-before-building skill does not separate "searched and found nothing" from ` +
       `"never reached". The first is evidence FOR building and the second is evidence of ` +
       `nothing at all, and a reader who cannot tell them apart will treat an unfinished sweep ` +
       `as a licence to start.`,
@@ -91,7 +91,7 @@ const EXISTING_SOLUTIONS_CLAUSES = [
 
 const CLAUSES = {
   'skills/design/SKILL.md': DESIGN_CLAUSES,
-  'skills/find-existing-solutions/SKILL.md': EXISTING_SOLUTIONS_CLAUSES,
+  'skills/search-for-existing-solutions-before-building/SKILL.md': EXISTING_SOLUTIONS_CLAUSES,
 }
 
 /**

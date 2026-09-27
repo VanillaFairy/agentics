@@ -1,9 +1,9 @@
 ---
-name: probe
+name: challenge-idea
 description: Use when a written artefact should be attacked before it is acted on — a design document, a proposal, a spec, an ADR, a plan. Dispatches independent analysts who receive the document and the repository but nothing from its author, and returns findings on the design severity ladder. Not for reviewing code (that is develop's reviewer) and not for answering a question (investigate).
 ---
 
-# probe
+# challenge-idea
 
 Attack a document. Find where it is wrong before somebody builds it.
 
@@ -92,7 +92,7 @@ transcripts.
 **Efforts — one directory for everything a piece of work produces.** An effort is a subtree of
 the execution tree. It lives at `.agentics/<effort>/` in the main checkout, never in a worktree,
 and everything scripts write for it — its nodes, their events and its executions —
-sits in that directory's `.state/`. Design, probe and develop are separate sessions by
+sits in that directory's `.state/`. Design, challenge-idea and develop are separate sessions by
 recommendation, and this directory is how a later one reads what an earlier one established.
 
 Open one at the start. Propose a short name from the user's words and confirm it;

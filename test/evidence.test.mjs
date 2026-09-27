@@ -19,7 +19,7 @@ import { appendProject, digestEntries, readProjectLog } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import { hashSpec } from '../lib/spec.mjs'
 import {
-  evidenceItemsPath, evidenceReturnsDir, evidenceSnapshotsDir, projectStateDir,
+  evidenceItemsPath, evidenceReturnsDir, evidenceSnapshotsDir, projectStateDir, safePath,
 } from '../lib/store.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/evidence.mjs', import.meta.url))
@@ -567,4 +567,39 @@ test('a project counter behind the log is repaired, never minting a seq the log 
   const seqs = storedLines(repo).map((l) => l.seq)
   assert.equal(new Set(seqs).size, seqs.length, 'every seq is distinct: ' + seqs.join(', '))
   assert.ok(out.seqs[0] > Math.max(...seqs.slice(0, -1)), 'the new line is the latest: ' + seqs.join(', '))
+})
+
+// ------------------------------------------------------------------ audit gaps: what the recorder is handed
+
+test('a supplied sha the repository does not have is refused, never kept', () => {
+  const repo = gitRepo()
+  const missing = 'b'.repeat(40)
+  const out = recordItems(repo, RETURN, [fresh({ spans: [{ path: 'src/a.js', start: 1, end: 2, at: missing }] })], { now: NOW })
+  assert.equal(out.ok, false, JSON.stringify(out))
+  assert.ok(out.refused[0].problems.some((p) => p.includes(missing)), JSON.stringify(out.refused))
+  assert.equal(existsSync(evidenceItemsPath(repo)), false)
+})
+
+test('a span with a supplied sha is read at that sha, not in the working tree', () => {
+  const repo = gitRepo()
+  const head = git(repo, 'rev-parse', 'HEAD')
+  put(repo, { 'src/a.js': numbered(5), 'src/new.js': numbered(5) })
+  const atHead = recordItems(repo, RETURN, [fresh({ claim: 'read at head', spans: [{ path: 'src/a.js', start: 20, end: 22, at: head }] })], { now: NOW })
+  assert.equal(atHead.ok, true, 'lines 20-22 exist at HEAD: ' + JSON.stringify(atHead))
+  const notAtHead = recordItems(repo, RETURN, [fresh({ claim: 'not at head', spans: [{ path: 'src/new.js', start: 1, end: 2, at: head }] })], { now: NOW })
+  assert.equal(notAtHead.ok, false, 'src/new.js does not exist at HEAD')
+  assert.ok(notAtHead.refused[0].problems.some((p) => p.includes('src/new.js')), JSON.stringify(notAtHead.refused))
+})
+
+test('a query scope is stored and searched as a repository-relative path', () => {
+  const repo = gitRepo({ 'src/a.js': 'retry()\n' })
+  const padded = recordItems(repo, RETURN, [
+    fresh({ kind: 'absence', claim: 'nothing retries', spans: [], queries: [{ pattern: 'retry', scope: ['src '] }] }),
+  ], { now: NOW })
+  assert.equal(padded.ok, false, 'the padded scope is src, whose search finds retry(): ' + JSON.stringify(padded))
+  const listed = recordItems(repo, RETURN, [
+    fresh({ kind: 'enumeration', claim: 'the retries', spans: [], queries: [{ pattern: 'retry', scope: ['./src/', ' src\\'] }] }),
+  ], { now: NOW })
+  assert.equal(listed.ok, true, JSON.stringify(listed))
+  for (const p of storedLines(repo)[0].item.queries[0].scope) assert.equal(safePath(p), p, JSON.stringify(p) + ' is stored as given')
 })

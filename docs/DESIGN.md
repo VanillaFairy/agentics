@@ -683,6 +683,9 @@ anything is dispatched, `lib/traceability.mjs` computes over the compiled tree:
 The integration review receives the decision list of the subtree it reviews, and the folder's spec
 as its yardstick.
 
+**Why:** a plan that silently drops a decision passes every leaf-level gate, because each gate
+checks a leaf against its own criteria.
+
 ### Probe
 
 `agentics-probe` attacks a written artefact — a design, a proposal, a spec — before anyone builds
@@ -1376,9 +1379,9 @@ notes}` plus:
 - **preflight** — `checkpoint`, `envelope {stamp, root, base_branch, base_sha, dial, pace,
   commands, resumed}`, `nodes[row]`, `leaves[{id, next_action, note, branch, worktree, head_sha,
   base_sha, approved_head, commits, dirty, rounds, brief_path}]`, `gaps`, `untraced`, `atomicity`, `coupled`, `stale`, `freed`,
-  `dirty_worktrees`, `commands`, `max_parallel`, `author`, `spec_path`. A row is `{id, title, kind, author, rigor, role,
+  `dirty_worktrees`, `commands`, `max_parallel`. A row is `{id, title, kind, author, rigor, role,
   deps, locus, reads, provides, consumes, decisions, dispatch, ground_known, evidence, status,
-  reason, rev, children, acceptance_n, human, own_review, coupled, integration}` — no prose.
+  reason, rev, spec_path, children, acceptance_n, human, own_review, coupled, integration}` — no prose.
 - **leaf-open** — `status` (`opened | no_slot | locus_held | busy | refused`), `branch`, `worktree`,
   `base_sha`, `head_sha`, `rebased`, `brief_path`, `brief_digest`, `report_path`, `slot`,
   `max_parallel`, `held_by[{effort, path, node, execution, status}]`, `stuck`.

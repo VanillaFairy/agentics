@@ -614,3 +614,17 @@ test('a match in a file git calls binary keeps its path and its whole line, NUL 
   assert.equal(out.ok, true, JSON.stringify(out))
   assert.deepEqual(storedLines(repo)[0].item.queries[0].result, [{ path: 'src/b.dat', text: 'head\0tail needle' }])
 })
+
+// ------------------------------------------------------------------ audit gaps: a refusal leaves no snapshot
+
+test('a refused batch leaves no snapshot behind', () => {
+  const repo = gitRepo()
+  put(repo, { 'src/u.js': numbered(5, 'new') })
+  const out = recordItems(repo, RETURN, [
+    fresh({ spans: [{ path: 'src/u.js', start: 1, end: 2, at: '' }] }),
+    fresh({ claim: 'no anchor', spans: [] }),
+  ], { now: NOW })
+  assert.equal(out.ok, false)
+  const dir = evidenceSnapshotsDir(repo)
+  assert.deepEqual(existsSync(dir) ? readdirSync(dir) : [], [])
+})

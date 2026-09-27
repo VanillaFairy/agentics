@@ -998,3 +998,29 @@ test('G9: reviewScope given a since snapshot that does not hash to its name give
   assert.equal(next.full, true, 'a torn snapshot is not the old text')
   assert.deepEqual(next.changed, [{ start: 1, end: v1.length }])
 })
+
+test('a later sweep of the same capability supersedes the earlier sweep\'s items', () => {
+  const repo = gitRepo({ 'package.json': text(lines(20)) })
+  const hit = (claim, line, over = {}) => ({
+    question: 'rate limiting', topic: 'already-present', ground: ['package.json'], kind: 'behaviour', claim,
+    spans: [{ path: 'package.json', start: line, end: line, at: '' }], queries: [], sources: [], rests_on: [], ...over,
+  })
+  const recorded = (name, items) => {
+    const out = recordItems(repo, name, items)
+    assert.equal(out.ok, true, JSON.stringify(out))
+    return out.ids
+  }
+  const [dropped, repeated] = recorded('20260926-100000-solutions', [hit('package.json: limiter ^1', 3), hit('package.json: kept by both', 5)])
+  const [again, fresh] = recorded('20260926-110000-solutions', [hit('package.json: kept by both', 5), hit('package.json: limiter ^2', 3)])
+  const [other] = recorded('20260926-120000-solutions', [hit('package.json: another capability', 7, { question: 'caching' })])
+  const surveyed = recorded('20260926-130000-survey', [hit('line 3 names a limiter', 3), hit('line 5 names another', 5)])
+
+  const ids = itemsFor(repo, { ground: ['package.json'] }).map((i) => i.id)
+  assert.ok(!ids.includes(dropped), 'the earlier sweep\'s item the later one did not repeat is superseded')
+  assert.equal(again, repeated, 'a repeated claim is the same item')
+  assert.ok(ids.includes(repeated), 'and stands, as its latest revision')
+  assert.ok(ids.includes(fresh))
+  assert.ok(ids.includes(other), 'another capability is another question')
+  for (const id of surveyed) assert.ok(ids.includes(id), 'a survey\'s items keep their own rule')
+  assert.ok(readFileSync(evidenceItemsPath(repo), 'utf8').includes(dropped), 'the log keeps its lines')
+})

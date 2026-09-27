@@ -6,6 +6,7 @@ export const meta = {
     { title: 'Frame', detail: 'analyst: the capability, its hard constraints, and what disqualifies a candidate' },
     { title: 'Search', detail: 'one researcher per ecosystem angle, plus a scout over your existing dependencies' },
     { title: 'Assess', detail: 'analyst: dedupe, then rule each candidate against the declared disqualifiers' },
+    { title: 'Record', detail: 'candidates and what the repository already carries, into the project-wide evidence pool' },
   ],
 }
 
@@ -292,6 +293,25 @@ const constraints = input.constraints || ''
 const notes = input.notes || ''
 const maxAngles = input.max_angles || 4
 
+// Where `lib/` lives: the caller's value, then the environment, then the shell form expanded in
+// the courier's own shell. A script's cwd is not the agent's, so a relative path is never guessed.
+const SHELL_ROOT = '$CLAUDE_PLUGIN_ROOT'
+
+function resolvePluginRoot() {
+  if (typeof input.plugin_root === 'string' && input.plugin_root.trim()) {
+    return input.plugin_root.trim().split('\\').join('/')
+  }
+
+  const fromEnv = typeof process !== 'undefined' && process && process.env
+    ? process.env.CLAUDE_PLUGIN_ROOT
+    : ''
+
+  if (typeof fromEnv === 'string' && fromEnv.trim()) return fromEnv.trim().split('\\').join('/')
+  return SHELL_ROOT
+}
+
+const pluginRoot = resolvePluginRoot()
+
 // The intelligence dial — the same three positions every skill in this plugin passes, because
 // they share one derivation rule (fable → max, opus → normal, sonnet and below → low) and a
 // sonnet session therefore sends `low` here as readily as it sends it to develop. The judging
@@ -308,6 +328,189 @@ const tiered = (tier, base) => ({
   ...tier,
   effort: tier.model === 'sonnet' ? SONNET_STEP[base] : intelligence === 'max' ? 'high' : 'medium',
 })
+
+// ---------------------------------------------------------------- the transport
+//
+// A payload computed on disk arrives through a model, so it is re-digested here before a field of
+// it is believed; a location list this script mints travels as plain text on one argv slot with
+// its digest beside it. The functions are copies of `lib/plan-digest.mjs`'s and
+// `agentics-survey`'s: scripts cannot import, and the suite pins them together.
+function canonical(value) {
+  if (value === undefined) return 'null'
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']'
+
+  return '{' + Object.keys(value).sort()
+    .map((key) => JSON.stringify(key) + ':' + canonical(value[key]))
+    .join(',') + '}'
+}
+
+function fnv1a(text) {
+  let hash = 0x811c9dc5
+
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+
+  return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
+// What a courier hands back: one command's stdout, byte-exact, in one string. The shape of
+// `agentics-develop`'s CARRIED, copied rather than shared because a workflow script cannot
+// import. This workflow moves no todos, so the two todo fields are left out of its shape.
+//
+// `failed` is the courier unable to run the command AT ALL — node missing, the path unreadable,
+// the shell refusing. A program that ran and refused prints a payload saying so, which is read
+// as the program's answer rather than as a transport failure.
+const CARRIED = {
+  type: 'object', additionalProperties: false,
+  required: ['stop_reason', 'payload_raw', 'notes'],
+  properties: {
+    stop_reason: { type: 'string', enum: ['carried', 'failed'] },
+    payload_raw: { type: 'string' },
+    notes: { type: 'string' },
+  },
+}
+
+/** What a courier carried back: the payload, or why it cannot be believed and how to retry. */
+function carriedRead(held) {
+  if (!held) return { payload: null, why: 'the dispatch returned nothing', retry: 'again' }
+  if (held.stop_reason !== 'carried') {
+    return { payload: null, why: held.notes || 'the courier could not run the command', retry: 'again' }
+  }
+
+  let parsed = null
+  try {
+    parsed = JSON.parse(held.payload_raw)
+  } catch (e) {
+    return { payload: null, why: 'it did not survive transcription: ' + (e && e.message), retry: 'stronger' }
+  }
+
+  if (parsed && parsed.error) return { payload: null, why: 'the program failed: ' + parsed.error, retry: '' }
+  if (!parsed || !parsed.payload || typeof parsed.payload_digest !== 'string') {
+    return { payload: null, why: 'what came back is not a digest-covered envelope', retry: 'stronger' }
+  }
+
+  const actual = fnv1a(canonical(parsed.payload))
+  if (actual !== parsed.payload_digest) {
+    return {
+      payload: null,
+      why: 'digest mismatch: it was computed as ' + parsed.payload_digest +
+        ', what arrived digests to ' + actual,
+      retry: 'stronger',
+    }
+  }
+
+  return { payload: parsed.payload, why: '', retry: '' }
+}
+
+const COURIER = { model: 'haiku', effort: 'low' }
+const COURIER_UP = { model: 'sonnet', effort: 'low' }
+
+function courierPrompt(command) {
+  return 'Run exactly this one command, unchanged, and put its entire stdout in payload_raw:\n\n' +
+    command + '\n\n' +
+    'Move no todos.' +
+    (pluginRoot === SHELL_ROOT
+      ? '\nIf ' + SHELL_ROOT + ' is empty in your shell, do not guess a path: set stop_reason ' +
+        '"failed" and say so.'
+      : '')
+}
+
+/**
+ * Carry one command's payload, believed only after its digest.
+ *
+ * Retries are sized to what was observed, as `agentics-develop`'s boundaries size them: a courier
+ * that returned nothing or could not run the command is run again once; a payload damaged in
+ * transit buys one refetch on a stronger model; a token the program refused as damaged on its way
+ * IN is sent again; a program failure is not retried. What stays unbelievable comes back as
+ * `{payload: null, why}` — every carry in this workflow is a side channel with a fallback, so
+ * none of them may throw.
+ */
+async function carry(command, label, phaseName) {
+  const ladder = [COURIER]
+  let why = ''
+
+  for (let i = 0; i < ladder.length; i++) {
+    const held = await agent(courierPrompt(command), {
+      agentType: 'agentics:courier', schema: CARRIED, phase: phaseName,
+      label: label + (i ? '#' + (i + 1) : ''), ...ladder[i],
+    }).catch((e) => {
+      why = 'the courier threw: ' + (e && e.message)
+      return null
+    })
+
+    const c = carriedRead(held)
+    if (c.payload) {
+      const refused = c.payload.ok === false && c.payload.error
+      if (refused && c.payload.error.kind === 'digest_mismatch' && i === 0) {
+        why = c.payload.error.message || 'the argument token was damaged on its way in'
+        ladder.push(COURIER)
+        continue
+      }
+      if (refused) return { payload: null, why: 'the program refused: ' + (c.payload.error.message || c.payload.error.kind) }
+      return { payload: c.payload, why: '' }
+    }
+
+    why = c.why || why
+    if (c.retry === 'again' && ladder.length < 2) ladder.push(COURIER)
+    else if (c.retry === 'stronger' && !ladder.includes(COURIER_UP)) ladder.push(COURIER_UP)
+  }
+
+  return { payload: null, why }
+}
+
+// utf8Bytes, B64 and base64 are copies of `agentics-develop`'s: scripts cannot import, and this
+// keeps T25 independent of the ledger-append batching T23bs adds beside it.
+function utf8Bytes(text) {
+  const out = []
+  for (let i = 0; i < text.length; i++) {
+    let c = text.charCodeAt(i)
+    if (c >= 0xd800 && c <= 0xdbff && i + 1 < text.length) {
+      const low = text.charCodeAt(i + 1)
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        c = 0x10000 + ((c - 0xd800) << 10) + (low - 0xdc00)
+        i++
+      }
+    }
+    if (c < 0x80) out.push(c)
+    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63))
+    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+  }
+  return out
+}
+
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+/** Standard padded base64: one opaque argv slot, nothing in it for a shell to interpret. */
+function base64(text) {
+  const bytes = utf8Bytes(text)
+  let out = ''
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i]
+    const b1 = i + 1 < bytes.length ? bytes[i + 1] : -1
+    const b2 = i + 2 < bytes.length ? bytes[i + 2] : -1
+    out += B64[b0 >> 2]
+    out += B64[((b0 & 3) << 4) | (b1 < 0 ? 0 : b1 >> 4)]
+    out += b1 < 0 ? '=' : B64[((b1 & 15) << 2) | (b2 < 0 ? 0 : b2 >> 6)]
+    out += b2 < 0 ? '=' : B64[b2 & 63]
+  }
+  return out
+}
+
+// Excerpts and efforts are per repository, so a question spanning several roots resolves against
+// the first — the repository it is anchored in, and what the recorder is told is its ground.
+// `repo` already names the repository scan's result in this file, so this stays its own name.
+const groundRepo = String(roots).split(/[,;\n]/)[0].trim() || '.'
+
+// cmd.exe caps a whole command line at 8191 characters, so a batch's base64 token stays under
+// this many bytes.
+const COMMAND_BUDGET = 6000
+
+/** An item's identity, minted exactly as `lib/evidence.mjs`'s `itemId` does: a script cannot import. */
+const itemIdOf = (item) => 'I' + fnv1a(canonical({ question: item.question, topic: item.topic, claim: item.claim }))
 
 // ---------------------------------------------------------------- coverage
 //
@@ -337,7 +540,10 @@ function coverageOf(dropped, incomplete, failedChannels, unreached) {
 
 // Every exit path returns this shape. A caller that receives `undefined` cannot tell
 // "nothing exists" from "nothing ran", and those two justify opposite decisions.
-function solutionsResult(frame, present, assessed, viable, ruledOut, coverageBlock) {
+// `items` are the pool's copy of `candidates` and `already_present`, anchored and dated: what
+// couldn't be recorded (a refusal, a dead courier) is named in `unrecorded`; what couldn't even
+// be anchored to send (no source, no line) is named in `unanchored` and never sent.
+function solutionsResult(frame, present, assessed, viable, ruledOut, coverageBlock, items, unrecorded, unanchored) {
   return {
     capability,
     constraints,
@@ -347,12 +553,15 @@ function solutionsResult(frame, present, assessed, viable, ruledOut, coverageBlo
     viable,
     ruled_out: ruledOut,
     coverage: coverageBlock,
+    items,
+    unrecorded,
+    unanchored,
   }
 }
 
 if (!capability.trim()) {
   return solutionsResult(null, [], [], [], [],
-    coverageOf([], [], [], ['no capability was supplied, so nothing was searched']))
+    coverageOf([], [], [], ['no capability was supplied, so nothing was searched']), [], [], [])
 }
 
 log(`Capability: ${capability}`)
@@ -408,7 +617,7 @@ if (!frame || !frame.angles || frame.angles.length === 0) {
   return solutionsResult(frame || null, [], [], [], [],
     coverageOf([], [], ['frame'],
       ['framing produced no search angles, so no ecosystem was searched and this result ' +
-       'says nothing about whether an existing solution exists']))
+       'says nothing about whether an existing solution exists']), [], [], [])
 }
 
 const angles = frame.angles.slice(0, maxAngles)
@@ -779,6 +988,88 @@ if (gathered.length > 0) {
   }
 }
 
+// ---------------------------------------------------------------- 3b. record
+//
+// What the sweep established enters the project's evidence pool, so the next design that asks
+// the same thing finds it anchored and dated rather than buying the sweep again. A side channel:
+// what cannot be recorded is logged and costs no coverage, because the candidates are returned
+// either way.
+
+const question = capability.trim()
+const items = []
+const unanchored = []
+
+for (const c of assessed) {
+  if (!String(c.source_url || '').trim()) { unanchored.push(c.name); continue }
+  const item = {
+    question, topic: 'candidates', ground: [], kind: 'external',
+    claim: `${c.name} — ${c.what_it_is}. Covers: ${c.covers}. Does not cover: ${c.does_not_cover}.`,
+    spans: [], queries: [], rests_on: [],
+    sources: [{ url: String(c.source_url).trim(), version: c.latest_version || '', retrieved: '' }],
+    detail: { name: c.name, license: c.license || '', maintenance: c.maintenance || '', disqualifiers_hit: c.disqualifiers_hit || [] },
+  }
+  items.push({ ...item, id: itemIdOf(item) })
+}
+for (const h of present) {
+  const path = String(h.path || '').split('\\').join('/')
+  if (!path || !Number.isInteger(h.line) || h.line < 1) { unanchored.push(`${path}:${h.line}`); continue }
+  const item = {
+    question, topic: 'already-present', ground: [path], kind: 'behaviour', claim: `${path}: ${h.note}`,
+    spans: [{ path, start: h.line, end: h.line, at: '' }], queries: [], sources: [], rests_on: [],
+  }
+  items.push({ ...item, id: itemIdOf(item) })
+}
+
+const unrecorded = []
+
+if (unanchored.length > 0) {
+  log(`Not anchorable, so not sent to the evidence store: ${unanchored.join(', ')}`)
+}
+
+if (items.length > 0) {
+  phase('Record')
+
+  function recordBatchesOf(list) {
+    const batches = []
+    let current = []
+    for (const it of list) {
+      const { id, ...rest } = it
+      const grown = current.concat([rest])
+      if (current.length > 0 && base64(JSON.stringify({ items: grown })).length > COMMAND_BUDGET) {
+        batches.push(current)
+        current = [rest]
+      } else {
+        current = grown
+      }
+    }
+    if (current.length > 0) batches.push(current)
+    return batches
+  }
+
+  const batches = recordBatchesOf(items)
+  const idsOf = (batch) => batch.map((it) => itemIdOf(it))
+
+  for (let i = 0; i < batches.length; i++) {
+    const batch = batches[i]
+    const label = batches.length > 1 ? `record:${i + 1}` : 'record'
+    const token = { items: batch }
+    const command = `node "${pluginRoot}/lib/evidence.mjs" record --repo "${groundRepo}" --root "${groundRepo}" ` +
+      `--kind solutions --digest ${fnv1a(canonical(token))} --b64 ${base64(JSON.stringify(token))}`
+
+    const { payload, why } = await carry(command, label, 'Record')
+    const batchIds = idsOf(batch)
+
+    if (!payload) {
+      unrecorded.push(...batchIds)
+      log(`${batchIds.length} item(s) not recorded (${why})`)
+    } else if (payload.ok === false) {
+      unrecorded.push(...batchIds)
+      const problems = (payload.refused || []).flatMap((r) => r.problems || []).join('; ')
+      log(`${batchIds.length} item(s) not recorded (${problems || 'refused'})`)
+    }
+  }
+}
+
 // ---------------------------------------------------------------- 4. account
 
 if (present.length > 0) {
@@ -796,4 +1087,4 @@ return solutionsResult(
   { capability_line: frame.capability_line,
     hard_constraints: frame.hard_constraints || [],
     disqualifiers: frame.disqualifiers || [] },
-  present, assessed, viable, ruledOut, coverage)
+  present, assessed, viable, ruledOut, coverage, items, unrecorded, unanchored)

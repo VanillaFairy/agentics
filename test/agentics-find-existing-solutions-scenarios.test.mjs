@@ -11,7 +11,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
-import { runWorkflow, scriptedAgents } from './harness/workflow-host.mjs'
+import { carriedEnvelope, recordedLine, runWorkflow, scriptedAgents } from './harness/workflow-host.mjs'
+import { itemId } from '../lib/evidence.mjs'
+import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 
 const WF = fileURLToPath(new URL('../workflows/agentics-find-existing-solutions.workflow.js', import.meta.url))
 
@@ -61,6 +63,11 @@ const assessedAs = (rows, over = {}) => ({ assessed: rows, notes: '', ...over })
 
 const rule = (name, hit = [], over = {}) => ({ ...candidate(name), disqualifiers_hit: hit, ...over })
 
+/** A record courier whose store accepts everything, answering with the ids lib/evidence.mjs mints. */
+const recordAll = (prompt) => carriedEnvelope({
+  ok: true, return: '20260926-120000-solutions', ids: recordedLine(prompt).entry.items.map(itemId),
+})
+
 // Overrides go in FIRST, then the defaults fill the gaps. `scriptedAgents` takes the first
 // key that matches, and the default `'find:'` is a PREFIX — spread after an override it would
 // swallow `find:registry` and hand it the generic answer, which is a fixture bug that looks
@@ -72,6 +79,8 @@ const happy = (over = {}) => {
     'find:': found([candidate('limiter-a')]),
     repo: scouted(),
     assess: assessedAs([rule('limiter-a')]),
+    record: recordAll,
+    'record:': recordAll,
   }
   for (const [label, value] of Object.entries(base)) {
     if (!(label in script)) script[label] = value
@@ -441,4 +450,136 @@ test('no candidates means no assessor is dispatched', async () => {
   })
 
   assert.ok(!prompts.some((p) => p.opts.label === 'assess'))
+})
+
+// --- what the sweep found, as evidence items -----------------------------------------------
+//
+// Candidates are facts from outside the repository, so they enter the project's evidence pool
+// as external items anchored at the source they were read from, and the pool expires them by
+// age. What the repository already carries is anchored at the line the scout found it on.
+
+const recordPrompt = (prompts) => prompts.find((p) => p.opts.label === 'record')
+const failedCourier = { stop_reason: 'failed', payload_raw: '', notes: 'node is not on the PATH' }
+
+test('each assessed candidate is recorded as an external item anchored at its source', async () => {
+  const { result, prompts } = await run({ agent: happy() })
+
+  const rec = recordPrompt(prompts)
+  assert.equal(rec.opts.agentType, 'agentics:courier')
+  assert.match(rec.prompt, /lib\/evidence\.mjs" record --repo "\." --root "\." --kind solutions --digest [0-9a-f]{8} --b64 \S+/)
+  const { entry, digest } = recordedLine(rec.prompt)
+  assert.equal(digest, fnv1a(canonical(entry)))
+
+  const [item] = entry.items
+  const c = rule('limiter-a')
+  assert.equal(item.kind, 'external')
+  assert.equal(item.question, ARGS.capability)
+  assert.equal(item.topic, 'candidates')
+  assert.deepEqual(item.ground, [])
+  for (const part of [c.name, c.what_it_is, 'Covers: ' + c.covers, 'Does not cover: ' + c.does_not_cover]) {
+    assert.ok(item.claim.includes(part), part)
+  }
+  assert.deepEqual(item.sources, [{ url: c.source_url, version: c.latest_version, retrieved: '' }],
+    'the recorder dates the retrieval; a workflow cannot read a clock')
+  assert.equal(item.detail.name, c.name)
+  assert.equal(item.detail.license, c.license)
+  assert.equal(item.detail.maintenance, c.maintenance)
+  assert.deepEqual(item.detail.disqualifiers_hit, c.disqualifiers_hit)
+
+  assert.deepEqual(result.items.map((i) => i.id), entry.items.map(itemId))
+  assert.deepEqual(result.unrecorded, [])
+  assert.deepEqual(result.unanchored, [])
+})
+
+test('the recorder is run from the plugin root the caller names', async () => {
+  const { prompts } = await run({ args: { ...ARGS, plugin_root: 'C:/plugin' }, agent: happy() })
+  assert.match(recordPrompt(prompts).prompt, /node "C:\/plugin\/lib\/evidence\.mjs" record /)
+})
+
+test('a sweep run from a linked worktree records its hits with the worktree as root', async () => {
+  const hits = [{ path: 'package.json', line: 12, note: 'express-rate-limit ^7' }]
+  const { prompts } = await run({ args: { ...ARGS, roots: 'C:/wt/e1-a' }, agent: happy({ repo: scouted(hits) }) })
+  assert.match(recordPrompt(prompts).prompt, /record --repo "C:\/wt\/e1-a" --root "C:\/wt\/e1-a" --kind solutions /,
+    'a hit\'s line is read where the scout read it')
+})
+
+test('items too many for one argv slot are recorded in batches labelled record:<n>', async () => {
+  const names = Array.from({ length: 12 }, (_, i) => 'limiter-' + i)
+  const long = { what_it_is: 'a rate limiter, ' + 'described at length '.repeat(30) }
+  const { result, prompts } = await run({
+    agent: happy({
+      'find:': found(names.map((n) => candidate(n, long))),
+      assess: assessedAs(names.map((n) => rule(n, [], long))),
+    }),
+  })
+  const recs = prompts.filter((p) => /^record/.test(p.opts.label))
+  assert.ok(recs.length > 1)
+  assert.deepEqual(recs.map((p) => p.opts.label), recs.map((_, i) => 'record:' + (i + 1)))
+  for (const p of recs) assert.ok(/--b64 (\S+)/.exec(p.prompt)[1].length <= 6000, p.opts.label)
+  const sent = recs.flatMap((p) => recordedLine(p.prompt).entry.items.map(itemId))
+  assert.deepEqual([...sent].sort(), result.items.map((i) => i.id).sort(), 'every item sent once')
+})
+
+test('an early exit returns empty items, unrecorded and unanchored', async () => {
+  const noCapability = await run({ args: { ...ARGS, capability: '  ' }, agent: happy() })
+  const noFraming = await run({ agent: happy({ frame: frame({ angles: [] }) }) })
+  for (const { result } of [noCapability, noFraming]) {
+    assert.deepEqual(result.items, [])
+    assert.deepEqual(result.unrecorded, [])
+    assert.deepEqual(result.unanchored, [])
+  }
+})
+
+test('what the repository already carries is recorded as behaviour items with a span at each hit', async () => {
+  const hits = [{ path: 'package.json', line: 12, note: 'express-rate-limit ^7' }]
+  const { prompts } = await run({ agent: happy({ repo: scouted(hits) }) })
+
+  const present = recordedLine(recordPrompt(prompts).prompt).entry.items.find((i) => i.topic === 'already-present')
+  assert.equal(present.kind, 'behaviour')
+  assert.equal(present.question, ARGS.capability)
+  assert.deepEqual(present.ground, ['package.json'])
+  assert.deepEqual(present.spans, [{ path: 'package.json', start: 12, end: 12, at: '' }])
+  assert.match(present.claim, /express-rate-limit/)
+})
+
+test('a candidate with no source, or a hit with no line, is not sent to the store, and is named', async () => {
+  const { result, prompts } = await run({
+    agent: happy({
+      'find:': found([candidate('limiter-a'), candidate('limiter-b', { source_url: '' })]),
+      assess: assessedAs([rule('limiter-a'), rule('limiter-b', [], { source_url: '' })]),
+      repo: scouted([{ path: 'package.json', line: 0, note: 'somewhere in here' }]),
+    }),
+  })
+
+  const sent = recordedLine(recordPrompt(prompts).prompt).entry.items
+  assert.deepEqual(sent.map((i) => i.topic), ['candidates'])
+  assert.match(sent[0].claim, /limiter-a/)
+  assert.deepEqual([...result.unanchored].sort(), ['limiter-b', 'package.json:0'])
+  assert.equal(result.candidates.length, 2, 'what could not be anchored is still a candidate')
+})
+
+test('a record that fails is logged, costs no coverage, and leaves the items unrecorded', async () => {
+  const { result, logs } = await run({ agent: happy({ record: failedCourier, 'record#2': failedCourier }) })
+  assert.equal(result.coverage.complete, true)
+  assert.ok(result.items.length > 0)
+  assert.deepEqual(result.unrecorded, result.items.map((i) => i.id))
+  assert.ok(logs.some((l) => /not recorded/.test(l)))
+})
+
+test('a refused batch is named in the log, not retried, and costs no coverage', async () => {
+  const refuse = (prompt) => carriedEnvelope({
+    ok: false,
+    refused: recordedLine(prompt).entry.items.map((_, index) => ({ index, problems: ['source 0: the url must be non-empty'] })),
+  })
+  const { result, prompts, logs } = await run({ agent: happy({ record: refuse }) })
+  assert.equal(prompts.filter((p) => /^record/.test(p.opts.label)).length, 1)
+  assert.equal(result.coverage.complete, true)
+  assert.equal(result.unrecorded.length, result.items.length)
+  assert.ok(logs.some((l) => /the url must be non-empty/.test(l)))
+})
+
+test('nothing to record buys no courier', async () => {
+  const { result, prompts } = await run({ agent: happy({ 'find:': found([]), repo: scouted([]) }) })
+  assert.ok(!prompts.some((p) => /^record/.test(p.opts.label)))
+  assert.deepEqual(result.items, [])
 })

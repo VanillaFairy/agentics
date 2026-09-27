@@ -21,7 +21,7 @@ judgment.
 | Directory | What lives there |
 |---|---|
 | `skills/` | The six commands a user invokes and one hidden service step (see [Skills](#skills)). |
-| `workflows/` | Five workflow scripts, all named `agentics-*`, holding the orchestration. |
+| `service-workflows/` | Five service workflows, launched by path, never in the menu, holding the orchestration. |
 | `agents/` | Eleven agent definitions, one narrow role each (see [Agents](#agents)). |
 | `lib/` | Node CLIs for everything deterministic that touches disk or git. |
 | `tools/` | `lint.mjs`, its rules under `tools/rules/`, `budgets.json`, and the one-shot migration. |
@@ -90,7 +90,7 @@ certifies it; a reviewer has findings and no approval to give; approval is the o
 being empty.
 
 *Enforced by:* agent schemas with no verdict fields (the `no-self-verdict` lint rule); verdict
-predicates in code (`lib/verdict.mjs`, the review-loop exit in `agentics-develop`).
+predicates in code (`lib/verdict.mjs`, the review-loop exit in `execute-approved-plan-in-worktrees`).
 
 **Why:** an agent that can approve can be persuaded, and an agent that certifies its own work is
 the examinee marking the exam.
@@ -691,7 +691,7 @@ checks a leaf against its own criteria.
 
 ### Probe
 
-`agentics-probe` attacks a written artefact — a design, a proposal, a spec — before anyone builds
+`attack-document-with-independent-reviewers` attacks a written artefact — a design, a proposal, a spec — before anyone builds
 from it. The probers are not the author: each receives the document and the repository's excerpts
 and nothing from the author. Findings sit on the design ladder (**ambiguity** blocks ratification;
 **gap** is designed away or accepted out loud; **note** is advisory), and `ratifiable` is computed:
@@ -737,12 +737,12 @@ read of the ground.
 
 A spec develop's planner writes (an `author: planner` sub-effort, a promoted task, or its own
 folder replanned) goes ahead without the user's approval, but only once an adversarial review
-passes. It runs inside `agentics-develop`, one folder at a time:
+passes. It runs inside `execute-approved-plan-in-worktrees`, one folder at a time:
 
 1. **Check.** The `spec-check` boundary parses the spec with its ancestors' decisions in view. A
    Decisions row parks the folder `needs_decision`, because only the user states decisions; any
    other problem escalates `spec_refused`.
-2. **Attack.** A nested `agentics-probe` reviews the spec. After the first round, `since` (the
+2. **Attack.** A nested `attack-document-with-independent-reviewers` reviews the spec. After the first round, `since` (the
    previous return's snapshot) narrows the review to the spans changed since. `spec-reviewed`
    records every round as a `reviewed` ledger line with the settlement ids of its ambiguities; an
    incomplete one escalates `review_incomplete`.
@@ -842,7 +842,7 @@ itself is always the main checkout's `.agentics/.state/evidence/`.
 
 ### Survey
 
-The survey (`agentics-survey`) gathers evidence for one question and never concludes.
+The survey (`gather-evidence-without-concluding`) gathers evidence for one question and never concludes.
 
 1. **Reuse.** When the caller names its `ground`, one courier runs `evidence.mjs items` for the
    items of earlier surveys whose ground overlaps it. Standing items become known ground; suspect
@@ -870,7 +870,7 @@ Coverage is complete when every topic reported complete coverage and all its ite
 
 ### Existing solutions
 
-`agentics-find-existing-solutions` records what it establishes too: each assessed candidate as an
+`search-for-existing-solutions-before-building` records what it establishes too: each assessed candidate as an
 `external` item anchored at the source it was read from, each hit the repository already carries as
 a `behaviour` item anchored at that line. Recording is a side channel: a candidate that can't be
 anchored or recorded is named in the result and costs no coverage. A sweep answers its capability
@@ -933,7 +933,7 @@ as fact; a gotcha is checked the moment it is used, because the trigger either h
 ## Execution
 
 An execution runs a subtree in the integration worktrees of its composites and in per-leaf
-worktrees, and never touches the user's tree. The workflow is `agentics-develop`; the session
+worktrees, and never touches the user's tree. The workflow is `execute-approved-plan-in-worktrees`; the session
 launches it with a stamp it minted, because a workflow cannot read a clock.
 
 ### Boundaries
@@ -1321,8 +1321,8 @@ absent it says so and the session takes the `--no-progress` path.
 | `design` | one folder's spec at any depth: the loop from Analyze to Move on |
 | `develop` | building a folder or a settled request: the root spec, launch, result walk, re-specs, landing |
 | `challenge-idea` | attacking a written artefact |
-| `investigate` | answering a question from evidence (`agentics-investigate`) |
-| `search-for-existing-solutions-before-building` | service step, hidden (`user-invocable: false`) — the outward search (`agentics-find-existing-solutions`) |
+| `investigate` | answering a question from evidence (`answer-codebase-question-from-evidence`) |
+| `search-for-existing-solutions-before-building` | service step, hidden (`user-invocable: false`) — the outward search (`search-for-existing-solutions-before-building`) |
 | `next` | every effort, where it stands and its computed Next line; hands the pick on |
 
 A service step carries `user-invocable: false`: it is gone from the `/` menu, and the model still
@@ -1343,7 +1343,7 @@ list edits every place named, in the same commit series.
 Two conventions hold throughout:
 
 - **Digests** are FNV-1a, 32-bit, 8 hex characters, over `canonical()` from `lib/plan-digest.mjs`:
-  keys sorted, `undefined` read as `null`. `agentics-develop` carries identical copies.
+  keys sorted, `undefined` read as `null`. `execute-approved-plan-in-worktrees` carries identical copies.
 - **A CLI whose output a courier carries back** prints `{payload, payload_digest}` and exits 0,
   even when the payload reports a typed error. `{error}` with exit 1 means the program itself
   failed. Arguments minted by the workflow arrive as `--b64 <token> --digest <d>`; a mismatch is
@@ -1426,8 +1426,8 @@ nothing was written.
 ### State and journal lines
 
 - **Owner:** `lib/boundary.mjs` (`batch`, `checkpoint`, `closed`, `merge-observed`, `series-done`
-  for shell-less authors), `dispatch` in `agentics-develop`, `journalLine` in `lib/verify.mjs`.
-- **Restated in:** the implementer's `series-done` heredoc in `agentics-develop`; `lib/resume.mjs`
+  for shell-less authors), `dispatch` in `execute-approved-plan-in-worktrees`, `journalLine` in `lib/verify.mjs`.
+- **Restated in:** the implementer's `series-done` heredoc in `execute-approved-plan-in-worktrees`; `lib/resume.mjs`
   and `lib/status.mjs` (readers).
 
 `state.jsonl` (what the workflow decided): `dispatch {label, node, role, model, effort, tokens}` —
@@ -1488,7 +1488,7 @@ after ten minutes.
 ### Boundary payloads
 
 - **Owner:** `lib/boundary.mjs`.
-- **Restated in:** `agentics-develop` (the readers); `test/harness/develop-sim.mjs`.
+- **Restated in:** `execute-approved-plan-in-worktrees` (the readers); `test/harness/develop-sim.mjs`.
 
 Every payload: `{boundary, ok, error, todos[{op, key, task_id, subject, activeForm, status}],
 notes}` plus:
@@ -1527,7 +1527,7 @@ notes}` plus:
 
 ### Replanning returns
 
-- **Owner:** `EXECUTOR_STATUSES` in `agentics-develop`; `EXECUTOR_STATUSES` in `lib/brief.mjs`.
+- **Owner:** `EXECUTOR_STATUSES` in `execute-approved-plan-in-worktrees`; `EXECUTOR_STATUSES` in `lib/brief.mjs`.
 - **Restated in:** `agents/implementer.md`, `agents/test-author.md`, `agents/planner.md`.
 
 `done | done_with_concerns | blocked | needs_context | decompose | unsplittable | premise_mismatch
@@ -1535,12 +1535,12 @@ notes}` plus:
 
 ### Coverage block
 
-- **Owner:** each workflow's result builder (`result()` in `agentics-develop`, `coverageOf` in
-  `agentics-survey` and `agentics-find-existing-solutions`, inline in `agentics-probe` and
-  `agentics-investigate`). The `coverage-block` lint rule requires one on every exit.
+- **Owner:** each workflow's result builder (`result()` in `execute-approved-plan-in-worktrees`, `coverageOf` in
+  `gather-evidence-without-concluding` and `search-for-existing-solutions-before-building`, inline in `attack-document-with-independent-reviewers` and
+  `answer-codebase-question-from-evidence`). The `coverage-block` lint rule requires one on every exit.
 - **Restated in:** the skills that walk a result.
 
-`complete` (computed, per workflow; for `agentics-develop`: no checkpoint, every leaf in scope
+`complete` (computed, per workflow; for `execute-approved-plan-in-worktrees`: no checkpoint, every leaf in scope
 merged, the root integrated, nothing escalated or parked — carried from an earlier invocation or
 not — and no earned integration review or survey lost), `dropped[]`, `incomplete[]`,
 `failed_channels[]`, `unreached[]` (prose, loss first), `resumable {runId, remaining, args?}`.
@@ -1549,8 +1549,8 @@ not — and no earned integration review or survey lost), `dropped[]`, `incomple
 
 - **Owner:** `lib/evidence.mjs` (`checkItem`, `recordItems`, `recordJudgement`); written through
   `lib/ledger.mjs appendProject`, which mints a project-wide `seq` under `.agentics/.state/.lock`.
-- **Restated in:** the item builders of `agentics-survey`, `agentics-probe` and
-  `agentics-find-existing-solutions`, and the survey's copy of `ITEM_KINDS`.
+- **Restated in:** the item builders of `gather-evidence-without-concluding`, `attack-document-with-independent-reviewers` and
+  `search-for-existing-solutions-before-building`, and the survey's copy of `ITEM_KINDS`.
 
 `items.jsonl` holds `{kind: 'item', item, seq}` and `{kind: 'judged', id, verdict: holds|fails|unsure,
 at, seq}` (a `holds` that could not be re-anchored is stored as `unsure` with `requested` and
@@ -1575,32 +1575,32 @@ with `renamed_from`.
 
 ### Workflow returns
 
-- **`agentics-develop`** — takes `repo, effort, root, execution, intelligence, pace, plan_only,
+- **`execute-approved-plan-in-worktrees`** — takes `repo, effort, root, execution, intelligence, pace, plan_only,
   pause, progress, retry_escalated, confirmed_duplicate, confirmed_gaps, confirmed_stale, base_ref,
   commands, plugin_root`. Returns `{effort, root, execution, checkpoint, nodes_n,
   implemented[{id, rigor, role, rounds, review_rounds, at_integration, salvaged}],
   escalations[{id, reason, detail}], parked[{id, return, question}], blocked[{id, blocked_by}],
   integration{branch, head_sha, reviews[{target, findings, claims, notes, reviewed}]}, drift, cleanup,
   cost{dispatches, by_model, tokens}, stopped, notes, coverage}`.
-- **`agentics-survey`** — takes `question, roots, notes, prior, max_topics, intelligence, pace,
+- **`gather-evidence-without-concluding`** — takes `question, roots, notes, prior, max_topics, intelligence, pace,
   plugin_root, ground`. Returns `{question, topics, ground, items, reused, unrecorded,
   risks[{topic, text}], history, docs, coverage}`: reused standing items first, then new ones in
   plan order, each with its `id`.
-- **`agentics-probe`** — takes `artifact, roots, context, plugin_root, max_derived_axes, per_axis,
+- **`attack-document-with-independent-reviewers`** — takes `artifact, roots, context, plugin_root, max_derived_axes, per_axis,
   since`. Returns `{artifact, axes, axes_dropped, analysts, shared_ground, guidance_read,
   repo_ground, findings[{axis, severity, section, claim, evidence, start, end, id, item, carried}],
   ambiguities, ratifiable, snapshot, scope{full, changed}, unrecorded, review, coverage}`.
-- **`agentics-find-existing-solutions`** — takes `capability, roots, constraints, notes,
+- **`search-for-existing-solutions-before-building`** — takes `capability, roots, constraints, notes,
   max_angles, intelligence, plugin_root`. Returns `{capability, constraints, frame,
   already_present, candidates, viable, ruled_out, items, unrecorded, unanchored, coverage}`.
-- **`agentics-investigate`** — takes `question, roots, notes, as_tasks, intelligence, pace,
+- **`answer-codebase-question-from-evidence`** — takes `question, roots, notes, as_tasks, intelligence, pace,
   plugin_root`. Returns `{question, mode, tasks, report, evidence, coverage}`; `evidence` is
   `{items, risks, history, docs}` when synthesis failed and the survey's work is handed back, null
   otherwise.
 
 ### Review returns
 
-- **Owner:** `FINDINGS` in `agentics-develop`.
+- **Owner:** `FINDINGS` in `execute-approved-plan-in-worktrees`.
 - **Restated in:** `agents/reviewer.md` (the verdicts, and when a review returns them).
   `skills/task` asks its own reviewer for `{findings, fix_verdicts, notes}` only.
 
@@ -1611,7 +1611,7 @@ met|under|over|deviates|spec_defect|cant_tell, evidence}], notes}`. A leaf revie
 
 ### Planner returns
 
-- **Owner:** `PLANNED` and `SETTLED` in `agentics-develop`.
+- **Owner:** `PLANNED` and `SETTLED` in `execute-approved-plan-in-worktrees`.
 - **Restated in:** `agents/planner.md`.
 
 Writing a spec: `{status: written|needs_decision|contract_changed|premise_mismatch|unsplittable|blocked,
@@ -1628,7 +1628,7 @@ outcome: incorporated|discarded}], question, detail}`.
   schema bounds, no imports in workflows, namespaced agent types, valid workflow `meta`, agent
   frontmatter, gate clauses in gated skills, a stated task-tool fallback, and size budgets.
 - **The scenario harness** (`test/harness/workflow-host.mjs`) runs the real workflows with scripted
-  agents; `test/harness/develop-sim.mjs` answers `agentics-develop`'s boundaries from an in-memory
+  agents; `test/harness/develop-sim.mjs` answers `execute-approved-plan-in-worktrees`'s boundaries from an in-memory
   tree. Every claim about dispatch count is a harness assertion, not prose.
 - **Real git.** Every boundary, the resume ladder, verification and landing are tested against
   real repositories and worktrees.

@@ -342,6 +342,30 @@ test('a folder the planner authored is replanned by the planner, in its own spec
   assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['c', 'spec_unreviewed']])
 })
 
+test("develop's planner prompt carries the nested survey's items and risks, not verdicts", async () => {
+  const sim = simulate([composite('.'), row('p', { kind: 'design', author: 'planner', ground_known: false })])
+  const survey = {
+    question: 'q', topics: ['a'], ground: ['src'], reused: [], unrecorded: [], history: null, docs: null,
+    items: [{
+      id: 'I12345678', topic: 'a', kind: 'behaviour', claim: 'the loader reads config.json',
+      spans: [{ path: 'src/load.js', start: 3, end: 9, at: 'a'.repeat(40) }], queries: [], sources: [], rests_on: [],
+    }],
+    risks: [{ topic: 'a', text: 'tests were not searched' }],
+    coverage: { complete: true, dropped: [], incomplete: [], failed_channels: [], unreached: [], resumable: { runId: 'r', remaining: [] } },
+  }
+  const { prompts } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, {
+    workflow: (name) => {
+      if (name !== 'agentics-survey') throw new Error('no nested ' + name + ' in this scenario')
+      return survey
+    },
+  })
+  const plan = prompts.find((p) => p.opts.label === 'plan:p').prompt
+  assert.match(plan, /the loader reads config\.json/)
+  assert.match(plan, /src\/load\.js/)
+  assert.match(plan, /tests were not searched/)
+  assert.doesNotMatch(plan, /"verdicts"/)
+})
+
 test('a failed integration review makes the result incomplete', async () => {
   const sim = simulate([composite('.'), row('a'), row('b')])
   const { result } = await run(sim, { 'review:integration:.': () => { throw new Error('dispatch died') } })

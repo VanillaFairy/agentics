@@ -481,6 +481,9 @@ test('an absolute or climbing ground, span path or query scope refuses its item'
   ], { now: NOW })
   assert.equal(out.ok, false)
   assert.deepEqual(out.refused.map((r) => r.index), [0, 1, 2])
+  for (const r of out.refused) {
+    assert.ok(r.problems.some((p) => p.includes('repository-relative')), JSON.stringify(r))
+  }
 })
 
 test('a record made from a linked worktree reads the main checkout, not the worktree', () => {

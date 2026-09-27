@@ -1,18 +1,24 @@
 export const meta = {
   name: 'agentics-survey',
-  description: 'Gather evidence about a question across the local repos, git history, and vendor documentation. Returns structured findings plus a coverage block — never a conclusion.',
+  description: 'Gather evidence about a question across the local repos, git history, and vendor documentation. Returns anchored evidence items plus a coverage block — never a conclusion.',
   whenToUse: 'The shared evidence phase for investigate, develop, find-existing-solutions and design. Call it via workflow("agentics-survey", args) as a nested step; it is rarely invoked directly.',
   phases: [
-    { title: 'Standing', detail: 'whether a recorded survey of this effort still covers the ground' },
+    { title: 'Reuse', detail: 'the project pool\'s items over this ground: standing ones are known ground, stale ones are searched again' },
+    { title: 'Re-judge', detail: 'one tool-less analyst on the cheapest tier per twenty suspect items: does the change matter to the claim' },
     { title: 'Plan' },
     { title: 'Scout' },
     { title: 'History' },
     { title: 'Docs' },
     { title: 'Assemble context for analysis', detail: 'per judge, one script reads its locations once and writes them to files it Reads' },
     { title: 'Judge', detail: 'one analyst without search tools, unless volume or pace earns more' },
+    { title: 'Record', detail: 'the judges\' items into the project-wide store; a refused item goes back to its judge' },
   ],
 }
 
+// Design: docs/DESIGN.md#execution. Every deterministic step is a `lib/boundary.mjs` entry point
+// run by a courier and re-digested here; this script holds only what a script can hold without a
+// filesystem: which leaves are ready, in what order, and what each typed return means next.
+//
 // ---------------------------------------------------------------- schemas
 //
 // No minItems / maxItems / minLength / maxLength anywhere. Structured outputs do not
@@ -110,11 +116,10 @@ const PLAN = {
             type: 'string',
             description:
               'The one subtree this topic is about, as a repo-relative POSIX path — a directory ' +
-              'or a single file. It is what this survey is anchored to afterwards: the survey ' +
-              'stays evidence exactly as long as no commit touches the subtrees its topics ' +
-              'named, so a path naming the topic\'s real ground is what lets a later pass reuse ' +
-              'this one instead of buying it again. Send an empty string — never omit the ' +
-              'field — when the topic is genuinely repository-wide.',
+              'or a single file. It becomes the ground of every item this topic\'s judge returns, ' +
+              'which is what lets a later survey over overlapping ground find those items and ' +
+              'reuse them. Send an empty string — never omit the field — when the topic is ' +
+              'genuinely repository-wide.',
           },
         },
       },
@@ -214,39 +219,89 @@ const CARRIED = {
   },
 }
 
-// One judge may hold several topics, so its verdicts come back as a list whose `topic` is a
-// closed enum built per dispatch: a key it was not given cannot be where a verdict lands.
-function verdictsSchema(keys) {
+// The kinds of claim an item can make, copied from lib/evidence.mjs (a script cannot import); the
+// scenario suite pins the two equal. The kind decides which anchor the recorder demands.
+const ITEM_KINDS = ['behaviour', 'absence', 'enumeration', 'relation', 'external', 'derived']
+
+// One judge may hold several topics, so its items come back as one list whose `topic` is a
+// closed enum built per dispatch: a key it was not given cannot be where an item lands. `at`, a
+// query's result and a source's retrieval date are observations the recorder makes, so the judge
+// is never asked for them.
+function itemsSchema(keys) {
+  const topic = { type: 'string', enum: keys, description: 'The topic key, copied exactly.' }
   return {
-    type: 'object',
-    additionalProperties: false,
-    required: ['verdicts'],
+    type: 'object', additionalProperties: false, required: ['items', 'risks'],
     properties: {
-      verdicts: {
+      items: {
         type: 'array',
-        description: 'One verdict per topic you were given — every one of them.',
+        description: 'Evidence items: one claim each, with the anchor its kind needs.',
         items: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['topic', 'conclusion', 'evidence', 'risks'],
+          type: 'object', additionalProperties: false,
+          required: ['topic', 'kind', 'claim', 'spans', 'queries', 'sources', 'rests_on'],
           properties: {
-            topic: { type: 'string', enum: keys, description: 'The topic key, copied exactly.' },
-            conclusion: { type: 'string', description: 'The answer to this topic, in one or two sentences, stated first.' },
-            evidence: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'The two to four facts that decide the conclusion, each carrying a path:line, a commit, or a URL.',
+            topic,
+            kind: { type: 'string', enum: ITEM_KINDS, description: 'What sort of claim this is; it decides which anchor is required.' },
+            claim: { type: 'string', description: 'The one sentence this item asserts.' },
+            spans: {
+              type: 'array', description: 'Each file and line range the claim was read at. Empty when the kind needs none.',
+              items: {
+                type: 'object', additionalProperties: false, required: ['path', 'start', 'end'],
+                properties: {
+                  path: { type: 'string', description: 'Repository-relative path.' },
+                  start: { type: 'integer', description: 'First line, from 1.' },
+                  end: { type: 'integer', description: 'Last line, at or after start.' },
+                },
+              },
             },
-            risks: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Risks and unknowns, only where they change the decision. Put an inadequate search surface here rather than accepting it silently.',
+            queries: {
+              type: 'array', description: 'Each search a script can re-run to show the claim: an extended regex and the paths it searches. The recorder runs it and keeps the result.',
+              items: {
+                type: 'object', additionalProperties: false, required: ['pattern', 'scope'],
+                properties: {
+                  pattern: { type: 'string', description: 'An extended regular expression, as git grep -E takes it.' },
+                  scope: { type: 'array', items: { type: 'string' }, description: 'Repository-relative paths; empty for the whole repository.' },
+                },
+              },
             },
+            sources: {
+              type: 'array', description: 'Each outside source the claim rests on.',
+              items: {
+                type: 'object', additionalProperties: false, required: ['url', 'version'],
+                properties: {
+                  url: { type: 'string', description: 'The URL or package you read.' },
+                  version: { type: 'string', description: 'Its version; an empty string when unversioned.' },
+                },
+              },
+            },
+            rests_on: { type: 'array', items: { type: 'string' }, description: 'For a derived item: the exact claims of the items here it is drawn from, or ids of ESTABLISHED items.' },
           },
         },
       },
+      risks: {
+        type: 'array', description: 'Why a topic cannot be anchored, or an inadequate search surface. Only where it changes a decision.',
+        items: { type: 'object', additionalProperties: false, required: ['topic', 'text'], properties: { topic, text: { type: 'string' } } },
+      },
     },
   }
+}
+
+// The re-judge's return. It rules on whether a change MATTERS to a claim; whether text changed was
+// decided by git before it was dispatched.
+const JUDGEMENTS = {
+  type: 'object', additionalProperties: false, required: ['judgements'],
+  properties: {
+    judgements: {
+      type: 'array', description: 'One judgement per item you were given, every one of them.',
+      items: {
+        type: 'object', additionalProperties: false, required: ['id', 'verdict', 'why'],
+        properties: {
+          id: { type: 'string', description: 'The item id, copied exactly.' },
+          verdict: { type: 'string', enum: ['holds', 'fails', 'unsure'] },
+          why: { type: 'string', description: 'One line.' },
+        },
+      },
+    },
+  },
 }
 
 // ---------------------------------------------------------------- inputs
@@ -263,8 +318,8 @@ const maxTopics = input.max_topics || 8
 // session that invoked this survey. It is DURABLE SCRATCH and it reaches exactly one place: the
 // planner's prompt, where it can only change how the ground is decomposed. It reaches no scout,
 // no judge and no gate — prior context has no anchor and nothing checked it, so admitted near a
-// gate it would be an unverified note laundered into a skipped phase. What CAN stand in for a
-// survey is a recorded one whose ground git says is untouched, and that is computed below.
+// gate it would be an unverified note laundered into a skipped phase. What CAN stand in for
+// searching a claim again is a pool item git says is still standing, and that is computed below.
 const prior = typeof input.prior === 'string' ? input.prior.trim() : ''
 
 // The intelligence dial. Three positions, each naming the judging tier rather than inheriting
@@ -297,10 +352,8 @@ const groundPath = (p) => {
   return norm === '' ? '.' : norm
 }
 
-// The standing-survey inputs. Whether the change's shape is settled is JUDGMENT and stays with the
-// caller; whether a recorded survey still covers the ground is arithmetic and is computed here.
-const effort = typeof input.effort === 'string' ? input.effort.trim() : ''
-const settledShape = input.settled_shape === true
+// The ground the caller wants this survey's evidence anchored to. It is what the pool is read
+// by (Reuse), and what every item this survey records carries as its own ground afterwards.
 const callerGround = [...new Set((Array.isArray(input.ground) ? input.ground
   : typeof input.ground === 'string' && input.ground.trim() ? input.ground.split(/[,;\n]/) : [])
   .map(groundPath))]
@@ -326,7 +379,9 @@ const pluginRoot = resolvePluginRoot()
 
 // Excerpts and efforts are per repository, so a question spanning several roots resolves against
 // the first — the repository it is anchored in. A location in another root is not excerpted; the
-// judge is handed it as a location to read.
+// judge is handed it as a location to read. This is also the working root every pool read, judge
+// and record passes to lib/evidence.mjs: a survey run from a linked worktree derives its pool's
+// states, re-anchors a holds and anchors what its judges read there.
 const repo = String(roots).split(/[,;\n]/)[0].trim() || '.'
 
 // ---------------------------------------------------------------- the transport
@@ -334,7 +389,9 @@ const repo = String(roots).split(/[,;\n]/)[0].trim() || '.'
 // A payload computed on disk arrives through a model, so it is re-digested here before a field of
 // it is believed; a location list this script mints travels as plain text on one argv slot with
 // its digest beside it. The functions are copies of `lib/plan-digest.mjs`'s and
-// `agentics-develop`'s: scripts cannot import, and the suite pins them together.
+// `agentics-develop`'s: scripts cannot import, and the suite pins them together. Tokens the
+// script mints itself (a judgement batch, a record batch) travel base64 on one argv slot with
+// their digest beside them — the same transport, for text a shell would otherwise mangle.
 function canonical(value) {
   if (value === undefined) return 'null'
   if (value === null || typeof value !== 'object') return JSON.stringify(value)
@@ -354,6 +411,43 @@ function fnv1a(text) {
   }
 
   return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
+function utf8Bytes(text) {
+  const out = []
+  for (let i = 0; i < text.length; i++) {
+    let c = text.charCodeAt(i)
+    if (c >= 0xd800 && c <= 0xdbff && i + 1 < text.length) {
+      const low = text.charCodeAt(i + 1)
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        c = 0x10000 + ((c - 0xd800) << 10) + (low - 0xdc00)
+        i++
+      }
+    }
+    if (c < 0x80) out.push(c)
+    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63))
+    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+  }
+  return out
+}
+
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+
+/** Standard padded base64: one opaque argv slot, nothing in it for a shell to interpret. */
+function base64(text) {
+  const bytes = utf8Bytes(text)
+  let out = ''
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i]
+    const b1 = i + 1 < bytes.length ? bytes[i + 1] : -1
+    const b2 = i + 2 < bytes.length ? bytes[i + 2] : -1
+    out += B64[b0 >> 2]
+    out += B64[((b0 & 3) << 4) | (b1 < 0 ? 0 : b1 >> 4)]
+    out += b1 < 0 ? '=' : B64[((b1 & 15) << 2) | (b2 < 0 ? 0 : b2 >> 6)]
+    out += b2 < 0 ? '=' : B64[b2 & 63]
+  }
+  return out
 }
 
 /** What a courier carried back: the payload, or why it cannot be believed and how to retry. */
@@ -444,6 +538,32 @@ async function carry(command, label, phaseName) {
   return { payload: null, why }
 }
 
+// The re-judge is the stated exception to the intelligence dial: it is always the cheapest tier,
+// however the caller dialled the judging analysts.
+const REJUDGE = { model: 'haiku', effort: 'low' }
+const REJUDGE_BATCH = 20
+const VERDICTS = ['holds', 'fails', 'unsure']
+
+// A ground path travels inside a shell command, so only characters a courier can carry unquoted
+// may reach it.
+const CARRIABLE_GROUND = /^[A-Za-z0-9_.\/@+-]+$/
+
+/** Pure. An item's identity: its question, topic and claim — the same formula lib/evidence.mjs
+ * mints ids with; the scenario suite pins the two equal. Where it is anchored is not identity. */
+const itemIdOf = (item) => 'I' + fnv1a(canonical({ question: item.question, topic: item.topic, claim: item.claim }))
+const ITEM_ID = /^I[0-9a-f]{8}$/
+
+/** One item as a reader reads it: id, topic, kind, claim, and what it rests on. */
+function itemLine(it) {
+  const anchors = [
+    ...(it.spans || []).map((s) => `${s.path}:${s.start}-${s.end}`),
+    ...(it.queries || []).map((q) => `search /${q.pattern}/ in ${(q.scope || []).join(', ') || 'the repository'}`),
+    ...(it.sources || []).map((s) => s.url + (s.version ? '@' + s.version : '')),
+    ...(it.rests_on || []).map((id) => 'rests on ' + id),
+  ]
+  return `- [${it.id}] (${it.topic}, ${it.kind}) ${it.claim}` + (anchors.length ? ` — ${anchors.join('; ')}` : '')
+}
+
 // ---------------------------------------------------------------- coverage
 //
 // IRON LAW §4 as a data structure. `complete` is DERIVED here and never taken from an
@@ -463,7 +583,7 @@ const RUN_ID = 'unknown-to-script: pair `remaining` with the runId from the Work
 // reads when deciding how to resume.
 const LAUNCH_ARGS = {
   question, roots, notes, prior, max_topics: maxTopics, intelligence, pace, plugin_root: pluginRoot,
-  effort, settled_shape: settledShape, ground: callerGround,
+  ground: callerGround,
 }
 
 const RESUME_NOTE = 'a resume must re-pass `args` alongside resumeFromRunId — the script is ' +
@@ -488,101 +608,161 @@ function coverageOf(dropped, incomplete, failedChannels, unreached) {
 // Every exit path below returns this shape. A caller that receives `undefined` cannot tell
 // "nothing found" from "nothing ran", and that is the failure this plugin exists to prevent.
 //
-// `ground` is the subtrees the topics searched, `.` for a repository-wide topic. It is what a
-// later phase anchors this survey to: the survey stays sound evidence exactly as long as no
-// commit touches that ground (`lib/effort.mjs standing`).
-function surveyResult(topics, verdicts, history, docs, coverageBlock, ground = []) {
-  return { question, topics, ground, verdicts, history, docs, coverage: coverageBlock }
+// `items` are the reused standing items first, then this survey's new ones in plan order. Each
+// carries its own ground, which is what a later survey reuses them by. `ground` is the subtrees
+// the topics searched, `.` for a repository-wide topic — not the ground of a reused item, which
+// is not ground this survey searched.
+function surveyResult({ topics = [], ground = [], items = [], reused = [], unrecorded = [], risks = [], history = null, docs = null, coverageBlock }) {
+  return { question, topics, ground, items, reused, unrecorded, risks, history, docs, coverage: coverageBlock }
 }
 
 if (!question) {
-  return surveyResult([], [], null, null,
-    coverageOf([], [], [], ['no question was supplied, so nothing was searched']))
+  return surveyResult({ coverageBlock: coverageOf([], [], [], ['no question was supplied, so nothing was searched']) })
 }
 
 log(`Question: ${question}`)
 
-// ---------------------------------------------------------------- 0. a standing survey
+// -------------------------------------------------------- 0. reuse and re-judge
 //
-// A node whose shape is settled and whose ground a standing survey covers buys no survey. The
-// caller answers the first half; `lib/effort.mjs standing` answers the second from git — the
-// recorded survey's commit is an ancestor of HEAD, nothing has touched its ground since, and it
-// reported complete coverage — and this script checks only that its ground covers the ground the
-// caller named. Every refusal surveys in full and says why, because a phase skipped on anything
-// less than that arithmetic is exactly the laundering §2 forbids.
+// Before planning, the survey reads the project's pool for items whose ground overlaps the
+// caller's. Standing ones are known ground the planner and the judges are handed so they do not
+// re-buy it; suspect ones get the cheapest re-judge there is, on whether the change matters to
+// the claim; stale ones — never re-checked, or still suspect after the re-judge — send their
+// topic to a narrowed re-survey. Whether text changed is never a model's call: that arithmetic is
+// lib/evidence.mjs's, deterministic and free of judgment (D20).
 
-// A caller path is covered by a surveyed subtree that is the repository, the path itself, or one
-// of its ancestors.
-const covers = (surveyed, path) => surveyed.some((g) => {
-  const s = groundPath(g)
-  return s === '.' || s === path || path.startsWith(s + '/')
-})
+/** The project's items over the caller's ground, filtered to this survey's own pool: a challenge
+ * finding or an existing-solution candidate answers a different question and shares the pool. */
+async function readPool(label) {
+  const held = await carry(`node "${pluginRoot}/lib/evidence.mjs" items --repo "${repo}" --root "${repo}" --ground "${callerGround.join(',')}" --states standing,suspect,stale`, label, 'Reuse')
+  if (!held.payload || !Array.isArray(held.payload.items)) return null
+  return held.payload.items.filter((it) => it && /-survey$/.test(String(it.from_return || '')))
+}
 
-async function standingSurvey() {
-  if (!settledShape || !effort) return null
-  const refuse = (why) => {
-    log(`No standing survey stands in: ${why}. Surveying in full.`)
+/** A stale item a newer standing item of its topic, on ground it shares, has already replaced. */
+const supersededBy = (known) => (it) => known.some((k) =>
+  k.topic === it.topic && (k.seq || 0) > (it.seq || 0) && (k.ground || []).some((g) => (it.ground || []).includes(g)))
+
+/** Drop every stale item a newer standing item of its topic has already replaced (spec §4.9): a
+ * narrowed re-survey's items take new ids, so the stale item they replaced stays in the pool, and
+ * without this every later survey would search its topic again. */
+function finishReuse(known, stale) {
+  const kept = stale.filter((it) => !supersededBy(known)(it))
+  if (kept.length < stale.length) {
+    log(`Reuse: ${stale.length - kept.length} stale item(s) already replaced by a newer standing item; not re-surveyed.`)
+  }
+  return { known, stale: kept }
+}
+
+async function reusePool() {
+  if (callerGround.length === 0) return { known: [], stale: [] }
+  if (callerGround.some((g) => !CARRIABLE_GROUND.test(g))) {
+    log('Reuse: the caller\'s ground cannot be carried to the pool as a command argument; surveying in full.')
+    return { known: [], stale: [] }
+  }
+
+  phase('Reuse')
+  const pool = await readPool('reuse')
+  if (!pool) {
+    log('Reuse: the project pool could not be read; surveying in full.')
+    return { known: [], stale: [] }
+  }
+
+  const standing = pool.filter((it) => it.state === 'standing')
+  const suspect = pool.filter((it) => it.state === 'suspect')
+  const stale = pool.filter((it) => it.state === 'stale')
+
+  if (suspect.length === 0) return finishReuse(standing, stale)
+
+  await rejudge(suspect)
+  const after = await readPool('reuse-after')
+
+  let known = standing
+  let allStale = stale
+  if (!after) {
+    allStale = allStale.concat(suspect)
+  } else {
+    const byId = new Map(after.map((it) => [it.id, it]))
+    for (const it of suspect) {
+      const second = byId.get(it.id)
+      if (second && second.state === 'standing') known = known.concat([second])
+      else allStale = allStale.concat([it])
+    }
+  }
+
+  return finishReuse(known, allStale)
+}
+
+/** The prompt for one re-judge batch: each item, and for each anchor a second read changed, the
+ * old text and the new. Everything the analyst needs is here, so it opens no file. */
+function rejudgePrompt(batch) {
+  return `Some evidence items already recorded rest on text that has since changed. Whether the ` +
+    `text changed is already decided — you judge only whether the change MATTERS to the claim. ` +
+    `"unsure" is never a pass: it sends the claim to be searched again, so use it only when you ` +
+    `truly cannot tell. Judge every item below from what is here; open no file.\n\n` +
+    batch.map((it) => {
+      const changes = (it.changed || []).map((c) =>
+        `  ${c.anchor} ${c.index} was:\n${c.old}\nis now:\n${c.now}`).join('\n')
+      return `[${it.id}] ${it.claim}` + (changes ? '\n' + changes : '')
+    }).join('\n\n')
+}
+
+/** One re-judge batch: dispatch the analyst, then carry its judgements into the store. Every
+ * item gets a verdict — one it was not given, or a dispatch that died outright, is 'unsure'. */
+async function rejudgeBatch(batch, n) {
+  const out = await agent(rejudgePrompt(batch), {
+    agentType: 'agentics:analyst', schema: JUDGEMENTS, phase: 'Re-judge', label: 'rejudge:' + n, ...REJUDGE,
+  }).catch((e) => {
+    log(`rejudge:${n}: the analyst failed (${e && e.message}); its items are unsure.`)
     return null
-  }
-  if (callerGround.length === 0) {
-    return refuse('the caller named no ground, so there is nothing a recorded survey could be shown to cover')
-  }
-  // The slug travels inside a shell command, so only a name `lib/store.mjs` would accept goes.
-  if (!/^[a-z0-9][a-z0-9._-]*$/.test(effort) || effort.includes('--') || effort.length > 120) {
-    return refuse('"' + effort + '" is not an effort name')
-  }
+  })
 
-  phase('Standing')
+  const judgements = out && Array.isArray(out.judgements) ? out.judgements : []
+  const byId = new Map(judgements.map((j) => [j && j.id, j && j.verdict]))
+  const verdicts = batch.map((it) => {
+    const v = byId.get(it.id)
+    return { id: it.id, verdict: VERDICTS.includes(v) ? v : 'unsure' }
+  })
 
-  const held = await carry(`node "${pluginRoot}/lib/effort.mjs" standing "${repo}" "${effort}"`,
-    'standing', 'Standing')
-  if (!held.payload) return refuse('whether effort ' + effort + '\'s survey stands could not be read (' + held.why + ')')
-
-  const st = held.payload
-  if (st.standing !== true) return refuse('effort ' + effort + '\'s newest survey does not stand — ' + (st.why || 'no reason given'))
-
-  const uncovered = callerGround.filter((p) => !covers(Array.isArray(st.ground) ? st.ground : [], p))
-  if (uncovered.length > 0) {
-    return refuse('the standing survey ' + st.stamp + ' searched ' + (st.ground || []).join(', ') +
-      ' and does not cover ' + uncovered.join(', '))
-  }
-
-  // The verdicts themselves are a second read: the standing check prints the arithmetic, not the
-  // survey, and the stamp both reads name is what proves they are about the same file.
-  const read = await carry(`node "${pluginRoot}/lib/effort.mjs" read "${repo}" "${effort}" --latest survey`,
-    'standing-read', 'Standing')
-  const latest = read.payload && read.payload.latest
-  if (!latest) return refuse('the standing survey could not be read (' + (read.why || 'no survey came back') + ')')
-  if (latest.stamp !== st.stamp) {
-    return refuse('the survey read back (' + latest.stamp + ') is not the one that stood (' + st.stamp + ')')
-  }
-  const recorded = latest.payload
-  if (!recorded || !Array.isArray(recorded.verdicts) || !recorded.coverage || recorded.coverage.complete !== true) {
-    return refuse('the recorded survey ' + st.stamp + ' is not a complete survey result')
-  }
-
-  log(`Standing survey ${st.stamp} (observed at ${st.observed_at}) covers ${callerGround.join(', ')} ` +
-    `and nothing has touched its ground since: its verdicts are this survey's, and nothing was ` +
-    `re-searched.`)
-  return { recorded, stamp: st.stamp, observedAt: st.observed_at, ground: st.ground }
-}
-
-const standing = await standingSurvey()
-
-if (standing) {
-  // The recorded survey's own coverage was complete, so the block is complete too — and it says
-  // where the evidence came from, so a reused result is never mistaken for one bought today.
-  const reused = coverageOf([], [], [], [])
-  return {
-    question,
-    topics: standing.recorded.topics || [],
-    ground: standing.recorded.ground || standing.ground || [],
-    verdicts: standing.recorded.verdicts,
-    history: standing.recorded.history == null ? null : standing.recorded.history,
-    docs: standing.recorded.docs == null ? null : standing.recorded.docs,
-    coverage: { ...reused, standing: { stamp: standing.stamp, observed_at: standing.observedAt } },
+  const token = { judgements: verdicts }
+  const held = await carry(
+    `node "${pluginRoot}/lib/evidence.mjs" judge --repo "${repo}" --root "${repo}" --digest ` +
+    `${fnv1a(canonical(token))} --b64 ${base64(JSON.stringify(token))}`,
+    'record-judgements:' + n, 'Re-judge',
+  )
+  if (!held.payload) {
+    log(`record-judgements:${n}: could not be recorded (${held.why}); those items stay suspect.`)
   }
 }
+
+/** Suspect items, re-judged in batches of REJUDGE_BATCH, in parallel, on the cheapest tier. */
+async function rejudge(items) {
+  phase('Re-judge')
+  const batches = []
+  for (let i = 0; i < items.length; i += REJUDGE_BATCH) batches.push(items.slice(i, i + REJUDGE_BATCH))
+  await parallel(batches.map((batch, i) => () => rejudgeBatch(batch, i + 1)))
+}
+
+/** The topics a narrowed re-survey searches again: one per stale topic, with what it used to say. */
+function staleTopics(stale) {
+  const byKey = new Map()
+  for (const it of stale) {
+    const t = byKey.get(it.topic) || { key: it.topic, claims: [], subtree: groundPath((it.ground || [])[0] || '') }
+    t.claims.push(it.claim)
+    byKey.set(it.topic, t)
+  }
+  return [...byKey.values()].map((t) => ({
+    key: t.key,
+    subtree: t.subtree === '.' ? '' : t.subtree,
+    find: `Re-establish from the current code what these recorded claims said about ` +
+      `${t.subtree === '.' ? 'the repository' : t.subtree}. None of them holds as recorded any more, so find what is true now: ` +
+      t.claims.join('; '),
+  }))
+}
+
+const reuse = await reusePool()
+const known = reuse.known
+const forced = staleTopics(reuse.stale)
 
 // ---------------------------------------------------------------- 1. plan
 
@@ -601,6 +781,16 @@ const plan = await agent(
       `these notes appear to answer is still a topic, and the search that covers it will either ` +
       `confirm them or find they went stale:\n${prior}\n`
     : '') +
+  (known.length
+    ? `\nESTABLISHED — evidence items already in the project's pool for this ground, each ` +
+      `anchored and still standing. Plan no topic these already answer; plan only what they ` +
+      `leave open. When they answer the question, return no topics.\n` +
+      known.map(itemLine).join('\n') + '\n'
+    : '') +
+  (forced.length
+    ? `\nRE-SURVEYED — these topics are searched again whatever you plan, because what was ` +
+      `recorded for them no longer holds. Do not plan them again: ${forced.map((t) => t.key).join(', ')}\n`
+    : '') +
   `\nEach topic must be answerable by searching the current code on its own, with no ` +
   `dependency on the other topics — the shared ground below is the one exception to that, ` +
   `because it reaches every judge. Give each a short kebab-case key and a precise ` +
@@ -610,9 +800,9 @@ const plan = await agent(
   `forces a partial first pass, and everything later is built on what these searches ` +
   `return.\n\n` +
   `Give every topic a subtree: the one directory or file it is about, repo-relative, or an ` +
-  `empty string when the topic is genuinely repository-wide. The survey is anchored to these ` +
-  `paths afterwards, so a path that names the topic's real ground is what lets a later pass ` +
-  `reuse this survey instead of buying it again.\n\n` +
+  `empty string when the topic is genuinely repository-wide. It becomes the ground of every ` +
+  `item this topic's judge returns, so a path naming the topic's real ground is what lets a ` +
+  `later survey over overlapping ground find those items and reuse them.\n\n` +
   `When several topics would each need to read the same files, do NOT fold that surface ` +
   `into each of them. Name it once in common_ground, as a precise instruction for a single ` +
   `search agent: it is searched once, and every judge receives what it finds alongside the ` +
@@ -635,9 +825,11 @@ const plan = await agent(
   return null
 })
 
-if (!plan || !plan.topics || plan.topics.length === 0) {
-  return surveyResult([], [], null, null,
-    coverageOf([], [], [], ['planning produced no topics, so nothing was searched']))
+if (!plan) {
+  return surveyResult({
+    items: known, reused: known.map((i) => i.id),
+    coverageBlock: coverageOf(forced.map((t) => t.key), [], [], ['planning failed, so nothing was searched']),
+  })
 }
 
 // The cap in the prompt is sizing guidance to the planner, never a licence to drop work:
@@ -648,7 +840,13 @@ if (plan.topics.length > maxTopics) {
   log(`Planner returned ${plan.topics.length} topics (asked for at most ${maxTopics}); searching all of them.`)
 }
 
-const topics = plan.topics
+const forcedKeys = new Set(forced.map((t) => t.key))
+const planned = plan.topics.filter((t) => {
+  if (!forcedKeys.has(t.key)) return true
+  log(`Plan: topic "${t.key}" is already forced by a stale item; the planner's copy is dropped.`)
+  return false
+})
+const topics = forced.concat(planned)
 // Read defensively: a plan that omits the field is a plan with no shared ground.
 const commonFind = (plan.common_ground || '').trim()
 
@@ -656,6 +854,15 @@ log(`Plan: ${topics.length} topic(s)` +
     `${commonFind ? ' + common ground' : ''}` +
     `${plan.history_needed ? ' + git history' : ''}` +
     `${plan.docs_needed ? ' + documentation' : ''}`)
+
+if (topics.length === 0 && known.length > 0) {
+  log('The pool\'s standing items answer the question: nothing left to search.')
+  return surveyResult({ items: known, reused: known.map((i) => i.id), coverageBlock: coverageOf([], [], [], []) })
+}
+
+if (topics.length === 0) {
+  return surveyResult({ coverageBlock: coverageOf([], [], [], ['planning produced no topics, so nothing was searched']) })
+}
 
 // ---------------------------------------------------------- 2. the resume engine
 //
@@ -992,7 +1199,7 @@ function locationList(locations) {
 
 // cmd.exe caps a whole command line at 8191 characters, so a list travels in batches of at most
 // this many. Every location of one file goes in the same batch, so no two batches ever hold
-// overlapping windows.
+// overlapping windows. The same budget bounds a record batch's base64 token, further down.
 const COMMAND_BUDGET = 6000
 
 function batchesOf(locations) {
@@ -1104,13 +1311,27 @@ function judgePrompt(group, context, continued) {
   return `Judge ${many ? `these ${group.length} topics` : 'this topic'} of a larger question from ` +
     `the evidence below.\n\n` +
     (continued
-      ? `A CONTINUATION: an earlier pass returned no verdict for ` +
-        `${many ? 'these topics' : 'this topic'}. Judge ${many ? 'them' : 'it'} now.\n\n`
+      ? `A CONTINUATION: an earlier pass did not rule on ${many ? 'these topics' : 'this topic'}. ` +
+        `Judge ${many ? 'them' : 'it'} now.\n\n`
       : '') +
     `OVERALL QUESTION: ${question}\n\n` +
-    `TOPICS — return exactly one verdict for each, with topic set to its key:\n\n` +
+    `TOPICS — return evidence items for each, one claim per item; set every item's and risk's ` +
+    `topic to the topic's key, whatever else it names. A claim that needs anchors in two ` +
+    `unrelated places is two claims. Each kind needs its anchor, one line per kind:\n` +
+    `  behaviour: spans;\n` +
+    `  absence: a query the recorder re-runs, which refuses the item if it finds anything;\n` +
+    `  enumeration: a query whose result the recorder keeps;\n` +
+    `  relation: spans and a query;\n` +
+    `  external: sources;\n` +
+    `  derived: rests_on, the exact claims of sibling items or the ids of ESTABLISHED items.\n` +
+    `An item without its anchor is refused and comes back to you. Every topic gets at least one ` +
+    `item, or a risk saying why nothing in its evidence can be anchored.\n\n` +
     group.map(topicSection).join('\n\n') +
     sharedGroundSection() +
+    (known.length
+      ? `\n\nESTABLISHED — known ground, already anchored; do not restate these:\n` +
+        known.map(itemLine).join('\n')
+      : '') +
     (context.parts.length > 0
       ? `\n\nCONTEXT FILES — every location above, read once for you by a script, overlapping ` +
         `windows merged. Read each file below whole before judging, and do not open the source ` +
@@ -1124,14 +1345,14 @@ function judgePrompt(group, context, continued) {
         `location that does not exist is itself worth a line in risks:\n` + unread.map(hitLine).join('\n')
       : '') +
     `\n\nYou have no search tools. Judge what these show; where they are not enough to decide ` +
-    `a topic, say what is missing in its risks rather than guessing.` +
-    (many ? ` Every topic gets its own verdict — a verdict for one does not answer another.` : '')
+    `a topic, say what is missing in risks rather than guessing.` +
+    (many ? ` Every topic gets its own items — items for one topic do not answer another.` : '')
 }
 
 /**
  * One judge's whole charge: its context assembled, a first pass, then a continuation on exactly
- * the topics it returned no verdict for, for as long as each pass rules on at least one more. No
- * counter ends it (IRON LAW §1); a pass that adds nothing ends it, and what it left is dropped,
+ * the topics it returned no item or risk for, for as long as each pass rules on at least one more.
+ * No counter ends it (IRON LAW §1); a pass that adds nothing ends it, and what it left is dropped,
  * loudly.
  */
 async function judgeGroup(group) {
@@ -1145,7 +1366,7 @@ async function judgeGroup(group) {
     pass++
     const keys = remaining.map((t) => t.key)
     const out = await agent(judgePrompt(remaining, context, pass > 1), {
-      agentType: 'agentics:analyst', schema: verdictsSchema(keys),
+      agentType: 'agentics:analyst', schema: itemsSchema(keys),
       phase: 'Judge', label: label + (pass > 1 ? `#${pass}` : ''), ...tiered(judge, 'high'),
     }).catch((e) => {
       log(`${label}: the judge failed (${e && e.message}); its unruled topics are dropped.`)
@@ -1153,20 +1374,23 @@ async function judgeGroup(group) {
     })
     if (!out) break
 
-    const got = Array.isArray(out.verdicts) ? out.verdicts.filter(Boolean) : []
-    let gained = 0
+    const gotItems = Array.isArray(out.items) ? out.items.filter(Boolean) : []
+    const gotRisks = Array.isArray(out.risks) ? out.risks.filter(Boolean) : []
 
-    // A judge holding one topic has one verdict to give: it is that topic's whatever key the
-    // model typed, so a mistyped echo cannot turn a ruled topic into a dropped one.
-    if (remaining.length === 1 && got.length > 0 && !got.some((v) => v.topic === keys[0])) {
-      got[0] = { ...got[0], topic: keys[0] }
+    // A judge holding one topic has one topic to give: everything it returns is that topic's,
+    // whatever key the model typed, so a mistyped echo cannot turn a ruled topic into a dropped one.
+    if (remaining.length === 1) {
+      for (const it of gotItems) it.topic = keys[0]
+      for (const r of gotRisks) r.topic = keys[0]
     }
-    for (const v of got) {
-      if (keys.includes(v.topic) && !ruled.has(v.topic)) {
-        ruled.set(v.topic, v)
-        gained++
-      }
+
+    let gained = 0
+    const gain = (topicKey) => {
+      if (!ruled.has(topicKey)) { ruled.set(topicKey, { items: [], risks: [] }); gained++ }
+      return ruled.get(topicKey)
     }
+    for (const it of gotItems) if (keys.includes(it.topic)) gain(it.topic).items.push(it)
+    for (const r of gotRisks) if (keys.includes(r.topic)) gain(r.topic).risks.push(r)
 
     if (gained === 0) {
       log(`${label}: pass ${pass} ruled on none of ${keys.join(', ')} — stopping rather than looping.`)
@@ -1186,17 +1410,190 @@ const rulings = await Promise.all(groups.map((group) => judgeGroup(group)))
 const ruledBy = new Map()
 for (const r of rulings) for (const [k, v] of r) ruledBy.set(k, v)
 
-// ---------------------------------------------------------------- 8. account
+// ---------------------------------------------------------------- 8. record
 
-const verdicts = []
-const dropped = []
-for (const topic of topics) {
-  if (ruledBy.has(topic.key)) verdicts.push(ruledBy.get(topic.key))
-  else dropped.push(topic.key)
+/** A judged item made whole: the survey's question, its topic's ground, and its id. */
+function toItem(raw) {
+  const t = topics.find((x) => x.key === raw.topic)
+  const item = {
+    question, topic: raw.topic, ground: [groundPath(t ? t.subtree : '')], kind: raw.kind,
+    claim: String(raw.claim || '').trim(),
+    spans: (raw.spans || []).map((s) => ({ path: normPath(s.path), start: s.start, end: s.end, at: '' })),
+    queries: (raw.queries || []).map((q) => ({ pattern: q.pattern, scope: (q.scope || []).map(normPath) })),
+    sources: (raw.sources || []).map((s) => ({ url: s.url, version: typeof s.version === 'string' ? s.version : '', retrieved: '' })),
+    rests_on: Array.isArray(raw.rests_on) ? raw.rests_on : [],
+  }
+  return { ...item, id: itemIdOf(item) }
 }
 
+/** A derived item names its siblings by claim; the recorder takes ids. Unresolved names travel as-is and are refused there. */
+function resolveRests(items, siblings) {
+  const byClaim = new Map(siblings.map((i) => [i.claim, i.id]))
+  return items.map((i) => ({ ...i, rests_on: i.rests_on.map((r) => (ITEM_ID.test(r) ? r : byClaim.get(String(r).trim()) || r)) }))
+}
+
+/** An item as the store re-derives it: everything but the id, which it re-mints from the rest. */
+const withoutId = (it) => { const { id, ...rest } = it; return rest }
+
+/** Split items into batches whose token — {items}, with `id` stripped from each — keeps its
+ * base64 length within COMMAND_BUDGET. An oversized single item goes alone. */
+function budgetBatches(items) {
+  const tokenLen = (batch) => base64(JSON.stringify({ items: batch.map(withoutId) })).length
+  const batches = []
+  let current = []
+  for (const item of items) {
+    const grown = current.concat(item)
+    if (current.length > 0 && tokenLen(grown) > COMMAND_BUDGET) {
+      batches.push(current)
+      current = [item]
+    } else {
+      current = grown
+    }
+  }
+  if (current.length > 0) batches.push(current)
+  return batches
+}
+
+/** Carry one or more record batches under `label`, and sort what came back: recorded, refused
+ * (with the batch's other items unwritten, since a refusal refuses the whole batch), or —
+ * no payload at all — unrecorded, with why the account can show. */
+async function recordBatches(items, label) {
+  const batches = budgetBatches(items)
+  const recorded = []
+  const unrecorded = []
+  const refused = []
+  const unwritten = []
+  let why = ''
+
+  await Promise.all(batches.map(async (batch, i) => {
+    const token = { items: batch.map(withoutId) }
+    const lbl = batches.length === 1 ? label : label + ':' + (i + 1)
+    const held = await carry(
+      `node "${pluginRoot}/lib/evidence.mjs" record --repo "${repo}" --root "${repo}" --kind survey ` +
+      `--digest ${fnv1a(canonical(token))} --b64 ${base64(JSON.stringify(token))}`,
+      lbl, 'Record',
+    )
+
+    if (held.payload && held.payload.ok) {
+      recorded.push(...batch)
+    } else if (held.payload && Array.isArray(held.payload.refused)) {
+      const problemsOf = new Map(held.payload.refused.map((r) => [r.index, r.problems]))
+      batch.forEach((item, index) => {
+        if (problemsOf.has(index)) refused.push({ item, problems: problemsOf.get(index) })
+        else unwritten.push(item)
+      })
+    } else {
+      unrecorded.push(...batch)
+      why = held.why || why
+    }
+  }))
+
+  return { recorded, unrecorded, refused, unwritten, why }
+}
+
+/** The re-ask prompt: each refused item, its problems, and a request for corrected versions of
+ * exactly those items — nothing else. */
+function anchorReaskPrompt(refused) {
+  return `The store refused these items for their anchors. Return corrected versions of exactly ` +
+    `these items, fixing what is wrong; nothing else.\n\n` +
+    refused.map(({ item, problems }) =>
+      `[${item.topic}] (${item.kind}) ${item.claim}\nProblem(s): ${problems.join('; ')}`).join('\n\n')
+}
+
+/**
+ * One judge group's whole record charge: pass 0 records everything it ruled; a refused item goes
+ * back to the judge that wrote it, on exactly the topics still refused, for as long as a pass
+ * refuses fewer than the one before it. No counter ends it — a pass that refuses as many as the
+ * last one does.
+ */
+async function recordGroup(group, items) {
+  const label = ['record', groupName(group)].filter(Boolean).join(':')
+  const judgeLabel = ['judge', groupName(group)].filter(Boolean).join(':')
+
+  let pending = items
+  let recorded = []
+  let unrecorded = []
+  let refused = []
+  let why = ''
+  let prevCount = Infinity
+  let pass = 0
+
+  while (true) {
+    const base = pass === 0 ? label : label + ':anchors:' + pass
+    const out = await recordBatches(pending, base)
+    recorded = recorded.concat(out.recorded)
+    unrecorded = unrecorded.concat(out.unrecorded)
+    if (out.why) why = out.why
+    refused = out.refused
+
+    if (refused.length === 0 || !(refused.length < prevCount)) break
+    prevCount = refused.length
+    pass++
+
+    const reaskTopics = [...new Set(refused.map((r) => r.item.topic))]
+    const answer = await agent(anchorReaskPrompt(refused), {
+      agentType: 'agentics:analyst', schema: itemsSchema(reaskTopics),
+      phase: 'Judge', label: judgeLabel + ':anchors:' + pass, ...tiered(judge, 'high'),
+    }).catch(() => null)
+
+    if (!answer) break
+
+    const raw = Array.isArray(answer.items) ? answer.items : []
+    const corrected = resolveRests(raw.map(toItem), items)
+    pending = out.unwritten.concat(corrected)
+  }
+
+  return { recorded, unrecorded, refused, why }
+}
+
+phase('Record')
+const recordOutcomes = await Promise.all(groups.map(async (group) => {
+  const raw = group.flatMap((t) => (ruledBy.get(t.key) || { items: [] }).items)
+  if (raw.length === 0) return { recorded: [], unrecorded: [], refused: [], why: '' }
+  const converted = raw.map(toItem)
+  const resolved = resolveRests(converted, converted)
+  return recordGroup(group, resolved)
+}))
+
+// ---------------------------------------------------------------- 9. account
+
+const recorded = []
+const unrecorded = []
+const refusedByTopic = new Map()
+const unrecordedByTopic = new Map()
+
+for (const outcome of recordOutcomes) {
+  recorded.push(...outcome.recorded)
+  unrecorded.push(...outcome.unrecorded)
+  for (const { item, problems } of outcome.refused) {
+    const list = refusedByTopic.get(item.topic) || []
+    list.push(problems.join('; '))
+    refusedByTopic.set(item.topic, list)
+  }
+  for (const item of outcome.unrecorded) {
+    const entry = unrecordedByTopic.get(item.topic) || { count: 0, why: outcome.why }
+    entry.count++
+    unrecordedByTopic.set(item.topic, entry)
+  }
+}
+
+const recordIncomplete = []
+const recordUnreached = []
+for (const [topicKey, problemsList] of refusedByTopic) {
+  recordIncomplete.push(topicKey)
+  recordUnreached.push(`${topicKey}: ${problemsList.length} item(s) refused for their anchors and dropped: ${problemsList.join('; ')}`)
+}
+for (const [topicKey, entry] of unrecordedByTopic) {
+  recordIncomplete.push(topicKey)
+  recordUnreached.push(`${topicKey}: ${entry.count} item(s) not recorded (${entry.why}), so their anchors were never checked`)
+}
+
+const dropped = topics.filter((t) => !ruledBy.has(t.key)).map((t) => t.key)
 if (dropped.length > 0) log(`WARNING: no verdict for topic(s): ${dropped.join(', ')}`)
 if (partial.length > 0) log(`WARNING: could not search to exhaustion: ${partial.join(', ')}`)
+
+const risks = []
+for (const [, v] of ruledBy) risks.push(...v.risks)
 
 const history = await historyChannel
 const docs = await docsChannel
@@ -1234,16 +1631,23 @@ function channelEvidence(channel) {
         `as settled.`)
 }
 
-// A topic that produced a verdict but never exhausted its search is still incomplete. One that
+// A topic that produced items but never exhausted its search is still incomplete. One that
 // produced nothing at all is already in `dropped`, so it is not counted twice.
 const droppedKeys = new Set(dropped)
-const incomplete = [...new Set(partial)].filter((k) => !droppedKeys.has(k)).concat(truncatedChannels)
+const incomplete = [...new Set([...partial, ...recordIncomplete])]
+  .filter((k) => !droppedKeys.has(k)).concat(truncatedChannels)
 
-return surveyResult(
-  topics.map((t) => t.key),
-  verdicts,
-  channelEvidence(history),
-  channelEvidence(docs),
-  coverageOf(dropped, incomplete, failedChannels, []),
-  [...new Set(topics.map((t) => groundPath(t.subtree)))],
-)
+const searchedItems = recorded.concat(unrecorded)
+  .sort((a, b) => topics.findIndex((t) => t.key === a.topic) - topics.findIndex((t) => t.key === b.topic))
+
+return surveyResult({
+  topics: topics.map((t) => t.key),
+  ground: [...new Set(topics.map((t) => groundPath(t.subtree)))],
+  items: known.concat(searchedItems),
+  reused: known.map((i) => i.id),
+  unrecorded: unrecorded.map((i) => i.id),
+  risks,
+  history: channelEvidence(history),
+  docs: channelEvidence(docs),
+  coverageBlock: coverageOf(dropped, incomplete, failedChannels, recordUnreached),
+})

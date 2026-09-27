@@ -131,7 +131,7 @@ const EXECUTOR = {
 
 const FINDINGS = {
   type: 'object', additionalProperties: false,
-  required: ['findings', 'fix_verdicts', 'notes'],
+  required: ['findings', 'fix_verdicts', 'claims', 'notes'],
   properties: {
     findings: {
       type: 'array',
@@ -152,6 +152,17 @@ const FINDINGS = {
       items: {
         type: 'object', additionalProperties: false, required: ['id', 'status', 'evidence'],
         properties: { id: { type: 'string' }, status: { type: 'string', enum: ['fixed', 'not_fixed', 'regressed'] }, evidence: { type: 'string' } },
+      },
+    },
+    claims: {
+      type: 'array',
+      items: {
+        type: 'object', additionalProperties: false, required: ['claim', 'verdict', 'evidence'],
+        properties: {
+          claim: { type: 'string' },
+          verdict: { type: 'string', enum: ['met', 'under', 'over', 'deviates', 'spec_defect', 'cant_tell'] },
+          evidence: { type: 'string' },
+        },
       },
     },
     notes: { type: 'string' },
@@ -478,12 +489,17 @@ function reviewerPrompt(id, st, round, prior) {
     (prior.length
       ? 'Prior blockers — rule on each in fix_verdicts, and re-report under its id any you rule not_fixed or regressed:\n' +
         prior.map((f) => '- ' + f.id + ' [' + f.severity + '] ' + f.claim).join('\n') + '\n'
-      : '')
+      : '') +
+    'Return claims: [] — claim verdicts belong to integration reviews.\n'
 }
 
 function integrationPrompt(id, where, children, missing) {
-  return 'Integration review of composite ' + id + ' ("' + rows.get(id).title + '").\n' +
+  const row = rows.get(id)
+  return 'Integration review of composite ' + id + ' ("' + row.title + '").\n' +
     'Worktree: ' + where.worktree + '. Merged diff: ' + where.base + '..' + where.head + '.\n' +
+    'Yardstick: the folder\'s spec, ' + row.spec_path + '. Judge every claim it makes (each success criterion in its ' +
+    'Intent, each statement of its Design, each criterion of its plan) and return one entry per claim in claims: ' +
+    '{claim, verdict: met | under | over | deviates | spec_defect | cant_tell, evidence}. A HUMAN: criterion is the user\'s: leave it out.\n' +
     'Its decisions, and the criteria of every child, are in: node "' + pluginRoot + '/lib/tree.mjs" show --repo "' + repo +
     '" --effort "' + effort + '" --root "' + id + '" --json\n' +
     'Children merged here: ' + children.join(', ') + '.\n' +
@@ -1277,6 +1293,25 @@ function integrated() {
   return out
 }
 
+const DRIFT = ['under', 'over', 'deviates']
+
+/**
+ * The one park an integration review earns, or null. A spec defect goes first: fixing work against
+ * a claim that cannot be met is wasted. Then criticals and drift, which the user routes to a fix:
+ * no single producer owns a folder's merged work (`../shared/architecture.md` § Design Decisions 2, spec §6)
+ * Then what the review could not decide, which never counts as a pass.
+ */
+function integrationPark(id, findings, claims) {
+  const off = claims.filter((c) => c.verdict !== 'met')
+  const criticals = findings.filter((f) => f.severity === 'critical')
+  const why = off.some((c) => c.verdict === 'spec_defect') ? 'spec_defect'
+    : criticals.length || off.some((c) => DRIFT.includes(c.verdict)) ? 'integration_critical'
+      : off.length ? 'cant_tell' : ''
+  if (!why) return null
+  const lines = criticals.map((f) => f.id + ': ' + f.claim).concat(off.map((c) => '[' + c.verdict + '] ' + c.claim + ' — ' + c.evidence))
+  return { why, question: (why === 'spec_defect' ? 'the spec ' + rows.get(id).spec_path + ': ' : '') + lines.join('; ') }
+}
+
 /**
  * The integration review, earned: when a child had no review loop of its own, or when two or more
  * children with commits meet here for the first time. Its criticals go to the user.
@@ -1286,7 +1321,8 @@ async function reviewComposite(id) {
   const kids = childrenOf(id)
   const where = integ.get(id)
   const withWork = kids.filter((k) => !isLeaf(k) || rows.get(k).rigor !== 'verify')
-  const earned = kids.some((k) => isLeaf(k) && !rows.get(k).own_review && rows.get(k).rigor !== 'verify') || withWork.length >= 2
+  const earned = id === '.' ||
+    kids.some((k) => isLeaf(k) && !rows.get(k).own_review && rows.get(k).rigor !== 'verify') || withWork.length >= 2
   if (!earned || !where) {
     note(id + ': integration review not earned (' + (where ? 'one reviewed child' : 'nothing merged') + ')')
     composite.set(id, 'ripe')
@@ -1300,11 +1336,13 @@ async function reviewComposite(id) {
     return null
   })
   const findings = res ? res.findings || [] : []
-  reviews.push({ target: id, findings, notes: res ? res.notes : '', reviewed: Boolean(res) })
-  const criticals = findings.filter((f) => f.severity === 'critical')
-  if (criticals.length) {
+  const claims = res ? res.claims || [] : []
+  reviews.push({ target: id, findings, claims, notes: res ? res.notes : '', reviewed: Boolean(res) })
+  if (res) recordEvent({ kind: 'claims', node: id, head_sha: where.head, claims })
+  const held = integrationPark(id, findings, claims)
+  if (held) {
     composite.set(id, 'held')
-    park(id, 'integration_critical', criticals.map((f) => f.id + ': ' + f.claim).join('; '))
+    park(id, held.why, held.question)
     return null
   }
   composite.set(id, 'ripe')

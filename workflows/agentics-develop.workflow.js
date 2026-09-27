@@ -171,6 +171,23 @@ const PLANNED = {
   },
 }
 
+const SETTLED = {
+  type: 'object', additionalProperties: false,
+  required: ['status', 'dispositions', 'question', 'detail'],
+  properties: {
+    status: { type: 'string', enum: ['settled', 'needs_decision', 'blocked'] },
+    dispositions: {
+      type: 'array',
+      items: {
+        type: 'object', additionalProperties: false, required: ['finding', 'outcome'],
+        properties: { finding: { type: 'string' }, outcome: { type: 'string', enum: ['incorporated', 'discarded'] } },
+      },
+    },
+    question: { type: 'string' },
+    detail: { type: 'string' },
+  },
+}
+
 const ESTABLISHED = {
   type: 'object', additionalProperties: false,
   required: ['commands', 'unresolved', 'notes'],
@@ -497,6 +514,17 @@ function plannerPrompt(id, why, evidence) {
     '\nReturn status written with the spec\'s path in written, or the user-bound need.'
 }
 
+function settlePrompt(id, path, findings, refused) {
+  return 'Settle the autonomous review of folder ' + id + ' of effort ' + effort + ' (repository ' + repo + '). Its spec: ' + path + '.\n' +
+    'Give every finding below one disposition: incorporated (you edited the spec\'s Design, Plan or Open questions because of it) ' +
+    'or discarded. An ambiguity or a gap can only be incorporated; a note may be discarded. A finding whose fix would state or ' +
+    'change a decision is not yours: return needs_decision with the question.\n' +
+    'After editing, check the spec until it prints no problems: node "' + pluginRoot + '/lib/spec.mjs" check --repo "' + repo +
+    '" --effort "' + effort + '" --folder "' + id + '"\n' +
+    (refused.length ? 'Refused last time, settle these again: ' + refused.map((r) => r.why).join('; ') + '\n' : '') +
+    '\nFindings:\n' + findings.map((f) => '- ' + f.id + ' [' + f.severity + ', ' + f.axis + ', ' + f.section + '] ' + f.claim + ' — ' + f.evidence).join('\n')
+}
+
 // ---------------------------------------------------------------- records
 
 const recordEvent = (entry) => records.push({ file: 'events', entry: { execution, ...entry } })
@@ -621,6 +649,24 @@ function unplanned() {
 }
 
 /**
+ * Folders the planner wrote that compile parked `spec_changed` (their spec changed while work under
+ * them was dispatched): the planner re-derives each, once per invocation. Its preparation clears
+ * the park its own compile raises (`spec-prepare`), so a re-derived folder does not come back here.
+ * A folder the user wrote is theirs to re-spec, and stays parked.
+ */
+const rederived = new Set()
+function rederivable() {
+  const out = []
+  for (const [id, row] of rows) {
+    if (!inScope(id) || row.kind === 'leaf' || row.author !== 'planner') continue
+    if (planning.has(id) || rederived.has(id) || statusOf(id) !== 'parked' || row.reason !== 'spec_changed') continue
+    rederived.add(id)
+    out.push(id)
+  }
+  return out
+}
+
+/**
  * Plan a node by writing a spec. A task is promoted by the planner; a folder is replanned by it
  * only when the planner wrote that folder. A folder the user wrote is theirs to re-spec.
  */
@@ -681,9 +727,168 @@ async function writeSpec(id, why) {
   return null
 }
 
-/** The seam the autonomous review fills: a planner-written spec is never compiled unreviewed. */
+/** What makes two findings the same finding across rounds: its axis, its section, its claim. */
+const findingKey = (f) => [f.axis, f.section, String(f.claim || '').toLowerCase().replace(/\s+/g, ' ').trim()].join('|')
+
+async function reload(label) {
+  const payload = await boundary('preflight', { root: rootId, reload: true }, { phase: 'Plan', label })
+  absorbTree(payload)
+}
+
+/**
+ * The autonomous review of a planner-written spec (D21): check it, attack it with a nested probe,
+ * have the planner settle every finding, re-review only what changed, until the ledger's gate
+ * (`spec-gate`) is ratifiable; then prepare and compile. Every exit is computed: a Decisions row
+ * parks the folder; a finding back unchanged after it was incorporated, a discard refused twice,
+ * or a gate still shut on a round that edited nothing escalates.
+ */
 async function reviewSpec(id, spec) {
-  park(id, 'spec_unreviewed', spec.path + ' was written by the planner and has not passed its autonomous review')
+  let since = ''
+  let incorporated = new Set()   // keys of what the last round incorporated
+  const settled = new Set()      // disposition ids of every finding settled in any round
+  for (;;) {
+    const checked = await boundary('spec-check', { node: id }, { phase: 'Plan', label: 'spec-check:' + id })
+    if (checked.decisions_n > 0) {
+      park(id, 'needs_decision', checked.spec_path + ' states ' + checked.decisions_n + ' decision(s): only the user states decisions')
+      return null
+    }
+    if ((checked.problems || []).length) {
+      escalate(id, 'spec_refused', checked.problems.map((p) => p.file + ':' + p.line + ' ' + p.problem).join('; '))
+      return null
+    }
+    const review = await workflow('agentics-probe', {
+      artifact: checked.spec_path, roots: repo, plugin_root: pluginRoot,
+      context: 'the spec develop\'s planner wrote for folder ' + id + ' of effort ' + effort,
+      ...(since ? { since } : {}),
+    }).catch((err) => {
+      failedChannels.push('autonomous-review')
+      note('the autonomous review of ' + id + ' failed: ' + (err && err.message))
+      return null
+    })
+    if (!review) {
+      escalate(id, 'review_failed', 'the autonomous review of ' + checked.spec_path + ' returned nothing')
+      return null
+    }
+    // A finding's settlement id: its evidence item, or the reviewed hash and its P-id when the
+    // probe could not anchor it. Dispositions and the `reviewed` line both use it.
+    const idOf = (f) => f.item || checked.hash + '#' + f.id
+    // Every round reaches the ledger, whole or partial, before anything acts on it.
+    const whole = !!(review.coverage && review.coverage.complete === true)
+    const left = whole ? [] : ((review.coverage && review.coverage.resumable && review.coverage.resumable.remaining) || [])
+    const reviewed = await boundary('spec-reviewed', {
+      node: id, complete: whole,
+      remaining: whole || left.length ? left : ((review.coverage && review.coverage.unreached) || ['the review reported no coverage']),
+      ambiguities: (review.findings || []).filter((f) => f.severity === 'ambiguity').map(idOf),
+    }, { phase: 'Plan', label: 'spec-reviewed:' + id })
+    if (reviewed.error || reviewed.ok === false) {
+      escalate(id, 'ledger_refused', (reviewed.error && reviewed.error.message) || 'spec-reviewed refused')
+      return null
+    }
+    if (!whole) {
+      escalate(id, 'review_incomplete', ((review.coverage && review.coverage.unreached) || []).join('; '))
+      return null
+    }
+    // A finding carried from an earlier round sits on lines no edit touched: it stays settled.
+    const fresh = (review.findings || []).filter((f) => !settled.has(idOf(f)))
+    const back = fresh.find((f) => incorporated.has(findingKey(f)))
+    if (back) {
+      escalate(id, 'review_not_converging', 'finding ' + back.id + ' came back unchanged after it was incorporated: ' + back.claim)
+      return null
+    }
+    let taken = []
+    if (fresh.length) {
+      const dispositions = await settle(id, spec, fresh)
+      if (!dispositions) return null
+      const byId = new Map(fresh.map((f) => [f.id, f]))
+      const settledOut = await boundary('spec-settle', {
+        node: id, dispositions: dispositions.map((d) => ({ finding: idOf(byId.get(d.finding)), outcome: d.outcome })),
+      }, { phase: 'Plan', label: 'spec-settle:' + id })
+      if (settledOut.error || settledOut.ok === false) {
+        escalate(id, 'ledger_refused', (settledOut.error && settledOut.error.message) || 'spec-settle refused')
+        return null
+      }
+      for (const f of fresh) settled.add(idOf(f))
+      taken = dispositions.filter((d) => d.outcome === 'incorporated').map((d) => d.finding)
+    }
+    // The gate is the ledger's (approvalGate), the one the design skill reads: the latest review
+    // of the spec as it stands is complete and every ambiguity it returned has a disposition, from
+    // any round. An incorporation edited the spec, so the gate stays shut until the narrowed
+    // re-review reads it. The probe's own ratifiable counts a settled carried ambiguity as open,
+    // so it is not the gate here.
+    const gate = await boundary('spec-gate', { node: id }, { phase: 'Plan', label: 'spec-gate:' + id })
+    // The prepared line names the review return that passed. A clean round records an empty
+    // return, so only a probe whose record failed (then its snapshot) or whose scope failed too
+    // (then the spec hash) is named by what it read.
+    if (gate.ratifiable) return prepare(id, review.review || review.snapshot || checked.hash)
+    if (taken.length === 0) {
+      escalate(id, 'review_not_converging', 'the gate stays shut on a spec this round did not edit: open ' +
+        ((gate.open || []).join(', ') || 'none') + (gate.coverage_complete ? '' : '; coverage incomplete'))
+      return null
+    }
+    since = review.snapshot || ''
+    incorporated = new Set(fresh.filter((f) => taken.includes(f.id)).map(findingKey))
+  }
+}
+
+/**
+ * The planner's dispositions, one per finding. A discarded ambiguity or gap, or a finding left
+ * without one, is refused and sent back once; the same finding refused twice escalates.
+ */
+async function settle(id, spec, findings) {
+  let refused = []
+  for (let attempt = 1; ; attempt++) {
+    const res = await dispatch(settlePrompt(id, spec.path, findings, refused), {
+      agentType: 'agentics:planner', schema: SETTLED, phase: 'Plan', label: 'settle:' + id + '#' + attempt, ...tierFor(JUDGE, 'high'),
+    }, id)
+    if (!res) {
+      escalate(id, 'settle_returned_nothing', 'the planner returned nothing for ' + findings.length + ' finding(s)')
+      return null
+    }
+    if (res.status === 'needs_decision') {
+      park(id, 'needs_decision', res.question || res.detail)
+      return null
+    }
+    if (res.status === 'blocked') {
+      escalate(id, 'blocked', res.detail)
+      return null
+    }
+    const outcome = new Map((res.dispositions || []).map((d) => [d.finding, d.outcome]))
+    const wrong = findings.filter((f) => !outcome.has(f.id) || (outcome.get(f.id) === 'discarded' && f.severity !== 'note'))
+    if (wrong.length === 0) return findings.map((f) => ({ finding: f.id, outcome: outcome.get(f.id) }))
+    const again = wrong.find((f) => refused.some((r) => r.id === f.id))
+    if (again) {
+      escalate(id, 'review_not_converging', 'the planner left ' + again.id + ' (' + again.severity + ') unincorporated after it was refused')
+      return null
+    }
+    refused = wrong.map((f) => ({
+      id: f.id,
+      why: f.id + ' (' + f.severity + '): ' + (outcome.has(f.id) ? 'an ' + f.severity + ' can only be incorporated' : 'it has no disposition'),
+    }))
+  }
+}
+
+/** The gate passed on the review `reviewed` names (its return; its snapshot or the spec hash only when the probe's record failed): record the preparation, compile, reload. */
+async function prepare(id, reviewed) {
+  const out = await boundary('spec-prepare', { node: id, review: reviewed }, { phase: 'Plan', label: 'spec-prepare:' + id })
+  if (out.error || out.ok === false) {
+    escalate(id, 'ledger_refused', (out.error && out.error.message) || 'spec-prepare refused')
+    return null
+  }
+  if (out.status !== 'prepared') {
+    escalate(id, 'prepare_refused', (out.problems || []).map((p) => p.file + ':' + p.line + ' ' + p.problem).join('; ') || String(out.status))
+    return null
+  }
+  const compiled = out.compile || {}
+  if (compiled.ok !== true) {
+    escalate(id, 'compile_refused', (compiled.problems || []).map((p) => p.file + ':' + p.line + ' ' + p.problem).join('; '))
+    return null
+  }
+  log('prepared ' + id + ' on ' + reviewed + '; compiled ' + (compiled.written || []).length + ' node(s)')
+  await reload('reload:' + id)
+  if (rows.get(id) && rows.get(id).kind !== 'leaf' && childrenOf(id).length === 0) {
+    escalate(id, 'planner_wrote_nothing', 'compiled ' + id + ' with no plan entry beneath it')
+  }
+  return null
 }
 
 // ---------------------------------------------------------------- commands
@@ -1219,6 +1424,9 @@ log('execution ' + execution + ' of ' + rootId + ': ' + [...rows.keys()].filter(
 phase('Execute')
 for (;;) {
   for (const id of unplanned()) launch('plan:' + id, () => planNode(id))
+  for (const id of rederivable()) {
+    launch('plan:' + id, () => planNode(id, 'spec_changed: its spec changed while work under it was dispatched — re-derive what is below it, keeping every dispatched or merged task that still stands'))
+  }
   for (const id of readyLeaves()) launch('leaf:' + id, () => runLeaf(id))
   for (const [target, batch] of mergeable()) launch('merge:' + target, () => mergeInto(target, batch))
   for (const id of integrated()) launch('review:' + id, () => reviewComposite(id))

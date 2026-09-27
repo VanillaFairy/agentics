@@ -209,6 +209,26 @@ test('a sub-effort of a dropped sub-effort is never offered by rule 5, even thou
   assert.ok(!commands.includes('/agentics:design a/b'), commands.join(', '))
 })
 
+test('a sub-effort whose entry is removed outright, not merely skipped, is an orphan never offered by rule 5 or 6', () => {
+  const r = repo()
+  write(r, 'e1', '.', spec({ decisions: [], plan: [...subEffort('x', []), ...task('z', [])] }))
+  approve(r, 'e1', '.')
+  write(r, 'e1', 'x', spec({ title: 'X', decisions: [], plan: task('y', []) }))
+  approve(r, 'e1', 'x')
+  assert.equal(compileEffort(r, 'e1').ok, true)
+
+  write(r, 'e1', '.', spec({ decisions: [], plan: task('z', []) }))
+  approve(r, 'e1', '.')
+  const compiled = compileEffort(r, 'e1')
+  assert.equal(compiled.ok, true)
+  assert.ok(compiled.retired.includes('x'), compiled.retired.join(', '))
+
+  const n = nextAction(r, 'e1')
+  const commands = [n.command, ...n.alternatives.map((a) => a.command)]
+  assert.ok(!commands.includes('/agentics:design x'), commands.join(', '))
+  assert.ok(!commands.includes('/agentics:develop x'), commands.join(', '))
+})
+
 test('an open execution wins over everything else (rule 1), and the rest become alternatives', () => {
   const r = repo()
   write(r, 'e1', '.', spec({ plan: task('x', ['D1']) }))

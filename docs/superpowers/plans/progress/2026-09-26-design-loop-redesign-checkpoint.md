@@ -1,9 +1,14 @@
 Status: DONE
 # 2026-09-26-design-loop-redesign checkpoint
 
-Wave: 18 — T28a
-Integration head: ac52831
-Remaining: T28b, T28d, T29
+Wave: 19 — T28b, T28d
+Integration head: c3ce5a4
+Remaining: T29
+
+## Tasks (wave 19)
+| Task | Wave | Branch | State | Review cycles | Merge commit |
+| T28b | 19 | sdd/2026-09-26-design-loop-redesign/T28b | merged | 1 | c3ce5a4 (fix round 1: 32 lines, re-review required and PASSED) |
+| T28d | 19 | sdd/2026-09-26-design-loop-redesign/T28d | merged | 0 | 694f31c |
 
 ## Tasks (wave 18)
 | Task | Wave | Branch | State | Review cycles | Merge commit |
@@ -515,6 +520,36 @@ one `- Read:` line — watch it.)
   design-gate/budget rules, none of `appendProject`'s seq minting). Not a regression, not fixed,
   not blocking. No triad (rigor: verify), no audit, no gap task. Wave 18 is complete; no tasks
   carry into wave 19 from this wave.
+
+- W19: T28b and T28d ran in parallel from a0e8f37 (disjoint files: T28b touches everything but
+  docs/DESIGN.md/test/iron-law.test.mjs, T28d touches only those two) — no conflicts, both merges
+  clean `--no-ff`. Branch A (per spikes.md § 0b, "relocate") followed by both, not re-opened: the
+  five service workflows moved to `service-workflows/<long name>.workflow.js`, launched everywhere
+  by `scriptPath`, dropped their `agentics-` prefix and plugin qualifier. T28d passed review clean
+  first time (0/0/2 minor, `T28d-review.md`, not fixed) and merged 694f31c. T28b's implementer
+  reported DONE_WITH_CONCERNS: it flagged, but declined to fix as out of Scope ("no argument
+  changes"), that Branch A makes `answer-codebase-question-from-evidence.workflow.js`'s own
+  `pluginRoot` (previously only forwarded, with no environment fallback unlike its three siblings)
+  the direct address of the nested survey's `scriptPath` — since `skills/investigate/SKILL.md`
+  never passes `plugin_root` in its launch args, every real (non-test-harness) investigate run
+  would build a broken path and report "broken reference, nothing was searched". The review
+  independently found the same defect and raised it Critical, offering two fixes: (a) add
+  `plugin_root` to investigate's launch args, or (b) give line 90 the same three-tier
+  `input.plugin_root` → `process.env.CLAUDE_PLUGIN_ROOT` → literal fallback its three siblings
+  already have. Ruled (b): it adds no argument or interface, only parity the sibling scripts
+  already carry, so it stays inside Scope's "no argument changes" without a user decision. Fix
+  round 1 (9f01019, 27 insertions/5 deletions, 32 lines — over the 20-line re-review threshold):
+  applied fix (b) and added the review's named assertion (`ref.scriptPath` starts with
+  `plugin_root`, ends in the survey's new path) to the investigate scenarios test. Scoped
+  re-review: ADDRESSED, 0 open, 0 new critical/important (`T28b-re-review-1.md`). Merged c3ce5a4,
+  clean `--no-ff`, no conflicts (git's "Failed to parse repository information" hook line, seen at
+  every merge in this plan, printed again harmlessly). T28b's Minor findings (5, in
+  `T28b-review.md`, e.g. a stale `workflows/` mention in `skills/investigate/SKILL.md:72` and a
+  stale `whenToUse` string-ref example) were left unfixed, as Minor findings are throughout this
+  plan. No triad in this wave (both `verify`), so no audit and no gap task. Full suite on c3ce5a4:
+  `node tools/lint.mjs` clean, `node --test` 1055/1055 (log at
+  `~/.superpowers/sdd/-c-work-claude-vanillafairy-agentics/plan/suite-c3ce5a4.log`). Wave 19 is
+  complete; only T29 (the 4.0.0 release) remains.
 
 ## Knowledge entries
 - mutation-probe-baseline-scope (W4)

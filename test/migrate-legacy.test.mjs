@@ -11,7 +11,6 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { evidenceOf } from '../lib/effort.mjs'
 import { readLog, seqMax } from '../lib/ledger.mjs'
 import { heldBy, poolConfig } from '../lib/locks.mjs'
 import { efforts } from '../lib/status.mjs'
@@ -118,9 +117,7 @@ test('an effort mid-execution arrives with its tree, statuses, seq, evidence and
   assert.equal(listed.about, 'parse configs')
   assert.deepEqual(listed.executions.map((x) => [x.stamp, x.closed, x.status]), [[STAMP, false, 'checkpoint']])
 
-  const evidence = evidenceOf(repo, 'e1')
-  assert.deepEqual(evidence.map((it) => it.kind), ['survey'])
-  assert.equal(evidence[0].stamp, '20260920-100000')
+  assert.ok(existsSync(join(effortStateDir(repo, 'e1'), 'evidence', '20260920-100000-survey.json')))
 })
 
 test('every file of the effort lands in its .state byte for byte, except the effort\'s own lock', () => {

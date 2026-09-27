@@ -718,6 +718,87 @@ test('a failed integration review makes the result incomplete', async () => {
   const { result } = await run(sim, { 'review:integration:.': () => { throw new Error('dispatch died') } })
   assert.ok(result.coverage.failed_channels.includes('integration-review'))
   assert.equal(result.coverage.complete, false)
+  assert.deepEqual(recordsOf(sim, 'claims'), [], 'a review that never returned has no verdicts to record')
+})
+
+const claim = (verdict, text = 'every request is validated') => ({ claim: text, verdict, evidence: 'src/a.js:3' })
+const integration = (claims, findings = []) => ({ 'review:integration:.': () => ({ findings, fix_verdicts: [], claims, notes: '' }) })
+
+test('the integration review takes the folder\'s spec as its yardstick', async () => {
+  const sim = simulate([composite('.'), row('a'), row('b')])
+  const { prompts } = await run(sim)
+  const review = prompts.find((p) => p.opts.label === 'review:integration:.')
+  assert.ok(review.prompt.includes(composite('.').spec_path))
+})
+
+test('under, over and deviates each go the integration-critical way', async () => {
+  // No single producer owns a composite's merged work, so drift there parks for the user rather
+  // than going to a fix round.
+  for (const verdict of ['under', 'over', 'deviates']) {
+    const sim = simulate([composite('.'), row('a'), row('b')])
+    const drift = claim(verdict)
+    const { result } = await run(sim, integration([claim('met', 'it builds'), drift]))
+    assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['.', 'integration_critical']], verdict)
+    assert.ok(result.parked[0].question.includes('[' + drift.verdict + '] ' + drift.claim + ' — ' + drift.evidence), verdict)
+    assert.ok(!result.parked[0].question.includes('it builds'), 'a met claim is not a question')
+  }
+})
+
+test('a spec_defect parks the folder on its spec', async () => {
+  const sim = simulate([composite('.'), row('a'), row('b')])
+  const { result } = await run(sim, integration([claim('spec_defect', 'the queue is both bounded and unbounded')]))
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['.', 'spec_defect']])
+  assert.ok(result.parked[0].question.includes('the queue is both bounded and unbounded'))
+  assert.ok(result.parked[0].question.includes(composite('.').spec_path))
+  assert.deepEqual(recordsOf(sim, 'claims').map((e) => e.node), ['.'], 'a parked review still records its verdicts')
+})
+
+test('a critical finding with a cant_tell claim parks integration_critical; a critical finding with a spec_defect claim parks spec_defect', async () => {
+  const critical = { id: 'F1', severity: 'critical', claim: 'the lock is never released', evidence: 'src/l.js:4', failure_scenario: 'two writers' }
+  const withCantTell = await run(simulate([composite('.'), row('a'), row('b')]), integration([claim('cant_tell')], [critical]))
+  assert.deepEqual(withCantTell.result.parked.map((p) => [p.id, p.return]), [['.', 'integration_critical']])
+  const withDefect = await run(simulate([composite('.'), row('a'), row('b')]), integration([claim('spec_defect')], [critical]))
+  assert.deepEqual(withDefect.result.parked.map((p) => [p.id, p.return]), [['.', 'spec_defect']])
+})
+
+test('cant_tell goes to the user and never counts as a pass', async () => {
+  const sim = simulate([composite('.'), row('a'), row('b')])
+  const { result } = await run(sim, integration([claim('cant_tell')]))
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['.', 'cant_tell']])
+  assert.equal(result.coverage.complete, false)
+})
+
+test('several classes park once, the spec defect first, every claim in the question', async () => {
+  const sim = simulate([composite('.'), row('a'), row('b')])
+  const { result } = await run(sim, integration([
+    claim('cant_tell', 'latency stays flat'), claim('under', 'retries are bounded'), claim('spec_defect', 'ids are unique and reused'),
+  ]))
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['.', 'spec_defect']])
+  for (const text of ['latency stays flat', 'retries are bounded', 'ids are unique and reused']) {
+    assert.ok(result.parked[0].question.includes(text), text)
+  }
+})
+
+test('claims all met: nothing parks, and the verdicts are recorded for the landing view', async () => {
+  const sim = simulate([composite('.'), row('a'), row('b')])
+  const claims = [claim('met', 'it builds'), claim('met')]
+  const { result } = await run(sim, integration(claims))
+  assert.deepEqual(result.parked, [])
+  assert.equal(result.coverage.complete, true, JSON.stringify(result.coverage.unreached))
+  const recorded = recordsOf(sim, 'claims')
+  assert.deepEqual(recorded.map((e) => [e.node, e.claims]), [['.', claims]])
+  assert.ok(recorded[0].head_sha, 'the verdicts name the head they judged')
+  assert.deepEqual(result.integration.reviews.find((r) => r.target === '.').claims, claims)
+})
+
+test('the root\'s integration review is always earned once work merged; a sub-folder\'s by the old rule', async () => {
+  const one = simulate([composite('.'), row('a', { own_review: true })])
+  const alone = await run(one)
+  assert.ok(labels(alone.prompts).includes('review:integration:.'), 'the landing view needs the root\'s verdicts')
+
+  const sub = simulate([composite('.'), composite('c'), row('c/x', { own_review: true }), row('b', { own_review: true })])
+  const deep = await run(sub)
+  assert.ok(!labels(deep.prompts).includes('review:integration:c'), 'one reviewed child earns no review below the root')
 })
 
 test('a consumer parked for drift while in flight is not merged', async () => {

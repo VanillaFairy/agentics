@@ -186,7 +186,7 @@ export function agents(sim, handlers = {}) {
     if (type === 'implementer' || type === 'test-author' || type === 'auditor') {
       return { status: 'done', detail: '', concerns: [], commits: [{ sha: 'c1', subject: 'do it' }] }
     }
-    if (type === 'reviewer') return { findings: [], fix_verdicts: [], notes: '' }
+    if (type === 'reviewer') return { findings: [], fix_verdicts: [], claims: [], notes: '' }
     throw new Error('unscripted agent: ' + type + ' ' + label)
   }
 }

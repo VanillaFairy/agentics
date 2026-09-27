@@ -775,11 +775,15 @@ async function reviewSpec(id, spec) {
     // Every round reaches the ledger, whole or partial, before anything acts on it.
     const whole = !!(review.coverage && review.coverage.complete === true)
     const left = whole ? [] : ((review.coverage && review.coverage.resumable && review.coverage.resumable.remaining) || [])
-    await boundary('spec-reviewed', {
+    const reviewed = await boundary('spec-reviewed', {
       node: id, complete: whole,
       remaining: whole || left.length ? left : ((review.coverage && review.coverage.unreached) || ['the review reported no coverage']),
       ambiguities: (review.findings || []).filter((f) => f.severity === 'ambiguity').map(idOf),
     }, { phase: 'Plan', label: 'spec-reviewed:' + id })
+    if (reviewed.error || reviewed.ok === false) {
+      escalate(id, 'ledger_refused', (reviewed.error && reviewed.error.message) || 'spec-reviewed refused')
+      return null
+    }
     if (!whole) {
       escalate(id, 'review_incomplete', ((review.coverage && review.coverage.unreached) || []).join('; '))
       return null
@@ -796,9 +800,13 @@ async function reviewSpec(id, spec) {
       const dispositions = await settle(id, spec, fresh)
       if (!dispositions) return null
       const byId = new Map(fresh.map((f) => [f.id, f]))
-      await boundary('spec-settle', {
+      const settledOut = await boundary('spec-settle', {
         node: id, dispositions: dispositions.map((d) => ({ finding: idOf(byId.get(d.finding)), outcome: d.outcome })),
       }, { phase: 'Plan', label: 'spec-settle:' + id })
+      if (settledOut.error || settledOut.ok === false) {
+        escalate(id, 'ledger_refused', (settledOut.error && settledOut.error.message) || 'spec-settle refused')
+        return null
+      }
       for (const f of fresh) settled.add(idOf(f))
       taken = dispositions.filter((d) => d.outcome === 'incorporated').map((d) => d.finding)
     }
@@ -862,6 +870,10 @@ async function settle(id, spec, findings) {
 /** The gate passed on the review `reviewed` names (its return; its snapshot or the spec hash only when the probe's record failed): record the preparation, compile, reload. */
 async function prepare(id, reviewed) {
   const out = await boundary('spec-prepare', { node: id, review: reviewed }, { phase: 'Plan', label: 'spec-prepare:' + id })
+  if (out.error || out.ok === false) {
+    escalate(id, 'ledger_refused', (out.error && out.error.message) || 'spec-prepare refused')
+    return null
+  }
   if (out.status !== 'prepared') {
     escalate(id, 'prepare_refused', (out.problems || []).map((p) => p.file + ':' + p.line + ' ' + p.problem).join('; ') || String(out.status))
     return null

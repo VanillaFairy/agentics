@@ -32,6 +32,9 @@ export const composite = (id, extra = {}) => row(id, { kind: 'composite', ...ext
  *   script.close[id] = [decision per call] | (args, n) => decision
  *   script.merge(args, n) → payload fields
  *   script.open[id] = [status per call]
+ *   script.specCheck(args, n, sim) → spec-check payload fields
+ *   script.prepare(args, n, sim) → spec-prepare payload fields
+ *   script.gate(args, n, sim) → spec-gate payload fields, over the computed ones
  */
 export function simulate(nodes, script = {}) {
   const sim = {
@@ -40,6 +43,10 @@ export function simulate(nodes, script = {}) {
     opens: [],            // leaf ids in open order
     batches: [],          // merge-batch args
     records: [],          // every record the workflow handed to a boundary
+    dispositions: [],     // every disposition the workflow recorded, {node, finding, outcome}
+    prepared: [],         // spec-prepare args
+    reviewed: [],         // spec-reviewed args, one per review round
+    edited: new Set(),    // folders whose spec an incorporation edited since their last review
     counts: new Map(),
   }
   const count = (key) => {
@@ -102,6 +109,48 @@ export function simulate(nodes, script = {}) {
     },
     postflight() {
       return { boundary: 'postflight', ok: true, error: null, cleanup: [], closed: true, todos: [] }
+    },
+    'spec-check'(args) {
+      const n = count('spec-check:' + args.node)
+      const extra = script.specCheck ? script.specCheck(args, n, sim) || {} : {}
+      return {
+        boundary: 'spec-check', ok: true, error: null, node: args.node,
+        spec_path: '/repo/.agentics/e1/' + (args.node === '.' ? '' : args.node + '/') + 'DESIGN.md',
+        exists: true, hash: 'h' + n, decisions_n: 0, problems: [], todos: [], notes: [], ...extra,
+      }
+    },
+    'spec-settle'(args) {
+      for (const d of args.dispositions || []) sim.dispositions.push({ node: args.node, ...d })
+      // An incorporated finding is an edit: no review has read the spec the planner left behind.
+      if ((args.dispositions || []).some((d) => d.outcome === 'incorporated')) sim.edited.add(args.node)
+      return { boundary: 'spec-settle', ok: true, error: null, recorded: (args.dispositions || []).length, todos: [], notes: [] }
+    },
+    'spec-reviewed'(args) {
+      sim.reviewed.push(args)
+      sim.edited.delete(args.node)
+      return { boundary: 'spec-reviewed', ok: true, error: null, todos: [], notes: [] }
+    },
+    'spec-gate'(args) {
+      // approvalGate over the simulated ledger: the latest review of the text as it stands, and
+      // every disposition recorded for the folder in any round.
+      const last = sim.edited.has(args.node) ? null : sim.reviewed.filter((r) => r.node === args.node).pop()
+      const settled = new Set(sim.dispositions.filter((d) => d.node === args.node).map((d) => d.finding))
+      const open = last ? (last.ambiguities || []).filter((id) => !settled.has(id)) : []
+      const complete = !!last && last.complete === true
+      const extra = script.gate ? script.gate(args, count('gate:' + args.node), sim) || {} : {}
+      return {
+        boundary: 'spec-gate', ok: true, error: null, ratifiable: complete && open.length === 0, open,
+        coverage_complete: complete, remaining: last ? last.remaining : [], reviewed: !!last, todos: [], notes: [], ...extra,
+      }
+    },
+    'spec-prepare'(args) {
+      sim.prepared.push(args)
+      const extra = script.prepare ? script.prepare(args, count('prepare:' + args.node), sim) || {} : {}
+      return {
+        boundary: 'spec-prepare', ok: true, error: null, status: 'prepared', hash: 'h',
+        compile: { ok: true, problems: [], written: [args.node], retired: [], parked: [], flagged: [], skipped: [] },
+        todos: [], notes: [], ...extra,
+      }
     },
   }
 

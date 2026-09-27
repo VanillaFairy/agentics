@@ -91,7 +91,7 @@ transcripts.
 <!-- agentics:verbatim effort-store -->
 **Efforts — one directory for everything a piece of work produces.** An effort is a subtree of
 the execution tree. It lives at `.agentics/<effort>/` in the main checkout, never in a worktree,
-and everything scripts write for it — its nodes, their events, its evidence and its executions —
+and everything scripts write for it — its nodes, their events and its executions —
 sits in that directory's `.state/`. Design, probe and develop are separate sessions by
 recommendation, and this directory is how a later one reads what an earlier one established.
 
@@ -106,22 +106,26 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" open <repo> <name> --about "<the cha
 
 Opening is idempotent: a later phase adopts the identity the first one recorded.
 
-Record a survey's or a probe's return into the effort's `.state/evidence/` by writing the workflow's
-result object to a file and passing the path — **verbatim, never summarised** — as soon as it
-returns, before anything spends it:
+**Evidence is project-wide, and every item carries its own anchors.** The survey, the
+existing-solutions search and the challenge review record what they find themselves, as evidence
+items in `.agentics/.state/evidence/`: one claim each, with the lines, searches, sources or other
+items it rests on. Nothing is recorded by hand, and no return is summarised into the store.
+
+An item's state is computed whenever it is used, never judged by the session. An item no edit
+has touched is **standing**. One whose anchored text changed is **suspect** until a cheap
+re-judge says whether the change matters. One that no longer holds is **stale**, and its topic
+is surveyed again. List what a ground holds with
+`node "${CLAUDE_PLUGIN_ROOT}/lib/evidence.mjs" items --repo <repo> --ground <path,path>`.
+
+A folder records the items it rests on, and the coverage gaps it rests on them despite. Its
+`evidence.md` is rendered from those records, never written:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" record <repo> <slug> survey|probe --file <path.json>
+node "${CLAUDE_PLUGIN_ROOT}/lib/evidence.mjs" cite --repo <repo> --effort <effort> --folder <folder> --items <id,id> [--gap "<gap>"]
+node "${CLAUDE_PLUGIN_ROOT}/lib/render.mjs" evidence --repo <repo> --effort <effort> --folder <folder>
 ```
 
-`effort.mjs read <repo> <slug> [--latest survey|probe]` reads the effort back.
-
-**A recorded return is context, never evidence — with one computed exception.** Recording a
-survey anchors it to its commit and the ground its topics searched, and
-`effort.mjs standing <repo> <slug>` answers from git whether it reported complete coverage and
-whether any commit or uncommitted edit has touched that ground since. A standing survey is reused
-instead of bought again; one that does not stand is bought again in full. The program decides that
-a survey stands, never the session.
+The program decides what stands, never the session.
 <!-- /agentics:verbatim -->
 
 Record the probe's whole return before the disposition below, not after. A disposition

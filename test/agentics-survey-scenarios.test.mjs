@@ -1,7 +1,7 @@
 // test/agentics-survey-scenarios.test.mjs — the survey workflow's accounting arithmetic, executed.
 //
 // Lint judges form and cannot reach any of this: whether a channel nobody ran is recorded,
-// whether a verdict is matched to its topic by position or by a string the model retyped,
+// whether an item is matched to its topic by position or by a string the model retyped,
 // whether a half-finished channel still reports complete. Each test below pins a way a
 // PARTIAL result could come back wearing the shape of a WHOLE one (IL2) — three of
 // them were live defects, found by diffing against the sibling `investigate` plugin that had
@@ -11,9 +11,11 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import {
-  carriedContext, carriedEnvelope, contextPathFor, contextPayload, excerptLocations, runWorkflow, scriptedAgents,
+  carriedContext, carriedEnvelope, contextPathFor, contextPayload, excerptLocations, recordedLine, runWorkflow,
+  scriptedAgents,
 } from './harness/workflow-host.mjs'
-import { fnv1a } from '../lib/plan-digest.mjs'
+import { ITEM_KINDS, itemId } from '../lib/evidence.mjs'
+import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 
 const WF = fileURLToPath(new URL('../workflows/agentics-survey.workflow.js', import.meta.url))
 
@@ -36,24 +38,41 @@ const EVIDENCE = (over = {}) => ({
   ...over,
 })
 
-const VERDICT = (topic) => ({ topic, conclusion: 'c', evidence: ['src/x.js:1'], risks: [] })
+const ITEM = (topic, over = {}) => ({
+  topic, kind: 'behaviour', claim: 'what ' + topic + ' found', spans: [{ path: 'src/x.js', start: 1, end: 3 }],
+  queries: [], sources: [], rests_on: [], ...over,
+})
 
 /** The topic keys a judge dispatch was given — its schema's closed enum. */
-const keysOf = (opts) => opts.schema.properties.verdicts.items.properties.topic.enum
+const keysOf = (opts) => opts.schema.properties.items.items.properties.topic.enum
 
-/** A judge that rules on every topic it holds. */
-const judgeAll = (prompt, opts) => ({ verdicts: keysOf(opts).map(VERDICT) })
+/** A judge that returns one item for every topic it holds. */
+const judgeAll = (prompt, opts) => ({ items: keysOf(opts).map((k) => ITEM(k)), risks: [] })
+
+/** A record courier whose store accepts everything, answering with the ids lib/evidence.mjs mints. */
+const recordAll = (prompt) => carriedEnvelope({
+  ok: true, return: '20260926-120000-survey', ids: recordedLine(prompt).entry.items.map(itemId),
+})
+
+/** A record courier whose store refuses every item it is handed, for `problem`. */
+const refuseAll = (problem) => (prompt) => carriedEnvelope({
+  ok: false, refused: recordedLine(prompt).entry.items.map((_, index) => ({ index, problems: [problem] })),
+})
+
+/** The topics the result holds items for, in the order its items came. */
+const itemTopics = (result) => [...new Set(result.items.map((i) => i.topic))]
 
 const resolveAll = carriedContext
 const locationsIn = excerptLocations
 
-// Every survey that finds a location resolves it and judges it, so every scenario scripts the
-// courier and the judge with the ordinary case — every location read, every topic ruled on —
-// which is what keeps the tests below about the thing each one is testing.
+// Every survey that finds a location resolves it, judges it and records what the judge found, so
+// every scenario scripts the courier, the judge and the recorder with the ordinary case — which is
+// what keeps the tests below about the thing each one is testing.
 const run = (script, over = {}) => runWorkflow(WF, {
   args: { question: 'how does X work', plugin_root: 'C:/plugin', ...over },
   agent: scriptedAgents({
-    assemble: resolveAll, 'assemble:': resolveAll, judge: judgeAll, 'judge:': judgeAll, ...script,
+    assemble: resolveAll, 'assemble:': resolveAll, judge: judgeAll, 'judge:': judgeAll,
+    record: recordAll, 'record:': recordAll, ...script,
   }),
 })
 
@@ -126,35 +145,35 @@ test('a channel that throws is recorded without discarding the work already paid
 
   assert.deepEqual(result.coverage.failed_channels, ['docs'])
   assert.equal(result.docs, null)
-  assert.equal(result.verdicts.length, 1, 'a failed channel must not empty the verdicts')
+  assert.deepEqual(itemTopics(result), ['a'], 'a failed channel must not empty the items')
 })
 
 // ---------------------------------------------------------------- reconciliation
 
-test('a lone topic\'s verdict is that topic\'s, whatever key the judge echoed', async () => {
+test('a lone topic\'s items are that topic\'s, whatever key the judge echoed', async () => {
   const { result } = await run({
     plan: PLAN({ topics: [{ key: 'a', find: 'find a' }, { key: 'b', find: 'find b' }] }),
     'scout:': HITS(),
-    'judge:a': { verdicts: [VERDICT('typo-not-a')] },
+    'judge:a': { items: [ITEM('typo-not-a')], risks: [] },
   }, { pace: 'fast' })
 
-  // Matching on the echoed string counted this verdict as evidence AND its topic as dropped,
+  // Matching on the echoed string counted this item as evidence AND its topic as dropped,
   // at the same time: the answer was built on both topics while reporting one as missing.
-  assert.equal(result.verdicts.length, 2)
-  assert.equal(result.verdicts[0].topic, 'a')
+  assert.deepEqual(itemTopics(result), ['a', 'b'])
+  assert.equal(result.items[0].topic, 'a')
   assert.deepEqual(result.coverage.dropped, [])
   assert.equal(result.coverage.complete, true)
 })
 
-test('a verdict under a key the judge was not given is evidence for nothing', async () => {
+test('an item under a key the judge was not given is evidence for nothing', async () => {
   const { result, prompts } = await run({
     plan: PLAN({ topics: [{ key: 'a', find: 'find a' }, { key: 'b', find: 'find b' }] }),
     'scout:': HITS(),
-    judge: { verdicts: [VERDICT('b'), VERDICT('invented')] },
-    'judge#2': { verdicts: [] },
+    judge: { items: [ITEM('b'), ITEM('invented')], risks: [] },
+    'judge#2': { items: [], risks: [] },
   })
 
-  assert.deepEqual(result.verdicts.map((v) => v.topic), ['b'])
+  assert.deepEqual(itemTopics(result), ['b'])
   assert.deepEqual(result.coverage.dropped, ['a'])
   assert.equal(result.coverage.complete, false)
   assert.ok(prompts.some((p) => p.opts.label === 'judge#2'), 'the unruled topic is continued first')
@@ -167,7 +186,7 @@ test('a topic whose judge fails is dropped exactly once and fails coverage', asy
     'judge:a': () => { throw new Error('analyst died') },
   }, { pace: 'fast' })
 
-  assert.equal(result.verdicts.length, 1)
+  assert.deepEqual(itemTopics(result), ['b'])
   assert.deepEqual(result.coverage.dropped, ['a'])
   assert.deepEqual(result.coverage.incomplete, [], 'a dropped topic must not also count as incomplete')
   assert.equal(result.coverage.complete, false)
@@ -335,7 +354,7 @@ test('an exhausted report missing the empty coverage fields is complete, not dro
     'scout:': { hits: [{ path: 'src/x.js', line: 1, note: 'the thing' }], stop_reason: 'exhausted' },
   })
 
-  assert.equal(result.verdicts.length, 1)
+  assert.equal(itemTopics(result).length, 1)
   assert.deepEqual(result.coverage.incomplete, [])
   assert.equal(result.coverage.complete, true)
 })
@@ -346,7 +365,7 @@ test('a report with no stop_reason at all reads as incomplete, never as exhauste
     'scout:': { hits: [{ path: 'src/x.js', line: 1, note: 'the thing' }] },
   })
 
-  assert.equal(result.verdicts.length, 1, 'the evidence gathered is kept and analyzed')
+  assert.equal(itemTopics(result).length, 1, 'the evidence gathered is kept and analyzed')
   assert.deepEqual(result.coverage.incomplete, ['a'])
   assert.equal(result.coverage.complete, false)
 })
@@ -678,7 +697,7 @@ test('context that cannot be carried is a side channel: the judge reads the loca
   // More turns for the judge, not less evidence: nothing was lost that a reader cannot get back.
   assert.deepEqual(result.coverage.failed_channels, [])
   assert.equal(result.coverage.complete, true)
-  assert.equal(result.verdicts.length, 1)
+  assert.equal(itemTopics(result).length, 1)
 })
 
 test('a path the list cannot carry unquoted is not sent: the judge reads it itself', async () => {
@@ -722,7 +741,7 @@ test('one judge holds every topic by default, and says so', async () => {
   assert.equal(judges[0].opts.agentType, 'agentics:analyst')
   assert.deepEqual(keysOf(judges[0].opts), ['t1', 't2', 't3'])
   assert.ok(logs.some((l) => /one analyst holds all 3 topic\(s\)/.test(l)))
-  assert.deepEqual(result.verdicts.map((v) => v.topic), ['t1', 't2', 't3'])
+  assert.deepEqual(itemTopics(result), ['t1', 't2', 't3'])
   assert.equal(result.coverage.complete, true)
 })
 
@@ -740,7 +759,7 @@ test('more than sixty locations earn a second judge, each with its own context',
     'the topics are dealt across the judges, each exactly once')
   assert.ok(judges.every((j) => /^judge:/.test(j.opts.label)))
   assert.ok(logs.some((l) => /81 location\(s\) earn 2 analysts/.test(l)))
-  assert.equal(result.verdicts.length, 3)
+  assert.deepEqual(itemTopics(result).sort(), ['t1', 't2', 't3'])
   assert.equal(result.coverage.complete, true)
 
   // A judge's courier carries the locations of its own topics, not every judge's.
@@ -778,9 +797,9 @@ test('a judge that skips a topic is continued on exactly that topic until it add
   const { result, prompts } = await run({
     plan: PLAN({ topics: topicsOf(3) }),
     'scout:': HITS(),
-    judge: { verdicts: [VERDICT('t1')] },
-    'judge#2': { verdicts: [VERDICT('t3')] },
-    'judge#3': { verdicts: [] },
+    judge: { items: [ITEM('t1')], risks: [] },
+    'judge#2': { items: [ITEM('t3')], risks: [] },
+    'judge#3': { items: [], risks: [] },
   })
 
   assert.deepEqual(keysOf(prompts.find((p) => p.opts.label === 'judge#2').opts), ['t2', 't3'])
@@ -788,110 +807,393 @@ test('a judge that skips a topic is continued on exactly that topic until it add
   assert.deepEqual(keysOf(prompts.find((p) => p.opts.label === 'judge#3').opts), ['t2'])
   assert.ok(!labelsOf(prompts).includes('judge#4'), 'a pass that rules on nothing ends the charge')
 
-  assert.deepEqual(result.verdicts.map((v) => v.topic), ['t1', 't3'])
+  assert.deepEqual(itemTopics(result), ['t1', 't3'])
   assert.deepEqual(result.coverage.dropped, ['t2'])
   assert.equal(result.coverage.complete, false)
 })
 
-// ------------------------------------------------------------------ a standing survey
+// ------------------------------------------------------------------ evidence items
 //
-// A settled shape (the caller's judgment) over ground a recorded survey covers and git says is
-// untouched (computed by lib/effort.mjs) buys no survey. Every refusal surveys in full.
+// A judge returns items, one claim each with the anchor its kind needs. The recorder, not the
+// judge, decides whether an item is anchored: a refused item goes back to the judge that wrote
+// it, and what never gets anchored is dropped out loud rather than returned as evidence.
 
-const RECORDED = {
-  question: 'how does X work (last week)',
-  topics: ['loader'],
-  ground: ['src/boot'],
-  verdicts: [{ topic: 'loader', conclusion: 'the loader lives in src/boot/load.js', evidence: ['src/boot/load.js:3'], risks: [] }],
-  history: null,
-  docs: null,
-  coverage: { complete: true, dropped: [], incomplete: [], failed_channels: [], unreached: [], resumable: {} },
-}
-
-const STANDS = (over = {}) => carriedEnvelope({
-  standing: true, why: 'nothing touched it', effort: 'boot', survey_path: 'x', stamp: '20260920-101500',
-  observed_at: 'abc1234', head: 'def5678', ground: ['src/boot'], commits_since: [], dirty: [], ...over,
+test('the judge is told which anchor each kind of claim needs, and its schema offers exactly the kinds the store takes', async () => {
+  const { prompts } = await run({ plan: PLAN(), 'scout:': HITS() })
+  const judge = prompts.find((p) => p.opts.label === 'judge')
+  assert.deepEqual(judge.opts.schema.properties.items.items.properties.kind.enum, ITEM_KINDS)
+  for (const kind of ITEM_KINDS) assert.match(judge.prompt, new RegExp('\\b' + kind + '\\b'))
+  assert.match(judge.prompt, /one claim/i)
 })
 
-const READS = (over = {}) => carriedEnvelope({
-  effort: 'boot', exists: true, evidence: [], nodes_n: 0, executions: [],
-  latest: { kind: 'survey', stamp: '20260920-101500', path: 'x', payload: RECORDED, ...over },
-})
+test('every judged item is recorded, and the result carries the ids the store gave them', async () => {
+  const { result, prompts } = await run({ plan: PLAN(), 'scout:': HITS() })
 
-const settled = { settled_shape: true, effort: 'boot', ground: ['src/boot/load.js', 'src/boot'] }
+  const rec = prompts.find((p) => p.opts.label === 'record')
+  assert.equal(rec.opts.agentType, 'agentics:courier')
+  assert.equal(rec.opts.model, 'haiku', 'carrying a command is not judgment')
+  assert.match(rec.prompt, /node "C:\/plugin\/lib\/evidence\.mjs" record --repo "\." --root "\." --kind survey --digest [0-9a-f]{8} --b64 \S+/)
 
-test('a standing survey that covers the ground stands in, and the coverage block says so', async () => {
-  const { result, prompts, logs } = await run({ standing: STANDS(), 'standing-read': READS() }, settled)
+  const { entry, digest } = recordedLine(rec.prompt)
+  assert.equal(digest, fnv1a(canonical(entry)))
+  const [sent] = entry.items
+  assert.equal(entry.items.length, 1)
+  assert.equal(sent.question, 'how does X work')
+  assert.equal(sent.topic, 'a')
+  assert.deepEqual(sent.ground, ['src/a'], "an item's ground is its topic's subtree")
+  assert.equal(sent.kind, 'behaviour')
+  assert.deepEqual(sent.spans, [{ path: 'src/x.js', start: 1, end: 3, at: '' }], 'the recorder fills at, never the judge')
 
-  assert.deepEqual(labelsOf(prompts), ['standing', 'standing-read'], 'nothing else is bought')
-  assert.match(promptFor(prompts, 'standing'), /node "C:\/plugin\/lib\/effort\.mjs" standing "\." "boot"/)
-  assert.match(promptFor(prompts, 'standing-read'), /node "C:\/plugin\/lib\/effort\.mjs" read "\." "boot" --latest survey/)
-  assert.ok(prompts.every((p) => p.opts.agentType === 'agentics:courier'))
-
-  assert.deepEqual(result.verdicts, RECORDED.verdicts)
-  assert.deepEqual(result.topics, ['loader'])
-  assert.deepEqual(result.ground, ['src/boot'])
-  assert.equal(result.question, 'how does X work')
-  assert.deepEqual(result.coverage.standing, { stamp: '20260920-101500', observed_at: 'abc1234' })
+  assert.deepEqual(result.items.map((i) => i.id), entry.items.map(itemId))
+  assert.deepEqual(result.unrecorded, [])
   assert.equal(result.coverage.complete, true)
-  assert.ok(logs.some((l) => /nothing was\s+re-searched/.test(l)))
 })
 
-test('a survey that does not stand is refused, said out loud, and the survey runs in full', async () => {
-  const { result, prompts, logs } = await run({
-    standing: STANDS({ standing: false, why: '2 commit(s) since the survey touch its ground' }),
-    plan: PLAN(), 'scout:': HITS(),
-  }, settled)
-
-  assert.ok(!labelsOf(prompts).includes('standing-read'))
-  assert.ok(labelsOf(prompts).includes('plan'))
-  assert.ok(logs.some((l) => /does not stand — 2 commit\(s\) since the survey touch its ground/.test(l)))
-  assert.ok(!('standing' in result.coverage))
+test('a survey run from a linked worktree records spans read in the worktree', async () => {
+  const { prompts } = await run({ plan: PLAN(), 'scout:': HITS() }, { roots: 'C:/wt/e1-a' })
+  assert.match(promptFor(prompts, 'record'), /record --repo "C:\/wt\/e1-a" --root "C:\/wt\/e1-a" --kind survey /,
+    'the store is found from the repo; the spans are read where the judge read them')
 })
 
-test('a standing survey whose ground misses a caller path is refused, naming the path', async () => {
-  const { prompts, logs } = await run({
-    standing: STANDS(), plan: PLAN(), 'scout:': HITS(),
-  }, { ...settled, ground: ['src/boot', 'src/render/'] })
-
-  assert.ok(!labelsOf(prompts).includes('standing-read'))
-  assert.ok(logs.some((l) => /does not cover src\/render/.test(l)))
-})
-
-test('a repository-wide survey covers any ground', async () => {
-  const { result } = await run({ standing: STANDS({ ground: ['.'] }), 'standing-read': READS() },
-    { ...settled, ground: ['anything/at/all.js'] })
-  assert.ok(result.coverage.standing)
-})
-
-test('a survey read back that is not the one that stood is refused', async () => {
-  const { result, logs } = await run({
-    standing: STANDS(), 'standing-read': READS({ stamp: '20260921-090000' }), plan: PLAN(), 'scout:': HITS(),
-  }, settled)
-
-  assert.ok(logs.some((l) => /is not the one that stood/.test(l)))
-  assert.ok(!('standing' in result.coverage))
-})
-
-test('a standing check that cannot be carried costs a survey, never a skipped one', async () => {
-  const failed = { stop_reason: 'failed', payload_raw: '', task_ids: [], task_tools: 'skipped', notes: 'no node' }
+test('a judge group over many items records in batches labelled record:<group>:<n>', async () => {
+  const many = Array.from({ length: 12 }, (_, i) => ITEM('a', { claim: 'claim ' + i + ' ' + 'x'.repeat(600) }))
   const { result, prompts } = await run({
-    standing: failed, 'standing#2': failed, plan: PLAN(), 'scout:': HITS(),
-  }, settled)
+    plan: PLAN({ topics: [{ key: 'a', find: 'find a', subtree: 'src/a' }, { key: 'b', find: 'find b', subtree: 'src/b' }] }),
+    'scout:': HITS(), 'judge:a': { items: many, risks: [] },
+  }, { pace: 'fast' })
 
-  assert.ok(labelsOf(prompts).includes('plan'))
-  assert.equal(result.coverage.complete, true)
-  assert.ok(!('standing' in result.coverage))
+  const recs = prompts.filter((p) => /^record/.test(p.opts.label))
+  const ofA = recs.filter((p) => /^record:a:\d+$/.test(p.opts.label))
+  assert.ok(ofA.length > 1, 'twelve long items do not fit one argv slot')
+  assert.deepEqual(ofA.map((p) => p.opts.label), ofA.map((_, i) => 'record:a:' + (i + 1)))
+  assert.deepEqual(recs.filter((p) => !ofA.includes(p)).map((p) => p.opts.label), ['record:b'])
+  for (const p of recs) assert.ok(/--b64 (\S+)/.exec(p.prompt)[1].length <= 6000, p.opts.label)
+  assert.deepEqual(ofA.flatMap((p) => recordedLine(p.prompt).entry.items.map((i) => i.claim)).sort(),
+    many.map((i) => i.claim).sort(), 'every item sent once')
+  assert.equal(result.items.filter((i) => i.topic === 'a').length, many.length)
 })
 
-test('no standing check without a settled shape, an effort, and ground to cover', async () => {
-  for (const over of [
-    { ...settled, settled_shape: false },
-    { ...settled, effort: '' },
-    { ...settled, ground: [] },
-    { ...settled, effort: 'boot"; rm -rf ~; echo "' },
-  ]) {
-    const { prompts } = await run({ plan: PLAN(), 'scout:': HITS() }, over)
-    assert.ok(!labelsOf(prompts).includes('standing'), JSON.stringify(over))
+test('the judge schema offers risks keyed by topic and no at on spans', async () => {
+  const { prompts } = await run({ plan: PLAN(), 'scout:': HITS() })
+  const { schema } = prompts.find((p) => p.opts.label === 'judge').opts
+  const item = schema.properties.items.items
+  for (const field of ['topic', 'kind', 'claim', 'spans', 'queries', 'sources', 'rests_on']) {
+    assert.ok(item.required.includes(field), field)
   }
+  const span = item.properties.spans.items.properties
+  assert.equal(span.start.type, 'integer')
+  assert.equal(span.end.type, 'integer')
+  assert.ok(!('at' in span), 'where a span was read is the recorder\'s observation')
+  assert.ok(!('result' in item.properties.queries.items.properties))
+  assert.ok(!('retrieved' in item.properties.sources.items.properties))
+  const risk = schema.properties.risks.items.properties
+  assert.deepEqual(risk.topic.enum, ['a'])
+  assert.equal(risk.text.type, 'string')
+})
+
+test('an item refused for its anchors goes back to its judge, and what then passes is kept', async () => {
+  const bad = { items: [ITEM('a', { kind: 'absence', spans: [] })], risks: [] }
+  const good = { items: [ITEM('a', { kind: 'absence', spans: [], queries: [{ pattern: 'retry', scope: ['src'] }] })], risks: [] }
+  const { result, prompts } = await run({
+    plan: PLAN(), 'scout:': HITS(), judge: bad,
+    record: refuseAll('a absence item needs at least one anchor in queries'),
+    'judge:anchors:1': good,
+  })
+
+  const reask = prompts.find((p) => p.opts.label === 'judge:anchors:1')
+  assert.ok(reask, 'the refused item went back to the judge that wrote it')
+  assert.equal(reask.opts.agentType, 'agentics:analyst')
+  assert.deepEqual(keysOf(reask.opts), ['a'])
+  assert.match(reask.prompt, /needs at least one anchor in queries/)
+  assert.ok(labelsOf(prompts).includes('record:anchors:1'))
+  assert.deepEqual(result.items.map((i) => i.kind), ['absence'])
+  assert.equal(result.coverage.complete, true)
+})
+
+test('an item its judge cannot anchor is dropped from the result and leaves its topic incomplete', async () => {
+  const bad = { items: [ITEM('a', { spans: [] })], risks: [] }
+  const refuse = refuseAll('a behaviour item needs at least one anchor in spans')
+  const { result, prompts } = await run({
+    plan: PLAN(), 'scout:': HITS(), judge: bad, 'judge:anchors:1': bad, record: refuse, 'record:anchors:1': refuse,
+  })
+
+  assert.ok(!labelsOf(prompts).includes('judge:anchors:2'), 'a pass that anchors nothing more ends the loop')
+  assert.deepEqual(result.items, [])
+  assert.deepEqual(result.coverage.dropped, [], 'the topic was ruled on; what it lost is incomplete, not dropped')
+  assert.deepEqual(result.coverage.incomplete, ['a'])
+  assert.match(result.coverage.unreached.join(' '), /a: 1 item\(s\) refused[\s\S]*needs at least one anchor in spans/)
+  assert.equal(result.coverage.complete, false)
+})
+
+test('items the store could not be reached to record are returned unchecked, and keep their topic incomplete', async () => {
+  const failed = { stop_reason: 'failed', payload_raw: '', notes: 'node is not on the PATH' }
+  const { result } = await run({ plan: PLAN(), 'scout:': HITS(), record: failed, 'record#2': failed })
+
+  assert.equal(result.items.length, 1, 'the judge was paid for; its items are not thrown away')
+  assert.deepEqual(result.unrecorded, result.items.map((i) => i.id))
+  assert.deepEqual(result.coverage.incomplete, ['a'])
+  assert.match(result.coverage.unreached.join(' '), /not recorded/)
+  assert.equal(result.coverage.complete, false)
+})
+
+test("a derived item may rest on a sibling's claim; the recorder is handed that sibling's id", async () => {
+  const known = 'I00000009'
+  const judge = {
+    items: [
+      ITEM('a', { claim: 'the base' }),
+      ITEM('a', { kind: 'derived', spans: [], claim: 'the conclusion', rests_on: ['the base', known] }),
+    ],
+    risks: [],
+  }
+  const { prompts } = await run({ plan: PLAN(), 'scout:': HITS(), judge })
+  const [, derived] = recordedLine(promptFor(prompts, 'record')).entry.items
+  assert.deepEqual(derived.rests_on, [itemId({ question: 'how does X work', topic: 'a', claim: 'the base' }), known])
+})
+
+test('a topic ruled only by a risk is not dropped, and the risk travels in the result', async () => {
+  const { result, prompts } = await run({
+    plan: PLAN(), 'scout:': HITS(), judge: { items: [], risks: [{ topic: 'a', text: 'no surface to anchor' }] },
+  })
+  assert.deepEqual(result.coverage.dropped, [])
+  assert.deepEqual(result.risks, [{ topic: 'a', text: 'no surface to anchor' }])
+  assert.ok(!labelsOf(prompts).some((l) => /^record/.test(l)), 'nothing to record buys no courier')
+})
+
+test('a plan with no topics and nothing reused is no survey, and says so', async () => {
+  const { result } = await run({ plan: PLAN({ topics: [] }) })
+  assert.deepEqual(result.items, [])
+  assert.equal(result.coverage.complete, false)
+  assert.match(result.coverage.unreached.join(' '), /planning produced no topics/)
+})
+
+// ------------------------------------------------------------------ reuse: the pool before the plan
+//
+// Before planning, the survey reads the project's pool for items whose ground overlaps the
+// caller's. Standing ones are known ground; suspect ones get the cheapest re-judge there is;
+// stale ones send their topic to a narrowed re-survey. Nothing about whether text changed is a
+// model's call — the pool's states come from lib/evidence.mjs.
+
+const SHA = 'a'.repeat(40)
+const poolId = (n) => 'I' + String(n).padStart(8, '0')
+const POOL_ITEM = (n, over = {}) => ({
+  id: poolId(n), question: 'how does boot work', topic: 'loader', ground: ['src/boot'], kind: 'behaviour',
+  claim: 'pool claim ' + n, spans: [{ path: 'src/boot/load.js', start: 3, end: 9, at: SHA }],
+  queries: [], sources: [], rests_on: [], from_return: '20260920-101500-survey', seq: n,
+  state: 'standing', changed: [], why: 'every anchor is unchanged', ...over,
+})
+const SUSPECT = { state: 'suspect', changed: [{ anchor: 'span', index: 0, old: 'const a = 1', now: 'const a = 2' }], why: '1 anchor(s) changed' }
+const POOL = (items) => carriedEnvelope({ ground: ['src/boot/load.js', 'src/boot'], items })
+const GROUND = { ground: ['src/boot/load.js', 'src/boot'] }
+const idsIn = (prompt) => [...prompt.matchAll(/\[(I[0-9a-f]{8})\]/g)].map((m) => m[1])
+const holdAll = (prompt) => ({ judgements: idsIn(prompt).map((id) => ({ id, verdict: 'holds', why: 'cosmetic' })) })
+const judgedOk = (prompt) => carriedEnvelope({
+  recorded: recordedLine(prompt).entry.judgements.map((j) => ({ ...j, ok: true, state: 'standing', why: '' })),
+})
+const verdictsSent = (prompts, label) =>
+  recordedLine(promptFor(prompts, label)).entry.judgements.map((j) => [j.id, j.verdict])
+const failedCourier = { stop_reason: 'failed', payload_raw: '', notes: 'node is not on the PATH' }
+
+test('standing items whose ground overlaps reach the planner and the judge as known ground, and are returned', async () => {
+  const { result, prompts } = await run({
+    reuse: POOL([POOL_ITEM(1), POOL_ITEM(2, { topic: 'challenge:yagni', from_return: '20260920-101500-probe' })]),
+    plan: PLAN(), 'scout:': HITS(),
+  }, GROUND)
+
+  const reuse = prompts.find((p) => p.opts.label === 'reuse')
+  assert.equal(reuse.opts.agentType, 'agentics:courier')
+  assert.match(reuse.prompt,
+    /node "C:\/plugin\/lib\/evidence\.mjs" items --repo "\." --root "\." --ground "src\/boot\/load\.js,src\/boot" --states standing,suspect,stale/)
+  assert.ok(labelsOf(prompts).indexOf('reuse') < labelsOf(prompts).indexOf('plan'), 'the pool is read before anything is planned')
+
+  const plan = promptFor(prompts, 'plan')
+  assert.match(plan, /ESTABLISHED/)
+  assert.match(plan, /pool claim 1/)
+  assert.doesNotMatch(plan, /pool claim 2/, "a challenge finding is not a survey's evidence")
+  assert.match(promptFor(prompts, 'judge'), /pool claim 1/)
+
+  assert.deepEqual(result.reused, [poolId(1)])
+  assert.deepEqual(result.items.map((i) => i.id),
+    [poolId(1), itemId({ question: 'how does X work', topic: 'a', claim: 'what a found' })])
+  assert.ok(!labelsOf(prompts).some((l) => /^rejudge/.test(l)), 'nothing standing is re-judged')
+})
+
+test('the survey result carries no verdicts field, and its ground is the topic subtrees', async () => {
+  const { result } = await run({ reuse: POOL([POOL_ITEM(1)]), plan: PLAN(), 'scout:': HITS() }, GROUND)
+  assert.ok(!('verdicts' in result))
+  assert.deepEqual(result.reused, [poolId(1)])
+  assert.deepEqual(result.ground, ['src/a'], "a reused item's ground is not ground this survey searched")
+})
+
+test('a pool the planner finds complete buys no search, and says so', async () => {
+  const { result, prompts, logs } = await run({ reuse: POOL([POOL_ITEM(1)]), plan: PLAN({ topics: [] }) }, GROUND)
+  assert.deepEqual(labelsOf(prompts), ['reuse', 'plan'])
+  assert.deepEqual(result.items.map((i) => i.id), [poolId(1)])
+  assert.deepEqual(result.topics, [])
+  assert.equal(result.coverage.complete, true)
+  assert.ok(logs.some((l) => /nothing left to search/.test(l)))
+})
+
+test('suspect items are re-judged in batches of twenty on the cheapest tier, whatever the dial', async () => {
+  const pool = Array.from({ length: 25 }, (_, i) => POOL_ITEM(i + 1, SUSPECT))
+  const { prompts } = await run({
+    reuse: POOL(pool), 'rejudge:': holdAll, 'record-judgements:': judgedOk,
+    'reuse-after': POOL(pool.map((it) => ({ ...it, state: 'standing', changed: [] }))),
+    plan: PLAN({ topics: [] }),
+  }, { ...GROUND, intelligence: 'max' })
+
+  const rejudges = prompts.filter((p) => /^rejudge:/.test(p.opts.label))
+  assert.deepEqual(rejudges.map((p) => p.opts.label), ['rejudge:1', 'rejudge:2'])
+  assert.deepEqual(rejudges.map((p) => idsIn(p.prompt).length), [20, 5])
+  assert.deepEqual(rejudges.flatMap((p) => idsIn(p.prompt)).sort(), pool.map((it) => it.id).sort())
+  for (const p of rejudges) {
+    assert.equal(p.opts.agentType, 'agentics:analyst')
+    assert.equal(p.opts.model, 'haiku', 'the re-judge is the stated exception to the dial')
+    assert.match(p.prompt, /const a = 1[\s\S]*const a = 2/, 'the old and the new text of what changed')
+  }
+
+  const recorded = prompts.filter((p) => /^record-judgements:/.test(p.opts.label))
+  assert.deepEqual(recorded.map((p) => p.opts.label), ['record-judgements:1', 'record-judgements:2'])
+  for (const p of recorded) {
+    assert.equal(p.opts.agentType, 'agentics:courier')
+    assert.equal(p.opts.model, 'haiku', 'carrying a verdict is not judgment')
+  }
+  assert.match(recorded[0].prompt, /node "C:\/plugin\/lib\/evidence\.mjs" judge --repo "\." --root "\." --digest [0-9a-f]{8} --b64 \S+/)
+  assert.ok(labelsOf(prompts).indexOf('reuse-after') > labelsOf(prompts).indexOf('record-judgements:2'),
+    'the pool is read again only after every verdict is recorded')
+})
+
+test('a survey run from a linked worktree reads and judges its pool in the worktree', async () => {
+  const a = POOL_ITEM(1, SUSPECT)
+  const { prompts } = await run({
+    reuse: POOL([a]), 'rejudge:': holdAll, 'record-judgements:': judgedOk,
+    'reuse-after': POOL([{ ...a, state: 'standing', changed: [] }]), plan: PLAN({ topics: [] }),
+  }, { ...GROUND, roots: 'C:/wt/e1-a' })
+  for (const label of ['reuse', 'reuse-after']) {
+    assert.match(promptFor(prompts, label), /items --repo "C:\/wt\/e1-a" --root "C:\/wt\/e1-a" --ground /,
+      label + ': the pool\'s states are derived where the survey reads')
+  }
+  assert.match(promptFor(prompts, 'record-judgements:1'), /judge --repo "C:\/wt\/e1-a" --root "C:\/wt\/e1-a" --digest /,
+    'a holds re-anchors where the re-judge was shown the text')
+})
+
+test('holds keeps an item as known ground; fails sends its topic to a narrowed re-survey', async () => {
+  const kept = POOL_ITEM(1)
+  const held = POOL_ITEM(2, { topic: 'config', claim: 'config is read once', ...SUSPECT })
+  const broke = POOL_ITEM(3, { topic: 'cache', claim: 'the cache is never flushed', ground: ['src/cache'], ...SUSPECT })
+  const { result, prompts } = await run({
+    reuse: POOL([kept, held, broke]),
+    'rejudge:': { judgements: [{ id: held.id, verdict: 'holds', why: 'cosmetic' }, { id: broke.id, verdict: 'fails', why: 'a flush was added' }] },
+    'record-judgements:': judgedOk,
+    'reuse-after': POOL([kept, { ...held, state: 'standing', changed: [] }, { ...broke, state: 'stale', changed: [] }]),
+    plan: PLAN({ topics: [] }), 'scout:': HITS(),
+  }, GROUND)
+
+  assert.deepEqual(verdictsSent(prompts, 'record-judgements:1'), [[held.id, 'holds'], [broke.id, 'fails']])
+  assert.match(promptFor(prompts, 'plan'), /RE-SURVEYED[\s\S]*cache/)
+  assert.deepEqual(labelsOf(prompts).filter((l) => /^scout:/.test(l)), ['scout:cache'], 'only the stale topic is bought again')
+  assert.match(promptFor(prompts, 'scout:cache'), /the cache is never flushed/)
+  assert.match(promptFor(prompts, 'scout:cache'), /src\/cache/)
+  assert.match(promptFor(prompts, 'judge'), /config is read once/, 'the re-survey is handed every standing item as known ground')
+
+  assert.deepEqual(result.topics, ['cache'])
+  assert.deepEqual([...result.reused].sort(), [kept.id, held.id].sort())
+  assert.ok(!result.items.some((i) => i.id === broke.id), 'a stale item is replaced, never returned')
+  assert.equal(result.coverage.complete, true)
+})
+
+test('an item the re-judge skipped, or a re-judge that died, is unsure: never a pass', async () => {
+  const a = POOL_ITEM(1, SUSPECT)
+  const b = POOL_ITEM(2, { claim: 'second', ...SUSPECT })
+  const script = (rejudge) => ({
+    reuse: POOL([a, b]), 'rejudge:': rejudge, 'record-judgements:': judgedOk,
+    'reuse-after': POOL([{ ...a, state: 'stale' }, { ...b, state: 'stale' }]), plan: PLAN({ topics: [] }), 'scout:': HITS(),
+  })
+
+  const skipped = await run(script({ judgements: [{ id: a.id, verdict: 'holds', why: 'ok' }] }), GROUND)
+  assert.deepEqual(verdictsSent(skipped.prompts, 'record-judgements:1'), [[a.id, 'holds'], [b.id, 'unsure']])
+
+  const died = await run(script(() => { throw new Error('overloaded') }), GROUND)
+  assert.deepEqual(verdictsSent(died.prompts, 'record-judgements:1'), [[a.id, 'unsure'], [b.id, 'unsure']])
+})
+
+test('an item still suspect after the re-judge is re-surveyed, never reused', async () => {
+  const a = POOL_ITEM(1, SUSPECT)
+  const { result, prompts } = await run({
+    reuse: POOL([a]), 'rejudge:': holdAll, 'record-judgements:': judgedOk, 'reuse-after': POOL([a]),
+    plan: PLAN({ topics: [] }), 'scout:': HITS(),
+  }, GROUND)
+  assert.deepEqual(result.reused, [])
+  assert.ok(labelsOf(prompts).includes('scout:loader'))
+})
+
+test('a pool that cannot be read again after the re-judge counts every re-judged item as stale', async () => {
+  const kept = POOL_ITEM(1)
+  const a = POOL_ITEM(2, { topic: 'config', ...SUSPECT })
+  const { result, prompts } = await run({
+    reuse: POOL([kept, a]), 'rejudge:': holdAll, 'record-judgements:': judgedOk,
+    'reuse-after': failedCourier, 'reuse-after#2': failedCourier, plan: PLAN({ topics: [] }), 'scout:': HITS(),
+  }, GROUND)
+  assert.deepEqual(result.reused, [kept.id])
+  assert.ok(labelsOf(prompts).includes('scout:config'))
+})
+
+test('stale items in the pool send their topics to the re-survey without a re-judge', async () => {
+  const { result, prompts } = await run({
+    reuse: POOL([POOL_ITEM(1, { state: 'stale', why: 'judged fails' })]), plan: PLAN({ topics: [] }), 'scout:': HITS(),
+  }, GROUND)
+  assert.ok(!labelsOf(prompts).some((l) => /^rejudge|^reuse-after/.test(l)))
+  assert.deepEqual(result.topics, ['loader'])
+})
+
+// A narrowed re-survey's new items get new ids, so the stale item they replaced stays in the pool.
+// The newer item of its topic, by seq, is what says it was replaced (spec §4.9).
+const STALE = { state: 'stale', why: 'judged fails' }
+
+test('a second survey over the same ground, after a narrowed re-survey replaced a stale topic, dispatches no scout for that topic', async () => {
+  const broke = POOL_ITEM(3, { topic: 'cache', claim: 'the cache is never flushed', ground: ['src/cache'], ...STALE })
+  const replaced = POOL_ITEM(7, { topic: 'cache', claim: 'the cache is flushed on write', ground: ['src/cache'], from_return: '20260921-090000-survey' })
+  const { result, prompts } = await run({
+    reuse: POOL([POOL_ITEM(1), broke, replaced]), plan: PLAN({ topics: [] }), 'scout:': HITS(),
+  }, GROUND)
+  assert.ok(!labelsOf(prompts).some((l) => /^scout:/.test(l)), 'nothing is bought again')
+  assert.doesNotMatch(promptFor(prompts, 'plan'), /RE-SURVEYED/)
+  assert.deepEqual([...result.reused].sort(), [poolId(1), poolId(7)])
+  assert.ok(!result.items.some((i) => i.id === broke.id), 'a superseded item is never returned')
+  assert.equal(result.coverage.complete, true)
+})
+
+test('an older standing item of a topic, or one on other ground, never hides a stale one', async () => {
+  const older = POOL_ITEM(2, { topic: 'cache', claim: 'the cache has one entry', ground: ['src/cache'] })
+  const broke = POOL_ITEM(5, { topic: 'cache', claim: 'the cache is never flushed', ground: ['src/cache'], ...STALE })
+  const elsewhere = POOL_ITEM(9, { topic: 'cache', claim: 'another cache', ground: ['src/other'] })
+  const { result, prompts } = await run({
+    reuse: POOL([older, broke, elsewhere]), plan: PLAN({ topics: [] }), 'scout:': HITS(),
+  }, GROUND)
+  assert.ok(labelsOf(prompts).includes('scout:cache'))
+  assert.deepEqual(result.topics, ['cache'])
+})
+
+test('no reuse without ground to overlap, nor over ground a command cannot carry', async () => {
+  for (const over of [{}, { ground: [] }, { ground: ['src/my boot'] }, { ground: ['src"; rm -rf ~; echo "'] }]) {
+    const { prompts } = await run({ plan: PLAN(), 'scout:': HITS() }, over)
+    assert.ok(!labelsOf(prompts).includes('reuse'), JSON.stringify(over))
+  }
+})
+
+test('a pool that cannot be read costs a full survey, never a skipped one', async () => {
+  const unreadable = { reuse: failedCourier, 'reuse#2': failedCourier }
+  const malformed = { reuse: carriedEnvelope({ ground: GROUND.ground, items: 'not a list' }) }
+  for (const pool of [unreadable, malformed]) {
+    const { result, prompts } = await run({ ...pool, plan: PLAN(), 'scout:': HITS() }, GROUND)
+    assert.ok(labelsOf(prompts).includes('scout:a'), JSON.stringify(pool.reuse).slice(0, 40))
+    assert.deepEqual(result.reused, [])
+    assert.equal(result.coverage.complete, true)
+  }
+})
+
+test('the caller\'s ground travels in the resume args, and the retired standing inputs do not', async () => {
+  const { result } = await run({ plan: PLAN(), 'scout:': HITS() }, GROUND)
+  assert.deepEqual(result.coverage.resumable.args.ground, GROUND.ground)
+  assert.ok(!('settled_shape' in result.coverage.resumable.args))
+  assert.ok(!('effort' in result.coverage.resumable.args))
 })

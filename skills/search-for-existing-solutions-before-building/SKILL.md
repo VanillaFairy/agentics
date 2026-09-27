@@ -62,12 +62,12 @@ judgment nobody asked it for. Only the user moves it off that mapping — a bare
 ## Step 2 — Run it
 
 ```
-Workflow({ name: 'agentics:agentics-find-existing-solutions', args: { capability, roots, constraints, notes, intelligence } })
+Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/search-for-existing-solutions-before-building.workflow.js', args: { capability, roots, constraints, notes, intelligence } })
 ```
 
-The name is plugin-namespaced; the bare name does not resolve. Record the `runId` from the
-launch result — the script cannot read its own id, and `runId` is what pairs with
-`coverage.resumable.remaining` if the sweep needs resuming.
+Launch it by its path under the plugin root, the same `${CLAUDE_PLUGIN_ROOT}` that `plugin_root`
+carries. Record the `runId` from the launch result — the script cannot read its own id, and
+`runId` is what pairs with `coverage.resumable.remaining` if the sweep needs resuming.
 
 Let it run in the background. Tell the user they can watch with `/workflows`. Do not poll, and
 do not guess at results before the notification arrives.
@@ -75,8 +75,8 @@ do not guess at results before the notification arrives.
 **Resuming an interrupted sweep: re-pass the args.** A resume re-executes the script, which
 reads nothing from the prior run, so `resumeFromRunId` on its own runs it with no capability
 to search for — an empty result in milliseconds, and the interrupted run's cached agents out
-of reach. Pass `Workflow({ scriptPath, resumeFromRunId, args })` with the args from
-`coverage.resumable.args`.
+of reach. Pass `Workflow({ scriptPath, resumeFromRunId, args })`, `scriptPath` the same path
+the launch used, with the args from `coverage.resumable.args`.
 
 ## Step 3 — Present it, in this order
 

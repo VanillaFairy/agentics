@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'agentics-probe',
+  name: 'attack-document-with-independent-reviewers',
   description: 'Adversarially probe a written artefact — a design, a proposal, a spec — with independent analysts who receive the document and the target repository\'s own guidance and nothing from its author. Rules on the design severity ladder; the gate is computed.',
   phases: [
     { title: 'Scope', detail: 'snapshot the artefact; with since, the lines that changed and the findings no edit touched' },
@@ -185,7 +185,7 @@ function probeFindings(axisKeys) {
 }
 
 // What a courier hands back: one command's stdout, byte-exact, in one string. The shape of
-// `agentics-develop`'s CARRIED, copied rather than shared because a workflow script cannot
+// `execute-approved-plan-in-worktrees`'s CARRIED, copied rather than shared because a workflow script cannot
 // import. This workflow moves no todos, so the two todo fields are left out of its shape.
 //
 // `failed` is the courier unable to run the command AT ALL. An artefact that cites nothing is
@@ -367,7 +367,7 @@ function courierPrompt(command) {
 }
 
 /**
- * Carry one command's payload, believed only after its digest. The ladder is `agentics-develop`'s:
+ * Carry one command's payload, believed only after its digest. The ladder is `execute-approved-plan-in-worktrees`'s:
  * nothing back or a courier that could not run it is run again once; a payload damaged in transit
  * buys one refetch on a stronger model; a token the program refused as damaged on its way in is
  * sent again. Every carry here has a fallback, so none of them throws: `{payload: null, why}`.

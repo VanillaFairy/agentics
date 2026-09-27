@@ -31,7 +31,7 @@ function files(dir, pattern, out = []) {
 
 const read = (full) => readFileSync(full, 'utf8')
 const lib = files('lib', /\.mjs$/)
-const workflows = files('workflows', /\.workflow\.js$/)
+const workflows = files('service-workflows', /\.workflow\.js$/)
 const skills = files('skills', /\.md$/)
 const agents = files('agents', /\.md$/)
 const tools = files('tools', /\.mjs$/)

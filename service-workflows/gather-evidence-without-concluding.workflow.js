@@ -1,7 +1,7 @@
 export const meta = {
-  name: 'agentics-survey',
+  name: 'gather-evidence-without-concluding',
   description: 'Gather evidence about a question across the local repos, git history, and vendor documentation. Returns anchored evidence items plus a coverage block — never a conclusion.',
-  whenToUse: 'The shared evidence phase for investigate, develop, find-existing-solutions and design. Call it via workflow("agentics-survey", args) as a nested step; it is rarely invoked directly.',
+  whenToUse: 'The shared evidence phase for investigate, develop, find-existing-solutions and design. Call it via workflow("gather-evidence-without-concluding", args) as a nested step; it is rarely invoked directly.',
   phases: [
     { title: 'Reuse', detail: 'the project pool\'s items over this ground: standing ones are known ground, stale ones are searched again' },
     { title: 'Re-judge', detail: 'one tool-less analyst on the cheapest tier per twenty suspect items: does the change matter to the claim' },
@@ -203,7 +203,7 @@ const DOCS = evidenceSchema(
 )
 
 // What a courier hands back: one command's stdout, byte-exact, in one string. The shape of
-// `agentics-develop`'s CARRIED, copied rather than shared because a workflow script cannot
+// `execute-approved-plan-in-worktrees`'s CARRIED, copied rather than shared because a workflow script cannot
 // import. This workflow moves no todos, so the two todo fields are left out of its shape.
 //
 // `failed` is the courier unable to run the command AT ALL — node missing, the path unreadable,
@@ -389,7 +389,7 @@ const repo = String(roots).split(/[,;\n]/)[0].trim() || '.'
 // A payload computed on disk arrives through a model, so it is re-digested here before a field of
 // it is believed; a location list this script mints travels as plain text on one argv slot with
 // its digest beside it. The functions are copies of `lib/plan-digest.mjs`'s and
-// `agentics-develop`'s: scripts cannot import, and the suite pins them together. Tokens the
+// `execute-approved-plan-in-worktrees`'s: scripts cannot import, and the suite pins them together. Tokens the
 // script mints itself (a judgement batch, a record batch) travel base64 on one argv slot with
 // their digest beside them — the same transport, for text a shell would otherwise mangle.
 function canonical(value) {
@@ -498,7 +498,7 @@ function courierPrompt(command) {
 /**
  * Carry one command's payload, believed only after its digest.
  *
- * Retries are sized to what was observed, as `agentics-develop`'s boundaries size them: a courier
+ * Retries are sized to what was observed, as `execute-approved-plan-in-worktrees`'s boundaries size them: a courier
  * that returned nothing or could not run the command is run again once; a payload damaged in
  * transit buys one refetch on a stronger model; a token the program refused as damaged on its way
  * IN is sent again; a program failure is not retried. What stays unbelievable comes back as

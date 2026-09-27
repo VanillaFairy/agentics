@@ -194,7 +194,7 @@ layer's question: what it needs to know about the system as it is, never the des
 itself, since the survey gathers and never concludes:
 
 ```
-Workflow({ name: 'agentics:agentics-survey', args: { question, roots, notes, ground, intelligence, plugin_root } })
+Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/gather-evidence-without-concluding.workflow.js', args: { question, roots, notes, ground, intelligence, plugin_root } })
 ```
 
 `ground` is the paths this layer's work touches, as far as they are known: it is what lets the
@@ -206,7 +206,7 @@ When the layer would **build a capability** (a parser, a scheduler, a cache, a p
 launch the outward search in the same message, concurrently:
 
 ```
-Workflow({ name: 'agentics:agentics-find-existing-solutions', args: { capability, roots, constraints, notes, intelligence } })
+Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/search-for-existing-solutions-before-building.workflow.js', args: { capability, roots, constraints, notes, intelligence } })
 ```
 
 Skip it for wiring or reshaping what exists, and read `already_present` first. Incomplete coverage
@@ -339,7 +339,7 @@ When earned, challenge the spec. The reviewers get the spec and the repository a
 you; `context` is one line on what the spec is for, never your defence of it:
 
 ```
-Workflow({ name: 'agentics:agentics-probe', args: { artifact: '<the DESIGN.md path>', roots: '.', context, plugin_root } })
+Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/attack-document-with-independent-reviewers.workflow.js', args: { artifact: '<the DESIGN.md path>', roots: '.', context, plugin_root } })
 ```
 
 After every return, before anything else, record how much of the spec it examined and the

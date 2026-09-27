@@ -50,7 +50,7 @@ Throws a real `SyntaxError` if the file is broken.
 Same construction, plus stub globals and scripted `agent()` returns. A `pipeline` stub of
 `for (const it of items) out.push(await s2(await s1(it), it))` matches the two-stage contract.
 This exercises the real control flow — loop exits, escalation paths, coverage derivation —
-without spending a single model call, and it caught two genuine bugs in `agentics-develop` before it
+without spending a single model call, and it caught two genuine bugs in `execute-approved-plan-in-worktrees` before it
 was ever committed.
 
 It proves plumbing, not behaviour: it says nothing about whether a real agent honours its

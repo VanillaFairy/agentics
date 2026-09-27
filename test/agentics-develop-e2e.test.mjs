@@ -1,4 +1,4 @@
-// test/agentics-develop-e2e.test.mjs — agentics-develop against the real boundaries.
+// test/agentics-develop-e2e.test.mjs — execute-approved-plan-in-worktrees against the real boundaries.
 //
 // The scenario suite answers every boundary from an in-memory simulation; test/boundary.test.mjs
 // runs the boundaries without the workflow. This runs the two together: every courier dispatch the
@@ -23,7 +23,7 @@ import { seedTree } from './harness/seed-tree.mjs'
 delete process.env.NODE_TEST_CONTEXT
 
 const PLUGIN = fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '')
-const WF = join(PLUGIN, 'workflows', 'agentics-develop.workflow.js')
+const WF = join(PLUGIN, 'service-workflows', 'execute-approved-plan-in-worktrees.workflow.js')
 const COMMANDS = {
   suite: 'node --test --test-reporter=spec', test_one: 'node --test --test-reporter=spec {file}',
   absent: { build: true, typecheck: true },

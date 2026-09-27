@@ -1,4 +1,4 @@
-// test/agentics-probe-scenarios.test.mjs — agentics-probe's arithmetic: axis assembly, finding
+// test/agentics-probe-scenarios.test.mjs — attack-document-with-independent-reviewers's arithmetic: axis assembly, finding
 // attribution, and the computed ratification gate.
 //
 // The property worth pinning hardest is the one a reader cannot check by reading: an axis
@@ -14,7 +14,7 @@ import {
 import { itemId } from '../lib/evidence.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 
-const WF = fileURLToPath(new URL('../workflows/agentics-probe.workflow.js', import.meta.url))
+const WF = fileURLToPath(new URL('../service-workflows/attack-document-with-independent-reviewers.workflow.js', import.meta.url))
 
 // Most scenarios below pin per-axis arithmetic, so they ask for the per-axis shape by name; the
 // default, one analyst holding every axis, has its own section at the end.

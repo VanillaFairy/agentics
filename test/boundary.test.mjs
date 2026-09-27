@@ -588,3 +588,14 @@ test('spec-prepare clears the spec_changed park its own compile raises on the fo
   assert.notEqual(tree.status.get('p').status, 'parked', 'the planner\'s re-derivation answers the park it raised')
   assert.equal(tree.events.filter((e) => e.kind === 'replanned' && e.node === 'p' && e.reason === 'spec_rederived').length, 1)
 })
+
+test('land check carries the root integration review\'s latest claim verdicts', () => {
+  const r = repo()
+  assert.equal(land(r, 'e1', 'check').root_claims, null, 'no review, no verdicts: never an empty pass')
+  const first = [{ claim: 'it builds', verdict: 'met', evidence: 'ci' }]
+  const second = [{ claim: 'it builds', verdict: 'met', evidence: 'ci' }, { claim: 'retries are bounded', verdict: 'under', evidence: 'src/r.js:9' }]
+  assert.equal(append(r, 'e1', 'events', { kind: 'claims', node: '.', execution: STAMP, head_sha: 'h1', claims: first }).ok, true)
+  assert.equal(append(r, 'e1', 'events', { kind: 'claims', node: '.', execution: STAMP, head_sha: 'h2', claims: second }).ok, true)
+  assert.equal(append(r, 'e1', 'events', { kind: 'claims', node: 'sub', execution: STAMP, head_sha: 'h3', claims: [] }).ok, true)
+  assert.deepEqual(land(r, 'e1', 'check').root_claims, second)
+})

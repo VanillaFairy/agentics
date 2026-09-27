@@ -13,6 +13,42 @@ const run = (sim, handlers = {}, args = {}, extra = {}) =>
 
 const labels = (prompts) => prompts.map((p) => p.opts.label)
 
+const COVERED = { complete: true, dropped: [], incomplete: [], failed_channels: [], unreached: [], resumable: { runId: 'r', remaining: [] } }
+
+/** A probe return as agentics-probe computes it: a carried ambiguity counts as open in its own gate. */
+function probeReturn(over = {}) {
+  const findings = over.findings || []
+  const coverage = over.coverage || COVERED
+  const ambiguities = findings.filter((f) => f.severity === 'ambiguity')
+  return {
+    artifact: '', findings, ambiguities, ratifiable: ambiguities.length === 0 && coverage.complete === true,
+    coverage, snapshot: 'snapshot:s1', review: '20260926-120000-probe', scope: { full: true, changed: [] }, unrecorded: [], ...over,
+  }
+}
+
+const probeFinding = (id, severity, claim, over = {}) => ({
+  id, axis: 'contract-ambiguity', severity, section: 'Design', claim, evidence: 'DESIGN.md:12',
+  start: 10, end: 12, item: 'item-' + claim.toLowerCase().replace(/\W+/g, '-'), carried: false, ...over,
+})
+
+/** A scripted nested probe: each call answers the next return; an unscripted call throws. */
+function probes(returns) {
+  const calls = []
+  const fn = (name, args) => {
+    calls.push({ name, args })
+    const next = returns[calls.length - 1]
+    if (!next) throw new Error('unscripted workflow call ' + calls.length + ': ' + name)
+    return next
+  }
+  fn.calls = calls
+  return fn
+}
+
+const settled = (outcome) => (prompt) => ({
+  status: 'settled', question: '', detail: '',
+  dispositions: [...prompt.matchAll(/^- (P\d+) \[/gm)].map((m) => ({ finding: m[1], outcome })),
+})
+
 test('two independent leaves: executed, approved at integration, merged, reviewed together', async () => {
   const sim = simulate([composite('.'), row('a'), row('b')])
   const { result, prompts } = await run(sim)
@@ -132,29 +168,49 @@ test('a user-bound return parks the leaf and the rest keeps running', async () =
 
 const written = (path) => () => ({ status: 'written', written: [path], accepted_warnings: [], uncovered: [], question: '', detail: '' })
 
-test('decompose: the planner promotes the task to a folder of its own, and it waits for its review', async () => {
-  const sim = simulate([composite('.'), row('a')])
-  const { result, prompts } = await run(sim, {
+test('decompose: the promoted task passes its review, compiles, and its children run', async () => {
+  const sim = simulate([composite('.'), row('a')], {
+    preflight: (args) => (args.reload ? { nodes: [composite('.'), composite('a'), row('a/x'), row('a/y')] } : {}),
+  })
+  const probe = probes([probeReturn()])
+  const { result } = await run(sim, {
     'implementer:a#1': () => ({ status: 'decompose', detail: 'two concerns', concerns: [], commits: [] }),
     'plan:': written(row('a').spec_path),
-  })
-  const plan = prompts.find((p) => p.opts.label === 'plan:a')
-  assert.ok(plan, 'the planner was dispatched for the promoted task')
-  assert.ok(plan.prompt.includes(row('a').spec_path), 'the planner is told where the promoted spec goes')
-  assert.ok(!plan.prompt.includes('tree.mjs" add'), 'the planner no longer writes nodes')
-  assert.ok(plan.prompt.includes('lib/spec.mjs" check'), 'the planner checks its spec with the spec checker')
-  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['a', 'spec_unreviewed']])
-  assert.ok(result.parked[0].question.includes(row('a').spec_path), 'the seam names the spec awaiting review')
+  }, {}, { workflow: probe })
+  assert.equal(probe.calls.length, 1)
+  assert.equal(probe.calls[0].name, 'agentics-probe')
+  assert.deepEqual(sim.prepared.map((p) => p.node), ['a'])
+  assert.ok(sim.opens.includes('a/x') && sim.opens.includes('a/y'))
+  assert.deepEqual(sim.batches.find((b) => b.target === 'a').children.map((c) => c.id).sort(), ['a/x', 'a/y'])
+  assert.equal(result.coverage.complete, true, JSON.stringify(result.coverage.unreached))
 })
 
-test('a design node you author is parked for design; one the planner authors goes to the planner', async () => {
+test('a promotion whose compile leaves the leaf as it was escalates instead of looping', async () => {
+  const sim = simulate([composite('.'), row('a', { rev: 5 })], {
+    preflight: (args) => (args.reload ? { nodes: [composite('.'), row('a', { rev: 5, status: 'active' })] } : {}),
+  })
+  const { result, prompts } = await run(sim, {
+    implementer: () => ({ status: 'decompose', detail: 'too big', concerns: [], commits: [] }),
+    'plan:': written(row('a').spec_path),
+  }, {}, { workflow: probes([probeReturn()]) })
+  assert.deepEqual(result.escalations.map((e) => e.reason), ['replan_not_converging'])
+  assert.equal(prompts.filter((p) => p.opts.label.startsWith('implementer:')).length, 1)
+})
+
+test('a design node you author is parked for design; one the planner authors is written, reviewed and built', async () => {
   const sim = simulate([composite('.'), row('a'),
-    row('d', { kind: 'design', author: 'you' }), row('p', { kind: 'design', author: 'planner' })])
-  const { result, prompts } = await run(sim, { 'plan:': written(row('p').spec_path) })
-  assert.deepEqual(result.parked.map((p) => [p.id, p.return]).sort(), [['d', 'needs_design'], ['p', 'spec_unreviewed']])
+    row('d', { kind: 'design', author: 'you' }), row('p', { kind: 'design', author: 'planner' })], {
+    preflight: (args) => (args.reload
+      ? { nodes: [composite('.'), row('a'), row('d', { kind: 'design', author: 'you', status: 'parked' }), composite('p', { author: 'planner' }), row('p/x')] }
+      : {}),
+  })
+  const probe = probes([probeReturn()])
+  const { result, prompts } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, { workflow: probe })
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['d', 'needs_design']])
   assert.deepEqual(labels(prompts).filter((l) => l.startsWith('plan:')), ['plan:p'])
-  assert.ok(prompts.find((p) => p.opts.label === 'plan:p').prompt.includes(row('p').spec_path))
-  assert.ok(result.implemented.some((i) => i.id === 'a'), 'the rest keeps running')
+  assert.deepEqual(sim.prepared.map((p) => p.node), ['p'])
+  assert.ok(sim.opens.includes('p/x'))
+  assert.ok(result.implemented.some((i) => i.id === 'a'))
 })
 
 test('a childless folder you authored is parked, never handed to the planner', async () => {
@@ -333,13 +389,302 @@ test('a verify finding under a folder you authored parks that folder for a re-sp
   assert.ok(!labels(prompts).some((l) => l.startsWith('plan:')))
 })
 
-test('a folder the planner authored is replanned by the planner, in its own spec', async () => {
+test('a folder the planner authored is replanned in its own spec and reviewed again', async () => {
   const sim = simulate([composite('.'), composite('c', { author: 'planner' }), row('c/v', { rigor: 'verify' })],
     { close: { 'c/v': [finding] } })
-  const { result, prompts } = await run(sim, { 'plan:': written(composite('c').spec_path) })
-  const plan = prompts.find((p) => p.opts.label === 'plan:c')
-  assert.ok(plan && plan.prompt.includes(composite('c').spec_path))
-  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['c', 'spec_unreviewed']])
+  const probe = probes([probeReturn()])
+  await run(sim, { 'plan:': written(composite('c').spec_path) }, {}, { workflow: probe })
+  assert.equal(probe.calls.length, 1)
+  assert.equal(probe.calls[0].args.artifact, composite('c').spec_path)
+  assert.deepEqual(sim.prepared.map((p) => p.node), ['c'])
+})
+
+const plannerDesign = () => simulate([composite('.'), row('p', { kind: 'design', author: 'planner' })], {
+  preflight: (args) => (args.reload ? { nodes: [composite('.'), composite('p', { author: 'planner' }), row('p/x')] } : {}),
+})
+
+test('a planner spec ratifiable at its first review is prepared, compiled, and built', async () => {
+  const sim = plannerDesign()
+  // No finding: the probe recorded an empty return, and that return is the review that passed.
+  const first = probeReturn({ snapshot: 'snapshot:first', review: '20260926-120000-probe' })
+  const probe = probes([first])
+  const { result, prompts } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, { workflow: probe })
+  const checked = sim.calls.find((c) => c.name === 'spec-check')
+  assert.ok(checked, 'the spec is checked before it is reviewed')
+  assert.equal(probe.calls.length, 1)
+  assert.equal(probe.calls[0].args.artifact, row('p').spec_path)
+  assert.equal(probe.calls[0].args.since, undefined, 'a first review is never narrowed')
+  assert.deepEqual(sim.prepared.map((p) => [p.node, p.review]), [['p', first.review]], 'the preparation names the return that passed')
+  assert.ok(!labels(prompts).some((l) => l.startsWith('settle:')), 'nothing to settle')
+  assert.deepEqual(sim.reviewed.map((r) => [r.node, r.complete, r.remaining]), [['p', true, []]])
+  const order = sim.calls.map((c) => c.name)
+  assert.ok(order.indexOf('spec-check') < order.indexOf('spec-reviewed'))
+  assert.ok(order.indexOf('spec-reviewed') < order.indexOf('spec-prepare'))
+  assert.ok(sim.opens.includes('p/x'))
+  assert.equal(result.coverage.complete, true, JSON.stringify(result.coverage.unreached))
+})
+
+test('an incomplete review is recorded as partial, naming the axes it left, and escalates', async () => {
+  const sim = plannerDesign()
+  const partial = { ...COVERED, complete: false, unreached: ['axis growth: its analyst returned nothing'], resumable: { runId: 'r', remaining: ['growth'] } }
+  const probe = probes([probeReturn({ coverage: partial })])
+  const { result } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, { workflow: probe })
+  assert.deepEqual(sim.reviewed.map((r) => [r.node, r.complete, r.remaining]), [['p', false, ['growth']]])
+  assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'review_incomplete']])
+  assert.deepEqual(sim.prepared, [])
+})
+
+test('a spec_changed park on a folder the planner wrote is re-derived by the planner; one you wrote waits for you', async () => {
+  const sim = simulate([composite('.'),
+    composite('u', { status: 'parked', reason: 'spec_changed', rev: 1 }),
+    composite('p', { author: 'planner', status: 'parked', reason: 'spec_changed', rev: 1 })], {
+    preflight: (args) => (args.reload
+      ? { nodes: [composite('.'), composite('u', { status: 'parked', reason: 'spec_changed', rev: 1 }), composite('p', { author: 'planner', rev: 2 }), row('p/x', { rev: 2 })] }
+      : {}),
+  })
+  const probe = probes([probeReturn()])
+  const { result, prompts } = await run(sim, { 'plan:': written(composite('p').spec_path) }, {}, { workflow: probe })
+  const plan = prompts.find((p) => p.opts.label === 'plan:p')
+  assert.ok(plan && plan.prompt.includes('spec_changed'), 'the planner re-derives its own folder')
+  assert.ok(!labels(prompts).includes('plan:u'), 'a folder you wrote is never handed to the planner')
+  assert.deepEqual(sim.prepared.map((p) => p.node), ['p'])
+  assert.ok(sim.opens.includes('p/x'))
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['u', 'spec_changed']])
+})
+
+test('an ambiguity the planner discards is refused, and a second discard escalates; a sibling still runs', async () => {
+  const sim = simulate([composite('.'), row('a'), row('p', { kind: 'design', author: 'planner' })])
+  const probe = probes([probeReturn({ findings: [probeFinding('P1', 'ambiguity', 'the queue is read two ways')] })])
+  const { result, prompts } = await run(sim, {
+    'plan:': written(row('p').spec_path),
+    'settle:': settled('discarded'),
+  }, {}, { workflow: probe })
+  assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'review_not_converging']])
+  assert.deepEqual(sim.dispositions, [], 'a refused discard is never recorded')
+  assert.deepEqual(sim.prepared, [])
+  const again = prompts.find((p) => p.opts.label === 'settle:p#2')
+  assert.ok(again && again.prompt.includes('P1'), 'the refusal went back to the planner, naming the finding')
+  assert.ok(result.implemented.some((i) => i.id === 'a'), 'an escalation in the review stops only that sub-effort')
+})
+
+test('a discard refused once and then incorporated is reviewed again and prepared', async () => {
+  const sim = plannerDesign()
+  const probe = probes([
+    probeReturn({ findings: [probeFinding('P1', 'gap', 'no retry is designed')], snapshot: 'snapshot:a', review: 'ra-probe' }),
+    probeReturn({ snapshot: 'snapshot:b', review: 'rb-probe' }),
+  ])
+  await run(sim, {
+    'plan:': written(row('p').spec_path),
+    'settle:p#1': settled('discarded'),
+    'settle:p#2': settled('incorporated'),
+  }, {}, { workflow: probe })
+  assert.deepEqual(sim.dispositions, [{ node: 'p', finding: 'item-no-retry-is-designed', outcome: 'incorporated' }])
+  assert.equal(probe.calls.length, 2)
+  assert.deepEqual(sim.prepared.map((p) => p.review), ['rb-probe'])
+})
+
+test('a finding back unchanged after it was incorporated escalates as not converging', async () => {
+  const sim = plannerDesign()
+  const probe = probes([
+    probeReturn({ findings: [probeFinding('P1', 'gap', 'Missing a retry policy')], snapshot: 'snapshot:a' }),
+    probeReturn({ findings: [probeFinding('P4', 'gap', '  missing a   retry policy ')], snapshot: 'snapshot:b' }),
+  ])
+  const { result } = await run(sim, { 'plan:': written(row('p').spec_path), 'settle:': settled('incorporated') }, {}, { workflow: probe })
+  assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'review_not_converging']])
+  assert.deepEqual(sim.prepared, [])
+})
+
+test('a round that incorporates nothing while the gate stays shut escalates as not converging', async () => {
+  const sim = plannerDesign()
+  const probe = probes([probeReturn({
+    findings: [probeFinding('P1', 'ambiguity', 'the queue is read two ways'), probeFinding('P2', 'note', 'name the queue after its owner')],
+  })])
+  const { result } = await run(sim, {
+    'plan:': written(row('p').spec_path),
+    // The planner settles only the note and leaves the ambiguity untouched: no edit, gate still shut.
+    'settle:': () => ({ status: 'settled', question: '', detail: '', dispositions: [{ finding: 'P2', outcome: 'discarded' }] }),
+  }, {}, { workflow: probe })
+  assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'review_not_converging']])
+  assert.equal(probe.calls.length, 1, 'an unedited spec is not reviewed again')
+  assert.deepEqual(sim.prepared, [])
+})
+
+test('a planner edit that adds a Decisions row parks the folder for the user', async () => {
+  const sim = simulate([composite('.'), row('p', { kind: 'design', author: 'planner' })], {
+    specCheck: (args, n) => (n === 1
+      ? { decisions_n: 1, problems: [{ file: row('p').spec_path, line: 9, problem: 'a planner-written spec states no decisions' }] }
+      : {}),
+  })
+  const probe = probes([probeReturn({ findings: [probeFinding('P1', 'gap', 'which store holds the queue')] })])
+  const { result } = await run(sim, { 'plan:': written(row('p').spec_path), 'settle:': settled('incorporated') }, {}, { workflow: probe })
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['p', 'needs_decision']])
+  assert.equal(probe.calls.length, 1, 'a spec that states a decision is not reviewed again')
+  assert.deepEqual(sim.prepared, [])
+})
+
+test('the re-review after an edit is narrowed to the last reviewed snapshot', async () => {
+  const sim = plannerDesign()
+  const probe = probes([
+    probeReturn({ findings: [probeFinding('P1', 'ambiguity', 'two meanings of tick')], snapshot: 'snapshot:aaa', review: 'raaa-probe' }),
+    probeReturn({ snapshot: 'snapshot:bbb', review: 'rbbb-probe' }),
+  ])
+  await run(sim, { 'plan:': written(row('p').spec_path), 'settle:': settled('incorporated') }, {}, { workflow: probe })
+  assert.equal(probe.calls[0].args.since, undefined)
+  assert.equal(probe.calls[1].args.since, 'snapshot:aaa', 'narrowed by the snapshot, not by the return\'s name')
+  assert.equal(sim.reviewed.length, probe.calls.length, 'every round is recorded')
+  assert.deepEqual(sim.dispositions, [{ node: 'p', finding: 'item-two-meanings-of-tick', outcome: 'incorporated' }])
+  assert.deepEqual(sim.prepared.map((p) => p.review), ['rbbb-probe'])
+})
+
+// A clean round records an empty return (T24b), so only a probe whose record failed (`review: ''`),
+// or whose scope failed too (`snapshot: ''`), leaves the preparation to name what it read.
+test('a passing review whose probe recorded no return is prepared against its snapshot, or the spec hash', async () => {
+  const snapshotOnly = plannerDesign()
+  await run(snapshotOnly, { 'plan:': written(row('p').spec_path) }, {},
+    { workflow: probes([probeReturn({ review: '', snapshot: 'snapshot:first' })]) })
+  assert.deepEqual(snapshotOnly.prepared.map((p) => p.review), ['snapshot:first'])
+
+  // The simulator's first spec-check answers hash 'h0'.
+  const neither = plannerDesign()
+  await run(neither, { 'plan:': written(row('p').spec_path) }, {},
+    { workflow: probes([probeReturn({ review: '', snapshot: '' })]) })
+  assert.deepEqual(neither.prepared.map((p) => p.review), ['h0'])
+})
+
+test('a finding with no item is disposed as h0#P1', async () => {
+  const sim = plannerDesign()
+  const probe = probes([
+    probeReturn({ findings: [probeFinding('P1', 'ambiguity', 'two meanings of tick', { item: '' })] }),
+    probeReturn(),
+  ])
+  await run(sim, { 'plan:': written(row('p').spec_path), 'settle:': settled('incorporated') }, {}, { workflow: probe })
+  // '<spec hash>#<P-id>': the simulator's first spec-check answers hash 'h0'.
+  assert.deepEqual(sim.dispositions, [{ node: 'p', finding: 'h0#P1', outcome: 'incorporated' }])
+  assert.deepEqual(sim.reviewed[0].ambiguities, ['h0#P1'])
+})
+
+test('a finding carried from a round that settled it is not settled again, and does not hold the gate shut', async () => {
+  const sim = plannerDesign()
+  const tick = probeFinding('P1', 'ambiguity', 'two meanings of tick')
+  const note = probeFinding('P2', 'note', 'name the queue after its owner')
+  const probe = probes([
+    probeReturn({ findings: [tick, note], snapshot: 'snapshot:aaa' }),
+    probeReturn({ findings: [{ ...tick, carried: true }, { ...note, carried: true }], snapshot: 'snapshot:bbb', review: 'rbbb-probe' }),
+  ])
+  const { result, prompts } = await run(sim, {
+    'plan:': written(row('p').spec_path),
+    'settle:': (prompt) => ({
+      status: 'settled', question: '', detail: '',
+      dispositions: [{ finding: 'P1', outcome: 'incorporated' }, { finding: 'P2', outcome: 'discarded' }],
+    }),
+  }, {}, { workflow: probe })
+  assert.equal(labels(prompts).filter((l) => l.startsWith('settle:')).length, 1, 'carried findings are already settled')
+  assert.deepEqual(sim.dispositions.map((d) => [d.finding, d.outcome]),
+    [[tick.item, 'incorporated'], [note.item, 'discarded']])
+  assert.deepEqual(sim.prepared.map((p) => p.review), ['rbbb-probe'], 'a settled carried ambiguity is not an open one')
+  assert.deepEqual(result.escalations, [])
+})
+
+test('a gate still shut after a round that incorporated nothing escalates as not converging', async () => {
+  // The ledger holds an ambiguity this invocation never saw settled (a reviewed line another
+  // session wrote): the gate stays shut, and a round that edited nothing cannot open it.
+  const shutGate = () => ({ ratifiable: false, open: ['Iabandoned'], coverage_complete: true })
+  const note = probeFinding('P1', 'note', 'name the queue after its owner')
+  for (const findings of [[note], []]) {
+    const sim = simulate([composite('.'), row('p', { kind: 'design', author: 'planner' })], { gate: shutGate })
+    const probe = probes([probeReturn({ findings })])
+    const { result } = await run(sim, { 'plan:': written(row('p').spec_path), 'settle:': settled('discarded') }, {}, { workflow: probe })
+    const label = findings.length ? 'a discarded note' : 'no finding'
+    assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'review_not_converging']], label)
+    assert.ok(result.escalations[0].detail.includes('Iabandoned'), label + ': the open ambiguity is named')
+    assert.ok(sim.calls.some((c) => c.name === 'spec-gate'), label + ': the gate was asked')
+    assert.equal(probe.calls.length, 1, label + ': an unedited spec is not reviewed again')
+    assert.deepEqual(sim.prepared, [], label)
+    assert.deepEqual(sim.dispositions.map((d) => [d.finding, d.outcome]), findings.map((f) => [f.item, 'discarded']), label)
+  }
+})
+
+test('a compile refusal at preparation escalates, and nothing below the folder runs', async () => {
+  const sim = simulate([composite('.'), row('p', { kind: 'design', author: 'planner' })], {
+    prepare: () => ({ compile: { ok: false, problems: [{ file: 'DESIGN.md', line: 3, problem: 'x realises D9, which no spec defines' }], written: [], retired: [], parked: [], flagged: [], skipped: [] } }),
+  })
+  const { result } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, { workflow: probes([probeReturn()]) })
+  assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'compile_refused']])
+  assert.ok(result.escalations[0].detail.includes('D9'))
+})
+
+test('spec-check problems escalate spec_refused before any review', async () => {
+  const sim = simulate([composite('.'), row('p', { kind: 'design', author: 'planner' })], {
+    specCheck: () => ({ problems: [{ file: row('p').spec_path, line: 14, problem: 'task x has no criterion' }] }),
+  })
+  const probe = probes([])
+  const { result } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, { workflow: probe })
+  assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'spec_refused']])
+  assert.ok(result.escalations[0].detail.includes('task x has no criterion'))
+  assert.equal(probe.calls.length, 0)
+  assert.deepEqual(sim.prepared, [])
+})
+
+test('a review that throws escalates review_failed and names its channel', async () => {
+  const sim = plannerDesign()
+  const probe = probes([])   // its first call is unscripted, so it throws
+  const { result } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, { workflow: probe })
+  assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'review_failed']])
+  assert.ok(result.coverage.failed_channels.includes('autonomous-review'))
+  assert.deepEqual(sim.reviewed, [])
+  assert.deepEqual(sim.prepared, [])
+})
+
+test('a preparation the boundary refuses escalates prepare_refused', async () => {
+  const sim = simulate([composite('.'), row('p', { kind: 'design', author: 'planner' })], {
+    prepare: () => ({ status: 'refused', problems: [{ file: row('p').spec_path, line: 1, problem: 'the parent spec gives p to the user' }] }),
+  })
+  const { result } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, { workflow: probes([probeReturn()]) })
+  assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'prepare_refused']])
+  assert.ok(result.escalations[0].detail.includes('gives p to the user'))
+})
+
+test('a prepared folder that compiles with no children escalates planner_wrote_nothing', async () => {
+  const sim = simulate([composite('.'), row('p', { kind: 'design', author: 'planner' })], {
+    preflight: (args) => (args.reload ? { nodes: [composite('.'), composite('p', { author: 'planner' })] } : {}),
+  })
+  const { result } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, { workflow: probes([probeReturn()]) })
+  assert.deepEqual(sim.prepared.map((p) => p.node), ['p'])
+  assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'planner_wrote_nothing']])
+})
+
+test('a settle dispatch that returns nothing escalates settle_returned_nothing', async () => {
+  const sim = plannerDesign()
+  const probe = probes([probeReturn({ findings: [probeFinding('P1', 'gap', 'no retry is designed')] })])
+  const { result } = await run(sim, { 'plan:': written(row('p').spec_path), 'settle:': () => null }, {}, { workflow: probe })
+  assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'settle_returned_nothing']])
+  assert.deepEqual(sim.dispositions, [])
+  assert.deepEqual(sim.prepared, [])
+})
+
+test('a settle that needs a decision parks the folder with the planner\'s question', async () => {
+  const sim = plannerDesign()
+  const probe = probes([probeReturn({ findings: [probeFinding('P1', 'gap', 'which store holds the queue')] })])
+  const question = 'Keep the queue in memory or on disk?'
+  const { result } = await run(sim, {
+    'plan:': written(row('p').spec_path),
+    'settle:': () => ({ status: 'needs_decision', dispositions: [], question, detail: '' }),
+  }, {}, { workflow: probe })
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return, p.question]), [['p', 'needs_decision', question]])
+  assert.deepEqual(sim.dispositions, [])
+  assert.deepEqual(sim.prepared, [])
+})
+
+test('a planner folder still parked spec_changed after its re-derivation is handed to the planner once', async () => {
+  const parkedP = () => composite('p', { author: 'planner', status: 'parked', reason: 'spec_changed', rev: 1 })
+  // The reload still shows the park, so only the once-per-invocation rule keeps a second plan:p away.
+  const sim = simulate([composite('.'), parkedP()], {
+    preflight: (args) => (args.reload ? { nodes: [composite('.'), parkedP(), row('p/x')] } : {}),
+  })
+  const probe = probes([probeReturn()])
+  const { prompts } = await run(sim, { 'plan:': written(composite('p').spec_path) }, {}, { workflow: probe })
+  assert.deepEqual(labels(prompts).filter((l) => l.startsWith('plan:')), ['plan:p'])
+  assert.equal(probe.calls.length, 1)
 })
 
 test("develop's planner prompt carries the nested survey's items and risks, not verdicts", async () => {
@@ -353,8 +698,9 @@ test("develop's planner prompt carries the nested survey's items and risks, not 
     risks: [{ topic: 'a', text: 'tests were not searched' }],
     coverage: { complete: true, dropped: [], incomplete: [], failed_channels: [], unreached: [], resumable: { runId: 'r', remaining: [] } },
   }
-  const { prompts } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, {
+  const { result, prompts } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, {
     workflow: (name) => {
+      if (name === 'agentics-probe') return probeReturn()
       if (name !== 'agentics-survey') throw new Error('no nested ' + name + ' in this scenario')
       return survey
     },
@@ -364,6 +710,7 @@ test("develop's planner prompt carries the nested survey's items and risks, not 
   assert.match(plan, /src\/load\.js/)
   assert.match(plan, /tests were not searched/)
   assert.doesNotMatch(plan, /"verdicts"/)
+  assert.ok(!result.escalations.some((e) => e.reason === 'review_failed'), 'the nested probe answered')
 })
 
 test('a failed integration review makes the result incomplete', async () => {

@@ -12,7 +12,7 @@ const wf = (name) => fileURLToPath(new URL('../workflows/' + name, import.meta.u
 const WF = wf('agentics-investigate.workflow.js')
 
 const surveyResult = (over = {}) => ({
-  question: 'q', topics: [], verdicts: [], history: null, docs: null,
+  question: 'q', topics: [], ground: [], items: [], reused: [], unrecorded: [], risks: [], history: null, docs: null,
   coverage: {
     complete: true, dropped: [], incomplete: [], failed_channels: [], unreached: [],
     resumable: { runId: 'r', remaining: [] },
@@ -89,14 +89,47 @@ test('the survey is handed the pace and the plugin root, and the synthesis is to
   assert.equal(result.coverage.resumable.args.pace, 'fast', 'a resume re-passes what the survey was given')
 })
 
-test('a survey that stood in for itself passes its coverage through untouched', async () => {
-  const standing = { stamp: '20260920-101500', observed_at: 'abc1234' }
+const ITEMS = [{
+  id: 'I12345678', topic: 'a', kind: 'behaviour', claim: 'the loader reads config.json',
+  spans: [{ path: 'src/load.js', start: 3, end: 9, at: 'a'.repeat(40) }], queries: [], sources: [], rests_on: [],
+}]
+const RISKS = [{ topic: 'a', text: 'tests were not searched' }]
+
+test("the survey's coverage passes through untouched", async () => {
+  const coverage = { ...surveyResult().coverage, complete: false, incomplete: ['a'] }
   const { result } = await runWorkflow(WF, {
     args: { question: 'how does X work' },
     agent: scriptedAgents({ synthesize: 'the answer' }),
-    workflow: () => surveyResult({ coverage: { ...surveyResult().coverage, standing } }),
+    workflow: () => surveyResult({ coverage }),
   })
-
-  assert.deepEqual(result.coverage.standing, standing)
+  assert.deepEqual(result.coverage.incomplete, ['a'])
+  assert.equal(result.coverage.complete, false)
   assert.ok(!('from_kb' in result.coverage))
+})
+
+test("the synthesis is handed the survey's items with their anchors, and its risks", async () => {
+  const { prompts } = await runWorkflow(WF, {
+    args: { question: 'how does X work' },
+    agent: scriptedAgents({ synthesize: 'the answer' }),
+    workflow: () => surveyResult({ items: ITEMS, risks: RISKS }),
+  })
+  const synth = prompts.find((p) => p.opts.label === 'synthesize').prompt
+  assert.match(synth, /the loader reads config\.json/)
+  assert.match(synth, /src\/load\.js:3-9/)
+  assert.match(synth, /tests were not searched/)
+})
+
+test('a synthesis that dies hands back the items, risks, history and docs the survey established', async () => {
+  const history = 'the loader moved to src/load.js in the last release'
+  const docs = 'the vendor documents config.json as optional'
+  const { result } = await runWorkflow(WF, {
+    args: { question: 'how does X work' },
+    agent: scriptedAgents({ synthesize: () => { throw new Error('overloaded') } }),
+    workflow: () => surveyResult({ items: ITEMS, risks: RISKS, history, docs }),
+  })
+  assert.deepEqual(result.evidence.items, ITEMS)
+  assert.deepEqual(result.evidence.risks, RISKS)
+  assert.equal(result.evidence.history, history)
+  assert.equal(result.evidence.docs, docs)
+  assert.ok(!('verdicts' in result.evidence))
 })

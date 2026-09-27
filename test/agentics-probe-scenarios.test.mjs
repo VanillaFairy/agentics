@@ -9,8 +9,10 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import {
-  carriedContext, carriedEnvelope, contextPathFor, excerptLocations, runWorkflow, scriptedAgents,
+  carriedContext, carriedEnvelope, contextPathFor, excerptLocations, recordedLine, runWorkflow, scriptedAgents,
 } from './harness/workflow-host.mjs'
+import { itemId } from '../lib/evidence.mjs'
+import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 
 const WF = fileURLToPath(new URL('../workflows/agentics-probe.workflow.js', import.meta.url))
 
@@ -52,12 +54,25 @@ const located = (over = {}) => ({
   ...over,
 })
 
+// Every probe snapshots its artefact first and records what it found. By default the scope is a
+// full review of a 40-line document and the store accepts every item, which keeps the scenarios
+// below about the thing each one tests.
+const SNAP = 'snapshot:22222222'
+const scopeOf = (over = {}) => carriedEnvelope({
+  ok: true, path: 'docs/proposal.md', snapshot: SNAP, lines: 40, since: '', full: true,
+  changed: [{ start: 1, end: 40 }], carried: [], ...over,
+})
+const recordAll = (prompt) => carriedEnvelope({
+  ok: true, return: '20260926-120000-probe', ids: recordedLine(prompt).entry.items.map(itemId),
+})
+
 // `probe:` is a PREFIX key and scriptedAgents takes the first entry that matches, so the
 // catch-all has to be registered LAST or it swallows every per-axis answer a scenario sets.
 const probeAgents = ({ ...over } = {}) => {
   const catchAll = over['probe:'] || found()
   delete over['probe:']
   return scriptedAgents({
+    scope: scopeOf(), record: recordAll, 'record:': recordAll,
     locate: located(), 'guidance-context': carriedContext, 'ground-context': carriedContext, axes: axesResult(), ...over, 'probe:': catchAll,
   })
 }
@@ -587,4 +602,263 @@ test('located ground the courier could not carry reaches the analysts as locatio
     /LOCATIONS NOT EXCERPTED[\s\S]*lib\/loader\.mjs:12/)
   assert.equal(result.coverage.complete, true, 'more turns for the readers, not less evidence')
   assert.match(result.coverage.unreached.join(' '), /read those locations themselves/)
+})
+
+// ------------------------------------------------------------------ findings as evidence items
+//
+// The artefact is snapshotted before anything reads it, and every finding is recorded as an item
+// anchored to lines of that snapshot. A later probe given `since` attacks only the lines that
+// changed, and carries forward every earlier finding whose lines no edit touched: the narrowing
+// is the same anchor check as everywhere else, not a mechanism of its own.
+
+const promptOf = (prompts, label) => (prompts.find((p) => p.opts.label === label) || {}).prompt || ''
+const withLines = (over = {}) => finding({ start: 12, end: 14, ...over })
+const failedCourier = { stop_reason: 'failed', payload_raw: '', notes: 'node is not on the PATH' }
+
+const CARRIED_ITEM = (over = {}) => ({
+  id: 'Iaaaaaaaa', question: 'docs/proposal.md', topic: 'challenge:yagni', ground: ['docs/proposal.md'],
+  kind: 'behaviour', claim: 'an older note',
+  spans: [{ path: 'docs/proposal.md', start: 5, end: 7, at: 'snapshot:11111111' }],
+  queries: [], sources: [], rests_on: [], from_return: '20260925-100000-probe', seq: 3,
+  detail: { axis: 'yagni', severity: 'note', section: '§2', evidence: 'the document says so' },
+  state: 'standing', changed: [], why: 'every anchor is unchanged', ...over,
+})
+const narrowed = (over = {}) => scopeOf({
+  since: 'snapshot:11111111', full: false, changed: [{ start: 31, end: 33 }], carried: [CARRIED_ITEM()], ...over,
+})
+
+test('the artefact is snapshotted before anything reads it, and the result names the snapshot', async () => {
+  const { result, prompts } = await runWorkflow(WF, { args: ARGS, agent: probeAgents() })
+
+  const [scope] = prompts
+  assert.equal(scope.opts.label, 'scope')
+  assert.equal(scope.opts.agentType, 'agentics:courier')
+  assert.match(scope.prompt, /lib\/evidence\.mjs" review-scope --repo "C:\/repo" --root "C:\/repo" --file "docs\/proposal\.md"\n/)
+  assert.equal(result.snapshot, SNAP)
+  assert.deepEqual(result.scope, { full: true, changed: [{ start: 1, end: 40 }] })
+})
+
+test('every new finding is recorded as a behaviour item anchored in the snapshot', async () => {
+  const { result, prompts } = await runWorkflow(WF, {
+    args: ARGS,
+    agent: probeAgents({
+      'probe:yagni': found([withLines({ severity: 'gap', claim: 'the cache is unasked for', section: '§4', evidence: 'line 12 builds one' })]),
+    }),
+  })
+
+  const rec = prompts.find((p) => p.opts.label === 'record')
+  assert.equal(rec.opts.agentType, 'agentics:courier')
+  assert.match(rec.prompt, /lib\/evidence\.mjs" record --repo "C:\/repo" --root "C:\/repo" --kind probe --digest [0-9a-f]{8} --b64 \S+/)
+  const { entry, digest } = recordedLine(rec.prompt)
+  assert.equal(digest, fnv1a(canonical(entry)))
+
+  const [item] = entry.items
+  assert.equal(entry.items.length, 1)
+  assert.equal(item.kind, 'behaviour')
+  assert.equal(item.question, 'docs/proposal.md')
+  assert.equal(item.topic, 'challenge:yagni')
+  assert.deepEqual(item.ground, ['docs/proposal.md'])
+  assert.equal(item.claim, 'the cache is unasked for')
+  assert.deepEqual(item.spans, [{ path: 'docs/proposal.md', start: 12, end: 14, at: SNAP }])
+  assert.deepEqual([item.detail.axis, item.detail.severity, item.detail.section, item.detail.evidence],
+    ['yagni', 'gap', '§4', 'line 12 builds one'])
+
+  assert.equal(result.findings[0].item, itemId(item))
+  assert.equal(result.findings[0].carried, false)
+  assert.deepEqual(result.unrecorded, [])
+})
+
+test('the findings schema asks every finding for integer artefact lines', async () => {
+  const { prompts } = await runWorkflow(WF, { args: ARGS, agent: probeAgents() })
+  const probe = prompts.find((p) => /^probe:/.test(p.opts.label))
+  const f = probe.opts.schema.properties.findings.items
+  assert.ok(f.required.includes('start') && f.required.includes('end'))
+  assert.equal(f.properties.start.type, 'integer')
+  assert.equal(f.properties.end.type, 'integer')
+})
+
+test('a finding with no usable line range is anchored to the whole artefact', async () => {
+  const { prompts } = await runWorkflow(WF, {
+    args: ARGS,
+    agent: probeAgents({
+      'probe:yagni': found([
+        finding({ claim: 'no range at all' }),
+        withLines({ claim: 'past the end', start: 38, end: 41 }),
+        withLines({ claim: 'backwards', start: 9, end: 3 }),
+      ]),
+    }),
+  })
+  const spans = recordedLine(promptOf(prompts, 'record')).entry.items.map((i) => i.spans[0])
+  assert.deepEqual(spans.map((s) => [s.start, s.end]), [[1, 40], [1, 40], [1, 40]],
+    'the safe direction: a finding anchored everywhere is re-reviewed on any edit')
+})
+
+test('since narrows the attack to the changed lines and carries forward what no edit touched', async () => {
+  const { result, prompts } = await runWorkflow(WF, {
+    args: { ...ARGS, since: 'snapshot:11111111' },
+    agent: probeAgents({
+      scope: narrowed(),
+      'probe:yagni': found([withLines({ start: 31, end: 32, claim: 'a new gap', severity: 'gap' })]),
+    }),
+  })
+
+  assert.match(promptOf(prompts, 'scope'), /--since "snapshot:11111111"/)
+  for (const p of prompts.filter((x) => /^probe:/.test(x.opts.label))) {
+    assert.match(p.prompt, /ATTACK ONLY THESE LINES[\s\S]*31-33/, p.opts.label)
+    assert.match(p.prompt, /an older note/, p.opts.label + ' is told what is settled, so it does not find it again')
+  }
+
+  const carried = result.findings.find((f) => f.carried)
+  assert.deepEqual([carried.item, carried.axis, carried.severity, carried.claim, carried.section],
+    ['Iaaaaaaaa', 'yagni', 'note', 'an older note', '§2'])
+  assert.deepEqual(result.findings.map((f) => f.id), result.findings.map((_, i) => 'P' + (i + 1)))
+  assert.equal(result.findings[0].carried, true, 'carried findings come first')
+
+  assert.deepEqual(recordedLine(promptOf(prompts, 'record')).entry.items.map((i) => i.claim), ['a new gap'],
+    'a carried finding is already in the pool')
+  assert.deepEqual(result.scope, { full: false, changed: [{ start: 31, end: 33 }] })
+})
+
+test('a since that is not a snapshot id never reaches the scope command and buys a full probe', async () => {
+  for (const since of ['HEAD~1', 'snapshot:1234', 'snapshot:22222222"; rm -rf ~; echo "']) {
+    const { prompts, logs } = await runWorkflow(WF, { args: { ...ARGS, since }, agent: probeAgents() })
+    const scope = promptOf(prompts, 'scope')
+    assert.doesNotMatch(scope, /--since/, since)
+    assert.doesNotMatch(scope, /rm -rf/, since)
+    assert.ok(logs.some((l) => /not a snapshot id/.test(l)), since)
+    assert.ok(prompts.filter((p) => /^probe:/.test(p.opts.label)).every((p) => !/ATTACK ONLY THESE LINES/.test(p.prompt)), since)
+  }
+})
+
+test('a carried ambiguity is still an open ambiguity, and closes the gate', async () => {
+  const { result } = await runWorkflow(WF, {
+    args: { ...ARGS, since: 'snapshot:11111111' },
+    agent: probeAgents({
+      scope: narrowed({ carried: [CARRIED_ITEM({ detail: { axis: 'ambiguity', severity: 'ambiguity', section: '§1', evidence: 'x' } })] }),
+    }),
+  })
+  assert.equal(result.ambiguities.length, 1)
+  assert.equal(result.ambiguities[0].carried, true)
+  assert.equal(result.ratifiable, false)
+})
+
+test('an artefact unchanged since the last review buys no analyst', async () => {
+  const { result, prompts, logs } = await runWorkflow(WF, {
+    args: { ...ARGS, since: 'snapshot:11111111' },
+    agent: probeAgents({ scope: narrowed({ changed: [] }) }),
+  })
+  assert.deepEqual(prompts.map((p) => p.opts.label), ['scope', 'record'], 'no analyst; the clean round is recorded')
+  assert.deepEqual(recordedLine(promptOf(prompts, 'record')).entry, { items: [] }, 'a carried finding is already in the pool')
+  assert.equal(result.review, '20260926-120000-probe')
+  assert.deepEqual(result.findings.map((f) => f.item), ['Iaaaaaaaa'])
+  assert.equal(result.coverage.complete, true)
+  assert.equal(result.ratifiable, true)
+  assert.ok(logs.some((l) => /unchanged since/.test(l)))
+})
+
+test('a scope that cannot be read costs a full probe, never a narrowed one, and records nothing', async () => {
+  const { result, prompts } = await runWorkflow(WF, {
+    args: { ...ARGS, since: 'snapshot:11111111' },
+    agent: probeAgents({ scope: failedCourier, 'scope#2': failedCourier, 'probe:yagni': found([withLines()]) }),
+  })
+  const probes = prompts.filter((p) => /^probe:/.test(p.opts.label))
+  assert.equal(probes.length, STANDING.length, 'every axis is attacked in full')
+  assert.ok(probes.every((p) => !/ATTACK ONLY THESE LINES/.test(p.prompt)))
+  assert.ok(!prompts.some((p) => /^record/.test(p.opts.label)), 'without a snapshot there is nothing to anchor a finding to')
+  assert.equal(result.snapshot, '')
+  assert.equal(result.coverage.complete, true, 'a lost snapshot costs a full probe, not coverage')
+})
+
+test('a record that fails is logged, costs no coverage, and names no snapshot', async () => {
+  const { result, logs } = await runWorkflow(WF, {
+    args: ARGS,
+    agent: probeAgents({ record: failedCourier, 'record#2': failedCourier, 'probe:yagni': found([withLines()]) }),
+  })
+  assert.equal(result.coverage.complete, true)
+  assert.equal(result.ratifiable, true)
+  assert.deepEqual(result.unrecorded, result.findings.map((f) => f.item))
+  assert.equal(result.snapshot, '', 'a next round given this snapshot would never re-attack the unrecorded lines')
+  assert.equal(result.review, '')
+  assert.ok(logs.some((l) => /not recorded/.test(l)))
+})
+
+test('a refused record leaves its findings unrecorded and names no snapshot, so the next round probes in full', async () => {
+  const refuse = (prompt) => carriedEnvelope({
+    ok: false, refused: recordedLine(prompt).entry.items.map((_, index) => ({ index, problems: ['span 0: at must be a commit sha or snapshot:<hash>'] })),
+  })
+  const { result, prompts, logs } = await runWorkflow(WF, {
+    args: ARGS,
+    agent: probeAgents({ record: refuse, 'probe:yagni': found([withLines(), withLines({ claim: 'a second gap' })]) }),
+  })
+  assert.equal(prompts.filter((p) => /^record/.test(p.opts.label)).length, 1, 'a finding stands whether or not the pool took it: no re-ask')
+  assert.deepEqual([...result.unrecorded].sort(), result.findings.map((f) => f.item).sort())
+  assert.equal(result.snapshot, '')
+  assert.equal(result.coverage.complete, true)
+  assert.ok(logs.some((l) => /not recorded/.test(l)))
+})
+
+test('findings too many for one argv slot are recorded in batches labelled record:<n>', async () => {
+  const many = Array.from({ length: 12 }, (_, i) => withLines({ claim: 'gap ' + i + ' ' + 'x'.repeat(600) }))
+  const { result, prompts } = await runWorkflow(WF, { args: ARGS, agent: probeAgents({ 'probe:yagni': found(many) }) })
+  const recs = prompts.filter((p) => /^record/.test(p.opts.label))
+  assert.ok(recs.length > 1)
+  assert.deepEqual(recs.map((p) => p.opts.label), recs.map((_, i) => 'record:' + (i + 1)))
+  for (const p of recs) assert.ok(/--b64 (\S+)/.exec(p.prompt)[1].length <= 6000, p.opts.label)
+  assert.deepEqual(recs.flatMap((p) => recordedLine(p.prompt).entry.items.map((i) => i.claim)).sort(),
+    many.map((f) => f.claim).sort())
+  assert.deepEqual(result.unrecorded, [])
+})
+
+test('the result names the return the round\'s findings were recorded in, the first batch\'s with several', async () => {
+  const named = (prompt, opts) => carriedEnvelope({
+    ok: true, return: '20260926-120000-' + opts.label.replace(':', '-') + '-probe', ids: recordedLine(prompt).entry.items.map(itemId),
+  })
+  const one = await runWorkflow(WF, { args: ARGS, agent: probeAgents({ record: named, 'probe:yagni': found([withLines()]) }) })
+  assert.equal(one.result.review, '20260926-120000-record-probe')
+
+  const many = Array.from({ length: 12 }, (_, i) => withLines({ claim: 'gap ' + i + ' ' + 'x'.repeat(600) }))
+  const batched = await runWorkflow(WF, { args: ARGS, agent: probeAgents({ 'record:': named, 'probe:yagni': found(many) }) })
+  assert.equal(batched.result.review, '20260926-120000-record-1-probe', 'the first batch names the round')
+})
+
+test('a round with no findings records an empty return and names it', async () => {
+  const { result, prompts } = await runWorkflow(WF, { args: ARGS, agent: probeAgents() })
+  const recs = prompts.filter((p) => /^record/.test(p.opts.label))
+  assert.deepEqual(recs.map((p) => p.opts.label), ['record'])
+  assert.equal(recs[0].opts.agentType, 'agentics:courier')
+  assert.match(recs[0].prompt, /lib\/evidence\.mjs" record --repo "C:\/repo" --root "C:\/repo" --kind probe --digest [0-9a-f]{8} --b64 \S+/)
+  const { entry, digest } = recordedLine(recs[0].prompt)
+  assert.deepEqual(entry, { items: [] })
+  assert.equal(digest, fnv1a(canonical(entry)))
+  assert.equal(result.review, '20260926-120000-probe', 'a clean review is a review return like any other')
+  assert.equal(result.snapshot, SNAP)
+  assert.deepEqual(result.unrecorded, [])
+  assert.equal(result.ratifiable, true)
+})
+
+test('a probe run from a linked worktree records its findings with the worktree as root', async () => {
+  const { prompts } = await runWorkflow(WF, {
+    args: { ...ARGS, roots: 'C:/wt/e1-a' },
+    agent: probeAgents({ 'probe:yagni': found([withLines()]) }),
+  })
+  assert.match(promptOf(prompts, 'scope'), /review-scope --repo "C:\/wt\/e1-a" --root "C:\/wt\/e1-a" --file /,
+    'the artefact and the carried findings are read where the analysts read')
+  assert.match(promptOf(prompts, 'record'), /record --repo "C:\/wt\/e1-a" --root "C:\/wt\/e1-a" --kind probe /)
+})
+
+test('with no artefact the result names no snapshot, a full scope and nothing unrecorded', async () => {
+  const { result, prompts } = await runWorkflow(WF, { args: { roots: 'C:/repo' }, agent: probeAgents() })
+  assert.deepEqual(prompts, [])
+  assert.equal(result.snapshot, '')
+  assert.deepEqual(result.scope, { full: true, changed: [] })
+  assert.deepEqual(result.unrecorded, [])
+  assert.equal(result.review, '')
+})
+
+test('a narrowed re-review is sized by the lines it attacks, not by the whole artefact', async () => {
+  const { result } = await runWorkflow(WF, {
+    args: { artifact: 'docs/proposal.md', roots: 'C:/repo', since: 'snapshot:11111111' },
+    agent: probeAgents({ ground: groundPayload({ artifact_lines: 900 }), scope: narrowed({ lines: 900 }) }),
+  })
+  assert.equal(result.analysts.length, 1, 'three changed lines are one reader\'s work')
 })

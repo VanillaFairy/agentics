@@ -327,6 +327,8 @@ re-spec**: edit the spec that owns the fault, have it re-approved, recompile, re
 | `needs_decision`, `contract_changed` | the nearest spec at or above the node that the user wrote: a Decisions row in the user's words, and its id in the `realises` of the entry that makes it true. A decision never goes into a spec develop's planner wrote |
 | `premise_mismatch`, `needs_respec` | the spec holding the node's entry: correct what the user rules wrong |
 | `integration_critical` | the folder's spec: the user rules which part is wrong; a `task` entry that fixes it, or the corrected criterion |
+| `spec_defect` | the spec the question names: the claim cannot be met as written; the user rules how it changes |
+| `cant_tell` | the folder's spec: make the claim decidable, a criterion with a check or a `HUMAN:` criterion the user judges at landing |
 | `contract_drift` | the consumer's entry: the user rules it unaffected (then relaunch with `retry_escalated: [<id>]` and edit nothing), re-designs it, or re-slices it |
 | `spec_changed` | compile parked a folder you wrote because its spec was re-approved while work under it was under way: the user rules whether the dispatched work still stands, and re-specs what does not. A folder develop's planner wrote never reaches you with this return: the run hands it back to the planner, which re-derives it |
 
@@ -339,8 +341,9 @@ relaunch with the **same** `execution`.
 **d. Blocked** — `{id, blocked_by}`: never dispatched because what they depend on did not land.
 Name the root cause; do not relaunch for them while it is still escalated.
 
-**e. Integration.** `integration.branch` and `head_sha`, then `reviews` per folder: criticals
-were parked (c); majors are the user's decision queue, reported as returned. A review that ran with
+**e. Integration.** `integration.branch` and `head_sha`, then `reviews` per folder: criticals,
+and claims that did not hold, were parked (c); majors are the user's decision queue, reported as
+returned. A review that ran with
 planned children missing carries that caveat on every finding — say so.
 
 **f. `HUMAN:` criteria.** `node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" land --repo . --effort <e>

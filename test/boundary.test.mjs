@@ -9,6 +9,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { land, runBoundary } from '../lib/boundary.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
 import { heldBy } from '../lib/locks.mjs'
+import { renderLanding } from '../lib/render.mjs'
 import { addNodes, readTree } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 import { branchExists, executionDir, posix, specPath, worktreeOf } from '../lib/store.mjs'
@@ -598,4 +599,37 @@ test('land check carries the root integration review\'s latest claim verdicts', 
   assert.equal(append(r, 'e1', 'events', { kind: 'claims', node: '.', execution: STAMP, head_sha: 'h2', claims: second }).ok, true)
   assert.equal(append(r, 'e1', 'events', { kind: 'claims', node: 'sub', execution: STAMP, head_sha: 'h3', claims: [] }).ok, true)
   assert.deepEqual(land(r, 'e1', 'check').root_claims, second)
+})
+
+test('land check carries the landing view', () => {
+  const r = repo()
+  assert.equal(land(r, 'e1', 'check').landing, renderLanding(r, 'e1'))
+})
+
+test('land check lists every HUMAN: criterion, a promoted task\'s composite included', () => {
+  const r = repo()
+  const onComposite = { text: 'HUMAN: the messages read well', check: '', decisions: ['D1'] }
+  const onLeaf = { text: 'HUMAN: x reads well', check: '', decisions: ['D1'] }
+  const seeded = seedTree(r, 'e1', [
+    { id: '.', kind: 'composite', title: 'the change', defines: [{ id: 'D1', text: 'do it' }] },
+    { id: 'p', kind: 'composite', title: 'promoted', author: 'planner', decisions: ['D1'], acceptance: [onComposite] },
+    { id: 'p/x', kind: 'leaf', title: 'do x', rigor: 'tdd', locus: ['src/x.js'], decisions: ['D1'], acceptance: [onLeaf] },
+  ])
+  assert.equal(seeded.ok, true, JSON.stringify(seeded.problems))
+  assert.deepEqual(land(r, 'e1', 'check').human.map((h) => [h.node, h.text]).sort(),
+    [['p', onComposite.text], ['p/x', onLeaf.text]])
+})
+
+test('landing never counts .agentics/ as dirt, and still refuses any other untracked file', () => {
+  const r = repo()
+  git(r, 'branch', 'agentics/e1')
+  mkdirSync(join(r, '.agentics', 'e1'), { recursive: true })
+  writeFileSync(join(r, '.agentics', 'e1', 'DESIGN.md'), '# x\n')
+  const clean = land(r, 'e1', 'merge')
+  assert.equal(clean.ok, true, JSON.stringify(clean.error))
+
+  writeFileSync(join(r, 'stray.txt'), 'x\n')
+  const dirty = land(r, 'e1', 'merge')
+  assert.equal(dirty.ok, false)
+  assert.match(dirty.error, /dirty/)
 })

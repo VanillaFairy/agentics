@@ -1255,6 +1255,9 @@ couriers that run the boundaries move it live while the workflow runs.
 **Why a flag:** each todo move is a turn on a courier, which is cheap but not free; a user who
 watches the log or checks in only at the end should not pay for it.
 
+The agentics viewer (vanillafairy's `agentics-viewer/`) draws an effort live from
+`lib/status.mjs snapshot`. It reads, and never writes, the effort store.
+
 ### The Next line
 
 `lib/next.mjs` computes the one command to run next for an effort from its specs, the ledger, the
@@ -1366,6 +1369,35 @@ Fields as in [Nodes](#nodes). Event lines are `{kind, node, execution, seq, ...}
 (`return` is a replanning return, `needs_design`, `needs_respec`, `integration_critical`,
 `spec_defect`, `cant_tell` or `contract_drift`) ·
 `landed {into, merged_sha}` · `claims {head_sha, claims[{claim, verdict, evidence}]}`.
+
+### Snapshot
+
+- **Owner:** `snapshotOf` in `lib/status.mjs`.
+- **Restated in:** `agentics-viewer/shared/snapshot.ts` in the vanillafairy repository (a reader).
+
+`node lib/status.mjs snapshot --repo <r> --effort <e> --json` prints the effort’s whole state in
+one read-only call, under a digest — it writes no file, no lock and no `seq`. The payload:
+`format` (1; changing a field this entry lists bumps it), `store` (the main checkout’s
+`.agentics`, whether or not `repo` is a linked worktree), `effort`, `about`, `seq_max`, `malformed`,
+`folders`, `nodes` and `cost`.
+
+`folders` is every folder that holds a spec, root first, each `{id, title, approval, blocking,
+spec: {path}}`: `title` and `blocking` (its open `blocking` questions) from `parseSpec`, `approval`
+from `approvalState`. `nodes` is every live node, the root’s subtree first and then any node the
+tree cannot reach, each `{id, parent, kind, title, intent, context, rigor, role, locus, deps,
+acceptance, status, event, stage, branch, worktree, commits, files}`: `status` from `deriveStatus`;
+`event` is the escalated or parked node’s own event (`{kind, seq, reason, detail}` or `{kind, seq,
+return, question}`), null for every other status; `stage` is `todoFor`’s `activeForm` while its
+`status` is `in_progress`, null otherwise; `branch` is the node’s own branch name, always; `worktree`
+is its path only when checked out; `commits` is `{count, last_subject, last_at}` over the leaf’s
+own branch since its parent’s, null unless the leaf is `active` (an inactive leaf, or anything that
+is not a leaf, never earns the git call) or either branch is missing; `files.spec` is `{path, line}`
+— a leaf’s parent spec at its plan entry’s line, a folder’s own spec at no particular line — and
+`files.briefs`/`files.reports` list only the paths that exist on disk. `cost` is `costOf`’s totals
+and `per_leaf`, trimmed to `{dispatches, tokens, tokens_unreported}`.
+
+`node lib/status.mjs list --repo <r> --json` also carries `store`, present whether or not the
+effort store exists.
 
 ### Spec format
 

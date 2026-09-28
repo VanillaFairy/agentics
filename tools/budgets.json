@@ -13,13 +13,13 @@
     "agents/reviewer.md": 100,
     "agents/scout.md": 90,
     "agents/test-author.md": 105,
-    "skills/design/SKILL.md": 492,
-    "skills/develop/SKILL.md": 400,
+    "skills/design/SKILL.md": 507,
+    "skills/develop/SKILL.md": 415,
     "skills/develop/landing.md": 65,
     "skills/search-for-existing-solutions-before-building/SKILL.md": 140,
-    "skills/investigate/SKILL.md": 160,
-    "skills/next/SKILL.md": 80,
-    "skills/challenge-idea/SKILL.md": 240,
-    "skills/task/SKILL.md": 180
+    "skills/investigate/SKILL.md": 175,
+    "skills/next/SKILL.md": 95,
+    "skills/challenge-idea/SKILL.md": 255,
+    "skills/task/SKILL.md": 195
   }
 }

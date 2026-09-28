@@ -1349,6 +1349,20 @@ A skill file holds the router and the steps; step detail lives in reference file
 step is reached. A contract several files must state identically is a verbatim block, placed only
 in the files whose reader acts on it.
 
+**Asking the user** is the verbatim block `asking-the-user`, in every skill that asks. A question
+states in its own text everything needed to answer it. One drawn from a set the session holds —
+findings, defaults, parked nodes, a batch of decisions — opens with its place and the set's size
+(`5/24`), counted across calls; a number once given stands, and a grown set raises the size for the
+questions after. A reply that asks a question back instead of choosing is not an answer: nothing is
+recorded, and the question is asked again with the elaboration inside it, each option's description
+saying what that choice changes. Numbering needs a set held before asking; the Grill's interview,
+which finds its next question in the last answer, has none.
+
+**Why:** the dialog is what the user answers from, so the elaboration they asked for belongs in it.
+One left in the session's thinking never reaches them, a re-ask that points at it hands back the
+question they could not answer, and a clarification taken for an answer records a decision the
+user never made.
+
 ---
 
 ## Data contracts

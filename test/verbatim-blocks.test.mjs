@@ -52,6 +52,9 @@ const REQUIRED_IDS = [
   // The glossary and principles every agent acting on specs, entries and approvals shares; a copy
   // that drifts is an agent working to a different meaning of the same word.
   'vocabulary',
+  // Every skill that asks the user a question puts it the same way; a copy that drifts lets one
+  // skill re-ask without the explanation the user asked for, or number a set differently.
+  'asking-the-user',
 ]
 
 const OPEN = /<!--\s*agentics:verbatim\s+([a-z0-9-]+)\s*-->/g

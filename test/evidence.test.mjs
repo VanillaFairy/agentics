@@ -373,6 +373,24 @@ test('the CLI records a digest-checked token and prints an envelope, refusals in
   assert.equal(readdirSync(evidenceReturnsDir(repo)).length, returnsBefore, 'the damaged token kept no raw return')
 })
 
+test('the CLI records JSON written to a file in heredoc chunks, every seam dropped and ~ decoded', () => {
+  const repo = gitRepo()
+  const payload = { items: [fresh({ claim: "it's C:\\src\\x ~b~t — \"quoted\"\n" })] }
+  const json = JSON.stringify(payload).replace(/~/g, '~t').replace(/\\/g, '~b')
+  assert.ok(!json.includes('\\'), 'nothing left for an escape-decoding layer to touch')
+  const third = Math.ceil(json.length / 3)
+  const file = join(repo, 'token.json')
+  writeFileSync(file, json.slice(0, third) + '\n' + json.slice(third, 2 * third) + '\r\n' + json.slice(2 * third) + '\n')
+
+  const run = (digest) => JSON.parse(spawnSync(process.execPath,
+    [CLI, 'record', '--repo', repo, '--kind', 'survey', '--digest', digest, '--json-file', file], { encoding: 'utf8' }).stdout)
+
+  assert.equal(run('deadbeef').payload.error.kind, 'digest_mismatch')
+  const out = run(fnv1a(canonical(payload)))
+  assert.equal(out.payload.ok, true, JSON.stringify(out))
+  assert.deepEqual(out.payload.ids, [itemId(payload.items[0])])
+})
+
 // ------------------------------------------------------------------ where the store lives
 
 test('a record made from a linked worktree lands in the main checkout', () => {

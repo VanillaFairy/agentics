@@ -19,6 +19,7 @@ import { readFileSync } from 'node:fs'
 
 import { parseLocations } from '../../lib/citations.mjs'
 import { canonical, fnv1a } from '../../lib/plan-digest.mjs'
+import { jsonFileText } from '../../lib/store.mjs'
 
 const AsyncFunction = (async function () {}).constructor
 
@@ -167,15 +168,19 @@ export function carriedEnvelope(payload, damage, notes = 'ran the command and pa
  */
 export function recordedLine(prompt) {
   const inline = /--digest (\S+) --b64 (\S+)/.exec(prompt || '')
-  const byFile = /--digest (\S+) --b64-file /.exec(prompt || '')
-  if (!inline && !byFile) throw new Error('this prompt carries no --digest/--b64 ledger append')
-
-  const token = inline ? inline[2] : [...prompt.matchAll(/printf '%s' '([^']*)'/g)].map((m) => m[1]).join('')
-  return {
-    entry: JSON.parse(Buffer.from(token, 'base64').toString('utf8')),
-    digest: (inline || byFile)[1],
-    token,
+  if (inline) {
+    return { entry: JSON.parse(Buffer.from(inline[2], 'base64').toString('utf8')), digest: inline[1], token: inline[2] }
   }
+
+  const byFile = /--digest (\S+) --json-file /.exec(prompt || '')
+  if (!byFile) throw new Error('this prompt carries no --digest/--b64 or --json-file token')
+  const token = jsonChunks(prompt).join('')
+  return { entry: JSON.parse(jsonFileText(token)), digest: byFile[1], token }
+}
+
+/** The chunks a courier prompt writes to its token file, one per quoted heredoc, in order. */
+export function jsonChunks(prompt) {
+  return [...prompt.matchAll(/<<'(\w+)'\n([^\n]*)\n\1/g)].map((m) => m[2])
 }
 
 /**

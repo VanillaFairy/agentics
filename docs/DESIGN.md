@@ -172,7 +172,8 @@ filesystem, so disk crosses into it through a **courier**: an agent that runs on
 pastes its stdout.
 
 - **Bytes that cross a model carry a digest the receiver re-checks.** Lines the workflow mints
-  whole travel encoded on one argv slot (or a file path when an argv slot would overflow).
+  whole travel encoded on one argv slot, or as a file the courier writes (see
+  [the ledger transport](#the-ledger)).
 - **One courier per boundary**, running every deterministic step of that boundary in one command.
 - **Briefs are assembled by script** from the node, its referenced evidence and the
   [gotchas](#gotchas) its role and locus call for. Shared evidence is resolved once into excerpts
@@ -405,11 +406,18 @@ read-then-write. Readers are tolerant: a torn line is counted, never thrown on.
 Lines the workflow mints whole travel base64 on one argv slot with a digest, so there is no path
 to escape and no apostrophe to close. A line only the observing agent can fill in (a finished
 series) goes by heredoc on stdin and carries no digest; the writer still refuses what does not
-parse. A digest makes corruption detectable; the encoding makes it unlikely. A token longer
-than one argv slot holds (`COMMAND_BUDGET`, under cmd.exe's 8191-character line) is written by the
-same courier to a file under `.agentics/.state/` in budget-sized `printf` appends, then read back
-with `--b64-file` under the same digest and removed. A courier's cost is its dispatch, not its
-bytes, so a long token buys more Bash calls on one courier, never more couriers.
+parse. A digest makes corruption detectable; the encoding makes it unlikely.
+
+Evidence tokens — a survey's, probe's or solutions sweep's items, a re-judge's verdicts — are the
+exception: they are long, and base64 is both longer and the text a courier copies worst. They
+travel as JSON by file (`viaJsonFile` in each of those workflows): the courier writes one line of
+JSON to `.agentics/.state/token-<digest>.json` in quoted-heredoc chunks of at most
+`COMMAND_BUDGET` characters (under cmd.exe's 8191-character line), and the lib reads it with
+`--json-file` under the token's digest and removes it. A quoted heredoc leaves `$`, quotes and
+backticks alone, but the layer between a model's Bash call and the shell still decodes backslash
+escapes, so the text carries none: `~` is written `~t` and `\` is written `~b`
+(`lib/store.mjs jsonFileText`). A courier's cost is its dispatch, not its bytes, so a long token
+buys more Bash calls on one courier, never more couriers.
 
 A location list is the exception: it is only paths and line numbers, so it travels as plain text
 (`path:line:line,path:line`) with a digest over the exact string, because a courier copies paths
@@ -868,7 +876,7 @@ The survey (`gather-evidence-without-concluding`) gathers evidence for one quest
 5. **Judge.** Each analyst **without search tools** returns items — one claim each, with the
    anchor its kind needs — and risks. A topic with neither is dropped.
 6. **Record.** One courier per judge group runs `evidence.mjs record --kind survey` over all its
-   items, the token by file when it outgrows an argv slot. A refused item goes
+   items, the token as JSON by file. A refused item goes
    back to its judge until a pass anchors no more; what never anchors is dropped and leaves its
    topic incomplete, and so do items the recorder could not be reached to check.
 
@@ -1355,7 +1363,8 @@ Two conventions hold throughout:
   keys sorted, `undefined` read as `null`. `execute-approved-plan-in-worktrees` carries identical copies.
 - **A CLI whose output a courier carries back** prints `{payload, payload_digest}` and exits 0,
   even when the payload reports a typed error. `{error}` with exit 1 means the program itself
-  failed. Arguments minted by the workflow arrive as `--b64 <token> --digest <d>`; a mismatch is
+  failed. Arguments minted by the workflow arrive as `--b64 <token> --digest <d>`, or
+  `--json-file <path> --digest <d>` for an evidence token; a mismatch is
   refused as `digest_mismatch`, and nothing is written.
 
 ### Node record and events

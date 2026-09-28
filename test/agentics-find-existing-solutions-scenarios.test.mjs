@@ -11,7 +11,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
-import { carriedEnvelope, recordedLine, runWorkflow, scriptedAgents } from './harness/workflow-host.mjs'
+import { carriedEnvelope, jsonChunks, recordedLine, runWorkflow, scriptedAgents } from './harness/workflow-host.mjs'
 import { itemId } from '../lib/evidence.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 
@@ -466,7 +466,7 @@ test('each assessed candidate is recorded as an external item anchored at its so
 
   const rec = recordPrompt(prompts)
   assert.equal(rec.opts.agentType, 'agentics:courier')
-  assert.match(rec.prompt, /lib\/evidence\.mjs" record --repo "\." --root "\." --kind solutions --digest [0-9a-f]{8} --b64 \S+/)
+  assert.match(rec.prompt, /lib\/evidence\.mjs" record --repo "\." --root "\." --kind solutions --digest [0-9a-f]{8} --json-file "[^"]+\.json"/)
   const { entry, digest } = recordedLine(rec.prompt)
   assert.equal(digest, fnv1a(canonical(entry)))
 
@@ -503,7 +503,7 @@ test('a sweep run from a linked worktree records its hits with the worktree as r
     'a hit\'s line is read where the scout read it')
 })
 
-test('items too many for one argv slot are recorded in batches labelled record:<n>', async () => {
+test('items too many for one line are recorded by one courier, written in chunks that each fit one', async () => {
   const names = Array.from({ length: 12 }, (_, i) => 'limiter-' + i)
   const long = { what_it_is: 'a rate limiter, ' + 'described at length '.repeat(30) }
   const { result, prompts } = await run({
@@ -513,10 +513,11 @@ test('items too many for one argv slot are recorded in batches labelled record:<
     }),
   })
   const recs = prompts.filter((p) => /^record/.test(p.opts.label))
-  assert.ok(recs.length > 1)
-  assert.deepEqual(recs.map((p) => p.opts.label), recs.map((_, i) => 'record:' + (i + 1)))
-  for (const p of recs) assert.ok(/--b64 (\S+)/.exec(p.prompt)[1].length <= 6000, p.opts.label)
-  const sent = recs.flatMap((p) => recordedLine(p.prompt).entry.items.map(itemId))
+  assert.deepEqual(recs.map((p) => p.opts.label), ['record'])
+  const chunks = jsonChunks(recs[0].prompt)
+  assert.ok(chunks.length > 1, 'twelve long items do not fit one line')
+  for (const chunk of chunks) assert.ok(chunk.length <= 6000)
+  const sent = recordedLine(recs[0].prompt).entry.items.map(itemId)
   assert.deepEqual([...sent].sort(), result.items.map((i) => i.id).sort(), 'every item sent once')
 })
 

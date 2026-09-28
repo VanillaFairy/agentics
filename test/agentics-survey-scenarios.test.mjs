@@ -11,7 +11,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import {
-  carriedContext, carriedEnvelope, contextPathFor, contextPayload, excerptLocations, recordedLine, runWorkflow,
+  carriedContext, carriedEnvelope, contextPathFor, contextPayload, excerptLocations, jsonChunks, recordedLine, runWorkflow,
   scriptedAgents,
 } from './harness/workflow-host.mjs'
 import { ITEM_KINDS, itemId } from '../lib/evidence.mjs'
@@ -832,7 +832,7 @@ test('every judged item is recorded, and the result carries the ids the store ga
   const rec = prompts.find((p) => p.opts.label === 'record')
   assert.equal(rec.opts.agentType, 'agentics:courier')
   assert.equal(rec.opts.model, 'haiku', 'carrying a command is not judgment')
-  assert.match(rec.prompt, /node "C:\/plugin\/lib\/evidence\.mjs" record --repo "\." --root "\." --kind survey --digest [0-9a-f]{8} --b64 \S+/)
+  assert.match(rec.prompt, /node "C:\/plugin\/lib\/evidence\.mjs" record --repo "\." --root "\." --kind survey --digest [0-9a-f]{8} --json-file "[^"]+\.json"/)
 
   const { entry, digest } = recordedLine(rec.prompt)
   assert.equal(digest, fnv1a(canonical(entry)))
@@ -855,7 +855,7 @@ test('a survey run from a linked worktree records spans read in the worktree', a
     'the store is found from the repo; the spans are read where the judge read them')
 })
 
-test('a judge group over many items records with one courier, its token written to a file in slot-sized appends', async () => {
+test('a judge group over many items records with one courier, its JSON written to a file in chunks that each fit one line', async () => {
   const many = Array.from({ length: 12 }, (_, i) => ITEM('a', { claim: 'claim ' + i + ' ' + 'x'.repeat(600) }))
   const { result, prompts } = await run({
     plan: PLAN({ topics: [{ key: 'a', find: 'find a', subtree: 'src/a' }, { key: 'b', find: 'find b', subtree: 'src/b' }] }),
@@ -866,15 +866,14 @@ test('a judge group over many items records with one courier, its token written 
   assert.deepEqual(recs.map((p) => p.opts.label).sort(), ['record:a', 'record:b'])
 
   const ofA = promptFor(prompts, 'record:a')
-  const writes = [...ofA.matchAll(/printf '%s' '([^']*)'/g)].map((m) => m[1])
-  assert.ok(writes.length > 1, 'twelve long items do not fit one argv slot')
-  for (const chunk of writes) assert.ok(chunk.length <= 6000)
-  assert.match(ofA, /record --repo "\." --root "\." --kind survey --digest [0-9a-f]{8} --b64-file "\.\/\.agentics\/\.state\/record-[0-9a-f]{8}\.b64"; rm -f /)
+  const chunks = jsonChunks(ofA)
+  assert.ok(chunks.length > 1, 'twelve long items do not fit one line')
+  for (const chunk of chunks) assert.ok(chunk.length <= 6000 && !chunk.includes('\\'))
+  assert.match(ofA, /record --repo "\." --root "\." --kind survey --digest [0-9a-f]{8} --json-file "\.\/\.agentics\/\.state\/token-[0-9a-f]{8}\.json"; rm -f /)
 
   const { entry, digest } = recordedLine(ofA)
   assert.equal(digest, fnv1a(canonical(entry)))
   assert.deepEqual(entry.items.map((i) => i.claim).sort(), many.map((i) => i.claim).sort(), 'every item sent once')
-  assert.match(promptFor(prompts, 'record:b'), / --b64 \S+/, 'a token that fits travels inline')
   assert.equal(result.items.filter((i) => i.topic === 'a').length, many.length)
 })
 
@@ -1062,7 +1061,7 @@ test('suspect items are re-judged in batches of twenty on the cheapest tier, wha
     assert.equal(p.opts.agentType, 'agentics:courier')
     assert.equal(p.opts.model, 'haiku', 'carrying a verdict is not judgment')
   }
-  assert.match(recorded[0].prompt, /node "C:\/plugin\/lib\/evidence\.mjs" judge --repo "\." --root "\." --digest [0-9a-f]{8} --b64 \S+/)
+  assert.match(recorded[0].prompt, /node "C:\/plugin\/lib\/evidence\.mjs" judge --repo "\." --root "\." --digest [0-9a-f]{8} --json-file "[^"]+\.json"/)
   assert.ok(labelsOf(prompts).indexOf('reuse-after') > labelsOf(prompts).indexOf('record-judgements:2'),
     'the pool is read again only after every verdict is recorded')
 })

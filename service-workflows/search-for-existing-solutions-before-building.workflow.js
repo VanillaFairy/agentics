@@ -408,9 +408,13 @@ function carriedRead(held) {
 const COURIER = { model: 'haiku', effort: 'low' }
 const COURIER_UP = { model: 'sonnet', effort: 'low' }
 
-function courierPrompt(command) {
-  return 'Run exactly this one command, unchanged, and put its entire stdout in payload_raw:\n\n' +
-    command + '\n\n' +
+function courierPrompt(command, writes) {
+  const steps = writes.length === 0
+    ? 'Run exactly this one command, unchanged, and put its entire stdout in payload_raw:\n\n' + command
+    : 'Run these commands in order, each unchanged and in its own Bash call; stop at the first that ' +
+      'fails. The ones before the last only write a file. Put the last one\'s entire stdout in ' +
+      'payload_raw:\n\n' + [...writes, command].join('\n\n')
+  return steps + '\n\n' +
     'Move no todos.' +
     (pluginRoot === SHELL_ROOT
       ? '\nIf ' + SHELL_ROOT + ' is empty in your shell, do not guess a path: set stop_reason ' +
@@ -426,14 +430,15 @@ function courierPrompt(command) {
  * transit buys one refetch on a stronger model; a token the program refused as damaged on its way
  * IN is sent again; a program failure is not retried. What stays unbelievable comes back as
  * `{payload: null, why}` — every carry in this workflow is a side channel with a fallback, so
- * none of them may throw.
+ * none of them may throw. `writes` are the file writes a token too long for one argv slot
+ * travels by, run by the same courier before `command`.
  */
-async function carry(command, label, phaseName) {
+async function carry(command, label, phaseName, writes = []) {
   const ladder = [COURIER]
   let why = ''
 
   for (let i = 0; i < ladder.length; i++) {
-    const held = await agent(courierPrompt(command), {
+    const held = await agent(courierPrompt(command, writes), {
       agentType: 'agentics:courier', schema: CARRIED, phase: phaseName,
       label: label + (i ? '#' + (i + 1) : ''), ...ladder[i],
     }).catch((e) => {
@@ -461,53 +466,41 @@ async function carry(command, label, phaseName) {
   return { payload: null, why }
 }
 
-// utf8Bytes, B64 and base64 are copies of `execute-approved-plan-in-worktrees`'s: scripts cannot import, and this
-// keeps T25 independent of the ledger-append batching T23bs adds beside it.
-function utf8Bytes(text) {
-  const out = []
-  for (let i = 0; i < text.length; i++) {
-    let c = text.charCodeAt(i)
-    if (c >= 0xd800 && c <= 0xdbff && i + 1 < text.length) {
-      const low = text.charCodeAt(i + 1)
-      if (low >= 0xdc00 && low <= 0xdfff) {
-        c = 0x10000 + ((c - 0xd800) << 10) + (low - 0xdc00)
-        i++
-      }
-    }
-    if (c < 0x80) out.push(c)
-    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63))
-    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
-    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
-  }
-  return out
-}
+// cmd.exe caps a whole command line at 8191 characters, so nothing this script hands a courier to
+// type puts more than this many on one line.
+const COMMAND_BUDGET = 6000
 
-const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+/**
+ * A token this script mints, as the courier carries it: written as one line of JSON to a file
+ * under `root`, in heredoc chunks of at most COMMAND_BUDGET characters, then read by `cli` with
+ * `--json-file` under the token's digest and removed. `~` goes as `~t` and `\` as `~b`, so no
+ * backslash reaches the layer that decodes escapes in a Bash call (lib/store.mjs jsonFileText).
+ * Returns the courier's writes and its one command.
+ */
+function viaJsonFile(cli, token, root) {
+  const json = JSON.stringify(token).replace(/~/g, '~t').replace(/\\/g, '~b')
+  const digest = fnv1a(canonical(token))
+  const dir = `${root}/.agentics/.state`
+  const file = `${dir}/token-${digest}.json`
+  let delimiter = 'AGENTICS_JSON'
+  while (json.includes(delimiter)) delimiter += '_'
 
-/** Standard padded base64: one opaque argv slot, nothing in it for a shell to interpret. */
-function base64(text) {
-  const bytes = utf8Bytes(text)
-  let out = ''
-  for (let i = 0; i < bytes.length; i += 3) {
-    const b0 = bytes[i]
-    const b1 = i + 1 < bytes.length ? bytes[i + 1] : -1
-    const b2 = i + 2 < bytes.length ? bytes[i + 2] : -1
-    out += B64[b0 >> 2]
-    out += B64[((b0 & 3) << 4) | (b1 < 0 ? 0 : b1 >> 4)]
-    out += b1 < 0 ? '=' : B64[((b1 & 15) << 2) | (b2 < 0 ? 0 : b2 >> 6)]
-    out += b2 < 0 ? '=' : B64[b2 & 63]
+  const writes = []
+  for (let i = 0; i < json.length;) {
+    let end = Math.min(i + COMMAND_BUDGET, json.length)
+    const last = json.charCodeAt(end - 1)
+    if (end < json.length && last >= 0xd800 && last <= 0xdbff) end--
+    const into = i === 0 ? `mkdir -p "${dir}" && cat > "${file}"` : `cat >> "${file}"`
+    writes.push(`${into} <<'${delimiter}'\n${json.slice(i, end)}\n${delimiter}`)
+    i = end
   }
-  return out
+  return { writes, command: `${cli} --digest ${digest} --json-file "${file}"; rm -f "${file}"` }
 }
 
 // Excerpts and efforts are per repository, so a question spanning several roots resolves against
 // the first — the repository it is anchored in, and what the recorder is told is its ground.
 // `repo` already names the repository scan's result in this file, so this stays its own name.
 const groundRepo = String(roots).split(/[,;\n]/)[0].trim() || '.'
-
-// cmd.exe caps a whole command line at 8191 characters, so a batch's base64 token stays under
-// this many bytes.
-const COMMAND_BUDGET = 6000
 
 /** An item's identity, minted exactly as `lib/evidence.mjs`'s `itemId` does: a script cannot import. */
 const itemIdOf = (item) => 'I' + fnv1a(canonical({ question: item.question, topic: item.topic, claim: item.claim }))
@@ -1029,44 +1022,18 @@ if (unanchored.length > 0) {
 if (items.length > 0) {
   phase('Record')
 
-  function recordBatchesOf(list) {
-    const batches = []
-    let current = []
-    for (const it of list) {
-      const { id, ...rest } = it
-      const grown = current.concat([rest])
-      if (current.length > 0 && base64(JSON.stringify({ items: grown })).length > COMMAND_BUDGET) {
-        batches.push(current)
-        current = [rest]
-      } else {
-        current = grown
-      }
-    }
-    if (current.length > 0) batches.push(current)
-    return batches
-  }
+  const { command, writes } = viaJsonFile(
+    `node "${pluginRoot}/lib/evidence.mjs" record --repo "${groundRepo}" --root "${groundRepo}" --kind solutions`,
+    { items: items.map(({ id, ...rest }) => rest) }, groundRepo)
+  const { payload, why } = await carry(command, 'record', 'Record', writes)
 
-  const batches = recordBatchesOf(items)
-  const idsOf = (batch) => batch.map((it) => itemIdOf(it))
-
-  for (let i = 0; i < batches.length; i++) {
-    const batch = batches[i]
-    const label = batches.length > 1 ? `record:${i + 1}` : 'record'
-    const token = { items: batch }
-    const command = `node "${pluginRoot}/lib/evidence.mjs" record --repo "${groundRepo}" --root "${groundRepo}" ` +
-      `--kind solutions --digest ${fnv1a(canonical(token))} --b64 ${base64(JSON.stringify(token))}`
-
-    const { payload, why } = await carry(command, label, 'Record')
-    const batchIds = idsOf(batch)
-
-    if (!payload) {
-      unrecorded.push(...batchIds)
-      log(`${batchIds.length} item(s) not recorded (${why})`)
-    } else if (payload.ok === false) {
-      unrecorded.push(...batchIds)
-      const problems = (payload.refused || []).flatMap((r) => r.problems || []).join('; ')
-      log(`${batchIds.length} item(s) not recorded (${problems || 'refused'})`)
-    }
+  if (!payload) {
+    unrecorded.push(...items.map((it) => it.id))
+    log(`${items.length} item(s) not recorded (${why})`)
+  } else if (payload.ok === false) {
+    unrecorded.push(...items.map((it) => it.id))
+    const problems = (payload.refused || []).flatMap((r) => r.problems || []).join('; ')
+    log(`${items.length} item(s) not recorded (${problems || 'refused'})`)
   }
 }
 

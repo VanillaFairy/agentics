@@ -256,9 +256,9 @@ function resolvePluginRoot() {
 
 const pluginRoot = resolvePluginRoot()
 
-// The digest transport, in the one direction this workflow uses it. A payload computed on disk
-// arrives through a model, so it is re-digested here before a field of it is believed. Both
-// functions are copies of `lib/plan-digest.mjs`'s: scripts cannot import, and the suite pins
+// The digest transport. A payload computed on disk arrives through a model, so it is re-digested
+// here before a field of it is believed; a token this script mints travels by `viaJsonFile`.
+// canonical and fnv1a are copies of `lib/plan-digest.mjs`'s: scripts cannot import, and the suite pins
 // them together.
 function canonical(value) {
   if (value === undefined) return 'null'
@@ -281,41 +281,35 @@ function fnv1a(text) {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
-function utf8Bytes(text) {
-  const out = []
-  for (let i = 0; i < text.length; i++) {
-    let c = text.charCodeAt(i)
-    if (c >= 0xd800 && c <= 0xdbff && i + 1 < text.length) {
-      const low = text.charCodeAt(i + 1)
-      if (low >= 0xdc00 && low <= 0xdfff) {
-        c = 0x10000 + ((c - 0xd800) << 10) + (low - 0xdc00)
-        i++
-      }
-    }
-    if (c < 0x80) out.push(c)
-    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63))
-    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
-    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
-  }
-  return out
-}
+// cmd.exe caps a whole command line at 8191 characters, so nothing this script hands a courier to
+// type puts more than this many on one line.
+const COMMAND_BUDGET = 6000
 
-const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+/**
+ * A token this script mints, as the courier carries it: written as one line of JSON to a file
+ * under `root`, in heredoc chunks of at most COMMAND_BUDGET characters, then read by `cli` with
+ * `--json-file` under the token's digest and removed. `~` goes as `~t` and `\` as `~b`, so no
+ * backslash reaches the layer that decodes escapes in a Bash call (lib/store.mjs jsonFileText).
+ * Returns the courier's writes and its one command.
+ */
+function viaJsonFile(cli, token, root) {
+  const json = JSON.stringify(token).replace(/~/g, '~t').replace(/\\/g, '~b')
+  const digest = fnv1a(canonical(token))
+  const dir = `${root}/.agentics/.state`
+  const file = `${dir}/token-${digest}.json`
+  let delimiter = 'AGENTICS_JSON'
+  while (json.includes(delimiter)) delimiter += '_'
 
-/** Standard padded base64: one opaque argv slot, nothing in it for a shell to interpret. */
-function base64(text) {
-  const bytes = utf8Bytes(text)
-  let out = ''
-  for (let i = 0; i < bytes.length; i += 3) {
-    const b0 = bytes[i]
-    const b1 = i + 1 < bytes.length ? bytes[i + 1] : -1
-    const b2 = i + 2 < bytes.length ? bytes[i + 2] : -1
-    out += B64[b0 >> 2]
-    out += B64[((b0 & 3) << 4) | (b1 < 0 ? 0 : b1 >> 4)]
-    out += b1 < 0 ? '=' : B64[((b1 & 15) << 2) | (b2 < 0 ? 0 : b2 >> 6)]
-    out += b2 < 0 ? '=' : B64[b2 & 63]
+  const writes = []
+  for (let i = 0; i < json.length;) {
+    let end = Math.min(i + COMMAND_BUDGET, json.length)
+    const last = json.charCodeAt(end - 1)
+    if (end < json.length && last >= 0xd800 && last <= 0xdbff) end--
+    const into = i === 0 ? `mkdir -p "${dir}" && cat > "${file}"` : `cat >> "${file}"`
+    writes.push(`${into} <<'${delimiter}'\n${json.slice(i, end)}\n${delimiter}`)
+    i = end
   }
-  return out
+  return { writes, command: `${cli} --digest ${digest} --json-file "${file}"; rm -f "${file}"` }
 }
 
 /** An item's identity: its question, topic and claim — a copy of `lib/evidence.mjs`'s `itemId`. */
@@ -356,9 +350,13 @@ function carriedRead(held) {
 const COURIER = { model: 'haiku', effort: 'low' }
 const COURIER_UP = { model: 'sonnet', effort: 'low' }
 
-function courierPrompt(command) {
-  return 'Run exactly this one command, unchanged, and put its entire stdout in payload_raw:\n\n' +
-    command + '\n\n' +
+function courierPrompt(command, writes) {
+  const steps = writes.length === 0
+    ? 'Run exactly this one command, unchanged, and put its entire stdout in payload_raw:\n\n' + command
+    : 'Run these commands in order, each unchanged and in its own Bash call; stop at the first that ' +
+      'fails. The ones before the last only write a file. Put the last one\'s entire stdout in ' +
+      'payload_raw:\n\n' + [...writes, command].join('\n\n')
+  return steps + '\n\n' +
     'Move no todos.' +
     (pluginRoot === SHELL_ROOT
       ? '\nIf ' + SHELL_ROOT + ' is empty in your shell, do not guess a path: set stop_reason ' +
@@ -371,13 +369,14 @@ function courierPrompt(command) {
  * nothing back or a courier that could not run it is run again once; a payload damaged in transit
  * buys one refetch on a stronger model; a token the program refused as damaged on its way in is
  * sent again. Every carry here has a fallback, so none of them throws: `{payload: null, why}`.
+ * `writes` are the file writes a token too long for one argv slot travels by, run first.
  */
-async function carry(command, label, phaseName) {
+async function carry(command, label, phaseName, writes = []) {
   const ladder = [COURIER]
   let why = ''
 
   for (let i = 0; i < ladder.length; i++) {
-    const held = await agent(courierPrompt(command), {
+    const held = await agent(courierPrompt(command, writes), {
       agentType: 'agentics:courier', schema: CARRIED, phase: phaseName,
       label: label + (i ? '#' + (i + 1) : ''), ...ladder[i],
     }).catch((e) => {
@@ -543,10 +542,8 @@ function locationList(locations) {
   return [...byPath].map(([path, lines]) => path + ':' + lines.join(':')).join(',')
 }
 
-// cmd.exe caps a whole command line at 8191 characters, so a list travels in batches of at most
-// this many. Every location of one file goes in the same batch, so no two batches ever hold
-// overlapping windows.
-const COMMAND_BUDGET = 6000
+// A list travels in batches of at most COMMAND_BUDGET characters. Every location of one file goes
+// in the same batch, so no two batches ever hold overlapping windows.
 
 function batchesOf(locations) {
   const byPath = new Map()
@@ -833,54 +830,30 @@ function carriedFinding(it) {
 const carriedFindings = narrow ? (narrow.carried || []).map(carriedFinding) : []
 
 /**
- * Record a round's items as one or more batches, each under the argv budget. `items` is empty for
- * a round that found nothing new — the token `{items: []}` still records the round's return, so a
- * clean review is a review return like any other (Design Decisions 9).
+ * Record a round's items with one courier. `items` is empty for a round that found nothing new —
+ * the token `{items: []}` still records the round's return, so a clean review is a review return
+ * like any other (Design Decisions 9).
  */
 async function recordRound(items) {
   phase('Record')
-  const batches = []
-  let current = []
-  for (const item of items) {
-    const grown = current.concat(item)
-    if (current.length > 0 && base64(JSON.stringify({ items: grown })).length > COMMAND_BUDGET) {
-      batches.push(current)
-      current = [item]
-    } else {
-      current = grown
-    }
-  }
-  batches.push(current)
+  const { command, writes } = viaJsonFile(
+    `node "${pluginRoot}/lib/evidence.mjs" record --repo "${groundRepo}" --root "${groundRepo}" --kind probe`,
+    { items }, groundRepo)
+  const held = await carry(command, 'record', 'Record', writes)
+  if (held.payload && held.payload.ok === true) return { review: held.payload.return || '', unrecorded: [] }
 
-  const unrecorded = []
-  let review = ''
-  for (let i = 0; i < batches.length; i++) {
-    const batch = batches[i]
-    const label = batches.length === 1 ? 'record' : `record:${i + 1}`
-    const token = { items: batch }
-    const held = await carry(
-      `node "${pluginRoot}/lib/evidence.mjs" record --repo "${groundRepo}" --root "${groundRepo}" --kind probe ` +
-        `--digest ${fnv1a(canonical(token))} --b64 ${base64(JSON.stringify(token))}`,
-      label, 'Record')
-    const ok = held.payload && held.payload.ok === true
-    if (ok) {
-      if (!review) review = held.payload.return || ''
-      continue
-    }
-    const why = held.why ||
-      (held.payload && Array.isArray(held.payload.refused)
-        ? held.payload.refused.length + ' item(s) refused: ' +
-          held.payload.refused.map((r) => r.problems.join('; ')).join(' | ')
-        : 'the result names no review return')
-    if (batch.length === 0) {
-      log(`the clean round was not recorded (${why}): the result names no review return`)
-    } else {
-      unrecorded.push(...batch.map(itemIdOf))
-      log(`${batch.length} finding(s) not recorded (${why}): the result names no snapshot, so the next ` +
-        `review of this artefact attacks it in full`)
-    }
+  const why = held.why ||
+    (held.payload && Array.isArray(held.payload.refused)
+      ? held.payload.refused.length + ' item(s) refused: ' +
+        held.payload.refused.map((r) => r.problems.join('; ')).join(' | ')
+      : 'the result names no review return')
+  if (items.length === 0) {
+    log(`the clean round was not recorded (${why}): the result names no review return`)
+    return { review: '', unrecorded: [] }
   }
-  return { review, unrecorded }
+  log(`${items.length} finding(s) not recorded (${why}): the result names no snapshot, so the next ` +
+    `review of this artefact attacks it in full`)
+  return { review: '', unrecorded: items.map(itemIdOf) }
 }
 
 if (narrow && narrow.changed.length === 0) {

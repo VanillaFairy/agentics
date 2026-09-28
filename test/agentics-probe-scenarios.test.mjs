@@ -9,7 +9,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import {
-  carriedContext, carriedEnvelope, contextPathFor, excerptLocations, recordedLine, runWorkflow, scriptedAgents,
+  carriedContext, carriedEnvelope, contextPathFor, excerptLocations, jsonChunks, recordedLine, runWorkflow, scriptedAgents,
 } from './harness/workflow-host.mjs'
 import { itemId } from '../lib/evidence.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
@@ -648,7 +648,7 @@ test('every new finding is recorded as a behaviour item anchored in the snapshot
 
   const rec = prompts.find((p) => p.opts.label === 'record')
   assert.equal(rec.opts.agentType, 'agentics:courier')
-  assert.match(rec.prompt, /lib\/evidence\.mjs" record --repo "C:\/repo" --root "C:\/repo" --kind probe --digest [0-9a-f]{8} --b64 \S+/)
+  assert.match(rec.prompt, /lib\/evidence\.mjs" record --repo "C:\/repo" --root "C:\/repo" --kind probe --digest [0-9a-f]{8} --json-file "[^"]+\.json"/)
   const { entry, digest } = recordedLine(rec.prompt)
   assert.equal(digest, fnv1a(canonical(entry)))
 
@@ -797,28 +797,24 @@ test('a refused record leaves its findings unrecorded and names no snapshot, so 
   assert.ok(logs.some((l) => /not recorded/.test(l)))
 })
 
-test('findings too many for one argv slot are recorded in batches labelled record:<n>', async () => {
+test('findings too many for one line are recorded by one courier, written in chunks that each fit one', async () => {
   const many = Array.from({ length: 12 }, (_, i) => withLines({ claim: 'gap ' + i + ' ' + 'x'.repeat(600) }))
   const { result, prompts } = await runWorkflow(WF, { args: ARGS, agent: probeAgents({ 'probe:yagni': found(many) }) })
   const recs = prompts.filter((p) => /^record/.test(p.opts.label))
-  assert.ok(recs.length > 1)
-  assert.deepEqual(recs.map((p) => p.opts.label), recs.map((_, i) => 'record:' + (i + 1)))
-  for (const p of recs) assert.ok(/--b64 (\S+)/.exec(p.prompt)[1].length <= 6000, p.opts.label)
-  assert.deepEqual(recs.flatMap((p) => recordedLine(p.prompt).entry.items.map((i) => i.claim)).sort(),
-    many.map((f) => f.claim).sort())
+  assert.deepEqual(recs.map((p) => p.opts.label), ['record'])
+  const chunks = jsonChunks(recs[0].prompt)
+  assert.ok(chunks.length > 1, 'twelve long findings do not fit one line')
+  for (const chunk of chunks) assert.ok(chunk.length <= 6000)
+  assert.deepEqual(recordedLine(recs[0].prompt).entry.items.map((i) => i.claim).sort(), many.map((f) => f.claim).sort())
   assert.deepEqual(result.unrecorded, [])
 })
 
-test('the result names the return the round\'s findings were recorded in, the first batch\'s with several', async () => {
+test('the result names the return the round\'s findings were recorded in', async () => {
   const named = (prompt, opts) => carriedEnvelope({
     ok: true, return: '20260926-120000-' + opts.label.replace(':', '-') + '-probe', ids: recordedLine(prompt).entry.items.map(itemId),
   })
   const one = await runWorkflow(WF, { args: ARGS, agent: probeAgents({ record: named, 'probe:yagni': found([withLines()]) }) })
   assert.equal(one.result.review, '20260926-120000-record-probe')
-
-  const many = Array.from({ length: 12 }, (_, i) => withLines({ claim: 'gap ' + i + ' ' + 'x'.repeat(600) }))
-  const batched = await runWorkflow(WF, { args: ARGS, agent: probeAgents({ 'record:': named, 'probe:yagni': found(many) }) })
-  assert.equal(batched.result.review, '20260926-120000-record-1-probe', 'the first batch names the round')
 })
 
 test('a round with no findings records an empty return and names it', async () => {
@@ -826,7 +822,7 @@ test('a round with no findings records an empty return and names it', async () =
   const recs = prompts.filter((p) => /^record/.test(p.opts.label))
   assert.deepEqual(recs.map((p) => p.opts.label), ['record'])
   assert.equal(recs[0].opts.agentType, 'agentics:courier')
-  assert.match(recs[0].prompt, /lib\/evidence\.mjs" record --repo "C:\/repo" --root "C:\/repo" --kind probe --digest [0-9a-f]{8} --b64 \S+/)
+  assert.match(recs[0].prompt, /lib\/evidence\.mjs" record --repo "C:\/repo" --root "C:\/repo" --kind probe --digest [0-9a-f]{8} --json-file "[^"]+\.json"/)
   const { entry, digest } = recordedLine(recs[0].prompt)
   assert.deepEqual(entry, { items: [] })
   assert.equal(digest, fnv1a(canonical(entry)))

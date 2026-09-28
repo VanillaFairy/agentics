@@ -390,8 +390,7 @@ const repo = String(roots).split(/[,;\n]/)[0].trim() || '.'
 // it is believed; a location list this script mints travels as plain text on one argv slot with
 // its digest beside it. The functions are copies of `lib/plan-digest.mjs`'s and
 // `execute-approved-plan-in-worktrees`'s: scripts cannot import, and the suite pins them together. Tokens the
-// script mints itself (a judgement batch, a record batch) travel base64 on one argv slot with
-// their digest beside them — the same transport, for text a shell would otherwise mangle.
+// script mints itself (a judgement batch, a record) travel as JSON by file, under their digest.
 function canonical(value) {
   if (value === undefined) return 'null'
   if (value === null || typeof value !== 'object') return JSON.stringify(value)
@@ -413,41 +412,35 @@ function fnv1a(text) {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
-function utf8Bytes(text) {
-  const out = []
-  for (let i = 0; i < text.length; i++) {
-    let c = text.charCodeAt(i)
-    if (c >= 0xd800 && c <= 0xdbff && i + 1 < text.length) {
-      const low = text.charCodeAt(i + 1)
-      if (low >= 0xdc00 && low <= 0xdfff) {
-        c = 0x10000 + ((c - 0xd800) << 10) + (low - 0xdc00)
-        i++
-      }
-    }
-    if (c < 0x80) out.push(c)
-    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63))
-    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
-    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
-  }
-  return out
-}
+// cmd.exe caps a whole command line at 8191 characters, so nothing this script hands a courier to
+// type puts more than this many on one line.
+const COMMAND_BUDGET = 6000
 
-const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+/**
+ * A token this script mints, as the courier carries it: written as one line of JSON to a file
+ * under `root`, in heredoc chunks of at most COMMAND_BUDGET characters, then read by `cli` with
+ * `--json-file` under the token's digest and removed. `~` goes as `~t` and `\` as `~b`, so no
+ * backslash reaches the layer that decodes escapes in a Bash call (lib/store.mjs jsonFileText).
+ * Returns the courier's writes and its one command.
+ */
+function viaJsonFile(cli, token, root) {
+  const json = JSON.stringify(token).replace(/~/g, '~t').replace(/\\/g, '~b')
+  const digest = fnv1a(canonical(token))
+  const dir = `${root}/.agentics/.state`
+  const file = `${dir}/token-${digest}.json`
+  let delimiter = 'AGENTICS_JSON'
+  while (json.includes(delimiter)) delimiter += '_'
 
-/** Standard padded base64: one opaque argv slot, nothing in it for a shell to interpret. */
-function base64(text) {
-  const bytes = utf8Bytes(text)
-  let out = ''
-  for (let i = 0; i < bytes.length; i += 3) {
-    const b0 = bytes[i]
-    const b1 = i + 1 < bytes.length ? bytes[i + 1] : -1
-    const b2 = i + 2 < bytes.length ? bytes[i + 2] : -1
-    out += B64[b0 >> 2]
-    out += B64[((b0 & 3) << 4) | (b1 < 0 ? 0 : b1 >> 4)]
-    out += b1 < 0 ? '=' : B64[((b1 & 15) << 2) | (b2 < 0 ? 0 : b2 >> 6)]
-    out += b2 < 0 ? '=' : B64[b2 & 63]
+  const writes = []
+  for (let i = 0; i < json.length;) {
+    let end = Math.min(i + COMMAND_BUDGET, json.length)
+    const last = json.charCodeAt(end - 1)
+    if (end < json.length && last >= 0xd800 && last <= 0xdbff) end--
+    const into = i === 0 ? `mkdir -p "${dir}" && cat > "${file}"` : `cat >> "${file}"`
+    writes.push(`${into} <<'${delimiter}'\n${json.slice(i, end)}\n${delimiter}`)
+    i = end
   }
-  return out
+  return { writes, command: `${cli} --digest ${digest} --json-file "${file}"; rm -f "${file}"` }
 }
 
 /** What a courier carried back: the payload, or why it cannot be believed and how to retry. */
@@ -729,12 +722,9 @@ async function rejudgeBatch(batch, n) {
     return { id: it.id, verdict: VERDICTS.includes(v) ? v : 'unsure' }
   })
 
-  const token = { judgements: verdicts }
-  const held = await carry(
-    `node "${pluginRoot}/lib/evidence.mjs" judge --repo "${repo}" --root "${repo}" --digest ` +
-    `${fnv1a(canonical(token))} --b64 ${base64(JSON.stringify(token))}`,
-    'record-judgements:' + n, 'Re-judge',
-  )
+  const { command, writes } = viaJsonFile(
+    `node "${pluginRoot}/lib/evidence.mjs" judge --repo "${repo}" --root "${repo}"`, { judgements: verdicts }, repo)
+  const held = await carry(command, 'record-judgements:' + n, 'Re-judge', writes)
   if (!held.payload) {
     log(`record-judgements:${n}: could not be recorded (${held.why}); those items stay suspect.`)
   }
@@ -1202,10 +1192,8 @@ function locationList(locations) {
   return [...byPath].map(([path, lines]) => path + ':' + lines.join(':')).join(',')
 }
 
-// cmd.exe caps a whole command line at 8191 characters, so a list travels in batches of at most
-// this many. Every location of one file goes in the same batch, so no two batches ever hold
-// overlapping windows. The same budget bounds each write of a record token, further down.
-const COMMAND_BUDGET = 6000
+// A list travels in batches of at most COMMAND_BUDGET characters. Every location of one file goes
+// in the same batch, so no two batches ever hold overlapping windows.
 
 function batchesOf(locations) {
   const byPath = new Map()
@@ -1440,26 +1428,6 @@ function resolveRests(items, siblings) {
 /** An item as the store re-derives it: everything but the id, which it re-mints from the rest. */
 const withoutId = (it) => { const { id, ...rest } = it; return rest }
 
-/** The record of one token: on one argv slot while its base64 fits COMMAND_BUDGET, else written
- * to a file in COMMAND_BUDGET-sized appends and read back with --b64-file — so one courier carries
- * a whole group however many items it ruled. The file is named by the token's digest and removed
- * once read. */
-function recordCommand(token) {
-  const b64 = base64(JSON.stringify(token))
-  const digest = fnv1a(canonical(token))
-  const record = `node "${pluginRoot}/lib/evidence.mjs" record --repo "${repo}" --root "${repo}" --kind survey --digest ${digest}`
-  if (b64.length <= COMMAND_BUDGET) return { command: `${record} --b64 ${b64}`, writes: [] }
-
-  const dir = `${repo}/.agentics/.state`
-  const file = `${dir}/record-${digest}.b64`
-  const writes = []
-  for (let i = 0; i < b64.length; i += COMMAND_BUDGET) {
-    const chunk = `printf '%s' '${b64.slice(i, i + COMMAND_BUDGET)}'`
-    writes.push(i === 0 ? `mkdir -p "${dir}" && ${chunk} > "${file}"` : `${chunk} >> "${file}"`)
-  }
-  return { command: `${record} --b64-file "${file}"; rm -f "${file}"`, writes }
-}
-
 /** Carry one record of `items` under `label`, and sort what came back: recorded, refused (with the
  * other items unwritten, since a refusal refuses the whole record), or — no payload at all —
  * unrecorded, with why the account can show. */
@@ -1470,7 +1438,9 @@ async function recordBatch(items, label) {
   const unwritten = []
   let why = ''
 
-  const { command, writes } = recordCommand({ items: items.map(withoutId) })
+  const { command, writes } = viaJsonFile(
+    `node "${pluginRoot}/lib/evidence.mjs" record --repo "${repo}" --root "${repo}" --kind survey`,
+    { items: items.map(withoutId) }, repo)
   const held = await carry(command, label, 'Record', writes)
 
   if (held.payload && held.payload.ok) {

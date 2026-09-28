@@ -166,13 +166,15 @@ export function carriedEnvelope(payload, damage, notes = 'ran the command and pa
  * @returns {{ entry: object, digest: string, token: string }}
  */
 export function recordedLine(prompt) {
-  const call = /--digest (\S+) --b64 (\S+)/.exec(prompt || '')
-  if (!call) throw new Error('this prompt carries no --digest/--b64 ledger append')
+  const inline = /--digest (\S+) --b64 (\S+)/.exec(prompt || '')
+  const byFile = /--digest (\S+) --b64-file /.exec(prompt || '')
+  if (!inline && !byFile) throw new Error('this prompt carries no --digest/--b64 ledger append')
 
+  const token = inline ? inline[2] : [...prompt.matchAll(/printf '%s' '([^']*)'/g)].map((m) => m[1]).join('')
   return {
-    entry: JSON.parse(Buffer.from(call[2], 'base64').toString('utf8')),
-    digest: call[1],
-    token: call[2],
+    entry: JSON.parse(Buffer.from(token, 'base64').toString('utf8')),
+    digest: (inline || byFile)[1],
+    token,
   }
 }
 

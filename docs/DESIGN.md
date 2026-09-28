@@ -405,7 +405,11 @@ read-then-write. Readers are tolerant: a torn line is counted, never thrown on.
 Lines the workflow mints whole travel base64 on one argv slot with a digest, so there is no path
 to escape and no apostrophe to close. A line only the observing agent can fill in (a finished
 series) goes by heredoc on stdin and carries no digest; the writer still refuses what does not
-parse. A digest makes corruption detectable; the encoding makes it unlikely.
+parse. A digest makes corruption detectable; the encoding makes it unlikely. A token longer
+than one argv slot holds (`COMMAND_BUDGET`, under cmd.exe's 8191-character line) is written by the
+same courier to a file under `.agentics/.state/` in budget-sized `printf` appends, then read back
+with `--b64-file` under the same digest and removed. A courier's cost is its dispatch, not its
+bytes, so a long token buys more Bash calls on one courier, never more couriers.
 
 A location list is the exception: it is only paths and line numbers, so it travels as plain text
 (`path:line:line,path:line`) with a digest over the exact string, because a courier copies paths
@@ -863,7 +867,8 @@ The survey (`gather-evidence-without-concluding`) gathers evidence for one quest
    [context files](#context-files).
 5. **Judge.** Each analyst **without search tools** returns items — one claim each, with the
    anchor its kind needs — and risks. A topic with neither is dropped.
-6. **Record.** A courier runs `evidence.mjs record --kind survey` per batch. A refused item goes
+6. **Record.** One courier per judge group runs `evidence.mjs record --kind survey` over all its
+   items, the token by file when it outgrows an argv slot. A refused item goes
    back to its judge until a pass anchors no more; what never anchors is dropped and leaves its
    topic incomplete, and so do items the recorder could not be reached to check.
 
@@ -1299,7 +1304,7 @@ disagree about it.
 | auditor | declare mutations against an implementation | edit source, execute anything | read, write (its report only) |
 | reviewer | attack a span | approve, edit | read, read-only git |
 | investigator | establish build and test commands when none are known, recorded as `command` gotchas | judge quality, fix anything | read, shell |
-| courier | run one command, paste stdout; move todos | anything else | shell, task tools |
+| courier | run one command (after the token writes it is handed), paste stdout; move todos | anything else | shell, task tools |
 
 ### Capability layer
 

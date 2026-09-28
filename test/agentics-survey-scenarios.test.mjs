@@ -855,7 +855,7 @@ test('a survey run from a linked worktree records spans read in the worktree', a
     'the store is found from the repo; the spans are read where the judge read them')
 })
 
-test('a judge group over many items records in batches labelled record:<group>:<n>', async () => {
+test('a judge group over many items records with one courier, its token written to a file in slot-sized appends', async () => {
   const many = Array.from({ length: 12 }, (_, i) => ITEM('a', { claim: 'claim ' + i + ' ' + 'x'.repeat(600) }))
   const { result, prompts } = await run({
     plan: PLAN({ topics: [{ key: 'a', find: 'find a', subtree: 'src/a' }, { key: 'b', find: 'find b', subtree: 'src/b' }] }),
@@ -863,13 +863,18 @@ test('a judge group over many items records in batches labelled record:<group>:<
   }, { pace: 'fast' })
 
   const recs = prompts.filter((p) => /^record/.test(p.opts.label))
-  const ofA = recs.filter((p) => /^record:a:\d+$/.test(p.opts.label))
-  assert.ok(ofA.length > 1, 'twelve long items do not fit one argv slot')
-  assert.deepEqual(ofA.map((p) => p.opts.label), ofA.map((_, i) => 'record:a:' + (i + 1)))
-  assert.deepEqual(recs.filter((p) => !ofA.includes(p)).map((p) => p.opts.label), ['record:b'])
-  for (const p of recs) assert.ok(/--b64 (\S+)/.exec(p.prompt)[1].length <= 6000, p.opts.label)
-  assert.deepEqual(ofA.flatMap((p) => recordedLine(p.prompt).entry.items.map((i) => i.claim)).sort(),
-    many.map((i) => i.claim).sort(), 'every item sent once')
+  assert.deepEqual(recs.map((p) => p.opts.label).sort(), ['record:a', 'record:b'])
+
+  const ofA = promptFor(prompts, 'record:a')
+  const writes = [...ofA.matchAll(/printf '%s' '([^']*)'/g)].map((m) => m[1])
+  assert.ok(writes.length > 1, 'twelve long items do not fit one argv slot')
+  for (const chunk of writes) assert.ok(chunk.length <= 6000)
+  assert.match(ofA, /record --repo "\." --root "\." --kind survey --digest [0-9a-f]{8} --b64-file "\.\/\.agentics\/\.state\/record-[0-9a-f]{8}\.b64"; rm -f /)
+
+  const { entry, digest } = recordedLine(ofA)
+  assert.equal(digest, fnv1a(canonical(entry)))
+  assert.deepEqual(entry.items.map((i) => i.claim).sort(), many.map((i) => i.claim).sort(), 'every item sent once')
+  assert.match(promptFor(prompts, 'record:b'), / --b64 \S+/, 'a token that fits travels inline')
   assert.equal(result.items.filter((i) => i.topic === 'a').length, many.length)
 })
 

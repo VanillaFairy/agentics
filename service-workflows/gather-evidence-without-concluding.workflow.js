@@ -485,9 +485,13 @@ function carriedRead(held) {
 const COURIER = { model: 'haiku', effort: 'low' }
 const COURIER_UP = { model: 'sonnet', effort: 'low' }
 
-function courierPrompt(command) {
-  return 'Run exactly this one command, unchanged, and put its entire stdout in payload_raw:\n\n' +
-    command + '\n\n' +
+function courierPrompt(command, writes) {
+  const steps = writes.length === 0
+    ? 'Run exactly this one command, unchanged, and put its entire stdout in payload_raw:\n\n' + command
+    : 'Run these commands in order, each unchanged and in its own Bash call; stop at the first that ' +
+      'fails. The ones before the last only write a file. Put the last one\'s entire stdout in ' +
+      'payload_raw:\n\n' + [...writes, command].join('\n\n')
+  return steps + '\n\n' +
     'Move no todos.' +
     (pluginRoot === SHELL_ROOT
       ? '\nIf ' + SHELL_ROOT + ' is empty in your shell, do not guess a path: set stop_reason ' +
@@ -503,14 +507,15 @@ function courierPrompt(command) {
  * transit buys one refetch on a stronger model; a token the program refused as damaged on its way
  * IN is sent again; a program failure is not retried. What stays unbelievable comes back as
  * `{payload: null, why}` — every carry in this workflow is a side channel with a fallback, so
- * none of them may throw.
+ * none of them may throw. `writes` are the file writes a token too long for one argv slot
+ * travels by, run by the same courier before `command`.
  */
-async function carry(command, label, phaseName) {
+async function carry(command, label, phaseName, writes = []) {
   const ladder = [COURIER]
   let why = ''
 
   for (let i = 0; i < ladder.length; i++) {
-    const held = await agent(courierPrompt(command), {
+    const held = await agent(courierPrompt(command, writes), {
       agentType: 'agentics:courier', schema: CARRIED, phase: phaseName,
       label: label + (i ? '#' + (i + 1) : ''), ...ladder[i],
     }).catch((e) => {
@@ -1199,7 +1204,7 @@ function locationList(locations) {
 
 // cmd.exe caps a whole command line at 8191 characters, so a list travels in batches of at most
 // this many. Every location of one file goes in the same batch, so no two batches ever hold
-// overlapping windows. The same budget bounds a record batch's base64 token, further down.
+// overlapping windows. The same budget bounds each write of a record token, further down.
 const COMMAND_BUDGET = 6000
 
 function batchesOf(locations) {
@@ -1435,58 +1440,51 @@ function resolveRests(items, siblings) {
 /** An item as the store re-derives it: everything but the id, which it re-mints from the rest. */
 const withoutId = (it) => { const { id, ...rest } = it; return rest }
 
-/** Split items into batches whose token — {items}, with `id` stripped from each — keeps its
- * base64 length within COMMAND_BUDGET. An oversized single item goes alone. */
-function budgetBatches(items) {
-  const tokenLen = (batch) => base64(JSON.stringify({ items: batch.map(withoutId) })).length
-  const batches = []
-  let current = []
-  for (const item of items) {
-    const grown = current.concat(item)
-    if (current.length > 0 && tokenLen(grown) > COMMAND_BUDGET) {
-      batches.push(current)
-      current = [item]
-    } else {
-      current = grown
-    }
+/** The record of one token: on one argv slot while its base64 fits COMMAND_BUDGET, else written
+ * to a file in COMMAND_BUDGET-sized appends and read back with --b64-file — so one courier carries
+ * a whole group however many items it ruled. The file is named by the token's digest and removed
+ * once read. */
+function recordCommand(token) {
+  const b64 = base64(JSON.stringify(token))
+  const digest = fnv1a(canonical(token))
+  const record = `node "${pluginRoot}/lib/evidence.mjs" record --repo "${repo}" --root "${repo}" --kind survey --digest ${digest}`
+  if (b64.length <= COMMAND_BUDGET) return { command: `${record} --b64 ${b64}`, writes: [] }
+
+  const dir = `${repo}/.agentics/.state`
+  const file = `${dir}/record-${digest}.b64`
+  const writes = []
+  for (let i = 0; i < b64.length; i += COMMAND_BUDGET) {
+    const chunk = `printf '%s' '${b64.slice(i, i + COMMAND_BUDGET)}'`
+    writes.push(i === 0 ? `mkdir -p "${dir}" && ${chunk} > "${file}"` : `${chunk} >> "${file}"`)
   }
-  if (current.length > 0) batches.push(current)
-  return batches
+  return { command: `${record} --b64-file "${file}"; rm -f "${file}"`, writes }
 }
 
-/** Carry one or more record batches under `label`, and sort what came back: recorded, refused
- * (with the batch's other items unwritten, since a refusal refuses the whole batch), or —
- * no payload at all — unrecorded, with why the account can show. */
-async function recordBatches(items, label) {
-  const batches = budgetBatches(items)
+/** Carry one record of `items` under `label`, and sort what came back: recorded, refused (with the
+ * other items unwritten, since a refusal refuses the whole record), or — no payload at all —
+ * unrecorded, with why the account can show. */
+async function recordBatch(items, label) {
   const recorded = []
   const unrecorded = []
   const refused = []
   const unwritten = []
   let why = ''
 
-  await Promise.all(batches.map(async (batch, i) => {
-    const token = { items: batch.map(withoutId) }
-    const lbl = batches.length === 1 ? label : label + ':' + (i + 1)
-    const held = await carry(
-      `node "${pluginRoot}/lib/evidence.mjs" record --repo "${repo}" --root "${repo}" --kind survey ` +
-      `--digest ${fnv1a(canonical(token))} --b64 ${base64(JSON.stringify(token))}`,
-      lbl, 'Record',
-    )
+  const { command, writes } = recordCommand({ items: items.map(withoutId) })
+  const held = await carry(command, label, 'Record', writes)
 
-    if (held.payload && held.payload.ok) {
-      recorded.push(...batch)
-    } else if (held.payload && Array.isArray(held.payload.refused)) {
-      const problemsOf = new Map(held.payload.refused.map((r) => [r.index, r.problems]))
-      batch.forEach((item, index) => {
-        if (problemsOf.has(index)) refused.push({ item, problems: problemsOf.get(index) })
-        else unwritten.push(item)
-      })
-    } else {
-      unrecorded.push(...batch)
-      why = held.why || why
-    }
-  }))
+  if (held.payload && held.payload.ok) {
+    recorded.push(...items)
+  } else if (held.payload && Array.isArray(held.payload.refused)) {
+    const problemsOf = new Map(held.payload.refused.map((r) => [r.index, r.problems]))
+    items.forEach((item, index) => {
+      if (problemsOf.has(index)) refused.push({ item, problems: problemsOf.get(index) })
+      else unwritten.push(item)
+    })
+  } else {
+    unrecorded.push(...items)
+    why = held.why
+  }
 
   return { recorded, unrecorded, refused, unwritten, why }
 }
@@ -1520,7 +1518,7 @@ async function recordGroup(group, items) {
 
   while (true) {
     const base = pass === 0 ? label : label + ':anchors:' + pass
-    const out = await recordBatches(pending, base)
+    const out = await recordBatch(pending, base)
     recorded = recorded.concat(out.recorded)
     unrecorded = unrecorded.concat(out.unrecorded)
     if (out.why) why = out.why

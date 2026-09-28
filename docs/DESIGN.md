@@ -1253,9 +1253,10 @@ couriers that run the boundaries move it live while the workflow runs.
   header (`ONGOING`, `DONE`, `NEEDS_INPUT`) is rendered from derived status for display only.
 
 **Why a flag:** each todo move is a turn on a courier, which is cheap but not free; a user who
-
-The agentics viewer (vanillafairy's `agentics-viewer/`) draws an effort live from `lib/status.mjs snapshot`. It reads, and never writes, the effort store.
 watches the log or checks in only at the end should not pay for it.
+
+The agentics viewer (vanillafairy's `agentics-viewer/`) draws an effort live from
+`lib/status.mjs snapshot`. It reads, and never writes, the effort store.
 
 ### The Next line
 

@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url'
 
 import { append } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
-import { costOf, efforts, renderTodos, todosOf } from '../lib/status.mjs'
+import { checkpointOf, costOf, efforts, renderTodos, todosOf } from '../lib/status.mjs'
 import { effortDir, effortStateDir, executionDir } from '../lib/store.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/status.mjs', import.meta.url))
@@ -238,4 +238,14 @@ test('an execution summary counts its merge-batches, what they landed and which 
   const [e] = efforts(repo).efforts
   const [x] = e.executions
   assert.deepEqual([x.batches, x.merged, x.bisected], [2, 3, 1])
+})
+
+test('the checkpoint an execution last stopped at keeps its lists for the session to read', () => {
+  const repo = effortWith(TREE)
+  assert.equal(checkpointOf(repo, E, X1), null)
+  const stale = [{ node: 'c', writes: ['src/c.js'], reads: [] }]
+  append(repo, E, 'state:' + X1, { kind: 'checkpoint', reason: 'stale', detail: '1 leaf', stale })
+  assert.deepEqual(checkpointOf(repo, E, X1), { reason: 'stale', detail: '1 leaf', stale })
+  const out = execFileSync(process.execPath, [CLI, 'checkpoint', '--repo', repo, '--effort', E, '--execution', X1], { encoding: 'utf8' })
+  assert.match(out, /c — writes moved: src\/c\.js/)
 })

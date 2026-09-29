@@ -154,3 +154,30 @@ test('done when every leaf in scope merged; below the effort root, only once the
   assert.equal(summarize(effort(nodes, [{ kind: 'merged', node: 'x/a' }], { root: 'x' })).done, false)
   assert.equal(summarize(effort(nodes, [{ kind: 'merged', node: 'x/a' }, { kind: 'merged', node: 'x' }], { root: 'x' })).done, true)
 })
+
+const group = (id, extra = {}) => ({ id, kind: 'group', title: 'gather ' + id, ...extra })
+
+test('a group has no branch: a dependency in another group is ready once it merged, and a group dependency once every task in it did', () => {
+  const nodes = [folder('.'), group('x'), leaf('x/a'), leaf('x/b'), group('y'), leaf('y/c', { deps: ['x/a'] }), leaf('d', { deps: ['x'] })]
+  assert.deepEqual(leafIds(effort(nodes, [{ kind: 'merged', node: 'x/a' }])), ['x/b', 'y/c'])
+  assert.deepEqual(leafIds(effort(nodes, [{ kind: 'merged', node: 'x/a' }, { kind: 'merged', node: 'x/b' }])), ['d', 'y/c'])
+  const behind = [folder('.'), group('x', { deps: ['a'] }), leaf('x/b'), leaf('a')]
+  assert.deepEqual(leafIds(effort(behind)), ['a'], 'a group\'s after binds every task in it')
+})
+
+test('a task in a group merges into the group\'s folder, and the folder reviews it as its own unit', () => {
+  const nodes = [folder('.'), group('x'), leaf('x/a'), leaf('x/b')]
+  const approved = effort(nodes, [{ kind: 'dispatched', node: 'x/a' }, { kind: 'approved', node: 'x/a' }])
+  assert.deepEqual(launched(approved, 'merge').map((m) => [m.target, m.children.map((c) => c.id)]), [['.', ['x/a']]])
+  const done = effort(nodes, [{ kind: 'merged', node: 'x/a' }, { kind: 'merged', node: 'x/b' }], { integrationOf: (id) => (id === '.' ? { head: 'h' } : null) })
+  const [review] = launched(done, 'review')
+  assert.equal(review.id, '.')
+  assert.deepEqual(review.children, ['x/a', 'x/b'])
+  assert.equal(launched(done, 'plan').length, 0, 'a group is never planned')
+})
+
+test('an execution rooted at a group runs its tasks and is done when they have all merged', () => {
+  const nodes = [folder('.'), group('x'), leaf('x/a'), leaf('x/b'), leaf('c')]
+  assert.deepEqual(leafIds(effort(nodes, [], { root: 'x' })), ['x/a', 'x/b'])
+  assert.equal(summarize(effort(nodes, [{ kind: 'merged', node: 'x/a' }, { kind: 'merged', node: 'x/b' }], { root: 'x' })).done, true)
+})

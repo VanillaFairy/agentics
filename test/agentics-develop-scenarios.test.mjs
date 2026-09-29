@@ -181,7 +181,7 @@ test('decompose: the promoted task passes its review, compiles, and its children
   assert.match(probe.calls[0].scriptPath, /\/service-workflows\/attack-document-with-independent-reviewers\.workflow\.js$/)
   assert.deepEqual(sim.prepared.map((p) => p.node), ['a'])
   assert.ok(sim.opens.includes('a/x') && sim.opens.includes('a/y'))
-  assert.deepEqual(sim.batches.find((b) => b.target === 'a').children.map((c) => c.id).sort(), ['a/x', 'a/y'])
+  assert.deepEqual(sim.batches.filter((b) => b.target === 'a').flatMap((b) => b.children.map((c) => c.id)).sort(), ['a/x', 'a/y'])
   assert.equal(result.coverage.complete, true, JSON.stringify(result.coverage.unreached))
 })
 

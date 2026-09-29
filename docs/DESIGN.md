@@ -971,10 +971,19 @@ already attached).
 | **merge-batch** | under the branch lock, record `batch-started` with the head it starts from; merge every approved child into one integration branch in dependency order; verify the merged head; bisect a red one; append `merged` and `merge-observed`; release locus locks; append a `batch` state line; complete the todos. A batch that started and never recorded its outcome is reset to where it started and done again, so an unverified merge is never recorded as landed |
 | **postflight** | append the workflow's last decisions; release this execution's slots; summarize the subtree from disk (counts, the nodes the user must act on, the leaves waiting behind each, cycle members held); append `closed` when every leaf in scope merged; count the branches eligible for cleanup |
 
-Preflight, schedule and postflight first append the workflow's pending decisions (`records`:
-approvals, escalations, parks, integration verdicts, dispatch cost lines), once each — a record
-re-sent after a lost courier lands once. No other boundary carries them. The main loop calls those
-three one at a time, so every decision a unit took is on disk before anything is scheduled after it.
+Schedule and postflight first append the workflow's pending decisions (`records`: approvals,
+escalations, parks, integration verdicts, dispatch cost lines). No other boundary carries them, and
+the main loop calls those two one at a time. Each record carries an id, `<invocation>.<n>`: preflight
+mints the invocation's number on disk (the workflow has no clock and no randomness, so a resume can
+replay it), and the workflow counts the rest. A record sent again after a lost courier lands once;
+the same decision taken again — an approval at the same head after a retry — has a new id and lands
+again. A record the lib writes itself (a merge-batch run again) is known by its content.
+
+**A unit is in flight until a tick has carried what it decided.** A unit that ends while a schedule
+call is out stays in the workflow's running set, so that call launches nothing beneath it or twice,
+and the loop ticks again at once to land its records. Launches that come back are checked against
+what the workflow decided while the call was out — a node it stopped, a folder it began replanning —
+and a stale one is dropped for the next tick.
 
 **A payload is bounded by the pool, never by the effort.** A courier pastes what it carries, and a
 host shows only so much of one shell call's output, so nothing a boundary prints grows with the

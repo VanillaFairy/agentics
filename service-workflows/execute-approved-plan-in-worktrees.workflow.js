@@ -538,7 +538,7 @@ function launch(key, fn) {
     const channel = err instanceof TransportError ? 'transport' : 'pipeline'
     failedChannels.push(channel)
     if (!stoppedHere.has(id)) escalate(id, channel, channel === 'transport' ? err.message : String(err && err.message))
-  }).finally(() => running.delete(key))
+  }).finally(() => finished.add(key))
   running.set(key, p)
 }
 
@@ -1048,6 +1048,7 @@ async function mergeInto(item) {
       continue
     }
     note(f.id + ': fails on the integration head alone — a fix round on the refreshed branch')
+    if (running.has('leaf:' + f.id)) continue
     launch('leaf:' + f.id, () => runLeaf({ unit: 'leaf', id: f.id, row: f.row, parent: f.parent, facts: f.facts }, {
       stage: 'fix', refresh: true,
       fix: (f.failures || []).map((x) => ({ source: 'integration', claim: x.claim, evidence: x.evidence })),
@@ -1233,8 +1234,23 @@ const UNITS = {
   review: (item) => reviewComposite(item),
 }
 
+/**
+ * A launch computed from what disk said when the tick was built, re-checked against what this
+ * invocation decided while the tick was in flight: a node it stopped, a folder it began replanning.
+ */
+const stillLaunchable = (item) => {
+  const id = item.id || item.target
+  if (stoppedHere.has(id)) return false
+  return ![...planning].some((p) => p === id || p === '.' || id.startsWith(p + '/'))
+}
+
 phase('Execute')
 for (;;) {
+  // A unit leaves `running` only once the tick being built carries what it decided; one that ends
+  // while this tick is in flight stays in `running`, so nothing is launched beneath it or twice,
+  // and it wakes the loop at once for the next tick.
+  for (const key of finished) running.delete(key)
+  finished.clear()
   let tick
   try {
     ticks++
@@ -1251,7 +1267,7 @@ for (;;) {
   }
   for (const item of tick.launch || []) {
     const key = item.unit + ':' + (item.id || item.target)
-    if (!running.has(key)) launch(key, () => UNITS[item.unit](item))
+    if (!running.has(key) && stillLaunchable(item)) launch(key, () => UNITS[item.unit](item))
   }
   if (running.size === 0) break
   await Promise.race(running.values())

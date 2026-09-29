@@ -4,8 +4,10 @@
 // The workflow's arithmetic — review-loop exits, merge routing, coverage — is what these
 // scenarios test, so the boundaries are answered from an in-memory tree and event log rather than
 // a repository. What to launch is decided by the real `lib/schedule.mjs` over that log, exactly as
-// the `schedule` boundary decides it on disk. Every answer is carried the way a real courier
-// carries one: an envelope with a digest, inside a CARRIED return. `lib/boundary.mjs` itself is
+// the `schedule` boundary decides it on disk, and records land once each by the lib's own rule.
+// Every answer is carried the way a real courier carries one: an envelope with a digest, inside a
+// CARRIED return, computed when the courier is dispatched and delivered a task later, so units
+// settle while a boundary is in flight as they do on a real host. `lib/boundary.mjs` itself is
 // tested against real git in test/boundary.test.mjs; the two meet at the payload shapes, which
 // live in docs/DESIGN.md#boundaries.
 
@@ -297,7 +299,7 @@ export function agents(sim, handlers = {}) {
     if (handlers[type]) return handlers[type](prompt, opts, sim)
     if (type === 'courier') {
       const out = sim.courier(prompt)
-      return { ...out, task_tools: 'skipped' }
+      return new Promise((resolve) => setTimeout(() => resolve({ ...out, task_tools: 'skipped' }), 0))
     }
     if (type === 'implementer' || type === 'test-author' || type === 'auditor') {
       return { status: 'done', detail: '', concerns: [], commits: [{ sha: 'c1', subject: 'do it' }] }

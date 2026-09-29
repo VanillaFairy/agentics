@@ -793,3 +793,84 @@ test('re-approving the root with dispatched work below it does not park the root
   assert.equal(out.parked.some((p) => p.node === '.'), false, JSON.stringify(out.parked))
   assert.notEqual(readTree(repo, E).status.get('.').status, 'parked')
 })
+
+// ------------------------------------------------------------------ groups
+
+const WATCH = [
+  '### watch — group · after: api',
+  'Watch configs for change',
+  '',
+  '- **reload** — task · realises: D3 · rigor: tdd · locus: src/reload.js, test/reload.test.js',
+  '  Reload configs on change',
+  '  - [ ] a changed file reloads — check: `node --test test/reload.test.js`',
+  '- **notify** — task · realises: D3 · after: reload · rigor: tdd · locus: src/notify.js, test/notify.test.js',
+  '  Tell the user a config reloaded',
+  '  - [ ] a reload notifies — check: `node --test test/notify.test.js`',
+  '',
+].join('\n')
+const GROUPED = ROOT.replace(/- \*\*reload\*\*[\s\S]*?(?=- \*\*later\*\*)/, '')
+  .replace('\n## Open questions', '\n' + WATCH + '\n## Open questions')
+
+test('a group compiles to a group node in its folder, its tasks to leaves under it, and after resolves through the plan\'s names', () => {
+  const repo = effort({ '.': GROUPED.replace('after: api · consumes', 'after: api, watch · consumes'), api: API })
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  const tree = nodes(repo)
+  const g = tree.get('watch')
+  assert.equal(g.kind, 'group')
+  assert.equal(g.title, 'Watch configs for change')
+  assert.deepEqual(g.deps, ['api'])
+  assert.deepEqual(childrenOf(tree, 'watch'), ['watch/notify', 'watch/reload'])
+  assertLeafFrom(tree.get('watch/reload'), entryOf(GROUPED, 'reload'))
+  assert.deepEqual(tree.get('watch/notify').deps, ['watch/reload'], 'a name in the group resolves to its id under the group')
+  assert.deepEqual(tree.get('cli').deps, ['api', 'watch'], 'an entry may wait for a whole group')
+})
+
+test('regrouping retires the flat leaves and adds them under the group, while nothing under them was dispatched', () => {
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  write(repo, '.', GROUPED)
+  approve(repo, '.')
+  const out = compiled(repo)
+  assert.deepEqual(out.retired, ['reload'])
+  assert.ok(['watch', 'watch/reload', 'watch/notify'].every((id) => out.written.includes(id)), JSON.stringify(out.written))
+  write(repo, '.', ROOT)
+  approve(repo, '.')
+  assert.deepEqual(compiled(repo).retired.sort(), ['watch', 'watch/notify', 'watch/reload'])
+})
+
+test('a task promoted inside a group compiles as a composite under the group, alone or with the rest', () => {
+  const promoted = PARSE.replace(/realises: D1/g, 'realises: D3')
+  for (const opts of [undefined, { folder: 'watch/reload' }]) {
+    const repo = effort({ '.': GROUPED, api: API })
+    approve(repo, '.')
+    approve(repo, 'api')
+    compiled(repo)
+    write(repo, 'watch/reload', promoted)
+    prepare(repo, 'watch/reload')
+    compiled(repo, opts)
+    const tree = nodes(repo)
+    const p = tree.get('watch/reload')
+    assert.equal(p.kind, 'composite')
+    assert.equal(p.author, 'planner')
+    assert.deepEqual(p.deps, [])
+    assert.deepEqual(childrenOf(tree, 'watch/reload'), ['watch/reload/lookup', 'watch/reload/tokens'])
+    assert.deepEqual(tree.get('watch/notify').deps, ['watch/reload'])
+  }
+})
+
+test('a group may not take the name of a task with merged work', () => {
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  append(repo, E, 'events', { kind: 'merged', node: 'reload', execution: '20260926-120000' })
+  write(repo, '.', GROUPED.replace('### watch — group', '### reload — group').replace(/- \*\*reload\*\*/, '- **reload-core**').replace('after: reload ·', 'after: reload-core ·'))
+  approve(repo, '.')
+  const out = compileEffort(repo, E)
+  assert.equal(out.ok, false)
+  assert.ok(out.problems.some((p) => /takes the name/.test(p.problem)), JSON.stringify(out.problems))
+})

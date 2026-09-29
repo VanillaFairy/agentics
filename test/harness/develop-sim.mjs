@@ -14,7 +14,7 @@
 import { recordsToAppend } from '../../lib/boundary.mjs'
 import { approvedHead } from '../../lib/resume.mjs'
 import { schedule, summarize } from '../../lib/schedule.mjs'
-import { parentOf } from '../../lib/store.mjs'
+import { ancestorsOf, parentOf } from '../../lib/store.mjs'
 import { childrenOf, deriveStatus, normalizeNode, ownReview } from '../../lib/tree.mjs'
 import { carriedEnvelope } from './workflow-host.mjs'
 
@@ -124,6 +124,7 @@ export function simulate(nodes, script = {}) {
     }
   }
 
+  const waitsOn = (id) => [...new Set([id, ...ancestorsOf(id)].flatMap((a) => (sim.nodes.get(a) || { deps: [] }).deps))]
   const parentRow = (id) => {
     const { title, kind, author, spec_path } = rowFor(parentOf(id))
     return { id: parentOf(id), title, kind, author, spec_path }
@@ -157,7 +158,7 @@ export function simulate(nodes, script = {}) {
       return {
         boundary: 'schedule', ok: true, error: null, idle, max_parallel: 4, commands: null, todos: [], notes: [],
         launch: launch.map((l) => (l.unit === 'merge' ? l
-          : l.unit === 'leaf' ? { ...l, row: rowFor(l.id), parent: parentRow(l.id), facts: (script.facts || {})[l.id] || null }
+          : l.unit === 'leaf' ? { ...l, row: rowFor(l.id), parent: parentRow(l.id), facts: (script.facts || {})[l.id] || null, waits_on: waitsOn(l.id) }
             : l.unit === 'plan' ? { ...l, row: { ...rowFor(l.id), intent: sim.nodes.get(l.id).intent || '' } }
               : { ...l, row: rowFor(l.id) })),
       }

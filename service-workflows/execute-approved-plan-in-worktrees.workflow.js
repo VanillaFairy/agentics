@@ -1252,7 +1252,7 @@ const UNITS = {
  */
 const stillLaunchable = (item) => {
   const id = item.id || item.target
-  if (stoppedHere.has(id)) return false
+  if (stoppedHere.has(id) || (item.waits_on || []).some((d) => stoppedHere.has(d))) return false
   return ![...planning].some((p) => p === id || p === '.' || id.startsWith(p + '/'))
 }
 

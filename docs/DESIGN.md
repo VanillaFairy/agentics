@@ -984,8 +984,8 @@ finish. A record the lib writes itself (a merge-batch run again) is known by its
 **A unit is in flight until a tick has carried what it decided.** A unit that ends while a schedule
 call is out stays in the workflow's running set, so that call launches nothing beneath it or twice,
 and the loop ticks again at once to land its records. Launches that come back are checked against
-what the workflow decided while the call was out — a node it stopped, a folder it began replanning —
-and a stale one is dropped for the next tick.
+what the workflow decided while the call was out — a node it stopped or one a leaf waits on (the
+launch's `waits_on`), a folder it began replanning — and a stale one is dropped for the next tick.
 
 **A payload is bounded by the pool, never by the effort.** A courier pastes what it carries, and a
 host shows only so much of one shell call's output, so nothing a boundary prints grows with the
@@ -1614,7 +1614,7 @@ Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}],
   `dirty_worktrees`, `commands`, `max_parallel`.
 - **schedule** — `launch[]`, `idle`, `max_parallel`, `commands`, `records`. A launch is one of
   `{unit: plan, id, why, row}` (its row with the folder's `intent`), `{unit: leaf, id, row, parent
-  {id, title, kind, author, spec_path}, facts}`, `{unit: merge, target,
+  {id, title, kind, author, spec_path}, facts, waits_on}` (its dependencies and every ancestor's), `{unit: merge, target,
   children[{id, head_sha}], cycles[[id]]}`, `{unit: review, id, row, earned, where {branch,
   worktree, head, base}, children, unreviewed}`. `facts` is the resume ladder's row for the leaf:
   `{id, next_action, note, branch, worktree, head_sha, base_sha, approved_head, commits, dirty,

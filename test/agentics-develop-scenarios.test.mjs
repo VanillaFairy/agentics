@@ -825,3 +825,43 @@ test('escalations carried from an earlier invocation lead the result', async () 
   assert.deepEqual(result.escalations.map((e) => [e.id, e.carried === true]), [['a', true]])
   assert.match(result.coverage.unreached[0], /a: escalated earlier — blocked/)
 })
+
+/** Resolve once `pred` holds, checking on every turn of the event loop. */
+const until = (pred) => new Promise((resolve) => {
+  const check = () => (pred() ? resolve() : setTimeout(check, 1))
+  check()
+})
+
+test('a launch whose node a merge parked while the tick was in flight is dropped, never started', async () => {
+  const api = [{ name: 'api', paths: ['src/api.js'] }]
+  const sim = simulate([composite('.'), row('a', { provides: api }), row('c', { deps: ['a'], consumes: api }), row('b')], {
+    merge: (args, n) => (n === 0 ? { drift: [{ node: 'c', contract: 'api', files: ['src/api.js'] }] } : {}),
+  })
+  // b ends only once the merge of a is under way, so the tick b wakes is built with a merged on
+  // disk and c ready; the merge's answer, which parks c, arrives while that tick is still out.
+  let mergeCalled = false
+  let mergeDelivered = false
+  const carried = (out) => ({ ...out, task_tools: 'skipped' })
+  const { result } = await run(sim, {
+    'implementer:b#1': async () => {
+      await until(() => mergeCalled)
+      return { status: 'done', detail: '', concerns: [], commits: [{ sha: 'c1', subject: 'do b' }] }
+    },
+    courier: async (prompt, opts) => {
+      const out = sim.courier(prompt)
+      if (opts.label === 'merge:.' && !mergeCalled) {
+        mergeCalled = true
+        const calls = sim.calls.length
+        await until(() => sim.calls.slice(calls).some((c) => c.name === 'schedule'))
+        mergeDelivered = true
+        return carried(out)
+      }
+      if (opts.label.startsWith('schedule#')) await until(() => !mergeCalled || mergeDelivered)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      return carried(out)
+    },
+  })
+  assert.ok(mergeDelivered, 'the merge answered while a tick was out')
+  assert.ok(!sim.opens.includes('c'), 'the tick launched c from a view that had not seen the park')
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['c', 'contract_drift']])
+})

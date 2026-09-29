@@ -313,15 +313,51 @@ test('bad input returns a coverage block, never undefined', async () => {
   assert.equal(result.coverage.complete, false)
 })
 
-test('contract drift parks the consumer until the user rules, and the rest keeps running', async () => {
-  const sim = simulate([composite('.'), row('a'), row('b', { deps: ['a'], consumes: [{ name: 'api', paths: ['src/api.js'] }] }), row('c')], {
-    merge: (args) => (args.children.some((ch) => ch.id === 'a') ? { drift: [{ node: 'b', contract: 'api', files: ['src/api.js'] }] } : {}),
-  })
-  const { result } = await run(sim)
-  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['b', 'contract_drift']])
+const driftSim = () => simulate([composite('.'), row('a'), row('b', { deps: ['a'], consumes: [{ name: 'api', paths: ['src/api.js'] }] }), row('c')], {
+  merge: (args) => (args.children.some((ch) => ch.id === 'a')
+    ? { drift: [{ node: 'b', contract: 'api', files: ['src/api.js'], spec_path: '/repo/.agentics/e1/DESIGN.md' }], drift_diff: '/merges/root.drift.diff' } : {}),
+})
+const ruling = (ruling, question = '') => () => ({ rulings: [{ node: 'b', ruling, why: 'because', question }] })
+
+test('contract drift an analyst rules affected parks the consumer with its question, and the rest keeps running', async () => {
+  const sim = driftSim()
+  const { result, prompts } = await run(sim, { 'rule:drift:.': ruling('affected', 'api now returns a list: does b still read one?') })
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return, p.question]), [['b', 'contract_drift', 'api now returns a list: does b still read one?']])
   assert.ok(!sim.opens.includes('b'))
   assert.ok(result.implemented.some((i) => i.id === 'c'))
-  assert.deepEqual(result.drift, [{ node: 'b', contract: 'api', files: ['src/api.js'] }])
+  assert.deepEqual(result.drift.map((d) => d.node), ['b'])
+  const asked = prompts.find((p) => p.opts.label === 'rule:drift:.')
+  assert.equal(asked.opts.agentType, 'agentics:analyst')
+  assert.match(asked.prompt, /\/merges\/root\.drift\.diff[\s\S]*node b consumes contract api/)
+})
+
+test('contract drift an analyst rules unaffected never reaches the user: the consumer runs', async () => {
+  const sim = driftSim()
+  const { result } = await run(sim, { 'rule:drift:.': ruling('unaffected') })
+  assert.deepEqual(result.parked, [])
+  assert.ok(sim.opens.includes('b'))
+  assert.deepEqual(recordsOf(sim, 'drift-ruled').map((r) => [r.node, r.ruling]), [['b', 'unaffected']])
+  assert.equal(result.coverage.complete, true)
+})
+
+test('a base that moved under leaves is ruled by an analyst: only a leaf really affected waits for the user', async () => {
+  const stale = { nodes: ['a', 'b'], now: 'n1', list: '/x/stale-n1.json', diff: '/x/stale-n1.diff' }
+  const sim = simulate([composite('.'), row('a'), row('b'), row('c')], { preflight: () => ({ stale }) })
+  const { result, prompts } = await run(sim, {
+    'rule:stale': () => ({ rulings: [{ node: 'a', ruling: 'unaffected', why: 'only comments moved', question: '' }] }),
+  })
+  assert.match(prompts.find((p) => p.opts.label === 'rule:stale').prompt, /\/x\/stale-n1\.json[\s\S]*\/x\/stale-n1\.diff/)
+  assert.deepEqual(recordsOf(sim, 'stale-ruled').map((r) => [r.node, r.base_now]), [['a', 'n1']])
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['b', 'premise_mismatch']], 'a leaf the ruling left out is never run unasked')
+  assert.ok(sim.opens.includes('a') && sim.opens.includes('c') && !sim.opens.includes('b'))
+  assert.equal(result.checkpoint, null, 'no checkpoint stops the run')
+})
+
+test('contract drift no analyst could rule parks the consumer for the user', async () => {
+  const sim = driftSim()
+  const { result } = await run(sim, { 'rule:drift:.': () => { throw new Error('analyst died') } })
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['b', 'contract_drift']])
+  assert.match(result.parked[0].question, /no analyst could rule/)
 })
 
 test('a leaf whose files are held by a stopped leaf is reported blocked, never re-dispatched in a loop', async () => {

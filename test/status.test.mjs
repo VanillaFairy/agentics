@@ -153,7 +153,7 @@ test('the efforts list derives root status, counts, executions and the last seq'
   append(repo, E, 'state:' + X1, { kind: 'closed', status: 'done' })
   mkdirSync(executionDir(repo, E, X2), { recursive: true })
   writeFileSync(join(executionDir(repo, E, X2), 'execution.json'), JSON.stringify({ root: 'b' }))
-  append(repo, E, 'state:' + X2, { kind: 'checkpoint', reason: 'stale' })
+  append(repo, E, 'state:' + X2, { kind: 'checkpoint', reason: 'blocking_gaps' })
 
   const out = efforts(repo)
   assert.equal(out.store_present, true)
@@ -243,9 +243,9 @@ test('an execution summary counts its merge-batches, what they landed and which 
 test('the checkpoint an execution last stopped at keeps its lists for the session to read', () => {
   const repo = effortWith(TREE)
   assert.equal(checkpointOf(repo, E, X1), null)
-  const stale = [{ node: 'c', writes: ['src/c.js'], reads: [] }]
-  append(repo, E, 'state:' + X1, { kind: 'checkpoint', reason: 'stale', detail: '1 leaf', stale })
-  assert.deepEqual(checkpointOf(repo, E, X1), { reason: 'stale', detail: '1 leaf', stale })
+  const gaps = [{ decision: 'D2', at: '.', why: 'no entry realises it' }]
+  append(repo, E, 'state:' + X1, { kind: 'checkpoint', reason: 'blocking_gaps', detail: '1 gap', gaps })
+  assert.deepEqual(checkpointOf(repo, E, X1), { reason: 'blocking_gaps', detail: '1 gap', gaps })
   const out = execFileSync(process.execPath, [CLI, 'checkpoint', '--repo', repo, '--effort', E, '--execution', X1], { encoding: 'utf8' })
-  assert.match(out, /c — writes moved: src\/c\.js/)
+  assert.match(out, /D2 at \.: no entry realises it/)
 })

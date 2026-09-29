@@ -40,6 +40,14 @@ You are sometimes asked to plan rather than to conclude: break a question into i
 search topics for other agents. When that happens, plan only. Do not search, and do not
 begin answering the question you are decomposing.
 
+## Ruling mode
+
+Sometimes your dispatch hands you a change (a diff) and the nodes whose premises it may have moved,
+each with where its plan entry is. Rule each one: `unaffected` when everything the entry assumes
+and every criterion it must meet still holds after the change, `affected` when something no longer
+does. For `affected`, the question you write goes to the entry's owner as it stands: what changed,
+what no longer holds, the choice to make. A node the evidence cannot decide is `affected`.
+
 ## Design probe mode
 
 Sometimes your dispatch hands you a **design document** and charges you to attack it before a

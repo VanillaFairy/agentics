@@ -317,6 +317,22 @@ test('the CLI refuses a damaged argument token and prints an envelope either way
   assert.equal(existsSync(join(executionDir(r, 'e1', STAMP), 'execution.json')), false)
 })
 
+test('a base that moved under a leaf is handed on for a ruling, never a checkpoint, and a ruling holds for that head', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/add.mjs'] }), leaf('b', { locus: ['README.md'] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const now = commitIn(r, { 'src/add.mjs': 'export const add = (a, b) => b + a\n' }, 'Swap the operands')
+  const again = B(r, 'preflight', { root: '.', commands: COMMANDS })
+  assert.equal(again.checkpoint, null)
+  assert.deepEqual(again.stale.nodes, ['a'])
+  assert.equal(again.stale.now, now)
+  assert.deepEqual(JSON.parse(readFileSync(again.stale.list, 'utf8')).leaves.map((l) => [l.node, l.writes]), [['a', ['src/add.mjs']]])
+  assert.match(readFileSync(again.stale.diff, 'utf8'), /\+export const add = \(a, b\) => b \+ a/)
+
+  append(r, 'e1', 'state:' + STAMP, { kind: 'stale-ruled', node: 'a', base_now: now, ruling: 'unaffected', why: 'same sum' })
+  assert.equal(B(r, 'preflight', { root: '.', commands: COMMANDS }).stale, null, 'ruled once against this head, not asked again')
+})
+
 test('drift: a landed diff under a contract a pending node consumes is flagged; its own provider is not', async () => {
   const { driftOf } = await import('../lib/boundary.mjs')
   const r = repo()

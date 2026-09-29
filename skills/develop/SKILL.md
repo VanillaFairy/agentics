@@ -293,7 +293,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/compile.mjs" --repo . --effort <e> --folder <id>
 re-spec (step 4c). Then mint the stamp with `date -u +%Y%m%d-%H%M%S`; a resume reuses its stamp.
 
 ```
-Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/execute-approved-plan-in-worktrees.workflow.js', args: { repo: '.', effort, root: <folder id>, execution, plugin_root, intelligence, progress, pace, plan_only, pause, base_ref, commands, retry_escalated, confirmed_duplicate, confirmed_gaps, confirmed_stale } })
+Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/execute-approved-plan-in-worktrees.workflow.js', args: { repo: '.', effort, root: <folder id>, execution, plugin_root, intelligence, progress, pace, plan_only, pause, base_ref, commands, retry_escalated, confirmed_duplicate, confirmed_gaps } })
 ```
 
 - `plugin_root` is this plugin's absolute root (`${CLAUDE_PLUGIN_ROOT}`) — required.
@@ -337,7 +337,6 @@ never sees, does not count, nor does a re-ask that refers to one ("given those u
 | `existing_execution` | an open execution's root is an ancestor or descendant of this one (`detail`) | resume that one by its stamp (`lib/status.mjs list` shows it); relaunch with `confirmed_duplicate: true` only when both are meant to run |
 | `blocking_gaps` | a decision no entry realises, or evidence a node needs was not reached (the checkpoint's `gaps`) | a re-spec (c): an entry that realises the decision — or, on the user's go, relaunch with `confirmed_gaps: true` |
 | `parked` | `plan_only`, or nodes await the user | show the plan (`lib/status.mjs show`) or answer them (c); relaunch |
-| `stale` | the user's branch moved under the plan; the checkpoint's `stale` lists per task the `writes` and `reads` that moved | the user rules per task; relaunch with `confirmed_stale: true` for "still valid", or re-spec a task that needs replanning first (c) |
 | anything else | the launch failed (`bad_input`, `preflight_failed`, `no_such_node`, a refusal) | fix what `detail` says; relaunch |
 
 **b. Escalations** — `{id, reason, detail}`, each to the user. They are decisions, not
@@ -360,7 +359,7 @@ re-spec**: edit the spec that owns the fault, have it re-approved, recompile, re
 | `integration_critical` | the folder's spec: the user rules which part is wrong; a `task` entry that fixes it, or the corrected criterion |
 | `spec_defect` | the spec the question names: the claim cannot be met as written; the user rules how it changes |
 | `cant_tell` | the folder's spec: make the claim decidable, a criterion with a check or a `HUMAN:` criterion the user judges at landing |
-| `contract_drift` | the consumer's entry: the user rules it unaffected (then relaunch with `retry_escalated: [<id>]` and edit nothing), re-designs it, or re-slices it |
+| `contract_drift` | an analyst already ruled the drift affected, and the question is its own. The consumer's entry: the user rules it unaffected (then relaunch with `retry_escalated: [<id>]` and edit nothing), re-designs it, or re-slices it |
 | `spec_changed` | compile parked a folder you wrote because its spec was re-approved while work under it was under way: the user rules whether the dispatched work still stands, and re-specs what does not. A folder develop's planner wrote never reaches you with this return: the run hands it back to the planner, which re-derives it |
 
 For each spec you edited: show the change, and on the user's approval in so many words run

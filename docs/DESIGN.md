@@ -551,7 +551,7 @@ every task that does not depend on the parked one, then returns naming what it n
 is a re-spec:** the session edits the spec that owns the fault (a decision only ever goes into a
 spec the user wrote), the user re-approves it, compile writes the revision that clears the park
 (its result's `answered`), and develop relaunches with the same execution stamp. A park no spec
-change answers (a `contract_drift` ruled unaffected) is cleared by the relaunch's
+change answers (a `contract_drift` the user rules unaffected) is cleared by the relaunch's
 `retry_escalated`.
 
 **Autonomous replans preserve decisions.** The planner may split, merge or re-derive nodes only
@@ -979,7 +979,7 @@ already attached).
 
 | boundary | fused steps |
 |---|---|
-| **preflight** | refuse an execution overlapping an open one; drift check against the envelope's base; traceability; free this execution's slots and its dead worktrees (clean ones only — a dirty one is reported, never forced); create the execution root's todo. A checkpoint's lists (the overlapping executions, the stale leaves, the gaps) go on its state line, for the session to read with `lib/status.mjs checkpoint`; the payload carries counts |
+| **preflight** | refuse an execution overlapping an open one; drift check against the envelope's base; traceability; free this execution's slots and its dead worktrees (clean ones only — a dirty one is reported, never forced); write the leaves the base moved under, and the diff, for the analyst's ruling; create the execution root's todo. A checkpoint's lists (the overlapping executions, the gaps) go on its state line, for the session to read with `lib/status.mjs checkpoint`; the payload carries counts |
 | **schedule** | append the workflow's decisions; compute what to launch from the tree on disk (`lib/schedule.mjs`, see [Scheduling](#scheduling)); attach to each launch the one row it needs, and to a leaf's its parent's row and its resume ladder; move the todos of the nodes it touched |
 | **leaf-open** | acquire a slot and the locus locks; ensure the parent's integration branch (lazily, refreshed from its own parent) and cut or attach the leaf's branch and worktree; assemble its brief; append `dispatched`; move the todo |
 | **leaf-close** | commit a shell-less author's locus files (anything outside is reverted and reported as a breach); build, typecheck, suite, discriminator, declared mutations and named checks by rigor; journal the observation; write and delete reported gotchas; compute the close decision; move the todo |
@@ -1232,9 +1232,23 @@ An execution delivers into its root's parent integration branch, and ultimately 
 without asking; the user's tree is not involved.
 
 After each merge-batch, the landed diff is intersected with the `consumes` path prefixes of every
-pending designed node; a hit goes to the user as facts, and they rule unaffected, re-design or
-re-slice. Until they rule, the consumer is parked (`contract_drift`); everything else keeps
+pending designed node. Merge-batch writes the merged change to the files hit
+(`merges/<target>-<pre>.drift.diff`) and names each consumer's spec; one analyst reads both and
+rules each consumer `unaffected` (a `drift-ruled` state line; it runs on, and the user never hears
+of it) or `affected`, with the one question its owner must answer. Only an affected consumer, or
+one no analyst could rule, is parked (`contract_drift`) for the user; everything else keeps
 running. Undesigned nodes are reported as unexamined.
+
+The same holds for a base branch that moved under a resumed execution: preflight writes the leaves
+whose files moved, and the diff, to `stale-<now>.json` and `.diff` beside the state log and hands
+their ids on; one analyst rules them before anything runs. An unaffected leaf gets a `stale-ruled`
+state line keyed to that base head and is not asked about again; an affected one, or one left
+unruled, is parked `premise_mismatch` with the question. No checkpoint stops the run for it.
+
+**Why an analyst first:** hash drift says a premise may have moved, not that it did. Most drift
+touches what a consumer does not rely on, and putting every hit to the user makes the user the
+filter for noise; a reader that did not write either side rules first, and the user is reached
+only when a premise really moved.
 
 **Landing is the one ask.** When the effort is complete, or the user says to land what exists, the
 session runs `lib/boundary.mjs land --action check`: how the user's branch drifted since the
@@ -1330,7 +1344,7 @@ and adopted by nobody. Escalations carry forward until the user names them in `r
 resume adopts its envelope (base, dial, pace, commands) from `execution.json`.
 
 A checkpoint dispatches nothing new and says how to proceed. What it found — the overlapping
-executions, the stale leaves with what moved under each, the gaps — is on its state line, and
+executions, the gaps — is on its state line, and
 `lib/status.mjs checkpoint --effort <e> --execution <stamp>` prints it:
 
 | checkpoint | meaning | to proceed |
@@ -1338,7 +1352,6 @@ executions, the stale leaves with what moved under each, the gaps — is on its 
 | `existing_execution` | an open execution's root is an ancestor or descendant of this one | resume it; or `confirmed_duplicate` |
 | `blocking_gaps` | untraced decisions, or evidence the node depends on was not reached | `confirmed_gaps` |
 | `parked` | the caller launched with `plan_only`, or nodes await a user-bound return | resume with the answers |
-| `stale` | the user's tree moved under the plan; per leaf, `writes` and `reads` that moved | `confirmed_stale` |
 
 ---
 
@@ -1617,10 +1630,11 @@ nothing was written.
 
 `state.jsonl` (what the workflow decided): `dispatch {label, node, role, model, effort, tokens}` —
 `tokens` is `null` where the host reports none; `batch {target, merged[], head_sha, verified,
-failed_alone[], combination[], conflict}`; `checkpoint {reason, detail, executions?, stale?, gaps?}`
+failed_alone[], combination[], conflict}`; `checkpoint {reason, detail, executions?, gaps?}`
 (the lists the checkpoint found; `lib/status.mjs checkpoint` prints them); `closed {status}`;
-`batch-started {target, pre, children}`; `checkpoint-confirmed {stale?, gaps?}` (what the user
-confirmed past, printed by the same command); `invocation {}`, one per preflight, whose count
+`batch-started {target, pre, children}`; `checkpoint-confirmed {gaps?}` (what the user
+confirmed past, printed by the same command); `drift-ruled {node, contract, head_sha, ruling, why}`
+and `stale-ruled {node, base_now, ruling, why}` (an analyst's `unaffected`); `invocation {}`, one per preflight, whose count
 numbers the invocation's record ids; `fault {node, channel, detail}`, a unit a plugin fault ended. A line the workflow decided carries its `rid`.
 
 `journal.jsonl` (what was observed, by whoever observed it): `verify-observed {node, branch,
@@ -1682,8 +1696,9 @@ after ten minutes.
 
 Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}], notes}` plus:
 
-- **preflight** — `invocation`, `checkpoint {reason, detail}`, `counts {nodes, leaves, gaps,
-  untraced}`, `dirty_worktrees`, `max_parallel`.
+- **preflight** — `invocation`, `checkpoint {reason, detail}`, `stale {nodes, now, list, diff}`
+  (null unless the base moved under unruled leaves), `counts {nodes, leaves, gaps, untraced}`,
+  `dirty_worktrees`, `max_parallel`.
 - **schedule** — `launch[]`, `idle`, `max_parallel`, `records`. A launch is one of
   `{unit: plan, id, why, row}` (its row with the folder's `intent`), `{unit: leaf, id, row, parent
   {id, title, kind, author, spec_path}, facts, waits_on}` (its dependencies and every ancestor's), `{unit: merge, target,
@@ -1705,9 +1720,10 @@ Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}],
   `failed_alone[{id, ids, failures[{check, claim}], row?, parent?, facts?}]` (the row, the
   parent's row and the resume facts for a single leaf, whose fix round launches from them and
   whose `fixes/` file merge-batch writes),
-  `combination[]`, `drift[{node, contract, files, stopped?}]` (a node not yet merged whose consumed
-  contract the merge touched; `stopped` names its escalation or park, which the drift is reported
-  beside and never parked over), `unexamined_n` (undesigned nodes drift could not check).
+  `combination[]`, `drift[{node, contract, files, spec_path?, stopped?}]` (a node not yet merged
+  whose consumed contract the merge touched; `stopped` names its escalation or park, which the
+  drift is reported beside and never parked over), `drift_diff` (the path of the merged change to
+  the files an unstopped consumer consumes, or `''`), `unexamined_n` (undesigned nodes drift could not check).
 - **postflight** — `summary {nodes_n, leaves_n, merged_n, not_merged_n, blocked_n,
   blocked[{blocked_by, leaves_n}], root_status, root_done, done, stopped[{id, status, reason}],
   held[{id, behind}]}`, `integration {branch, head_sha}` of the execution's root, `cleanup_n`,
@@ -1780,7 +1796,7 @@ with `renamed_from`.
 ### Workflow returns
 
 - **`execute-approved-plan-in-worktrees`** — takes `repo, effort, root, execution, intelligence, pace, plan_only,
-  pause, progress, retry_escalated, confirmed_duplicate, confirmed_gaps, confirmed_stale, base_ref,
+  pause, progress, retry_escalated, confirmed_duplicate, confirmed_gaps, base_ref,
   commands, plugin_root`. Returns `{effort, root, execution, checkpoint, nodes_n,
   implemented[{id, rigor, role, rounds, review_rounds, at_integration, salvaged}],
   escalations[{id, reason, detail}], parked[{id, return, question}], faults[{id, channel, detail}],

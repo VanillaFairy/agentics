@@ -126,6 +126,26 @@ const EXECUTOR = {
   },
 }
 
+const RULINGS = {
+  type: 'object', additionalProperties: false,
+  required: ['rulings'],
+  properties: {
+    rulings: {
+      type: 'array',
+      items: {
+        type: 'object', additionalProperties: false,
+        required: ['node', 'ruling', 'why', 'question'],
+        properties: {
+          node: { type: 'string' },
+          ruling: { type: 'string', enum: ['unaffected', 'affected'] },
+          why: { type: 'string' },
+          question: { type: 'string' },
+        },
+      },
+    },
+  },
+}
+
 const FINDINGS = {
   type: 'object', additionalProperties: false,
   required: ['findings', 'fix_verdicts', 'claims', 'notes'],
@@ -484,6 +504,35 @@ function integrationPrompt(item) {
     'Review these against their own criteria too — they had no review loop of their own:\n' +
     listOf(item.unreviewed) + '\n' +
     'Look for defects that exist only with the children together, and for any decision no child realised.'
+}
+
+const RULING_CHARGE = 'For each node, rule `unaffected` when everything its spec entry assumes, and every criterion it must ' +
+  'meet, still holds after the change, or `affected` when something it assumes no longer does. Give `why` in one sentence. ' +
+  'For `affected`, `question` is the one question its owner must answer: what changed, what in the entry no longer holds, ' +
+  'and the choice to make. Read only what you are pointed at; if it cannot decide a node, rule it `affected` and ask.'
+
+function driftPrompt(target, entries, diff) {
+  return 'Merged work into ' + target + ' of effort ' + effort + ' touched files under contracts that nodes not yet merged consume.\n' +
+    'The merged change to those files: read ' + diff + '.\n' +
+    entries.map((d) => '- node ' + d.node + ' consumes contract ' + d.contract + ' (touched: ' + d.files.join(', ') +
+      '); its plan entry is in ' + d.spec_path).join('\n') + '\n' + RULING_CHARGE
+}
+
+function stalePrompt(stale) {
+  return 'The base branch of effort ' + effort + ' moved under leaves not yet merged. Read the leaves, the files that moved ' +
+    'under each and where each plan entry is, in ' + stale.list + ', and the change to those files in ' + stale.diff + '.\n' +
+    RULING_CHARGE
+}
+
+/** One analyst rules each node a change touched: a map node -> ruling, or null when none came back. */
+async function rule(label, prompt, phaseName) {
+  const res = await Promise.resolve().then(() => dispatch(prompt, {
+    agentType: 'agentics:analyst', schema: RULINGS, phase: phaseName, label, ...tierFor(JUDGE, 'high'),
+  }, '')).catch((err) => {
+    note(label + ' returned nothing: ' + (err && err.message))
+    return null
+  })
+  return res ? new Map((res.rulings || []).map((r) => [r.node, r])) : null
 }
 
 function plannerPrompt(row, why, evidence) {
@@ -1057,14 +1106,26 @@ async function mergeInto(item) {
     escalate(out.conflict.node, 'merge_conflict', 'conflicting paths: ' + (out.conflict.paths || []).join(', ') + ' — loci were declared disjoint; this is a planner defect')
   }
   for (const id of out.combination || []) escalate(id, 'combination_failure', 'passes alone, fails merged with ' + (out.combination || []).filter((x) => x !== id).join(', '))
+  const toRule = []
   for (const d of out.drift || []) {
     drift.push(d)
     if (d.stopped) {
       // Already the user's: ruling on the escalation or park includes this contract moving.
       note(d.node + ' (' + d.stopped + ') consumes contract ' + d.contract + ', which merged work touched: ' + d.files.join(', '))
-    } else if (!stoppedHere.has(d.node)) {
-      park(d.node, 'contract_drift', 'merged work touched ' + d.files.join(', ') + ' under contract ' + d.contract +
-        ', which ' + d.node + ' consumes: rule it unaffected, re-design it or re-slice it')
+    } else if (!stoppedHere.has(d.node)) toRule.push(d)
+  }
+  if (toRule.length) {
+    const rulings = await rule('rule:drift:' + target, driftPrompt(target, toRule, out.drift_diff), 'Integrate')
+    for (const d of toRule) {
+      const r = rulings && rulings.get(d.node)
+      if (r && r.ruling === 'unaffected') {
+        note(d.node + ': merged work touched contract ' + d.contract + '; ruled unaffected — ' + r.why)
+        records.push({ file: 'state', entry: { kind: 'drift-ruled', node: d.node, contract: d.contract, head_sha: out.head_sha || '', ruling: 'unaffected', why: r.why } })
+      } else if (!stoppedHere.has(d.node)) {
+        park(d.node, 'contract_drift', r ? r.question
+          : 'merged work touched ' + d.files.join(', ') + ' under contract ' + d.contract + ', which ' + d.node +
+            ' consumes, and no analyst could rule on it: rule it unaffected, re-design it or re-slice it')
+      }
     }
   }
   if (out.unexamined_n) note(out.unexamined_n + ' undesigned node(s) not examined for drift')
@@ -1229,7 +1290,6 @@ try {
     retry_escalated: input.retry_escalated || [],
     confirmed_duplicate: input.confirmed_duplicate === true,
     confirmed_gaps: input.confirmed_gaps === true,
-    confirmed_stale: input.confirmed_stale === true,
     plan_only: input.plan_only === true,
     dial: DIAL, pace, base_ref: input.base_ref || '', commands: input.commands || null,
   }, { phase: 'Preflight', label: 'preflight' })
@@ -1251,6 +1311,22 @@ if (counts.untraced) note(counts.untraced + ' criterion/criteria tracing to no d
 if (pf.checkpoint) {
   phase('Postflight')
   return finish(pf.checkpoint)
+}
+
+// The base branch moved under leaves not yet merged: an analyst rules each before anything runs,
+// and only a leaf whose premise really moved waits for the user.
+if (pf.stale) {
+  const rulings = await rule('rule:stale', stalePrompt(pf.stale), 'Preflight')
+  for (const id of pf.stale.nodes) {
+    const r = rulings && rulings.get(id)
+    if (r && r.ruling === 'unaffected') {
+      note(id + ': the base moved under it; ruled unaffected — ' + r.why)
+      records.push({ file: 'state', entry: { kind: 'stale-ruled', node: id, base_now: pf.stale.now, ruling: 'unaffected', why: r.why } })
+    } else {
+      park(id, 'premise_mismatch', r ? r.question
+        : 'the base branch moved files ' + id + ' writes or reads (' + pf.stale.list + ') and no analyst could rule on it: is its plan entry still valid?')
+    }
+  }
 }
 
 log('execution ' + execution + ' of ' + rootId + ': ' + (counts.leaves || 0) + ' leaves planned, pool ' + pf.max_parallel +

@@ -1042,7 +1042,10 @@ async function mergeInto(item) {
   for (const id of out.combination || []) escalate(id, 'combination_failure', 'passes alone, fails merged with ' + (out.combination || []).filter((x) => x !== id).join(', '))
   for (const d of out.drift || []) {
     drift.push(d)
-    if (!stoppedHere.has(d.node)) {
+    if (d.stopped) {
+      // Already the user's: ruling on the escalation or park includes this contract moving.
+      note(d.node + ' (' + d.stopped + ') consumes contract ' + d.contract + ', which merged work touched: ' + d.files.join(', '))
+    } else if (!stoppedHere.has(d.node)) {
       park(d.node, 'contract_drift', 'merged work touched ' + d.files.join(', ') + ' under contract ' + d.contract +
         ', which ' + d.node + ' consumes: rule it unaffected, re-design it or re-slice it')
     }

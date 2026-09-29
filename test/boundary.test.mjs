@@ -326,6 +326,9 @@ test('drift: a landed diff under a contract a pending node consumes is flagged; 
   assert.deepEqual(out.drift.map((d) => [d.node, d.contract]).sort(), [['c', 'api'], ['d', 'shape']])
   assert.equal(out.unexamined, 1)
   assert.deepEqual(driftOf(tree, ['p'], ['src/api.mjs']).drift, [], 'the provider landing its own contract is expected work')
+  append(r, 'e1', 'events', { kind: 'escalated', node: 'c', execution: STAMP, reason: 'blocked' })
+  const stopped = driftOf(readTree(r, 'e1'), ['x'], ['src/api.mjs']).drift
+  assert.deepEqual(stopped, [{ node: 'c', contract: 'api', files: ['src/api.mjs'], stopped: 'escalated' }], 'a stopped consumer is reported, marked, never skipped')
 })
 
 const BOUNDARY = fileURLToPath(new URL('../lib/boundary.mjs', import.meta.url))

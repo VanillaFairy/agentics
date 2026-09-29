@@ -1630,8 +1630,9 @@ Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}],
   `merged[{id, merged_sha}]`, `conflict {node, nodes, paths, reason}`, `head_sha`, `verified`,
   `measurement`, `failed_alone[{id, ids, failures, row?, parent?, facts?}]` (the row, the
   parent's row and the resume facts for a single leaf, whose fix round launches from them),
-  `combination[]`, `drift[{node, contract, files}]` (a pending node, not a stopped one, whose
-  consumed contract the merge touched), `unexamined_n` (undesigned nodes drift could not check).
+  `combination[]`, `drift[{node, contract, files, stopped?}]` (a node not yet merged whose consumed
+  contract the merge touched; `stopped` names its escalation or park, which the drift is reported
+  beside and never parked over), `unexamined_n` (undesigned nodes drift could not check).
 - **postflight** — `summary {nodes_n, leaves_n, merged_n, not_merged_n, blocked_n,
   blocked[{blocked_by, leaves_n}], root_status, root_done, done, stopped[{id, status, reason}],
   held[{id, behind}]}`, `integration {branch, head_sha}` of the execution's root, `cleanup_n`,

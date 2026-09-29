@@ -110,7 +110,7 @@ test('a fix round lists the failures and open findings it must clear', () => {
   assert.equal(b.path, briefPath(repo, E, X, 'api/parse', 'implementer', 2))
   assert.match(b.text, /- round: 2/)
   assert.match(b.text, /## Fix round 2/)
-  assert.match(b.text, /- \[verify\] suite failed\n {2}evidence: test\/parse\.test\.mjs:12 \/ expected 1/)
+  assert.ok(b.text.includes('- [verify] suite failed\n\n```text\ntest/parse.test.mjs:12\nexpected 1\n```'), 'evidence keeps its lines')
   assert.match(b.text, /- \[review\] F1: upper-case keys are dropped/)
   assert.ok(b.text.indexOf('## Fix round') < b.text.indexOf('## Report'))
 })

@@ -93,7 +93,8 @@ test('the review loop: a critical fixed next round approves; the open set is com
   assert.equal(result.implemented[0].review_rounds, 2)
   assert.ok(labels(prompts).includes('implementer:a#2'), 'the fix round went to the implementer')
   const fixOpen = sim.calls.find((c) => c.name === 'leaf-open' && c.args.round === 2)
-  assert.match(fixOpen.args.fix[0].claim, /F1/)
+  assert.equal(fixOpen.args.fix, undefined, 'no finding crosses the courier')
+  assert.match(prompts.find((p) => p.opts.label === 'implementer:a#2').prompt, /\[critical F1\] wrong — x:1 — y/, 'the findings reach the implementer in its prompt')
 })
 
 test('a prior blocker ruled not_fixed but not re-reported stays open', async () => {

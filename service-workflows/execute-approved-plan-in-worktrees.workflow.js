@@ -420,7 +420,7 @@ async function settled(name, a, ctx) {
 
 const listOf = (items) => (items && items.length ? items.map((x) => '- ' + x).join('\n') : '(none)')
 
-function executorPrompt(row, role, round, opened, mode) {
+function executorPrompt(row, role, round, opened, mode, findings) {
   const id = row.id
   const fetch = role === 'implementer'
     ? 'Fetch it: node "' + pluginRoot + '/lib/brief.mjs" fetch --path "' + opened.brief_path + '" --digest ' + opened.brief_digest
@@ -435,7 +435,11 @@ function executorPrompt(row, role, round, opened, mode) {
   const modeText = mode === 'continue'
     ? 'The branch already carries commits of this leaf from an interrupted dispatch: continue the series, do not rebuild it.\n'
     : mode === 'fix'
-      ? 'This is fix round ' + round + ': the brief lists the failures and findings to address, as new commits.\n'
+      ? 'This is fix round ' + round + ': clear, as new commits, the failures the brief lists' +
+        (findings.length
+          ? ' and these review findings:\n' + findings.map((f) => '- [' + f.severity + ' ' + f.id + '] ' + f.claim + ' — ' + f.evidence +
+            (f.failure_scenario ? ' — ' + f.failure_scenario : '')).join('\n') + '\n'
+          : '.\n')
       : ''
   return 'You are the ' + role + ' for leaf ' + id + ' ("' + row.title + '"), round ' + round + ', rigor ' + row.rigor +
     (row.role !== 'none' ? ', role ' + row.role : '') + '.\n' + modeText +
@@ -805,11 +809,11 @@ const blockingOf = (row, findings) => findings.filter((f) => f.severity === 'cri
 
 const failureKey = (failures) => (failures || []).map((f) => f.check + ':' + f.claim).sort().join('|')
 
-async function openLeaf(row, st, fix, mode) {
+async function openLeaf(row, st, mode) {
   const id = row.id
   for (;;) {
     const opened = await boundary('leaf-open', {
-      node: id, role: st.role, round: st.round, fix, mode, refresh: st.refresh === true,
+      node: id, role: st.role, round: st.round, mode, refresh: st.refresh === true,
       dispatch: st.role ? producerTier(row, st.raise) : COURIER,
     }, { phase: 'Execute', label: 'open:' + id + '#' + st.round })
     if (opened.status === 'opened') {
@@ -878,7 +882,7 @@ async function runLeaf(item, entry) {
     salvaged: false, worktree: facts.worktree || '', branch: facts.branch || '', brief: facts.brief_path || '',
     refresh: false, lastFailures: '', priorBlockers: [], priorUnfixed: new Set(), cleanStreak: 0,
   }
-  let fix = (entry && entry.fix) || []
+  let toClear = []
   if (entry && entry.refresh) st.refresh = true
   if (['close', 'review', 'approve', 'continue'].includes(stage) && facts.head_sha) st.salvaged = true
   if (st.salvaged) note(id + ': salvaged from an earlier invocation at ' + (facts.next_action || stage))
@@ -890,12 +894,12 @@ async function runLeaf(item, entry) {
     }
 
     if (stage === 'code' || stage === 'continue' || stage === 'fix') {
-      const opened = await openLeaf(row, st, fix, stage === 'code' ? 'fresh' : stage)
+      const opened = await openLeaf(row, st, stage === 'code' ? 'fresh' : stage)
       if (!opened) return
       if (st.role) {
         const headBefore = st.head
         const tier = producerTier(row, st.raise)
-        const res = await dispatch(executorPrompt(row, st.role, st.round, opened, stage === 'code' ? 'fresh' : stage), {
+        const res = await dispatch(executorPrompt(row, st.role, st.round, opened, stage === 'code' ? 'fresh' : stage, toClear), {
           agentType: EXECUTOR_TYPE[st.role], schema: EXECUTOR, phase: 'Execute',
           label: st.role + ':' + id + '#' + st.round, ...tier,
         }, id)
@@ -951,7 +955,7 @@ async function runLeaf(item, entry) {
         const parent = item.parent
         note(id + ': a verify leaf found its premise false — replanning ' + (parent ? parent.id : 'its folder'))
         escalate(id, 'verify_finding', (d.failures || []).map((f) => f.claim).join('; '))
-        if (parent) await planNode(parent, 'verify leaf ' + id + ' found: ' + (d.failures || []).map((f) => f.claim + ' (' + f.evidence + ')').join('; '))
+        if (parent) await planNode(parent, 'verify leaf ' + id + ' found: ' + (d.failures || []).map((f) => f.claim).join('; ') + ' (its measurement: ' + closed.record + ')')
         return null
       }
       if (d.next === 'fix') {
@@ -963,7 +967,7 @@ async function runLeaf(item, entry) {
         if (st.lastFailures) st.raise = true
         st.lastFailures = key
         st.round++
-        fix = (d.failures || []).map((f) => ({ source: 'verification', claim: f.claim, evidence: f.evidence }))
+        toClear = []
         stage = 'fix'
         continue
       }
@@ -1011,7 +1015,7 @@ async function runLeaf(item, entry) {
       if (st.priorBlockers.length && unfixed.length) st.raise = true
       st.priorBlockers = open
       st.round++
-      fix = open.map((f) => ({ source: 'review', claim: '[' + f.severity + ' ' + f.id + '] ' + f.claim, evidence: f.evidence + (f.failure_scenario ? ' — ' + f.failure_scenario : '') }))
+      toClear = open
       stage = 'fix'
       continue
     }
@@ -1063,7 +1067,6 @@ async function mergeInto(item) {
     if (running.has('leaf:' + f.id)) continue
     launch('leaf:' + f.id, () => runLeaf({ unit: 'leaf', id: f.id, row: f.row, parent: f.parent, facts: f.facts }, {
       stage: 'fix', refresh: true,
-      fix: (f.failures || []).map((x) => ({ source: 'integration', claim: x.claim, evidence: x.evidence })),
     }))
   }
   const progressed = (out.merged || []).length + (out.failed_alone || []).length + (out.combination || []).length + (out.conflict ? 1 : 0)

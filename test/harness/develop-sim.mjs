@@ -148,15 +148,14 @@ export function simulate(nodes, script = {}) {
       const extra = script.preflight ? script.preflight(args, sim, count('preflight')) || {} : {}
       return {
         boundary: 'preflight', ok: true, error: null, checkpoint: null, invocation: sim.invocations,
-        envelope: { root: args.root, base_branch: 'main', base_sha: 'base0', dial: args.dial, pace: args.pace, resumed: false },
         counts: { nodes: sim.nodes.size, leaves: [...sim.nodes.values()].filter((r) => r.kind === 'leaf').length, gaps: 0, untraced: 0 },
-        freed: [], dirty_worktrees: [], commands: null, max_parallel: 4, todos: [], notes: [], ...extra,
+        dirty_worktrees: [], max_parallel: 4, todos: [], notes: [], ...extra,
       }
     },
     schedule(args) {
       const { launch, idle } = schedule(input(args))
       return {
-        boundary: 'schedule', ok: true, error: null, idle, max_parallel: 4, commands: null, todos: [], notes: [],
+        boundary: 'schedule', ok: true, error: null, idle, max_parallel: 4, todos: [], notes: [],
         launch: launch.map((l) => (l.unit === 'merge' ? l
           : l.unit === 'leaf' ? { ...l, row: rowFor(l.id), parent: parentRow(l.id), facts: (script.facts || {})[l.id] || null, waits_on: waitsOn(l.id) }
             : l.unit === 'plan' ? { ...l, row: { ...rowFor(l.id), intent: sim.nodes.get(l.id).intent || '' } }
@@ -188,8 +187,8 @@ export function simulate(nodes, script = {}) {
       const decision = typeof plan === 'function' ? plan(args, n) : Array.isArray(plan) ? plan[n] || fallback : fallback
       return {
         boundary: 'leaf-close', ok: true, error: null, status: 'done', node: args.node,
-        head_sha: 'h-' + args.node + '-' + args.round, measurement: {}, decision,
-        gotchas_written: [], gotchas_deleted: [], mutations: [], committed: false, todos: [],
+        head_sha: 'h-' + args.node + '-' + args.round, record: '/closes/' + args.node + '-r' + args.round + '.json',
+        decision: { ...decision, failures: (decision.failures || []).map(({ check, claim }) => ({ check, claim })) }, committed: false, todos: [], notes: [],
       }
     },
     'merge-batch'(args) {
@@ -201,7 +200,7 @@ export function simulate(nodes, script = {}) {
         target_branch: 'agentics/e' + (args.target === '.' ? '' : '--' + args.target),
         target_worktree: '/wt/' + args.target, target_base: 'base0', head_sha: 'm-' + args.target + '-' + n,
         merged: args.children.map((c) => ({ id: c.id, merged_sha: 'm-' + c.id })),
-        conflict: null, verified: true, measurement: {}, failed_alone: [], combination: [], todos: [],
+        conflict: null, verified: true, record: '/merges/' + args.target + '-' + n + '.json', failed_alone: [], combination: [], todos: [], notes: [],
         ...extra,
       }
       if (out.ok === false || out.error) return out
@@ -251,7 +250,7 @@ export function simulate(nodes, script = {}) {
       const extra = script.gate ? script.gate(args, count('gate:' + args.node), sim) || {} : {}
       return {
         boundary: 'spec-gate', ok: true, error: null, ratifiable: complete && open.length === 0, open,
-        coverage_complete: complete, remaining: last ? last.remaining : [], reviewed: !!last, todos: [], notes: [], ...extra,
+        coverage_complete: complete, reviewed: !!last, todos: [], notes: [], ...extra,
       }
     },
     'spec-prepare'(args) {

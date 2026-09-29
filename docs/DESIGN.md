@@ -358,7 +358,7 @@ command, `show`: nothing outside compile calls `addNodes`, and there is no CLI v
       cites.jsonl                 each folder's evidence citations ([Cites](#cites))
       knowledge/                  gotchas (see Gotchas)
       executions/<stamp>/         one execution of a subtree: execution.json, state.jsonl,
-                                  journal.jsonl, briefs/, jobs/
+                                  journal.jsonl, briefs/, jobs/, closes/, merges/, fixes/
       reports/                    executor reports, one file per dispatch
       locks/                      locus and branch locks
 ```
@@ -1009,13 +1009,25 @@ what spans the whole effort — a checkpoint's lists, the per-leaf picture — s
 session, which can read it. What may list nodes is bounded by one folder's fan-out (a merge-batch's
 children, an integration review's) or is a node the user must act on (a stopped node).
 
+**A payload carries only what the workflow branches on.** A courier retypes what it carries, token
+by token, and a model retyping long or repetitive text — a test run's output above all — normalizes
+it: the digest then fails however strong the model. So no output of a build, a suite or a check
+crosses the channel in either direction. leaf-close writes everything it measured and decided to
+`closes/<stem>.json` and carries `{next, reason, failures[{check, claim}]}`, the record's path and
+the todos; merge-batch writes its measurement to `merges/<target>-<pre>.json`. Whoever decides a
+node's next round — leaf-close on `fix`, merge-batch for a leaf that fails on the integration head
+alone — writes the failures with their evidence to `fixes/<node>-r<round>.json`, and leaf-open
+builds that round's brief from it; the arguments carry none. Text the workflow holds itself — a
+reviewer's findings — goes to the executor in its dispatch prompt, which is never retyped. A
+payload field the workflow does not read is not printed.
+
 **Why the lib schedules:** a workflow script has no filesystem, so a scheduler in the script needs
 the whole tree carried to it and a second copy of status kept beside the one on disk. Scheduling
 where the tree already is removes both: the script holds only its units in flight.
 
 **Long checks run detached.** leaf-close and merge-batch run in a child process keyed by their
 arguments and by what their answer depends on — the worktree's head and state, the report, the
-established commands, the target's head — and are polled; a poll that reaches the limit (kept
+established commands, the target's head, the payload's format — and are polled; a poll that reaches the limit (kept
 under a host's default shell limit) answers `pending`, and the workflow re-dispatches the same
 boundary, which finds the same job. A host's shell timeout can end a courier, never the work. The
 same arguments over a moved tree are a new job, and a job that failed is never kept as an answer.
@@ -1648,27 +1660,29 @@ after ten minutes.
 
 Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}], notes}` plus:
 
-- **preflight** — `invocation`, `checkpoint {reason, detail}`, `envelope {stamp, root, base_branch,
-  base_sha, dial, pace, commands, resumed}`, `counts {nodes, leaves, gaps, untraced}`, `freed`,
-  `dirty_worktrees`, `commands`, `max_parallel`.
-- **schedule** — `launch[]`, `idle`, `max_parallel`, `commands`, `records`. A launch is one of
+- **preflight** — `invocation`, `checkpoint {reason, detail}`, `counts {nodes, leaves, gaps,
+  untraced}`, `dirty_worktrees`, `max_parallel`.
+- **schedule** — `launch[]`, `idle`, `max_parallel`, `records`. A launch is one of
   `{unit: plan, id, why, row}` (its row with the folder's `intent`), `{unit: leaf, id, row, parent
   {id, title, kind, author, spec_path}, facts, waits_on}` (its dependencies and every ancestor's), `{unit: merge, target,
   children[{id, head_sha}], cycles[[id]]}`, `{unit: review, id, row, earned, where {branch,
   worktree, head, base}, children, unreviewed}`. `facts` is the resume ladder's row for the leaf:
-  `{id, next_action, note, branch, worktree, head_sha, base_sha, approved_head, commits, dirty,
-  rounds, brief_path}`. A row is `{id, title, kind, author, rigor, role, provides_n,
+  `{id, next_action, branch, worktree, head_sha, base_sha, rounds, brief_path}`. A row is `{id, title, kind, author, rigor, role, provides_n,
   decisions, dispatch, ground_known, rev, spec_path, children_n, own_review}`.
 - **leaf-open** — `status` (`opened | no_slot | locus_held | busy | refused`), `branch`, `worktree`,
   `base_sha`, `head_sha`, `rebased`, `brief_path`, `brief_digest`, `report_path`, `slot`,
   `max_parallel`, `held_by[{effort, path, node, execution, status}]`, `stuck`.
-- **leaf-close** — `status` (`done | pending`), `node`, `head_sha`, `measurement`, `decision {next,
-  reason, failures[{check, claim, evidence}]}`, `gotchas_written`, `gotchas_deleted`, `mutations`,
-  `committed`.
+- **leaf-close** — `status` (`done | pending`), `node`, `head_sha`, `decision {next, reason,
+  failures[{check, claim}]}`, `record` (the path of `closes/<stem>.json`: `{node, role, round,
+  head_sha, measurement, decision}` with each failure's `evidence`, `gotchas_written`,
+  `gotchas_deleted`, `mutations`, `committed`, `notes`), `committed`. On `fix` it also writes
+  `fixes/<node>-r<round+1>.json`, `[{source, check, claim, evidence}]`, which leaf-open reads.
 - **merge-batch** — `status`, `target`, `target_branch`, `target_worktree`, `target_base`,
-  `merged[{id, merged_sha}]`, `conflict {node, nodes, paths, reason}`, `head_sha`, `verified`,
-  `measurement`, `failed_alone[{id, ids, failures, row?, parent?, facts?}]` (the row, the
-  parent's row and the resume facts for a single leaf, whose fix round launches from them),
+  `merged[{id, merged_sha}]`, `conflict {node, nodes, paths}`, `head_sha`, `verified`, `record`
+  (the path of `merges/<target>-<pre>.json`, with the measurement and each failure's evidence),
+  `failed_alone[{id, ids, failures[{check, claim}], row?, parent?, facts?}]` (the row, the
+  parent's row and the resume facts for a single leaf, whose fix round launches from them and
+  whose `fixes/` file merge-batch writes),
   `combination[]`, `drift[{node, contract, files, stopped?}]` (a node not yet merged whose consumed
   contract the merge touched; `stopped` names its escalation or park, which the drift is reported
   beside and never parked over), `unexamined_n` (undesigned nodes drift could not check).
@@ -1683,8 +1697,8 @@ Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}],
   ledger for that folder is not appended again.
 - **spec-reviewed** — no fields beyond the common ones: it appends the round's `reviewed` ledger
   line (`complete`, `remaining`, `ambiguities`).
-- **spec-gate** — `ratifiable`, `open`, `coverage_complete`, `remaining`, `reviewed`: the
-  `approvalGate` of the folder's spec as it stands.
+- **spec-gate** — `ratifiable`, `open`, `coverage_complete`, `reviewed`: the `approvalGate` of the
+  folder's spec as it stands.
 - **spec-prepare** — `status` (`prepared | refused`), `hash`, `compile {ok, problems, written_n}`
   (of the `compileEffort` result), `problems`, `row` (the prepared node as compiled, which is how a replan learns whether
   it changed the node and whether it planned anything beneath it). A `spec_changed` park its compile raises on the prepared folder is cleared

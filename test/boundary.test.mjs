@@ -78,7 +78,7 @@ test('a leaf from preflight to landing: open, measure, merge, close, land, clean
   const pre = B(r, 'preflight', { root: '.', commands: COMMANDS })
   assert.equal(pre.ok, true, JSON.stringify(pre.error))
   assert.equal(pre.checkpoint, null)
-  assert.equal(pre.envelope.base_branch, 'main')
+  assert.equal(JSON.parse(readFileSync(join(executionDir(r, 'e1', STAMP), 'execution.json'), 'utf8')).base_branch, 'main')
   assert.deepEqual(pre.counts, { nodes: 2, leaves: 1, gaps: 0, untraced: 0 })
   assert.deepEqual(pre.todos.map((t) => t.key), ['.'])
   assert.ok(existsSync(join(executionDir(r, 'e1', STAMP), 'execution.json')))
@@ -100,9 +100,11 @@ test('a leaf from preflight to landing: open, measure, merge, close, land, clean
 
   commitIn(open.worktree, { 'test/a.test.mjs': A_TEST, 'src/a.mjs': 'export const a = () => 1\n' }, 'Add a')
   const close = B(r, 'leaf-close', { node: 'a', role: 'implementer', round: 1, executor_status: 'done', base_sha: open.base_sha })
-  assert.equal(close.decision.next, 'approve', JSON.stringify(close.decision) + '\n' + close.measurement.notes)
-  assert.equal(close.measurement.suite, 'passed')
-  assert.equal(close.measurement.discriminator[0].failed_on_base, true)
+  const closed = JSON.parse(readFileSync(close.record, 'utf8'))
+  assert.equal(close.decision.next, 'approve', JSON.stringify(close.decision) + '\n' + closed.measurement.notes)
+  assert.equal(closed.measurement.suite, 'passed')
+  assert.equal(closed.measurement.discriminator[0].failed_on_base, true)
+  assert.equal(close.measurement, undefined, 'the measurement stays on disk; the courier carries the decision')
   assert.ok(readLog(r, 'e1', 'journal:' + STAMP).entries.some((e) => e.kind === 'verify-observed' && e.node === 'a'))
 
   const ripe = B(r, 'schedule', {
@@ -158,9 +160,13 @@ test('a shell-less author: its locus files are committed, a stray file is revert
   assert.equal(close.committed, true)
   assert.equal(git(open.worktree, 'log', '-1', '--format=%s'), 'Test add with negatives')
   assert.equal(existsSync(join(open.worktree, 'stray.txt')), false)
-  assert.ok(close.measurement.series_findings.some((f) => f.check === 'locus-breach' && /stray\.txt/.test(f.message)))
-  assert.equal(close.measurement.mutations[0].bites, true)
+  const { measurement } = JSON.parse(readFileSync(close.record, 'utf8'))
+  assert.ok(measurement.series_findings.some((f) => f.check === 'locus-breach' && /stray\.txt/.test(f.message)))
+  assert.equal(measurement.mutations[0].bites, true)
   assert.equal(close.decision.next, 'fix', 'the breach blocks, so the author gets a fix round')
+  assert.ok(close.decision.failures.every((f) => !('evidence' in f)), 'no evidence crosses the courier')
+  const round2 = B(r, 'leaf-open', { node: 't', role: 'test-author', round: 2 })
+  assert.match(readFileSync(round2.brief_path, 'utf8'), /## Fix round 2[\s\S]*\[verification\][\s\S]*stray\.txt/, 'the next round\'s brief carries the failure and its evidence from disk')
 })
 
 test('a red/green cycle: green is cut from red, measured on red\'s tests, and the pair merges through its tip', () => {
@@ -184,7 +190,7 @@ test('a red/green cycle: green is cut from red, measured on red\'s tests, and th
   assert.equal(green.base_sha, redClose.head_sha, 'green is cut from red\'s head')
   commitIn(green.worktree, { 'src/r.mjs': 'export const r = () => 2\n' }, 'Implement r')
   const greenClose = B(r, 'leaf-close', { node: 'g', role: 'implementer', round: 1, base_sha: green.base_sha })
-  assert.equal(greenClose.decision.next, 'review', JSON.stringify(greenClose.decision) + greenClose.measurement.notes)
+  assert.equal(greenClose.decision.next, 'review', JSON.stringify(greenClose.decision) + readFileSync(greenClose.record, 'utf8'))
 
   const whole = B(r, 'schedule', {
     running: [], records: [{ file: 'events', entry: { kind: 'approved', node: 'g', head_sha: greenClose.head_sha, review_rounds: 1, at_integration: false } }],
@@ -271,7 +277,6 @@ test('resume: a preflight after a lost invocation names each leaf\'s next undone
   B(r, 'leaf-close', { node: 'a', role: 'implementer', round: 1, base_sha: open.base_sha })
   // The invocation dies here. The next one resumes the same execution.
   const again = B(r, 'preflight', { root: '.', commands: COMMANDS })
-  assert.equal(again.envelope.resumed, true)
   assert.notEqual(again.invocation, first.invocation, 'each invocation numbers its record ids afresh')
   const tick = B(r, 'schedule', { running: [] })
   const next = Object.fromEntries(tick.launch.map((l) => [l.id, l.facts.next_action]))

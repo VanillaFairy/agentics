@@ -681,7 +681,7 @@ test('a token the program refused as damaged on its way in is sent again', async
 })
 
 test('context that cannot be carried is a side channel: the judge reads the locations itself', async () => {
-  const failed = { stop_reason: 'failed', payload_raw: '', task_ids: [], task_tools: 'skipped', notes: 'node is not on the PATH' }
+  const failed = { stop_reason: 'failed', payload_raw: '', task_tools: 'skipped', notes: 'node is not on the PATH' }
   const { result, prompts, logs } = await run({
     plan: PLAN(), 'scout:': HITS({ hits: [{ path: 'src/x.js', line: 42, note: 'the thing' }] }),
     assemble: failed, 'assemble#2': failed,

@@ -12,7 +12,8 @@ import { heldBy } from '../lib/locks.mjs'
 import { renderLanding } from '../lib/render.mjs'
 import { addNodes, readTree } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
-import { branchExists, executionDir, posix, specPath, worktreeOf } from '../lib/store.mjs'
+import { branchExists, envelope, executionDir, posix, specPath, worktreeOf } from '../lib/store.mjs'
+import { checkpointOf } from '../lib/status.mjs'
 import { approvalGate, approvalState, recordApproval } from '../lib/approval.mjs'
 import { compileEffort } from '../lib/compile.mjs'
 import { hashSpec } from '../lib/spec.mjs'
@@ -74,21 +75,27 @@ test('a leaf from preflight to landing: open, measure, merge, close, land, clean
   const r = repo()
   assert.equal(seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })]).ok, true)
 
-  const pre = B(r, 'preflight', { root: '.', commands: COMMANDS, task_ids: {} })
+  const pre = B(r, 'preflight', { root: '.', commands: COMMANDS })
   assert.equal(pre.ok, true, JSON.stringify(pre.error))
   assert.equal(pre.checkpoint, null)
   assert.equal(pre.envelope.base_branch, 'main')
-  assert.deepEqual(pre.leaves.map((l) => [l.id, l.next_action]), [['a', 'code']])
-  assert.deepEqual(pre.todos.map((t) => [t.op, t.key]), [['create', '.'], ['create', 'a']])
+  assert.deepEqual(pre.counts, { nodes: 2, leaves: 1, gaps: 0, untraced: 0 })
+  assert.deepEqual(pre.todos.map((t) => t.key), ['.'])
   assert.ok(existsSync(join(executionDir(r, 'e1', STAMP), 'execution.json')))
 
-  const open = B(r, 'leaf-open', { node: 'a', role: 'implementer', round: 1, dispatch: { model: 'sonnet', effort: 'high' }, task_ids: { a: 'T2' } })
+  const tick = B(r, 'schedule', { running: [], planning: [] })
+  assert.deepEqual(tick.launch.map((l) => [l.unit, l.id, l.facts && l.facts.next_action]), [['leaf', 'a', 'code']])
+  assert.equal(tick.launch[0].row.title, 'do a')
+  assert.equal(tick.launch[0].parent.id, '.')
+  assert.deepEqual(tick.todos.map((t) => t.key), ['a'])
+
+  const open = B(r, 'leaf-open', { node: 'a', role: 'implementer', round: 1, dispatch: { model: 'sonnet', effort: 'high' } })
   assert.equal(open.status, 'opened', JSON.stringify(open))
   assert.equal(open.branch, 'agentics/e1--a')
   assert.equal(open.worktree, worktreeOf(r, 'e1', 'a'))
   assert.ok(branchExists(r, 'agentics/e1'), 'the effort branch was cut lazily')
   assert.match(readFileSync(open.brief_path, 'utf8'), /a works/)
-  assert.deepEqual(open.todos, [{ op: 'update', key: 'a', task_id: 'T2', subject: 'a — do a', activeForm: 'implementing', status: 'in_progress' }])
+  assert.deepEqual(open.todos, [{ key: 'a', subject: 'a — do a', activeForm: 'implementing', status: 'in_progress' }])
   assert.equal(heldBy(r).slots.length, 1)
 
   commitIn(open.worktree, { 'test/a.test.mjs': A_TEST, 'src/a.mjs': 'export const a = () => 1\n' }, 'Add a')
@@ -98,10 +105,11 @@ test('a leaf from preflight to landing: open, measure, merge, close, land, clean
   assert.equal(close.measurement.discriminator[0].failed_on_base, true)
   assert.ok(readLog(r, 'e1', 'journal:' + STAMP).entries.some((e) => e.kind === 'verify-observed' && e.node === 'a'))
 
-  const merged = B(r, 'merge-batch', {
-    target: '.', children: [{ id: 'a', head_sha: close.head_sha }], cycles: [],
-    records: [{ file: 'events', entry: { kind: 'approved', node: 'a', head_sha: close.head_sha, review_rounds: 0, at_integration: true } }],
+  const ripe = B(r, 'schedule', {
+    running: [], records: [{ file: 'events', entry: { kind: 'approved', node: 'a', head_sha: close.head_sha, review_rounds: 0, at_integration: true } }],
   })
+  assert.deepEqual(ripe.launch, [{ unit: 'merge', target: '.', children: [{ id: 'a', head_sha: close.head_sha }], cycles: [] }])
+  const merged = B(r, 'merge-batch', { target: '.', children: ripe.launch[0].children, cycles: [] })
   assert.deepEqual(merged.merged.map((m) => m.id), ['a'])
   assert.equal(merged.conflict, null)
   assert.equal(merged.verified, true)
@@ -112,9 +120,15 @@ test('a leaf from preflight to landing: open, measure, merge, close, land, clean
   const again = B(r, 'merge-batch', { target: '.', children: [{ id: 'a', head_sha: close.head_sha }], cycles: [] })
   assert.equal(again.head_sha, merged.head_sha, 'a re-run converges: nothing merged twice')
 
-  const post = B(r, 'postflight', { status: 'done' })
+  const review = B(r, 'schedule', { running: [] })
+  assert.deepEqual(review.launch.map((l) => [l.unit, l.id, l.earned]), [['review', '.', true]])
+  const post = B(r, 'postflight', {
+    records: [{ file: 'events', entry: { kind: 'claims', node: '.', head_sha: review.launch[0].where.head, review: 'done', claims: [] } }],
+  })
   assert.equal(post.closed, true)
-  assert.deepEqual(post.cleanup.map((c) => c.node), ['a'])
+  assert.equal(post.summary.done, true)
+  assert.equal(post.cleanup_n, 1)
+  assert.equal(post.integration.branch, 'agentics/e1')
   assert.deepEqual(heldBy(r).slots, [])
 
   const check = land(r, 'e1', 'check')
@@ -162,19 +176,21 @@ test('a red/green cycle: green is cut from red, measured on red\'s tests, and th
   const redClose = B(r, 'leaf-close', { node: 'r', role: 'test-author', round: 1, base_sha: red.base_sha })
   assert.equal(redClose.decision.next, 'review', JSON.stringify(redClose.decision))
 
-  const green = B(r, 'leaf-open', {
-    node: 'g', role: 'implementer', round: 1,
-    records: [{ file: 'events', entry: { kind: 'approved', node: 'r', head_sha: redClose.head_sha, review_rounds: 1, at_integration: false } }],
+  const ready = B(r, 'schedule', {
+    running: [], records: [{ file: 'events', entry: { kind: 'approved', node: 'r', head_sha: redClose.head_sha, review_rounds: 1, at_integration: false } }],
   })
+  assert.deepEqual(ready.launch.map((l) => [l.unit, l.id]), [['leaf', 'g']], 'green launches once red is approved; red waits for its cycle')
+  const green = B(r, 'leaf-open', { node: 'g', role: 'implementer', round: 1 })
   assert.equal(green.base_sha, redClose.head_sha, 'green is cut from red\'s head')
   commitIn(green.worktree, { 'src/r.mjs': 'export const r = () => 2\n' }, 'Implement r')
   const greenClose = B(r, 'leaf-close', { node: 'g', role: 'implementer', round: 1, base_sha: green.base_sha })
   assert.equal(greenClose.decision.next, 'review', JSON.stringify(greenClose.decision) + greenClose.measurement.notes)
 
-  const merged = B(r, 'merge-batch', {
-    target: '.', children: [{ id: 'r', head_sha: redClose.head_sha }, { id: 'g', head_sha: greenClose.head_sha }], cycles: [['r', 'g']],
-    records: [{ file: 'events', entry: { kind: 'approved', node: 'g', head_sha: greenClose.head_sha, review_rounds: 1, at_integration: false } }],
+  const whole = B(r, 'schedule', {
+    running: [], records: [{ file: 'events', entry: { kind: 'approved', node: 'g', head_sha: greenClose.head_sha, review_rounds: 1, at_integration: false } }],
   })
+  assert.deepEqual(whole.launch, [{ unit: 'merge', target: '.', children: [{ id: 'r', head_sha: redClose.head_sha }, { id: 'g', head_sha: greenClose.head_sha }], cycles: [['r', 'g']] }])
+  const merged = B(r, 'merge-batch', { target: '.', children: whole.launch[0].children, cycles: whole.launch[0].cycles })
   assert.deepEqual(merged.merged.map((m) => m.id), ['r', 'g'])
   assert.equal(merged.verified, true)
 })
@@ -194,6 +210,8 @@ test('a failing merged head is bisected: the leaf that fails alone is named, the
   const out = B(r, 'merge-batch', { target: '.', children: [{ id: 'x', head_sha: xs }, { id: 'y', head_sha: ys }], cycles: [] })
   assert.deepEqual(out.failed_alone.map((f) => f.id), ['x'])
   assert.equal(out.failed_alone[0].failures[0].check, 'suite')
+  assert.equal(out.failed_alone[0].row.id, 'x', 'a leaf failing alone comes back with its row for its fix round')
+  assert.equal(out.failed_alone[0].facts.id, 'x')
   assert.deepEqual(out.merged.map((m) => m.id), ['y'])
   assert.deepEqual(out.combination, [])
   assert.equal(readTree(r, 'e1').status.get('x').status, 'active')
@@ -236,16 +254,12 @@ test('preflight checkpoints: an overlapping open execution, a blocking gap, a pa
   seedTree(r, 'e1', [root({ defines: [{ id: 'D1', text: 'x' }, { id: 'D2', text: 'y' }] }), leaf('a', { locus: ['src/a.mjs'] })])
   const gaps = B(r, 'preflight', { root: '.', commands: COMMANDS })
   assert.equal(gaps.checkpoint.reason, 'blocking_gaps')
-  assert.match(gaps.checkpoint.detail, /D2/)
+  assert.deepEqual(checkpointOf(r, 'e1', STAMP).gaps.map((g) => g.decision), ['D2'], 'the list stays on disk for the session')
 
   const other = B(r, 'preflight', { root: 'a', commands: COMMANDS, confirmed_gaps: true }, '20260925-130000')
   assert.equal(other.checkpoint.reason, 'existing_execution', 'the first execution never closed and its root contains this one')
   const forced = B(r, 'preflight', { root: 'a', commands: COMMANDS, confirmed_duplicate: true, confirmed_gaps: true, plan_only: true }, '20260925-130000')
   assert.equal(forced.checkpoint.reason, 'parked')
-
-  const reload = B(r, 'preflight', { root: '.', reload: true }, '20260925-140000')
-  assert.equal(reload.checkpoint, null)
-  assert.equal(existsSync(join(executionDir(r, 'e1', '20260925-140000'), 'execution.json')), false, 'a reload writes no envelope')
 })
 
 test('resume: a preflight after a lost invocation names each leaf\'s next undone action', () => {
@@ -258,9 +272,10 @@ test('resume: a preflight after a lost invocation names each leaf\'s next undone
   // The invocation dies here. The next one resumes the same execution.
   const again = B(r, 'preflight', { root: '.', commands: COMMANDS })
   assert.equal(again.envelope.resumed, true)
-  const next = Object.fromEntries(again.leaves.map((l) => [l.id, l.next_action]))
+  const tick = B(r, 'schedule', { running: [] })
+  const next = Object.fromEntries(tick.launch.map((l) => [l.id, l.facts.next_action]))
   assert.deepEqual(next, { a: 'merge', b: 'code' })
-  const a = again.leaves.find((l) => l.id === 'a')
+  const a = tick.launch.find((l) => l.id === 'a').facts
   assert.equal(a.base_sha, open.base_sha, 'the fork point travels, so a salvaged close measures the right series')
   assert.equal(a.rounds, 1)
   assert.equal(a.brief_path, open.brief_path)
@@ -414,27 +429,41 @@ test('an escalation repeated after a retry is recorded again, and a composite es
   assert.ok(check.open_escalations.some((e) => e.node === 'c'))
 })
 
-test('preflight rows carry each node\'s author', () => {
+test("a launch carries its node's row: author, spec path, and a leaf's parent", () => {
   const r = repo()
   assert.equal(seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs'] }), { id: 'later', kind: 'design', title: 'later part', author: 'planner' }]).ok, true)
-  const pre = B(r, 'preflight', { root: '.', commands: COMMANDS })
-  const byId = new Map((pre.nodes || []).map((n) => [n.id, n]))
-  assert.equal(byId.get('later') && byId.get('later').author, 'planner', JSON.stringify(pre.error || pre.checkpoint))
-  assert.equal(byId.get('a').author, 'you')
+  const pre = B(r, 'preflight', { root: '.', commands: COMMANDS, confirmed_gaps: true })
+  assert.equal(pre.checkpoint, null, JSON.stringify(pre.checkpoint))
+  const tick = B(r, 'schedule', { running: [] })
+  const byId = new Map(tick.launch.map((l) => [l.id, l]))
+  assert.equal(byId.get('later').unit, 'plan')
+  assert.equal(byId.get('later').row.author, 'planner')
+  assert.equal(byId.get('later').row.spec_path, posix(specPath(r, 'e1', 'later')))
+  assert.equal(byId.get('a').row.author, 'you')
+  assert.equal(byId.get('a').parent.spec_path, posix(specPath(r, 'e1', '.')))
 })
 
-test("preflight rows carry each node's author and the path of its spec", () => {
-  const r = repo()
-  assert.equal(seedTree(r, 'e1', [
-    { id: '.', kind: 'composite', title: 'the change' },
-    { id: 'p', kind: 'design', title: 'plan p', author: 'planner' },
-  ]).ok, true)
-  const pre = B(r, 'preflight', { root: '.', commands: COMMANDS, task_ids: {} })
-  const rowOf = (id) => pre.nodes.find((n) => n.id === id)
-  assert.equal(rowOf('p').author, 'planner')
-  assert.equal(rowOf('.').author, 'you')
-  assert.equal(rowOf('p').spec_path, posix(specPath(r, 'e1', 'p')))
-  assert.equal(rowOf('.').spec_path, posix(specPath(r, 'e1', '.')))
+test('no payload grows with the effort: preflight, schedule and postflight print the same size for 4 leaves and 200', () => {
+  const sized = (folders, leavesPer) => {
+    const r = repo()
+    const nodes = [root()]
+    for (let f = 0; f < folders; f++) {
+      nodes.push({ id: 'f' + f, kind: 'composite', title: 'folder ' + f, decisions: ['D1'] })
+      for (let l = 0; l < leavesPer; l++) nodes.push(leaf('f' + f + '/l' + l, { locus: ['src/f' + f + 'l' + l + '.mjs'] }))
+    }
+    assert.equal(seedTree(r, 'e1', nodes).ok, true)
+    const printed = (name, args) => JSON.stringify(envelope(B(r, name, args))).length
+    return {
+      preflight: printed('preflight', { root: '.', commands: COMMANDS }),
+      schedule: printed('schedule', { running: [] }),
+      postflight: printed('postflight', {}),
+    }
+  }
+  const small = sized(1, 4)
+  const large = sized(20, 10)
+  for (const name of Object.keys(small)) {
+    assert.ok(large[name] - small[name] < 400, name + ': ' + small[name] + ' bytes for 4 leaves, ' + large[name] + ' for 200')
+  }
 })
 
 test('a green is cut from its red and brought up to the parent head, so its other dependencies are there', () => {
@@ -515,6 +544,7 @@ test('spec-check, spec-settle, spec-prepare: a planner spec is checked, settled 
   const tree = readTree(r, 'e1')
   assert.equal(tree.nodes.get('p').kind, 'composite')
   assert.ok(tree.nodes.has('p/x'))
+  assert.deepEqual([prepared.row.id, prepared.row.kind, prepared.row.children_n], ['p', 'composite', 1], 'the prepared node as compiled')
 })
 
 test('a planner spec that states a decision is reported by spec-check and refused by spec-prepare', () => {

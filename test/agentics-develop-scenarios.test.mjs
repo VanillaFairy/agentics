@@ -129,11 +129,11 @@ test('an escalation blocks its dependents, never its siblings', async () => {
   })
   const { result } = await run(sim)
   assert.deepEqual(result.escalations.map((e) => e.id), ['a'])
-  assert.deepEqual(result.blocked, [{ id: 'b', blocked_by: 'a' }])
+  assert.deepEqual(result.blocked, [{ blocked_by: 'a', leaves_n: 1 }])
   assert.ok(result.implemented.some((i) => i.id === 'c'))
   assert.ok(!sim.opens.includes('b'))
   assert.equal(result.coverage.complete, false)
-  assert.ok(result.coverage.unreached.some((u) => /b: blocked — a/.test(u)))
+  assert.ok(result.coverage.unreached.some((u) => /1 leaf\/leaves blocked — a did not land/.test(u)))
 })
 
 test('verification fix rounds: a fix clears it; the same failure twice escalates', async () => {
@@ -170,7 +170,7 @@ const written = (path) => () => ({ status: 'written', written: [path], accepted_
 
 test('decompose: the promoted task passes its review, compiles, and its children run', async () => {
   const sim = simulate([composite('.'), row('a')], {
-    preflight: (args) => (args.reload ? { nodes: [composite('.'), composite('a'), row('a/x'), row('a/y')] } : {}),
+    compiled: () => [composite('.'), composite('a'), row('a/x'), row('a/y')],
   })
   const probe = probes([probeReturn()])
   const { result } = await run(sim, {
@@ -187,7 +187,7 @@ test('decompose: the promoted task passes its review, compiles, and its children
 
 test('a promotion whose compile leaves the leaf as it was escalates instead of looping', async () => {
   const sim = simulate([composite('.'), row('a', { rev: 5 })], {
-    preflight: (args) => (args.reload ? { nodes: [composite('.'), row('a', { rev: 5, status: 'active' })] } : {}),
+    compiled: () => [composite('.'), row('a', { rev: 5, status: 'active' })],
   })
   const { result, prompts } = await run(sim, {
     implementer: () => ({ status: 'decompose', detail: 'too big', concerns: [], commits: [] }),
@@ -200,9 +200,7 @@ test('a promotion whose compile leaves the leaf as it was escalates instead of l
 test('a design node you author is parked for design; one the planner authors is written, reviewed and built', async () => {
   const sim = simulate([composite('.'), row('a'),
     row('d', { kind: 'design', author: 'you' }), row('p', { kind: 'design', author: 'planner' })], {
-    preflight: (args) => (args.reload
-      ? { nodes: [composite('.'), row('a'), row('d', { kind: 'design', author: 'you', status: 'parked' }), composite('p', { author: 'planner' }), row('p/x')] }
-      : {}),
+    compiled: () => [composite('.'), row('a'), row('d', { kind: 'design', author: 'you', status: 'parked' }), composite('p', { author: 'planner' }), row('p/x')],
   })
   const probe = probes([probeReturn()])
   const { result, prompts } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, { workflow: probe })
@@ -275,8 +273,7 @@ test('pause stops starting new leaves after the first merge-batch', async () => 
   assert.ok(!sim.opens.includes('b'))
   assert.equal(result.stopped, 'pause')
   assert.equal(result.coverage.complete, false)
-  const post = sim.calls.find((c) => c.name === 'postflight')
-  assert.equal(post.args.status, 'paused')
+  assert.equal(sim.statusOf('b'), 'planned', 'postflight closes nothing: b never started')
 })
 
 test('an integration critical parks the composite for the user', async () => {
@@ -316,7 +313,7 @@ test('a leaf whose files are held by a stopped leaf is reported blocked, never r
   const sim = simulate([composite('.'), row('a'), row('b')], { open: { b: ['stuck'] } })
   const { result } = await run(sim)
   assert.equal(sim.opens.filter((o) => o === 'b').length, 1)
-  assert.deepEqual(result.blocked, [{ id: 'b', blocked_by: 'x' }])
+  assert.deepEqual(result.blocked, [{ blocked_by: 'x', leaves_n: 1 }])
   assert.equal(result.coverage.complete, false)
 })
 
@@ -358,7 +355,7 @@ test('a composite or a cycle failing on the merged head escalates, never enters 
 
 test('a resumed leaf is closed at its own round, reviewed over its own base and brief', async () => {
   const sim = simulate([composite('.'), row('a', { own_review: true })], {
-    preflight: () => ({ leaves: [{ id: 'a', next_action: 'verify', note: '', branch: 'agentics/e--a', worktree: '/wt/a', head_sha: 'h1', base_sha: 'b1', approved_head: '', commits: ['h1'], dirty: [], rounds: 1, brief_path: '/briefs/a-r1.md' }] }),
+    facts: { a: { id: 'a', next_action: 'verify', note: '', branch: 'agentics/e--a', worktree: '/wt/a', head_sha: 'h1', base_sha: 'b1', approved_head: '', commits: ['h1'], dirty: [], rounds: 1, brief_path: '/briefs/a-r1.md' } },
   })
   const { result, prompts } = await run(sim)
   const close = sim.calls.find((c) => c.name === 'leaf-close')
@@ -371,8 +368,8 @@ test('a resumed leaf is closed at its own round, reviewed over its own base and 
 })
 
 test('a resumed approval merges the approved head, not the branch tip', async () => {
-  const sim = simulate([composite('.'), row('a', { status: 'approved' })], {
-    preflight: () => ({ leaves: [{ id: 'a', next_action: 'merge', note: '', head_sha: 'tip', base_sha: 'b', approved_head: 'approved', commits: [], dirty: [], rounds: 1, brief_path: '' }] }),
+  const sim = simulate([composite('.'), row('a', { status: 'approved', approved_head: 'approved' })], {
+    facts: { a: { id: 'a', next_action: 'merge', note: '', head_sha: 'tip', base_sha: 'b', approved_head: 'approved', commits: [], dirty: [], rounds: 1, brief_path: '' } },
   })
   await run(sim)
   assert.deepEqual(sim.batches[0].children, [{ id: 'a', head_sha: 'approved' }])
@@ -400,7 +397,7 @@ test('a folder the planner authored is replanned in its own spec and reviewed ag
 })
 
 const plannerDesign = () => simulate([composite('.'), row('p', { kind: 'design', author: 'planner' })], {
-  preflight: (args) => (args.reload ? { nodes: [composite('.'), composite('p', { author: 'planner' }), row('p/x')] } : {}),
+  compiled: () => [composite('.'), composite('p', { author: 'planner' }), row('p/x')],
 })
 
 test('a planner spec ratifiable at its first review is prepared, compiled, and built', async () => {
@@ -438,9 +435,7 @@ test('a spec_changed park on a folder the planner wrote is re-derived by the pla
   const sim = simulate([composite('.'),
     composite('u', { status: 'parked', reason: 'spec_changed', rev: 1 }),
     composite('p', { author: 'planner', status: 'parked', reason: 'spec_changed', rev: 1 })], {
-    preflight: (args) => (args.reload
-      ? { nodes: [composite('.'), composite('u', { status: 'parked', reason: 'spec_changed', rev: 1 }), composite('p', { author: 'planner', rev: 2 }), row('p/x', { rev: 2 })] }
-      : {}),
+    compiled: () => [composite('.'), composite('u', { status: 'parked', reason: 'spec_changed', rev: 1 }), composite('p', { author: 'planner', rev: 2 }), row('p/x', { rev: 2 })],
   })
   const probe = probes([probeReturn()])
   const { result, prompts } = await run(sim, { 'plan:': written(composite('p').spec_path) }, {}, { workflow: probe })
@@ -646,7 +641,7 @@ test('a preparation the boundary refuses escalates prepare_refused', async () =>
 
 test('a prepared folder that compiles with no children escalates planner_wrote_nothing', async () => {
   const sim = simulate([composite('.'), row('p', { kind: 'design', author: 'planner' })], {
-    preflight: (args) => (args.reload ? { nodes: [composite('.'), composite('p', { author: 'planner' })] } : {}),
+    compiled: () => [composite('.'), composite('p', { author: 'planner' })],
   })
   const { result } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, { workflow: probes([probeReturn()]) })
   assert.deepEqual(sim.prepared.map((p) => p.node), ['p'])
@@ -677,9 +672,9 @@ test('a settle that needs a decision parks the folder with the planner\'s questi
 
 test('a planner folder still parked spec_changed after its re-derivation is handed to the planner once', async () => {
   const parkedP = () => composite('p', { author: 'planner', status: 'parked', reason: 'spec_changed', rev: 1 })
-  // The reload still shows the park, so only the once-per-invocation rule keeps a second plan:p away.
+  // The compiled tree still shows the park, so only the once-per-park rule keeps a second plan:p away.
   const sim = simulate([composite('.'), parkedP()], {
-    preflight: (args) => (args.reload ? { nodes: [composite('.'), parkedP(), row('p/x')] } : {}),
+    compiled: () => [composite('.'), parkedP(), row('p/x')],
   })
   const probe = probes([probeReturn()])
   const { prompts } = await run(sim, { 'plan:': written(composite('p').spec_path) }, {}, { workflow: probe })

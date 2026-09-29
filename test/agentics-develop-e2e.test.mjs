@@ -66,7 +66,7 @@ function agents(calls, jobs) {
     if (type === 'courier') {
       const command = /^(node "[^\n]+)$/m.exec(prompt)[1]
       const run = spawnSync('sh', ['-c', command], { encoding: 'utf8', env: { ...process.env, AGENTICS_INLINE_JOBS: jobs === 'inline' ? '1' : '' } })
-      return { stop_reason: run.status === 0 ? 'carried' : 'failed', payload_raw: run.stdout.trim(), task_ids: [], task_tools: 'skipped', notes: run.stderr }
+      return { stop_reason: run.status === 0 ? 'carried' : 'failed', payload_raw: run.stdout.trim(), task_tools: 'skipped', notes: run.stderr }
     }
     if (type === 'implementer' || type === 'test-author') {
       const id = /for leaf (\S+) /.exec(prompt)[1]

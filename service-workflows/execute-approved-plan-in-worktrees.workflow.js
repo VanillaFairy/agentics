@@ -2,7 +2,7 @@ export const meta = {
   name: 'execute-approved-plan-in-worktrees',
   description: 'Execute a subtree of an agentics effort: plan unplanned composites, run every leaf by its rigor in its own worktree, review, and merge by composite into framework-owned integration branches — scheduled by readiness, never by waves. Never touches the user\'s branch or working tree.',
   phases: [
-    { title: 'Preflight', detail: 'refuse overlaps, resume ladder, drift, gaps, todos — one courier' },
+    { title: 'Preflight', detail: 'refuse overlaps, drift, gaps, free dead slots — one courier' },
     { title: 'Plan', detail: 'planner per unplanned composite; a survey first where the ground is unknown' },
     { title: 'Execute', detail: 'per leaf: leaf-open, executor by rigor, leaf-close, fix rounds, review loop' },
     { title: 'Integrate', detail: 'merge-batch per composite, integration review, merge up' },
@@ -11,8 +11,9 @@ export const meta = {
 }
 
 // Design: docs/DESIGN.md#execution. Every deterministic step is a `lib/boundary.mjs` entry point
-// run by a courier and re-digested here; this script holds only what a script can hold without a
-// filesystem: which leaves are ready, in what order, and what each typed return means next.
+// run by a courier and re-digested here, scheduling included: the `schedule` boundary says what to
+// launch next from the tree on disk. This script holds only what a script can hold without a
+// filesystem: the units in flight and what each typed return means next.
 //
 // Schemas carry no bounds and no verdict booleans (lint: no-schema-bounds, no-self-verdict).
 // Every verdict below is computed: a measurement's by lib/verdict.mjs on disk, a review round's
@@ -93,14 +94,10 @@ function base64(text) {
 
 const CARRIED = {
   type: 'object', additionalProperties: false,
-  required: ['stop_reason', 'payload_raw', 'task_ids', 'task_tools', 'notes'],
+  required: ['stop_reason', 'payload_raw', 'task_tools', 'notes'],
   properties: {
     stop_reason: { type: 'string', enum: ['carried', 'failed'] },
     payload_raw: { type: 'string' },
-    task_ids: {
-      type: 'array',
-      items: { type: 'object', additionalProperties: false, required: ['key', 'id'], properties: { key: { type: 'string' }, id: { type: 'string' } } },
-    },
     task_tools: { type: 'string', enum: ['used', 'unavailable', 'skipped'] },
     notes: { type: 'string' },
   },
@@ -232,7 +229,7 @@ const tierFor = (model, base) => ({
   effort: model === 'sonnet' ? SONNET_STEP[base] || 'high' : DIAL === 'max' ? 'high' : 'medium',
 })
 
-const isYardstick = (row) => row.role === 'red' || row.role === 'audit' || (row.provides || []).length > 0
+const isYardstick = (row) => row.role === 'red' || row.role === 'audit' || row.provides_n > 0
 
 /**
  * The producer's tier. The author's `dispatch.producer` wins; otherwise sonnet, or opus for a
@@ -259,12 +256,15 @@ const COURIER = { model: 'haiku', effort: 'low' }
 const COURIER_UP = { model: 'sonnet', effort: 'low' }
 
 // ---------------------------------------------------------------- state
+//
+// No copy of the tree lives here: status is derived on disk, and every unit is launched by the
+// `schedule` boundary with the one row it needs. What this script holds is what only it can: the
+// units in flight, the decisions it took and has not yet handed to a boundary, and what it saw.
 
-const rows = new Map()          // node id -> preflight row
-const leafFacts = new Map()     // leaf id -> resume row
-const status = new Map()        // node id -> derived status, kept current here
-const taskIds = {}              // todo key -> task id
-const records = []              // workflow decisions waiting for the next boundary to append them
+const records = []              // decisions waiting for the next schedule, preflight or postflight
+const stoppedHere = new Set()   // nodes this invocation escalated or parked
+const planning = new Set()      // folders a running unit is replanning inline
+const running = new Map()       // unit key -> its promise
 const failedChannels = []
 const notes = []
 const implemented = []
@@ -272,62 +272,16 @@ const escalations = []
 const parked = []
 const reviews = []
 const drift = []
-const integ = new Map()         // composite id -> {worktree, base, head, branch}
-const heads = new Map()         // leaf id -> the head it was approved at
-const lockedBy = new Map()      // leaf id -> the stopped leaf holding its files
-const rounds = new Map()        // leaf id -> the highest round dispatched, across every chain
-const composite = new Map()     // composite id -> 'open' | 'reviewing' | 'ripe' | 'merging' | 'held'
-let maxParallel = 4
-let cleanup = []
 let dispatches = 0
 const byModel = {}
 let leavesFinished = 0
-let mergedSinceStart = 0
 let stopping = ''
-let commands = null
+let ticks = 0
 let taskToolsMissing = false
 
 const note = (text) => {
   notes.push(text)
   log(text)
-}
-
-const isLeaf = (id) => rows.has(id) && rows.get(id).kind === 'leaf'
-const parentOf = (id) => (id === '.' ? null : id.includes('/') ? id.slice(0, id.lastIndexOf('/')) : '.')
-const ancestorsOf = (id) => {
-  const out = []
-  for (let p = parentOf(id); p !== null; p = parentOf(p)) out.push(p)
-  return out
-}
-const inScope = (id) => id === rootId || ancestorsOf(id).includes(rootId)
-const childrenOf = (id) => [...rows.keys()].filter((k) => k !== '.' && parentOf(k) === id).sort()
-const statusOf = (id) => status.get(id) || 'planned'
-/** A leaf's dependencies and every in-scope ancestor's: a composite's deps bind all beneath it. */
-const depsOf = (id) => [...new Set([id, ...ancestorsOf(id)].flatMap((a) => (rows.get(a) || {}).deps || []))]
-
-const LOCAL_TERMINAL = new Set(['approved', 'escalated', 'parked', 'merged'])
-
-function absorbTree(payload) {
-  for (const row of payload.nodes || []) {
-    const before = rows.get(row.id)
-    const local = status.get(row.id)
-    rows.set(row.id, row)
-    // A decision this invocation took may still be queued for the next boundary, so disk can lag
-    // it; disk wins only where the node itself was revised since (a replan or an answer).
-    const revised = !before || before.rev !== row.rev
-    if (revised || !LOCAL_TERMINAL.has(local)) status.set(row.id, row.status)
-  }
-  for (const leaf of payload.leaves || []) {
-    leafFacts.set(leaf.id, leaf)
-    // A resumed merge merges the head that was approved, never the branch as it stands now.
-    if (leaf.approved_head && !heads.has(leaf.id)) heads.set(leaf.id, leaf.approved_head)
-    if (Number.isInteger(leaf.rounds)) rounds.set(leaf.id, Math.max(rounds.get(leaf.id) || 0, leaf.rounds))
-  }
-  for (const row of payload.nodes || []) {
-    if (row.kind !== 'leaf' && row.integration && row.integration.branch) integ.set(row.id, row.integration)
-  }
-  if (Number.isInteger(payload.max_parallel) && payload.max_parallel > 0) maxParallel = payload.max_parallel
-  if (payload.commands) commands = payload.commands
 }
 
 // ---------------------------------------------------------------- dispatch with a cost line
@@ -372,14 +326,17 @@ function courierPrompt(command) {
   return 'Run exactly this one command, unchanged (Bash timeout 600000), and put its entire stdout in payload_raw:\n\n' +
     command + '\n\n' +
     (progress
-      ? 'Then apply the todo moves listed in the printed payload.todos (create → TaskCreate, update → ' +
-        'TaskUpdate on task_id) and return each created task id as {key, id}. Without task tools, set ' +
-        'task_tools to "unavailable".'
+      ? 'Then apply the todo moves listed in the printed payload.todos: call TaskList once; for each move, the task ' +
+        'whose subject equals the move\'s subject is its task — TaskUpdate it with the move\'s activeForm and status; ' +
+        'with none, TaskCreate it with the move\'s subject, activeForm and status. Without task tools, set task_tools to "unavailable".'
       : 'Progress is off: move no todos and set task_tools to "skipped".') +
     (pluginRoot === '$CLAUDE_PLUGIN_ROOT'
       ? '\nIf $CLAUDE_PLUGIN_ROOT is empty in your shell, do not guess a path: set stop_reason "failed" and say so.'
       : '')
 }
+
+/** The boundaries the main loop calls one at a time: only they carry the pending decisions. */
+const CARRIES_RECORDS = new Set(['preflight', 'schedule', 'postflight'])
 
 /**
  * Run one boundary entry point through a courier and believe its payload only after the digest.
@@ -390,8 +347,8 @@ function courierPrompt(command) {
  * transport failure, thrown for the caller to escalate.
  */
 async function boundary(name, a, ctx) {
-  const pending = records.splice(0, records.length)
-  const argsObject = { ...a, records: pending, task_ids: taskIds, progress }
+  const pending = CARRIES_RECORDS.has(name) ? records.splice(0, records.length) : []
+  const argsObject = { ...a, ...(CARRIES_RECORDS.has(name) ? { records: pending } : {}), progress }
   const token = base64(JSON.stringify(argsObject))
   const command = 'node "' + pluginRoot + '/lib/boundary.mjs" ' + name + ' --repo "' + repo +
     '" --effort "' + effort + '" --execution "' + execution + '" --digest ' + fnv1a(canonical(argsObject)) +
@@ -412,7 +369,6 @@ async function boundary(name, a, ctx) {
     }
     const c = carried(held)
     if (c.payload) {
-      for (const t of (held.task_ids || [])) if (t && t.key) taskIds[t.key] = t.id
       if (progress && held.task_tools === 'unavailable' && !taskToolsMissing) {
         taskToolsMissing = true
         note('the couriers had no task tools: the todo list did not move — derive it with lib/status.mjs todos')
@@ -447,8 +403,8 @@ async function settled(name, a, ctx) {
 
 const listOf = (items) => (items && items.length ? items.map((x) => '- ' + x).join('\n') : '(none)')
 
-function executorPrompt(id, role, round, opened, mode) {
-  const row = rows.get(id)
+function executorPrompt(row, role, round, opened, mode) {
+  const id = row.id
   const fetch = role === 'implementer'
     ? 'Fetch it: node "' + pluginRoot + '/lib/brief.mjs" fetch --path "' + opened.brief_path + '" --digest ' + opened.brief_digest
     : 'Read it with your Read tool (the leaf-close script re-checks its digest, ' + opened.brief_digest + ').'
@@ -472,8 +428,8 @@ function executorPrompt(id, role, round, opened, mode) {
     '\n\nReturn status, detail (what you established, tried and need, for any status but done), concerns and commits.'
 }
 
-function reviewerPrompt(id, st, round, prior) {
-  const row = rows.get(id)
+function reviewerPrompt(row, st, round, prior) {
+  const id = row.id
   const span = round === 1 ? st.base + '..' + st.head : st.deltaBase + '..' + st.head
   return 'Adversarially review leaf ' + id + ' ("' + row.title + '"), round ' + round + '. You are fresh: nothing ' +
     'from earlier rounds reaches you but the artifacts below.\n' +
@@ -483,7 +439,7 @@ function reviewerPrompt(id, st, round, prior) {
       ? 'Brief (criteria, locus, decisions, contracts): read ' + st.brief + '.\n'
       : 'Criteria, locus, decisions and contracts: node "' + pluginRoot + '/lib/tree.mjs" show --repo "' + repo +
         '" --effort "' + effort + '" --root "' + id + '" --json\n') +
-    (row.provides && row.provides.length ? 'This leaf PROVIDES a contract: its majors with a failure scenario block like criticals.\n' : '') +
+    (row.provides_n > 0 ? 'This leaf PROVIDES a contract: its majors with a failure scenario block like criticals.\n' : '') +
     (row.role === 'green' ? 'The tests were written by another agent before this code and sit outside this locus.\n' : '') +
     'The executor\'s concerns — attack these first:\n' + listOf(st.concerns) + '\n' +
     (prior.length
@@ -493,8 +449,8 @@ function reviewerPrompt(id, st, round, prior) {
     'Return claims: [] — claim verdicts belong to integration reviews.\n'
 }
 
-function integrationPrompt(id, where, children, missing) {
-  const row = rows.get(id)
+function integrationPrompt(item) {
+  const { id, row, where } = item
   return 'Integration review of composite ' + id + ' ("' + row.title + '").\n' +
     'Worktree: ' + where.worktree + '. Merged diff: ' + where.base + '..' + where.head + '.\n' +
     'Yardstick: the folder\'s spec, ' + row.spec_path + '. Judge every claim it makes (each success criterion in its ' +
@@ -502,17 +458,14 @@ function integrationPrompt(id, where, children, missing) {
     '{claim, verdict: met | under | over | deviates | spec_defect | cant_tell, evidence}. A HUMAN: criterion is the user\'s: leave it out.\n' +
     'Its decisions, and the criteria of every child, are in: node "' + pluginRoot + '/lib/tree.mjs" show --repo "' + repo +
     '" --effort "' + effort + '" --root "' + id + '" --json\n' +
-    'Children merged here: ' + children.join(', ') + '.\n' +
+    'Children merged here: ' + item.children.join(', ') + '.\n' +
     'Review these against their own criteria too — they had no review loop of their own:\n' +
-    listOf(children.filter((c) => isLeaf(c) && !rows.get(c).own_review)) + '\n' +
-    (missing.length
-      ? 'Planned children that did NOT land: ' + missing.join(', ') + '. Reason about the gap out loud and carry that caveat on every finding.\n'
-      : '') +
+    listOf(item.unreviewed) + '\n' +
     'Look for defects that exist only with the children together, and for any decision no child realised.'
 }
 
-function plannerPrompt(id, why, evidence) {
-  const row = rows.get(id)
+function plannerPrompt(row, why, evidence) {
+  const id = row.id
   const check = 'node "' + pluginRoot + '/lib/spec.mjs" check --repo "' + repo + '" --effort "' + effort + '" --folder "' + id + '"'
   const charge = row.kind === 'leaf'
     ? 'Task ' + id + ' ("' + row.title + '") is promoted to a folder of its own. Write its spec: ' + row.spec_path +
@@ -546,7 +499,7 @@ function settlePrompt(id, path, findings, refused) {
 const recordEvent = (entry) => records.push({ file: 'events', entry: { execution, ...entry } })
 
 function escalate(id, reason, detail) {
-  status.set(id, 'escalated')
+  stoppedHere.add(id)
   escalations.push({ id, reason, detail: detail || '' })
   recordEvent({ kind: 'escalated', node: id, reason, detail: String(detail || '').slice(0, 2000) })
   note('escalated ' + id + ': ' + reason)
@@ -554,140 +507,42 @@ function escalate(id, reason, detail) {
 }
 
 function park(id, why, question) {
-  status.set(id, 'parked')
+  stoppedHere.add(id)
   parked.push({ id, return: why, question: question || '' })
   recordEvent({ kind: 'parked', node: id, return: why, question: String(question || '').slice(0, 2000) })
   note('parked ' + id + ' (' + why + '): waiting on the user')
 }
 
-function approve(id, st, atIntegration) {
-  // Parked while its chain was running (contract drift): the user rules first, and the approval
-  // is not recorded — a resume re-derives it from the measurement once the park is cleared.
-  if (statusOf(id) === 'parked') return
-  status.set(id, 'approved')
-  recordEvent({ kind: 'approved', node: id, head_sha: st.head, review_rounds: st.reviewRounds, at_integration: atIntegration })
-  st.approvedHead = st.head
-  const was = implemented.findIndex((i) => i.id === id)
+function approve(row, st, atIntegration) {
+  // Parked by this invocation while its chain was running (contract drift): the user rules first,
+  // and the approval is not recorded — a resume re-derives it from the measurement.
+  if (stoppedHere.has(row.id)) return
+  recordEvent({ kind: 'approved', node: row.id, head_sha: st.head, review_rounds: st.reviewRounds, at_integration: atIntegration })
+  const was = implemented.findIndex((i) => i.id === row.id)
   if (was !== -1) implemented.splice(was, 1)
-  implemented.push({ id, rigor: rows.get(id).rigor, role: rows.get(id).role, rounds: st.round, review_rounds: st.reviewRounds, at_integration: atIntegration, salvaged: st.salvaged })
-  heads.set(id, st.head)
+  implemented.push({ id: row.id, rigor: row.rigor, role: row.role, rounds: st.round, review_rounds: st.reviewRounds, at_integration: atIntegration, salvaged: st.salvaged })
   leavesFinished++
-}
-
-// ---------------------------------------------------------------- readiness
-
-/** A leaf's cycle predecessor needs only approval: green is cut from red's branch. */
-function cyclePredecessor(id, dep) {
-  const a = rows.get(id)
-  const d = rows.get(dep)
-  return Boolean(a && d) && a.rigor === d.rigor &&
-    ((a.role === 'green' && d.role === 'red') || (a.role === 'audit' && d.role === 'green'))
-}
-
-/**
- * Whether a dependency's output exists where this leaf will be cut: the dep (or its ancestor just
- * below the two nodes' lowest common ancestor) has merged into that ancestor's integration branch.
- */
-function depReady(id, dep) {
-  if (!rows.has(dep)) return false
-  if (cyclePredecessor(id, dep)) return ['approved', 'merged'].includes(statusOf(dep))
-  const up = [id, ...ancestorsOf(id)]
-  const chain = [dep, ...ancestorsOf(dep)]
-  const lca = up.find((x) => chain.includes(x))
-  const at = chain.indexOf(lca)
-  if (at <= 0) return true
-  return statusOf(chain[at - 1]) === 'merged' || statusOf(chain[at - 1]) === 'landed'
-}
-
-/** The escalated or parked node a leaf is waiting behind, or ''. */
-function blockedBy(id, seen = new Set()) {
-  if (seen.has(id)) return ''
-  seen.add(id)
-  const row = rows.get(id)
-  if (!row) return ''
-  for (const dep of depsOf(id)) {
-    const s = statusOf(dep)
-    if (s === 'escalated' || s === 'parked') return dep
-    const deeper = blockedBy(dep, seen)
-    if (deeper) return deeper
-  }
-  return ''
-}
-
-const running = new Map()
-const coupledInFlight = () => [...running.keys()].some((k) => k.startsWith('leaf:') && (rows.get(k.slice(5)) || {}).coupled)
-const leavesInFlight = () => [...running.keys()].filter((k) => k.startsWith('leaf:')).length
-
-function readyLeaves() {
-  if (stopping) return []
-  const out = []
-  for (const [id, row] of rows) {
-    if (row.kind !== 'leaf' || !inScope(id) || running.has('leaf:' + id)) continue
-    const s = statusOf(id)
-    if (s !== 'planned' && s !== 'active') continue
-    if (planning.has(parentOf(id))) continue
-    if (blockedBy(id) || lockedBy.has(id)) continue
-    if (!depsOf(id).every((d) => depReady(id, d))) continue
-    if (row.coupled && (coupledInFlight() || out.some((o) => rows.get(o).coupled))) continue
-    out.push(id)
-  }
-  const room = Math.max(0, maxParallel - leavesInFlight())
-  return out.slice(0, room)
 }
 
 function launch(key, fn) {
   const p = Promise.resolve().then(fn).catch((err) => {
     const id = key.slice(key.indexOf(':') + 1)
-    if (err instanceof TransportError) {
-      failedChannels.push('transport')
-      if (rows.has(id) && statusOf(id) !== 'escalated') escalate(id, 'transport', err.message)
-    } else {
-      if (rows.has(id) && statusOf(id) !== 'escalated') escalate(id, 'pipeline', String(err && err.message))
-      failedChannels.push('pipeline')
-    }
+    const channel = err instanceof TransportError ? 'transport' : 'pipeline'
+    failedChannels.push(channel)
+    if (!stoppedHere.has(id)) escalate(id, channel, channel === 'transport' ? err.message : String(err && err.message))
   }).finally(() => running.delete(key))
   running.set(key, p)
 }
 
 // ---------------------------------------------------------------- planning
 
-const planning = new Set()
-
-function unplanned() {
-  const out = []
-  for (const [id, row] of rows) {
-    if (!inScope(id) || row.kind === 'leaf' || planning.has(id)) continue
-    if (childrenOf(id).length > 0) continue
-    if (['parked', 'escalated', 'merged', 'landed'].includes(statusOf(id))) continue
-    out.push(id)
-  }
-  return out
-}
-
-/**
- * Folders the planner wrote that compile parked `spec_changed` (their spec changed while work under
- * them was dispatched): the planner re-derives each, once per invocation. Its preparation clears
- * the park its own compile raises (`spec-prepare`), so a re-derived folder does not come back here.
- * A folder the user wrote is theirs to re-spec, and stays parked.
- */
-const rederived = new Set()
-function rederivable() {
-  const out = []
-  for (const [id, row] of rows) {
-    if (!inScope(id) || row.kind === 'leaf' || row.author !== 'planner') continue
-    if (planning.has(id) || rederived.has(id) || statusOf(id) !== 'parked' || row.reason !== 'spec_changed') continue
-    rederived.add(id)
-    out.push(id)
-  }
-  return out
-}
-
 /**
  * Plan a node by writing a spec. A task is promoted by the planner; a folder is replanned by it
- * only when the planner wrote that folder. A folder the user wrote is theirs to re-spec.
+ * only when the planner wrote that folder. A folder the user wrote is theirs to re-spec. Returns
+ * the node as compiled after its spec was prepared, or null when it was parked or escalated.
  */
-async function planNode(id, why) {
-  const row = rows.get(id)
+async function planNode(row, why) {
+  const id = row.id
   if (row.kind !== 'leaf' && row.author !== 'planner') {
     if (why) park(id, 'needs_respec', why + ' — edit ' + row.spec_path + ', re-approve it and recompile')
     else park(id, 'needs_design', row.kind === 'design'
@@ -697,17 +552,16 @@ async function planNode(id, why) {
   }
   planning.add(id)
   try {
-    const spec = await writeSpec(id, why)
-    if (spec) await reviewSpec(id, spec)
+    const spec = await writeSpec(row, why)
+    return spec ? await reviewSpec(id, spec) : null
   } finally {
     planning.delete(id)
   }
-  return null
 }
 
 /** The planner writes the node's spec; the path it wrote, or null once the node is parked or escalated. */
-async function writeSpec(id, why) {
-  const row = rows.get(id)
+async function writeSpec(row, why) {
+  const id = row.id
   let evidence = ''
   if (!why && row.ground_known === false) {
     phase('Plan')
@@ -725,7 +579,7 @@ async function writeSpec(id, why) {
     }
   }
   const tier = tierFor(JUDGE, 'high')
-  const res = await dispatch(plannerPrompt(id, why, evidence), {
+  const res = await dispatch(plannerPrompt(row, why, evidence), {
     agentType: 'agentics:planner', schema: PLANNED, phase: 'Plan', label: 'plan:' + id, ...tier,
   }, id)
   if (!res) throw new Error('the planner returned nothing')
@@ -745,11 +599,6 @@ async function writeSpec(id, why) {
 
 /** What makes two findings the same finding across rounds: its axis, its section, its claim. */
 const findingKey = (f) => [f.axis, f.section, String(f.claim || '').toLowerCase().replace(/\s+/g, ' ').trim()].join('|')
-
-async function reload(label) {
-  const payload = await boundary('preflight', { root: rootId, reload: true }, { phase: 'Plan', label })
-  absorbTree(payload)
-}
 
 /**
  * The autonomous review of a planner-written spec (D21): check it, attack it with a nested probe,
@@ -883,7 +732,10 @@ async function settle(id, spec, findings) {
   }
 }
 
-/** The gate passed on the review `reviewed` names (its return; its snapshot or the spec hash only when the probe's record failed): record the preparation, compile, reload. */
+/**
+ * The gate passed on the review `reviewed` names (its return; its snapshot or the spec hash only
+ * when the probe's record failed): record the preparation and compile. The node as compiled, or null.
+ */
 async function prepare(id, reviewed) {
   const out = await boundary('spec-prepare', { node: id, review: reviewed }, { phase: 'Plan', label: 'spec-prepare:' + id })
   if (out.error || out.ok === false) {
@@ -900,11 +752,11 @@ async function prepare(id, reviewed) {
     return null
   }
   log('prepared ' + id + ' on ' + reviewed + '; compiled ' + (compiled.written || []).length + ' node(s)')
-  await reload('reload:' + id)
-  if (rows.get(id) && rows.get(id).kind !== 'leaf' && childrenOf(id).length === 0) {
+  if (out.row && out.row.kind !== 'leaf' && out.row.children_n === 0) {
     escalate(id, 'planner_wrote_nothing', 'compiled ' + id + ' with no plan entry beneath it')
+    return null
   }
-  return null
+  return out.row
 }
 
 // ---------------------------------------------------------------- commands
@@ -932,20 +784,18 @@ function establishCommands(worktree) {
 // ---------------------------------------------------------------- one leaf
 
 const blockingOf = (row, findings) => findings.filter((f) => f.severity === 'critical' ||
-  (f.severity === 'major' && (row.provides || []).length > 0 && String(f.failure_scenario || '').trim() !== ''))
+  (f.severity === 'major' && row.provides_n > 0 && String(f.failure_scenario || '').trim() !== ''))
 
 const failureKey = (failures) => (failures || []).map((f) => f.check + ':' + f.claim).sort().join('|')
 
-async function openLeaf(id, st, fix, mode) {
-  const row = rows.get(id)
+async function openLeaf(row, st, fix, mode) {
+  const id = row.id
   for (;;) {
     const opened = await boundary('leaf-open', {
       node: id, role: st.role, round: st.round, fix, mode, refresh: st.refresh === true,
       dispatch: st.role ? producerTier(row, st.raise) : COURIER,
     }, { phase: 'Execute', label: 'open:' + id + '#' + st.round })
-    if (Number.isInteger(opened.max_parallel) && opened.max_parallel > 0) maxParallel = opened.max_parallel
     if (opened.status === 'opened') {
-      rounds.set(id, Math.max(rounds.get(id) || 0, st.round))
       st.refresh = false
       st.worktree = opened.worktree
       st.branch = opened.branch
@@ -955,9 +805,9 @@ async function openLeaf(id, st, fix, mode) {
       return opened
     }
     if (opened.status === 'locus_held' && opened.stuck) {
-      // Held by an escalated or parked leaf: it frees only when the user acts on that leaf.
+      // Held by an escalated or parked leaf: it frees only when the user acts on that leaf, and
+      // the scheduler sees the same lock, so the leaf is not launched again until then.
       const holder = (opened.held_by || [])[0] || {}
-      lockedBy.set(id, holder.node || '')
       note(id + ': its files are held by ' + (holder.node || 'a stopped leaf') + ', which waits on the user')
       return null
     }
@@ -985,7 +835,8 @@ async function closeLeaf(id, st, executorStatus) {
 }
 
 /**
- * One leaf, from wherever resume says it stands, to approval, escalation or a park.
+ * One leaf, from wherever resume says it stands, to approval, escalation or a park. `item` is its
+ * launch: its row, its parent's row and its resume facts.
  *
  * The review-loop exit is carried over verbatim (docs/DESIGN.md#executors-and-review): the open
  * set is the round's blocking findings plus every prior blocker ruled not_fixed/regressed and not
@@ -993,10 +844,11 @@ async function closeLeaf(id, st, executorStatus) {
  * commits or a blocked status, the same id unfixed two rounds running, or two rounds that each
  * fix every prior blocker and still mint new ones. No round counter ends it.
  */
-async function runLeaf(id, entry) {
-  const row = rows.get(id)
-  const facts = leafFacts.get(id) || {}
-  const done = rounds.get(id) || 0
+async function runLeaf(item, entry) {
+  const row = item.row
+  const id = row.id
+  const facts = item.facts || {}
+  const done = facts.rounds || 0
   let stage = entry && entry.stage ? entry.stage : ({
     code: 'code', 'continue-series': 'continue', verify: 'close', review: 'review', merge: 'approve',
   })[facts.next_action || 'code'] || 'code'
@@ -1016,18 +868,17 @@ async function runLeaf(id, entry) {
 
   for (;;) {
     if (stage === 'approve') {
-      approve(id, st, !row.own_review)
+      approve(row, st, !row.own_review)
       return null
     }
 
     if (stage === 'code' || stage === 'continue' || stage === 'fix') {
-      const opened = await openLeaf(id, st, fix, stage === 'code' ? 'fresh' : stage)
+      const opened = await openLeaf(row, st, fix, stage === 'code' ? 'fresh' : stage)
       if (!opened) return
-      status.set(id, 'active')
       if (st.role) {
         const headBefore = st.head
         const tier = producerTier(row, st.raise)
-        const res = await dispatch(executorPrompt(id, st.role, st.round, opened, stage === 'code' ? 'fresh' : stage), {
+        const res = await dispatch(executorPrompt(row, st.role, st.round, opened, stage === 'code' ? 'fresh' : stage), {
           agentType: EXECUTOR_TYPE[st.role], schema: EXECUTOR, phase: 'Execute',
           label: st.role + ':' + id + '#' + st.round, ...tier,
         }, id)
@@ -1037,14 +888,11 @@ async function runLeaf(id, entry) {
         }
         st.concerns = res.concerns || []
         if (['decompose', 'unsplittable', 'premise_mismatch'].includes(res.status)) {
-          status.set(id, 'planned')
           note(id + ': ' + res.status + ' — replanning its subtree')
-          const before = row.rev
-          await planNode(id, res.status + ': ' + res.detail)
-          const after = rows.get(id)
+          const after = await planNode(row, res.status + ': ' + res.detail)
           // A replan that wrote no new revision of the leaf would send the same executor back to
           // the same wall.
-          if (after && after.kind === 'leaf' && after.rev === before && !['escalated', 'parked'].includes(statusOf(id))) {
+          if (after && after.kind === 'leaf' && after.rev === row.rev) {
             escalate(id, 'replan_not_converging', 'the planner answered ' + res.status + ' without changing the leaf: ' + res.detail)
           }
           return null
@@ -1083,9 +931,10 @@ async function runLeaf(id, entry) {
         continue
       }
       if (d.next === 'finding') {
-        note(id + ': a verify leaf found its premise false — replanning ' + parentOf(id))
+        const parent = item.parent
+        note(id + ': a verify leaf found its premise false — replanning ' + (parent ? parent.id : 'its folder'))
         escalate(id, 'verify_finding', (d.failures || []).map((f) => f.claim).join('; '))
-        await planNode(parentOf(id), 'verify leaf ' + id + ' found: ' + (d.failures || []).map((f) => f.claim + ' (' + f.evidence + ')').join('; '))
+        if (parent) await planNode(parent, 'verify leaf ' + id + ' found: ' + (d.failures || []).map((f) => f.claim + ' (' + f.evidence + ')').join('; '))
         return null
       }
       if (d.next === 'fix') {
@@ -1109,7 +958,7 @@ async function runLeaf(id, entry) {
       st.inReview = true
       st.reviewRounds++
       const round = st.reviewRounds
-      const res = await dispatch(reviewerPrompt(id, st, round, st.priorBlockers), {
+      const res = await dispatch(reviewerPrompt(row, st, round, st.priorBlockers), {
         agentType: 'agentics:reviewer', schema: FINDINGS, phase: 'Execute',
         label: 'review:' + id + '#' + round, ...reviewerTier(row),
       }, id)
@@ -1161,115 +1010,46 @@ function roleOf(row) {
 
 // ---------------------------------------------------------------- merging
 
-/** The red → green (→ audit) cycle a leaf is in, in order, read from role and deps. */
-function cycleOf(id) {
-  const row = rows.get(id)
-  if (!row || row.kind !== 'leaf' || row.role === 'none') return []
-  let red = row
-  while (red && red.role !== 'red') {
-    const want = red.role === 'audit' ? 'green' : 'red'
-    red = (red.deps || []).map((d) => rows.get(d)).find((d) => d && d.role === want && d.rigor === row.rigor)
+async function mergeInto(item) {
+  const { target } = item
+  const out = await settled('merge-batch', { target, children: item.children, cycles: item.cycles }, { phase: 'Integrate', label: 'merge:' + target })
+  if (out.error || out.ok === false) {
+    // The batch could not run at all (a refresh that conflicted, a dirty integration worktree, a
+    // job that failed): the target is stopped, and nothing is re-batched into it until the user acts.
+    escalate(target, 'merge_batch_failed', (out.error && out.error.message) || 'merge-batch refused')
+    return null
   }
-  if (!red) return []
-  const out = [red.id]
-  for (const want of ['green', 'audit']) {
-    const prev = out[out.length - 1]
-    const next = [...rows.values()].find((n) => n.kind === 'leaf' && n.role === want && n.rigor === red.rigor && (n.deps || []).includes(prev))
-    if (!next) break
-    out.push(next.id)
+  if (out.conflict) {
+    escalate(out.conflict.node, 'merge_conflict', 'conflicting paths: ' + (out.conflict.paths || []).join(', ') + ' — loci were declared disjoint; this is a planner defect')
   }
-  return out
-}
-
-const inBatch = new Set()
-
-/** Approved children waiting on one integration branch, cycles only when whole. */
-function mergeable() {
-  const byTarget = new Map()
-  const add = (target, child) => {
-    if (!byTarget.has(target)) byTarget.set(target, { children: [], cycles: [] })
-    byTarget.get(target).children.push(child)
-  }
-  for (const [id, row] of rows) {
-    if (!inScope(id) || inBatch.has(id)) continue
-    const target = parentOf(id)
-    if (target === null || running.has('merge:' + target)) continue
-    if (['escalated', 'parked'].includes(statusOf(target))) continue
-    if (row.kind === 'leaf') {
-      if (statusOf(id) !== 'approved') continue
-      const cycle = cycleOf(id)
-      if (cycle.length) {
-        if (cycle[0] !== id) continue
-        if (!cycle.every((m) => statusOf(m) === 'approved')) continue
-        for (const m of cycle) add(target, { id: m, head_sha: heads.get(m) || '' })
-        byTarget.get(target).cycles.push(cycle)
-        continue
-      }
-      add(target, { id, head_sha: heads.get(id) || '' })
-    } else if (composite.get(id) === 'ripe' && (id !== rootId || rootId !== '.') && !['escalated', 'parked', 'merged'].includes(statusOf(id))) {
-      add(target, { id, head_sha: (integ.get(id) || {}).head || '' })
+  for (const id of out.combination || []) escalate(id, 'combination_failure', 'passes alone, fails merged with ' + (out.combination || []).filter((x) => x !== id).join(', '))
+  for (const d of out.drift || []) {
+    drift.push(d)
+    if (!stoppedHere.has(d.node)) {
+      park(d.node, 'contract_drift', 'merged work touched ' + d.files.join(', ') + ' under contract ' + d.contract +
+        ', which ' + d.node + ' consumes: rule it unaffected, re-design it or re-slice it')
     }
   }
-  return byTarget
-}
-
-async function mergeInto(target, batch) {
-  const ids = batch.children.map((c) => c.id)
-  ids.forEach((i) => inBatch.add(i))
-  for (const c of batch.children) if (composite.get(c.id) === 'ripe') composite.set(c.id, 'merging')
-  try {
-    const out = await settled('merge-batch', { target, children: batch.children, cycles: batch.cycles }, { phase: 'Integrate', label: 'merge:' + target })
-    if (out.error || out.ok === false) {
-      // The batch could not run at all (a refresh that conflicted, a dirty integration worktree, a
-      // job that failed): the target is stopped, and nothing is re-batched into it until the user acts.
-      escalate(target, 'merge_batch_failed', (out.error && out.error.message) || 'merge-batch refused')
-      return null
+  if ((out.unexamined || []).length) note('undesigned nodes not examined for drift: ' + out.unexamined.join(', '))
+  for (const f of out.failed_alone || []) {
+    const why = (f.failures || []).map((x) => x.claim).join('; ')
+    // A composite, or a cycle that lands as a unit, has no one producer a fix round could go to:
+    // its failure on the merged head is the user's to route.
+    if (!f.row) {
+      for (const m of (f.ids && f.ids.length ? f.ids : [f.id])) escalate(m, 'fails_on_integration', why)
+      continue
     }
-    integ.set(target, { worktree: out.target_worktree, base: out.target_base, head: out.head_sha, branch: out.target_branch })
-    for (const m of out.merged || []) {
-      status.set(m.id, 'merged')
-      if (composite.has(m.id)) composite.set(m.id, 'merged')
-      mergedSinceStart++
-    }
-    if (out.conflict) {
-      escalate(out.conflict.node, 'merge_conflict', 'conflicting paths: ' + (out.conflict.paths || []).join(', ') + ' — loci were declared disjoint; this is a planner defect')
-    }
-    for (const id of out.combination || []) escalate(id, 'combination_failure', 'passes alone, fails merged with ' + (out.combination || []).filter((x) => x !== id).join(', '))
-    for (const d of out.drift || []) {
-      drift.push(d)
-      if (!['parked', 'escalated', 'merged'].includes(statusOf(d.node))) {
-        park(d.node, 'contract_drift', 'merged work touched ' + d.files.join(', ') + ' under contract ' + d.contract +
-          ', which ' + d.node + ' consumes: rule it unaffected, re-design it or re-slice it')
-      }
-    }
-    if ((out.unexamined || []).length) note('undesigned nodes not examined for drift: ' + out.unexamined.join(', '))
-    for (const f of out.failed_alone || []) {
-      const members = f.ids && f.ids.length ? f.ids : [f.id]
-      const why = (f.failures || []).map((x) => x.claim).join('; ')
-      // A composite, or a cycle that lands as a unit, has no one producer a fix round could go to:
-      // its failure on the merged head is the user's to route.
-      if (members.length > 1 || !isLeaf(f.id)) {
-        for (const m of members) escalate(m, 'fails_on_integration', why)
-        continue
-      }
-      note(f.id + ': fails on the integration head alone — a fix round on the refreshed branch')
-      status.set(f.id, 'active')
-      heads.delete(f.id)
-      launch('leaf:' + f.id, () => runLeaf(f.id, {
-        stage: 'fix', refresh: true,
-        fix: (f.failures || []).map((x) => ({ source: 'integration', claim: x.claim, evidence: x.evidence })),
-      }))
-    }
-    for (const c of batch.children) {
-      if (composite.get(c.id) === 'merging' && statusOf(c.id) !== 'merged') composite.set(c.id, statusOf(c.id) === 'escalated' ? 'held' : 'ripe')
-    }
-    const progressed = (out.merged || []).length + (out.failed_alone || []).length + (out.combination || []).length + (out.conflict ? 1 : 0)
-    if (progressed === 0) escalate(target, 'merge_no_progress', 'a merge-batch into ' + target + ' merged nothing and reported no failure')
-    if (input.pause && !stopping) stopping = 'pause'
-    if (budgetShort() && !stopping) stopping = 'budget'
-  } finally {
-    ids.forEach((i) => inBatch.delete(i))
+    note(f.id + ': fails on the integration head alone — a fix round on the refreshed branch')
+    launch('leaf:' + f.id, () => runLeaf({ unit: 'leaf', id: f.id, row: f.row, parent: f.parent, facts: f.facts }, {
+      stage: 'fix', refresh: true,
+      fix: (f.failures || []).map((x) => ({ source: 'integration', claim: x.claim, evidence: x.evidence })),
+    }))
   }
+  const progressed = (out.merged || []).length + (out.failed_alone || []).length + (out.combination || []).length + (out.conflict ? 1 : 0)
+  if (progressed === 0) escalate(target, 'merge_no_progress', 'a merge-batch into ' + target + ' merged nothing and reported no failure')
+  if (input.pause && !stopping) stopping = 'pause'
+  if (budgetShort() && !stopping) stopping = 'budget'
+  return null
 }
 
 const budgetShort = () => {
@@ -1280,28 +1060,15 @@ const budgetShort = () => {
 
 // ---------------------------------------------------------------- composites
 
-/** Composites whose children have all merged and whose integration review has not run. */
-function integrated() {
-  const out = []
-  for (const [id, row] of rows) {
-    if (!inScope(id) || row.kind === 'leaf' || composite.has(id)) continue
-    if (['merged', 'landed', 'parked', 'escalated'].includes(statusOf(id))) continue
-    const kids = childrenOf(id)
-    if (kids.length === 0 || !kids.every((k) => statusOf(k) === 'merged')) continue
-    out.push(id)
-  }
-  return out
-}
-
 const DRIFT = ['under', 'over', 'deviates']
 
 /**
  * The one park an integration review earns, or null. A spec defect goes first: fixing work against
  * a claim that cannot be met is wasted. Then criticals and drift, which the user routes to a fix:
- * no single producer owns a folder's merged work (`../shared/architecture.md` § Design Decisions 2, spec §6)
- * Then what the review could not decide, which never counts as a pass.
+ * no single producer owns a folder's merged work. Then what the review could not decide, which
+ * never counts as a pass.
  */
-function integrationPark(id, findings, claims) {
+function integrationPark(item, findings, claims) {
   const off = claims.filter((c) => c.verdict !== 'met')
   const criticals = findings.filter((f) => f.severity === 'critical')
   const why = off.some((c) => c.verdict === 'spec_defect') ? 'spec_defect'
@@ -1309,26 +1076,23 @@ function integrationPark(id, findings, claims) {
       : off.length ? 'cant_tell' : ''
   if (!why) return null
   const lines = criticals.map((f) => f.id + ': ' + f.claim).concat(off.map((c) => '[' + c.verdict + '] ' + c.claim + ' — ' + c.evidence))
-  return { why, question: (why === 'spec_defect' ? 'the spec ' + rows.get(id).spec_path + ': ' : '') + lines.join('; ') }
+  return { why, question: (why === 'spec_defect' ? 'the spec ' + item.row.spec_path + ': ' : '') + lines.join('; ') }
 }
 
 /**
  * The integration review, earned: when a child had no review loop of its own, or when two or more
- * children with commits meet here for the first time. Its criticals go to the user.
+ * children with work meet here for the first time. It always leaves a `claims` event at the head
+ * it judged, which is what ripens the composite for merging up. A review that fails escalates.
  */
-async function reviewComposite(id) {
-  composite.set(id, 'reviewing')
-  const kids = childrenOf(id)
-  const where = integ.get(id)
-  const withWork = kids.filter((k) => !isLeaf(k) || rows.get(k).rigor !== 'verify')
-  const earned = id === '.' ||
-    kids.some((k) => isLeaf(k) && !rows.get(k).own_review && rows.get(k).rigor !== 'verify') || withWork.length >= 2
-  if (!earned || !where) {
+async function reviewComposite(item) {
+  const { id, where } = item
+  const head = (where && where.head) || ''
+  if (!item.earned) {
     note(id + ': integration review not earned (' + (where ? 'one reviewed child' : 'nothing merged') + ')')
-    composite.set(id, 'ripe')
+    recordEvent({ kind: 'claims', node: id, head_sha: head, review: 'not_earned', claims: [] })
     return null
   }
-  const res = await dispatch(integrationPrompt(id, where, kids, []), {
+  const res = await dispatch(integrationPrompt(item), {
     agentType: 'agentics:reviewer', schema: FINDINGS, phase: 'Integrate', label: 'review:integration:' + id, ...tierFor(JUDGE, 'high'),
   }, id).catch((err) => {
     failedChannels.push('integration-review')
@@ -1338,89 +1102,85 @@ async function reviewComposite(id) {
   const findings = res ? res.findings || [] : []
   const claims = res ? res.claims || [] : []
   reviews.push({ target: id, findings, claims, notes: res ? res.notes : '', reviewed: Boolean(res) })
-  if (res) recordEvent({ kind: 'claims', node: id, head_sha: where.head, claims })
-  const held = integrationPark(id, findings, claims)
-  if (held) {
-    composite.set(id, 'held')
-    park(id, held.why, held.question)
+  if (!res) {
+    escalate(id, 'review_failed', 'the integration review of ' + id + ' returned nothing')
     return null
   }
-  composite.set(id, 'ripe')
+  recordEvent({ kind: 'claims', node: id, head_sha: head, review: 'done', claims })
+  const held = integrationPark(item, findings, claims)
+  if (held) park(id, held.why, held.question)
+  return null
 }
 
 // ---------------------------------------------------------------- result
 
 const RUN_ID = 'unknown-to-script: pair `remaining` with the runId from the Workflow launch result'
 
-function blockedList() {
-  const out = []
-  for (const [id, row] of rows) {
-    if (row.kind !== 'leaf' || !inScope(id)) continue
-    if (!['planned', 'active'].includes(statusOf(id))) continue
-    const by = blockedBy(id) || lockedBy.get(id)
-    if (by) out.push({ id, blocked_by: by })
-  }
-  return out
-}
+const NO_SUMMARY = { nodes_n: 0, leaves_n: 0, merged_n: 0, not_merged_n: 0, blocked_n: 0, blocked: [], root_done: false, done: false, stopped: [], held: [] }
 
-function result(checkpoint) {
-  const leaves = [...rows.keys()].filter((id) => isLeaf(id) && inScope(id))
-  const notLanded = leaves.filter((id) => statusOf(id) !== 'merged')
-  const blocked = blockedList()
-  const rootDone = ['integrated', 'merged', 'landed'].includes(statusOf(rootId)) ||
-    (composite.get(rootId) === 'ripe' || composite.get(rootId) === 'merged')
-  const unreached = []
-    .concat(escalations.map((e) => e.id + ': escalated — ' + e.reason))
-    .concat(parked.map((p) => p.id + ': parked — ' + p.return))
-    .concat(blocked.map((b) => b.id + ': blocked — ' + b.blocked_by + ' did not land'))
-    .concat(notLanded.filter((id) => !escalations.some((e) => e.id === id) && !parked.some((p) => p.id === id) && !blocked.some((b) => b.id === id))
-      .map((id) => id + ': not merged in this invocation' + (stopping ? ' (' + stopping + ')' : '')))
-    .concat(checkpoint ? ['checkpoint ' + checkpoint.reason + ': nothing was dispatched'] : [])
-    .concat([...new Set(failedChannels)].map((c) => 'the ' + c + ' channel failed in this invocation'))
+/** The return: postflight's summary of the subtree on disk, and what this invocation saw itself. */
+function result(checkpoint, post) {
+  const s = (post && post.summary) || NO_SUMMARY
   // Stopped nodes this invocation did not stop itself are carried from an earlier one: they lead
   // the result as much as fresh ones, or a resume reads cleaner than the run it resumed.
-  for (const [id, row] of rows) {
-    if (!inScope(id)) continue
-    if (statusOf(id) === 'escalated' && !escalations.some((e) => e.id === id)) escalations.push({ id, reason: row.reason || 'escalated', detail: 'carried from an earlier invocation', carried: true })
-    if (statusOf(id) === 'parked' && !parked.some((p) => p.id === id)) parked.push({ id, return: row.reason || 'parked', question: 'carried from an earlier invocation', carried: true })
+  for (const x of s.stopped) {
+    if (stoppedHere.has(x.id)) continue
+    if (x.status === 'escalated') escalations.push({ id: x.id, reason: x.reason || 'escalated', detail: 'carried from an earlier invocation', carried: true })
+    if (x.status === 'parked') parked.push({ id: x.id, return: x.reason || 'parked', question: 'carried from an earlier invocation', carried: true })
   }
-  // A held cycle member waits on a later member that stopped: say so, not just "not merged".
-  const held = leaves.filter((id) => statusOf(id) === 'approved' && cycleOf(id).some((m) => ['escalated', 'parked'].includes(statusOf(m))))
-    .map((id) => ({ id, behind: cycleOf(id).find((m) => ['escalated', 'parked'].includes(statusOf(m))) }))
-  for (const h of held) unreached.unshift(h.id + ': held — its cycle member ' + h.behind + ' stopped, and a cycle lands as a unit')
-  for (const e of escalations.filter((x) => x.carried)) unreached.unshift(e.id + ': escalated earlier — ' + e.reason)
-  for (const p of parked.filter((x) => x.carried)) unreached.unshift(p.id + ': parked earlier — ' + p.return)
+  const blocked = s.blocked
+  const unreached = []
+    .concat(s.held.map((h) => h.id + ': held — its cycle member ' + h.behind + ' stopped, and a cycle lands as a unit'))
+    .concat(escalations.filter((e) => e.carried).map((e) => e.id + ': escalated earlier — ' + e.reason))
+    .concat(parked.filter((p) => p.carried).map((p) => p.id + ': parked earlier — ' + p.return))
+    .concat(escalations.filter((e) => !e.carried).map((e) => e.id + ': escalated — ' + e.reason))
+    .concat(parked.filter((p) => !p.carried).map((p) => p.id + ': parked — ' + p.return))
+    .concat(blocked.map((b) => b.leaves_n + ' leaf/leaves blocked — ' + b.blocked_by + ' did not land'))
+    .concat(s.not_merged_n > 0 ? [s.not_merged_n + ' of ' + s.leaves_n + ' leaves not merged in this invocation' + (stopping ? ' (' + stopping + ')' : '')] : [])
+    .concat(checkpoint ? ['checkpoint ' + checkpoint.reason + ': nothing was dispatched'] : [])
+    .concat([...new Set(failedChannels)].map((c) => 'the ' + c + ' channel failed in this invocation'))
   // A lost review is a lost check: the leaves it was owed to were verified and never read.
   const lostReview = failedChannels.includes('integration-review') || failedChannels.includes('survey')
-  const where = integ.get(rootId) || {}
+  const integration = (post && post.integration) || { branch: '', head_sha: '' }
   return {
     effort, root: rootId, execution, checkpoint: checkpoint || null,
-    nodes_n: [...rows.keys()].filter(inScope).length,
+    nodes_n: s.nodes_n,
     implemented, escalations, parked, blocked,
-    integration: { branch: where.branch || '', head_sha: where.head || '', reviews },
-    drift, cleanup,
+    integration: { branch: integration.branch, head_sha: integration.head_sha, reviews },
+    drift, cleanup_n: (post && post.cleanup_n) || 0,
     cost: { dispatches, by_model: byModel, tokens: budget && budget.total ? budget.spent() : null },
     stopped: stopping || '',
     notes,
     coverage: {
-      complete: !checkpoint && notLanded.length === 0 && rootDone && escalations.length === 0 && parked.length === 0 && !lostReview,
+      complete: !checkpoint && Boolean(post) && s.not_merged_n === 0 && s.root_done && escalations.length === 0 && parked.length === 0 && !lostReview,
       dropped: [],
       incomplete: [],
       failed_channels: [...new Set(failedChannels)],
       unreached,
       resumable: {
         runId: RUN_ID,
-        remaining: [...new Set(notLanded.concat(parked.map((p) => p.id)))],
+        remaining: s.done ? [] : [rootId],
         args: { effort, root: rootId, execution },
       },
     },
   }
 }
 
+/** Close the invocation: postflight lands the last decisions and summarizes the subtree from disk. */
+async function finish(checkpoint) {
+  try {
+    return result(checkpoint, await boundary('postflight', {}, { phase: 'Postflight', label: 'postflight' }))
+  } catch (err) {
+    failedChannels.push('postflight')
+    note('postflight could not be carried: ' + (err && err.message) + ' — decisions since the last boundary were not recorded; a resume re-derives them')
+    return result(checkpoint, null)
+  }
+}
+
 // ---------------------------------------------------------------- the run
 
 if (!effort || !execution) {
-  return result({ reason: 'bad_input', detail: 'effort and execution (a UTC stamp minted by the session) are required' })
+  return result({ reason: 'bad_input', detail: 'effort and execution (a UTC stamp minted by the session) are required' }, null)
 }
 
 phase('Preflight')
@@ -1438,36 +1198,52 @@ try {
 } catch (err) {
   failedChannels.push('preflight')
   note('preflight could not be carried: ' + (err && err.message))
-  return result({ reason: 'preflight_failed', detail: String(err && err.message) })
+  return result({ reason: 'preflight_failed', detail: String(err && err.message) }, null)
 }
 
 if (pf.error) {
   note('preflight refused: ' + pf.error.message)
-  return result({ reason: pf.error.kind || 'preflight_refused', detail: pf.error.message })
+  return result({ reason: pf.error.kind || 'preflight_refused', detail: pf.error.message }, null)
 }
-absorbTree(pf)
-for (const s of pf.stale || []) drift.push(s)
 for (const d of pf.dirty_worktrees || []) note('dirty worktree left in place (never forced): ' + d)
-if ((pf.gaps || []).length) note('traceability gaps: ' + pf.gaps.map((g) => g.decision + ' at ' + g.at).join(', '))
-if ((pf.untraced || []).length) note('criteria tracing to no decision: ' + pf.untraced.map((u) => u.node).join(', '))
+const counts = pf.counts || {}
+if (counts.gaps) note(counts.gaps + ' traceability gap(s): node "' + pluginRoot + '/lib/status.mjs" checkpoint lists them when they stop a run')
+if (counts.untraced) note(counts.untraced + ' criterion/criteria tracing to no decision')
 if (pf.checkpoint) {
-  await boundary('postflight', { status: 'checkpoint' }, { phase: 'Postflight', label: 'postflight' }).catch(() => failedChannels.push('postflight'))
-  return result(pf.checkpoint)
+  phase('Postflight')
+  return finish(pf.checkpoint)
 }
-if (!rows.has(rootId)) return result({ reason: 'no_such_node', detail: 'node ' + rootId + ' is not in effort ' + effort })
 
-log('execution ' + execution + ' of ' + rootId + ': ' + [...rows.keys()].filter((id) => isLeaf(id) && inScope(id)).length +
-  ' leaves planned, pool ' + maxParallel + ', dial ' + DIAL + ', pace ' + pace)
+log('execution ' + execution + ' of ' + rootId + ': ' + (counts.leaves || 0) + ' leaves planned, pool ' + pf.max_parallel +
+  ', dial ' + DIAL + ', pace ' + pace)
+
+const UNITS = {
+  plan: (item) => planNode(item.row, item.why),
+  leaf: (item) => runLeaf(item),
+  merge: (item) => mergeInto(item),
+  review: (item) => reviewComposite(item),
+}
 
 phase('Execute')
 for (;;) {
-  for (const id of unplanned()) launch('plan:' + id, () => planNode(id))
-  for (const id of rederivable()) {
-    launch('plan:' + id, () => planNode(id, 'spec_changed: its spec changed while work under it was dispatched — re-derive what is below it, keeping every dispatched or merged task that still stands'))
+  let tick
+  try {
+    ticks++
+    tick = await boundary('schedule', { running: [...running.keys()], planning: [...planning], stopping: Boolean(stopping) },
+      { phase: 'Execute', label: 'schedule#' + ticks })
+  } catch (err) {
+    tick = { error: { message: String(err && err.message) } }
   }
-  for (const id of readyLeaves()) launch('leaf:' + id, () => runLeaf(id))
-  for (const [target, batch] of mergeable()) launch('merge:' + target, () => mergeInto(target, batch))
-  for (const id of integrated()) launch('review:' + id, () => reviewComposite(id))
+  if (tick.error) {
+    failedChannels.push('schedule')
+    note('the schedule could not be carried: ' + tick.error.message + ' — starting nothing new, letting what runs finish')
+    await Promise.allSettled([...running.values()])
+    break
+  }
+  for (const item of tick.launch || []) {
+    const key = item.unit + ':' + (item.id || item.target)
+    if (!running.has(key)) launch(key, () => UNITS[item.unit](item))
+  }
   if (running.size === 0) break
   await Promise.race(running.values())
 }
@@ -1475,15 +1251,4 @@ for (;;) {
 if (stopping) note('stopped starting new leaves after a merge-batch: ' + stopping)
 
 phase('Postflight')
-// Done means delivered: every leaf merged, and a root below the effort's merged into its parent.
-const done = [...rows.keys()].filter((id) => isLeaf(id) && inScope(id)).every((id) => statusOf(id) === 'merged') &&
-  (rootId === '.' || statusOf(rootId) === 'merged')
-try {
-  const post = await boundary('postflight', { status: done ? 'done' : stopping ? 'paused' : 'checkpoint' }, { phase: 'Postflight', label: 'postflight' })
-  cleanup = post.cleanup || []
-} catch (err) {
-  failedChannels.push('postflight')
-  note('postflight could not be carried: ' + (err && err.message) + ' — decisions since the last boundary were not recorded; a resume re-derives them')
-}
-
-return result(null)
+return finish(null)

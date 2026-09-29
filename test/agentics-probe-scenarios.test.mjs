@@ -593,7 +593,7 @@ test('an unfinished locating search is resumed, and a stuck one is incomplete wo
 })
 
 test('located ground the courier could not carry reaches the analysts as locations to read', async () => {
-  const failed = { stop_reason: 'failed', payload_raw: '', task_ids: [], task_tools: 'skipped', notes: 'no node' }
+  const failed = { stop_reason: 'failed', payload_raw: '', task_tools: 'skipped', notes: 'no node' }
   const { result, prompts } = await runWorkflow(WF, {
     args: DEFAULT_ARGS,
     agent: probeAgents({

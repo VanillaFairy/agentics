@@ -14,7 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { append } from '../lib/ledger.mjs'
 import {
-  acquire, heldBy, locusFileOf, maxParallel, poolConfig, releaseLocus, releaseSlots, withBranchLock,
+  acquire, heldBy, locusFileOf, maxParallel, poolConfig, releaseLocus, releaseSlots, stuckReader, withBranchLock,
 } from '../lib/locks.mjs'
 import { configPath, effortStateDir, mkdirState, slotsDir } from '../lib/store.mjs'
 import { addNodes } from '../lib/tree.mjs'
@@ -342,4 +342,15 @@ test('a locus held by an escalated leaf answers at once as stuck instead of wait
   assert.equal(out.reason, 'locus_held')
   assert.equal(out.stuck, true)
   assert.ok(Date.now() - started < 5000, 'it did not wait out the minute')
+})
+
+test('stuckReader names the stopped leaf holding a locus, and nothing while its holder still works', () => {
+  const repo = effortRepo(['a', 'b'])
+  const stuck = (node, locus) => stuckReader(repo)({ effort: E, node, locus })
+  assert.equal(acquire(repo, { effort: E, execution: X, node: 'a', locus: ['src/shared.js'] }).ok, true)
+  assert.equal(stuck('b', ['src/shared.js']), '')
+  event(repo, 'escalated', 'a', { reason: 'test' })
+  assert.equal(stuck('b', ['src/shared.js']), 'a')
+  assert.equal(stuck('b', ['src/other.js']), '')
+  assert.equal(stuck('a', ['src/shared.js']), '')
 })

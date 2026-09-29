@@ -260,7 +260,8 @@ No survey ran: the request named its ground.
 - **Decisions** are the request's items, one per item, `D1`…`Dn`, in the user's words and nothing
   added. Every `Dn` is realised by an entry.
 - **Plan**: a `task` for each item triage found atomic with known ground, rigor per
-  `docs/DESIGN.md#rigor`, every criterion naming its check or starting `HUMAN:`; otherwise one
+  `docs/DESIGN.md#rigor`, every criterion naming its check (the narrowest tests that decide it, the
+  whole suite only when the change reaches every test) or starting `HUMAN:`; otherwise one
   `sub-effort` with `author: planner` realising the items it covers.
 - **Evidence**: when the ground is unknown, say so and name the sub-effort whose survey will find it.
 

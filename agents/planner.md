@@ -151,7 +151,9 @@ never by rigor or role.
 3. **Closed locus**: every file it writes is in `locus`, and no unmerged task shares a file with
    it unless an `after` edge orders them, or the file is a designated `shared` file.
 4. **Checkable alone**: every criterion but a `HUMAN:` one names a check that runs on this task's
-   branch alone and decides it.
+   branch alone and decides it: for tests, the narrowest run (its test files or module directory),
+   the whole suite only when the change reaches every test (runner config, shared test setup, a
+   module nearly all code imports). The leaf runs nothing wider; the full suite runs at merge.
 5. **Green when done**: after it merges the tree builds and the suite passes (a `red` task's
    declared failing tests aside).
 6. **Decided**: its context carries every decision the executor needs.

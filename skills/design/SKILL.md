@@ -183,8 +183,9 @@ and the plan entries, which `check-plan-block` parses:
 when it is next. `planner` lets develop's planner write its spec, which then passes an adversarial
 review instead of the user's approval: only for a part the user says may go autonomously, and its
 spec may state no decision. `rigor`, `locus`, `reads` and criteria are for a `task` only (rigor per
-`docs/DESIGN.md#rigor`). A `dropped` entry's decisions are recorded as not realised, accepted; a
-`deferred` entry compiles to nothing. A contract's name is unique across the effort.
+`docs/DESIGN.md#rigor`); a test check runs the narrowest tests that decide its criterion, the whole
+suite only when the change reaches every test. A `dropped` entry's decisions are recorded as not
+realised, accepted; a `deferred` entry compiles to nothing. A contract's name is effort-unique.
 
 Past a handful of tasks, gather the ones that belong together by concern (a subsystem, an area of
 the code, work reviewed side by side) under `### <name> — group · after: …`, its title on the next

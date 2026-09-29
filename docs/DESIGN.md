@@ -505,7 +505,11 @@ any fails:
    that is not yet merged (otherwise the two are ordered by a dependency, or the file goes to the
    [coupled lane](#coupled-work)).
 4. **Checkable alone.** Each acceptance criterion, except a `HUMAN:` one, names a check (a test, the
-   build, a typecheck, a command) that runs on this leaf's branch alone and decides it.
+   build, a typecheck, a command) that runs on this leaf's branch alone and decides it. A test check
+   is the narrowest run that does — the leaf's test files or its module's test directory — and the
+   whole suite only when the change can reach every test (the test runner's config, shared test
+   setup, a module nearly everything imports): these checks are all the testing a leaf gets
+   before it merges ([Verification](#verification)).
 5. **Green when done.** After it merges, the tree builds and the suite passes — except the declared
    failing tests of a `red` leaf, which never reach the effort branch without their green.
 6. **Decided.** Its brief carries every decision the executor needs.

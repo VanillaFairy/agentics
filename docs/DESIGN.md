@@ -411,13 +411,15 @@ parse. A digest makes corruption detectable; the encoding makes it unlikely.
 Evidence tokens — a survey's, probe's or solutions sweep's items, a re-judge's verdicts — are the
 exception: they are long, and base64 is both longer and the text a courier copies worst. They
 travel as JSON by file (`viaJsonFile` in each of those workflows): the courier writes one line of
-JSON to `.agentics/.state/token-<digest>.json` in quoted-heredoc chunks of at most
-`COMMAND_BUDGET` characters (under cmd.exe's 8191-character line), and the lib reads it with
-`--json-file` under the token's digest and removes it. A quoted heredoc leaves `$`, quotes and
-backticks alone, but the layer between a model's Bash call and the shell still decodes backslash
-escapes, so the text carries none: `~` is written `~t` and `\` is written `~b`
-(`lib/store.mjs jsonFileText`). A courier's cost is its dispatch, not its bytes, so a long token
-buys more Bash calls on one courier, never more couriers.
+JSON to `.agentics/.state/token-<digest>.json` with single-quoted `printf '%s' '<chunk>'` calls of
+at most `COMMAND_BUDGET` characters (under cmd.exe's 8191-character line), and the lib reads it
+with `--json-file` under the token's digest and removes it. Single quotes leave `$` and backticks
+alone, but the layer between a model's Bash call and the shell still decodes backslash escapes, so
+the text carries no backslash and no apostrophe: `~` is written `~t`, `\` is written `~b` and `'`
+is written `~q` (`lib/store.mjs jsonFileText`). Each write is one line, because the harness
+indents every line of a computed prompt and a courier copies that indent: before a command it is
+harmless, inside a multi-line body such as a heredoc it lands in the token. A courier's cost is its
+dispatch, not its bytes, so a long token buys more Bash calls on one courier, never more couriers.
 
 A location list is the exception: it is only paths and line numbers, so it travels as plain text
 (`path:line:line,path:line`) with a digest over the exact string, because a courier copies paths

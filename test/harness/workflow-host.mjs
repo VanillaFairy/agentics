@@ -178,9 +178,9 @@ export function recordedLine(prompt) {
   return { entry: JSON.parse(jsonFileText(token)), digest: byFile[1], token }
 }
 
-/** The chunks a courier prompt writes to its token file, one per quoted heredoc, in order. */
+/** The chunks a courier prompt writes to its token file, one per single-quoted `printf`, in order. */
 export function jsonChunks(prompt) {
-  return [...prompt.matchAll(/<<'(\w+)'\n([^\n]*)\n\1/g)].map((m) => m[2])
+  return [...prompt.matchAll(/printf '%s' '([^'\n]*)' >>? /g)].map((m) => m[1])
 }
 
 /**

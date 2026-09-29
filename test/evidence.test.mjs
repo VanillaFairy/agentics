@@ -373,14 +373,13 @@ test('the CLI records a digest-checked token and prints an envelope, refusals in
   assert.equal(readdirSync(evidenceReturnsDir(repo)).length, returnsBefore, 'the damaged token kept no raw return')
 })
 
-test('the CLI records JSON written to a file in heredoc chunks, every seam dropped and ~ decoded', () => {
+test('the CLI records JSON written to a file with ~, backslash and apostrophe encoded', () => {
   const repo = gitRepo()
-  const payload = { items: [fresh({ claim: "it's C:\\src\\x ~b~t — \"quoted\"\n" })] }
-  const json = JSON.stringify(payload).replace(/~/g, '~t').replace(/\\/g, '~b')
-  assert.ok(!json.includes('\\'), 'nothing left for an escape-decoding layer to touch')
-  const third = Math.ceil(json.length / 3)
+  const payload = { items: [fresh({ claim: "it's C:\\src\\x ~b~t~q — \"quoted\"\n" })] }
+  const json = JSON.stringify(payload).replace(/~/g, '~t').replace(/\\/g, '~b').replace(/'/g, '~q')
+  assert.ok(!/[\\']/.test(json), 'nothing left for an escape-decoding layer or a single quote to touch')
   const file = join(repo, 'token.json')
-  writeFileSync(file, json.slice(0, third) + '\n' + json.slice(third, 2 * third) + '\r\n' + json.slice(2 * third) + '\n')
+  writeFileSync(file, json)
 
   const run = (digest) => JSON.parse(spawnSync(process.execPath,
     [CLI, 'record', '--repo', repo, '--kind', 'survey', '--digest', digest, '--json-file', file], { encoding: 'utf8' }).stdout)

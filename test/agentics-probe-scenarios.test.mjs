@@ -8,11 +8,16 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   carriedContext, carriedEnvelope, contextPathFor, excerptLocations, jsonChunks, recordedLine, runWorkflow, scriptedAgents,
 } from './harness/workflow-host.mjs'
 import { itemId } from '../lib/evidence.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
+import { decodeArgs } from '../lib/store.mjs'
 
 const WF = fileURLToPath(new URL('../service-workflows/attack-document-with-independent-reviewers.workflow.js', import.meta.url))
 
@@ -807,6 +812,28 @@ test('findings too many for one line are recorded by one courier, written in chu
   for (const chunk of chunks) assert.ok(chunk.length <= 6000)
   assert.deepEqual(recordedLine(recs[0].prompt).entry.items.map((i) => i.claim).sort(), many.map((f) => f.claim).sort())
   assert.deepEqual(result.unrecorded, [])
+})
+
+test('a courier copying the chunked writes as the harness shows them, every line indented, writes the token intact', async () => {
+  const many = Array.from({ length: 12 }, (_, i) =>
+    withLines({ claim: `gap ${i}: it's C:\\src\\x ~b~q $HOME \`id\` "quoted" ` + 'x'.repeat(600) }))
+  const { prompts } = await runWorkflow(WF, { args: ARGS, agent: probeAgents({ 'probe:yagni': found(many) }) })
+  const prompt = prompts.find((p) => p.opts.label === 'record').prompt
+  const { digest } = recordedLine(prompt)
+
+  const dir = mkdtempSync(join(tmpdir(), 'agentics-token-')).replace(/\\/g, '/')
+  const shown = prompt.split('\n').map((line) => '  ' + line.replaceAll('C:/repo', dir))
+  const writes = shown.filter((line) => /^\s*(mkdir -p |printf )/.test(line))
+  assert.ok(writes.length > 1, 'twelve long findings take several writes')
+  for (const write of writes) {
+    const ran = spawnSync('bash', ['-c', write], { encoding: 'utf8' })
+    assert.equal(ran.status, 0, ran.stderr)
+  }
+
+  const file = /--json-file "([^"]+)"/.exec(shown.join('\n'))[1]
+  const { value, problem } = decodeArgs(['--json-file', file, '--digest', digest])
+  assert.equal(problem, null, JSON.stringify(problem))
+  assert.deepEqual(value.items.map((i) => i.claim).sort(), many.map((f) => f.claim).sort())
 })
 
 test('the result names the return the round\'s findings were recorded in', async () => {

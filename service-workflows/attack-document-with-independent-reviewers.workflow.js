@@ -286,27 +286,27 @@ function fnv1a(text) {
 const COMMAND_BUDGET = 6000
 
 /**
- * A token this script mints, as the courier carries it: written as one line of JSON to a file
- * under `root`, in heredoc chunks of at most COMMAND_BUDGET characters, then read by `cli` with
- * `--json-file` under the token's digest and removed. `~` goes as `~t` and `\` as `~b`, so no
- * backslash reaches the layer that decodes escapes in a Bash call (lib/store.mjs jsonFileText).
- * Returns the courier's writes and its one command.
+ * A token this script mints, as the courier carries it: one line of JSON written to a file under
+ * `root` by single-quoted `printf` calls of at most COMMAND_BUDGET characters each, then read by
+ * `cli` with `--json-file` under the token's digest and removed. `~` goes as `~t`, `\` as `~b`
+ * and `'` as `~q`, so no backslash reaches the layer that decodes escapes in a Bash call and no
+ * quote ends the argument (lib/store.mjs jsonFileText). Every write is a single line: the harness
+ * indents each line of a computed prompt, and that indent must land before a command, never
+ * inside the token. Returns the courier's writes and its one command.
  */
 function viaJsonFile(cli, token, root) {
-  const json = JSON.stringify(token).replace(/~/g, '~t').replace(/\\/g, '~b')
+  const json = JSON.stringify(token).replace(/~/g, '~t').replace(/\\/g, '~b').replace(/'/g, '~q')
   const digest = fnv1a(canonical(token))
   const dir = `${root}/.agentics/.state`
   const file = `${dir}/token-${digest}.json`
-  let delimiter = 'AGENTICS_JSON'
-  while (json.includes(delimiter)) delimiter += '_'
 
   const writes = []
   for (let i = 0; i < json.length;) {
     let end = Math.min(i + COMMAND_BUDGET, json.length)
     const last = json.charCodeAt(end - 1)
     if (end < json.length && last >= 0xd800 && last <= 0xdbff) end--
-    const into = i === 0 ? `mkdir -p "${dir}" && cat > "${file}"` : `cat >> "${file}"`
-    writes.push(`${into} <<'${delimiter}'\n${json.slice(i, end)}\n${delimiter}`)
+    const chunk = `printf '%s' '${json.slice(i, end)}'`
+    writes.push(i === 0 ? `mkdir -p "${dir}" && ${chunk} > "${file}"` : `${chunk} >> "${file}"`)
     i = end
   }
   return { writes, command: `${cli} --digest ${digest} --json-file "${file}"; rm -f "${file}"` }

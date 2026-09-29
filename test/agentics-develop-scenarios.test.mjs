@@ -883,6 +883,26 @@ const until = (pred) => new Promise((resolve) => {
   check()
 })
 
+test('a stop the user answers while the run goes on is relaunched by the same run', async () => {
+  const sim = simulate([composite('.'), row('a'), row('b')])
+  let asked = 0
+  const { result } = await run(sim, {
+    'implementer:a#1': () => (asked++ === 0
+      ? { status: 'blocked', detail: 'needs a key', concerns: [], commits: [] }
+      : { status: 'done', detail: '', concerns: [], commits: [{ sha: 'c2', subject: 'do a' }] }),
+    'implementer:b#1': async () => {
+      await until(() => sim.statusOf('a') === 'escalated')
+      // The session asked, the user answered, and the session recorded the retry.
+      sim.event({ kind: 'replanned', node: 'a', reason: 'retry_escalated', by: 'session' })
+      return { status: 'done', detail: '', concerns: [], commits: [{ sha: 'c1', subject: 'do b' }] }
+    },
+  })
+  assert.equal(sim.opens.filter((o) => o === 'a').length, 2, 'a ran again in the same invocation')
+  assert.deepEqual(result.escalations, [], 'an answered stop is no longer reported')
+  assert.equal(sim.statusOf('a'), 'merged')
+  assert.equal(result.coverage.complete, true)
+})
+
 test('a launch whose node a merge parked while the tick was in flight is dropped, never started', async () => {
   const api = [{ name: 'api', paths: ['src/api.js'] }]
   const sim = simulate([composite('.'), row('a', { provides: api }), row('c', { deps: ['a'], consumes: api }), row('b')], {

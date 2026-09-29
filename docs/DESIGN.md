@@ -1380,6 +1380,21 @@ couriers that run the boundaries move it live while the workflow runs.
 **Why a flag:** each todo move is a turn on a courier, which is cheap but not free; a user who
 watches the log or checks in only at the end should not pay for it.
 
+**Questions are asked while the run goes on.** A park or an escalation stops only its node; the
+develop session watches for them with `lib/status.mjs watch`, which prints one line per
+`escalated` or `parked` event of the execution after the watch began and exits when postflight
+appends `ended`. The session asks the user at once and records the answer: a re-spec's approval and
+compile clears a park (`replanned`, `answered`), and `lib/boundary.mjs retry --node <id>` clears an
+escalation (`replanned`, `retry_escalated`). The workflow snapshots the stops it decided before
+each schedule call; a node from that snapshot the schedule launches anyway is one disk no longer
+holds stopped, so the workflow drops it from its escalations and parks and runs it again in the
+same invocation. A stop decided while a call was out is not in the snapshot and stays dropped
+(see [Boundaries](#boundaries)); a plugin fault is never relaunched this way.
+
+**Why:** the user's attention is the scarcest resource in the loop. A question held until the whole
+run returns idles the node for the run's length and hands the user a batch at the end; asked at
+once, it is answered while other work goes on and the node rejoins the run.
+
 The agentics viewer (vanillafairy's `agentics-viewer/`) draws an effort live from
 `lib/status.mjs snapshot`. It reads, and never writes, the effort store.
 
@@ -1635,7 +1650,8 @@ failed_alone[], combination[], conflict}`; `checkpoint {reason, detail, executio
 `batch-started {target, pre, children}`; `checkpoint-confirmed {gaps?}` (what the user
 confirmed past, printed by the same command); `drift-ruled {node, contract, head_sha, ruling, why}`
 and `stale-ruled {node, base_now, ruling, why}` (an analyst's `unaffected`); `invocation {}`, one per preflight, whose count
-numbers the invocation's record ids; `fault {node, channel, detail}`, a unit a plugin fault ended. A line the workflow decided carries its `rid`.
+numbers the invocation's record ids; `fault {node, channel, detail}`, a unit a plugin fault ended;
+`ended {}`, one per postflight, where a watching session stops. A line the workflow decided carries its `rid`.
 
 `journal.jsonl` (what was observed, by whoever observed it): `verify-observed {node, branch,
 worktree, base_sha, head_sha, stop_reason, build, typecheck, suite, failing_tests, baseline_failing,

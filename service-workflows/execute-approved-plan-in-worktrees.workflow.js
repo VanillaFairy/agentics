@@ -584,6 +584,16 @@ function park(id, why, question) {
   note('parked ' + id + ' (' + why + '): waiting on the user')
 }
 
+/** The user answered a node this invocation stopped, and disk says it is ready again: it runs on. */
+function answered(id) {
+  stoppedHere.delete(id)
+  for (const list of [escalations, parked]) {
+    const at = list.findIndex((x) => x.id === id)
+    if (at !== -1) list.splice(at, 1)
+  }
+  note(id + ': answered while the run went on — relaunched')
+}
+
 function approve(row, st, atIntegration) {
   // Parked by this invocation while its chain was running (contract drift): the user rules first,
   // and the approval is not recorded — a resume re-derives it from the measurement.
@@ -1357,6 +1367,9 @@ for (;;) {
   for (const key of finished) running.delete(key)
   finished.clear()
   let tick
+  // Every stop decided before this call rides in it, so the schedule computes over them; one it
+  // launches anyway was answered on disk while the run went on — a re-spec or a session's retry.
+  const carriedStops = new Set(stoppedHere)
   try {
     ticks++
     tick = await boundary('schedule', { running: [...running.keys()], planning: [...planning], stopping: Boolean(stopping) },
@@ -1371,7 +1384,9 @@ for (;;) {
     break
   }
   for (const item of tick.launch || []) {
-    const key = item.unit + ':' + (item.id || item.target)
+    const id = item.id || item.target
+    if (carriedStops.has(id) && !faults.some((f) => f.id === id)) answered(id)
+    const key = item.unit + ':' + id
     if (!running.has(key) && stillLaunchable(item)) launch(key, () => UNITS[item.unit](item))
   }
   if (running.size === 0) break

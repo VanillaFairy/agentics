@@ -14,15 +14,15 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { append } from '../lib/ledger.mjs'
+import { append, seqMax } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
-import { checkpointOf, costOf, efforts, renderTodos, todosOf } from '../lib/status.mjs'
+import { checkpointOf, costOf, efforts, questionsSince, renderTodos, todosOf } from '../lib/status.mjs'
 import { effortDir, effortStateDir, executionDir } from '../lib/store.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/status.mjs', import.meta.url))
@@ -248,4 +248,31 @@ test('the checkpoint an execution last stopped at keeps its lists for the sessio
   assert.deepEqual(checkpointOf(repo, E, X1), { reason: 'blocking_gaps', detail: '1 gap', gaps })
   const out = execFileSync(process.execPath, [CLI, 'checkpoint', '--repo', repo, '--effort', E, '--execution', X1], { encoding: 'utf8' })
   assert.match(out, /D2 at \.: no entry realises it/)
+})
+
+test('a watch sees each question an execution raises after it started, and stops when an invocation ends', () => {
+  const repo = effortWith(TREE)
+  append(repo, E, 'events', { kind: 'escalated', node: 'a', execution: X1, reason: 'old', detail: 'before the watch' })
+  const start = seqMax(repo, E)
+  append(repo, E, 'events', { kind: 'parked', node: 'b', execution: X1, return: 'needs_decision', question: 'keep the cache?\nor drop it' })
+  append(repo, E, 'events', { kind: 'escalated', node: 'c', execution: X2, reason: 'blocked', detail: 'another execution' })
+  const q = questionsSince(repo, E, X1, start)
+  assert.deepEqual(q.lines.map((l) => l.line), ['parked b (needs_decision): keep the cache? / or drop it'])
+  assert.equal(q.ended, false)
+
+  append(repo, E, 'state:' + X1, { kind: 'ended' })
+  assert.equal(questionsSince(repo, E, X1, start).ended, true)
+})
+
+test('the watch command prints each question as it lands and exits when the invocation ends', async () => {
+  const repo = effortWith(TREE)
+  const child = spawn(process.execPath, [CLI, 'watch', '--repo', repo, '--effort', E, '--execution', X1])
+  let out = ''
+  child.stdout.on('data', (d) => { out += d })
+  const exited = new Promise((resolve) => child.on('exit', resolve))
+  await new Promise((resolve) => setTimeout(resolve, 1500))
+  append(repo, E, 'events', { kind: 'escalated', node: 'a', execution: X1, reason: 'blocked', detail: 'needs a key' })
+  append(repo, E, 'state:' + X1, { kind: 'ended' })
+  assert.equal(await exited, 0)
+  assert.equal(out.trim(), 'escalated a (blocked): needs a key')
 })

@@ -307,6 +307,19 @@ Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/execute-approved
 owns; it never touches the user's branch or tree. Uncommitted edits in the user's tree are not in
 its base — say so when the tree is dirty. While it runs the todo list moves live; do not poll.
 
+**Questions arrive while it runs.** Right after the launch, arm a watch (re-arm it on expiry while
+the workflow still runs):
+
+```
+Monitor({ command: 'node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" watch --repo . --effort <e> --execution <stamp>', description: 'agentics questions for <e>', timeout_ms: 3600000 })
+```
+
+Each line is a parked or escalated node: ask the user at once (step 4b or 4c) until the answer
+settles it. A re-spec's approval and compile clears a park; an escalation whose cause is dealt with
+is cleared with `node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e>
+--execution <stamp> --node <id>`. The running workflow relaunches the node on its next tick; if it
+has already returned, relaunch now with the same stamp.
+
 **Resuming.** Inside this conversation, `resumeFromRunId` with the same args replays finished
 agents from cache. After a hard kill, or from another session, relaunch with the same `execution`:
 preflight adopts the envelope and each task resumes at its next undone action

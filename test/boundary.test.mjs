@@ -128,6 +128,7 @@ test('a leaf from preflight to landing: open, measure, merge, close, land, clean
     records: [{ file: 'events', entry: { kind: 'claims', node: '.', head_sha: review.launch[0].where.head, review: 'done', claims: [] } }],
   })
   assert.equal(post.closed, true)
+  assert.ok(readLog(r, 'e1', 'state:' + STAMP).entries.some((e) => e.kind === 'ended'), 'a watching session stops at postflight')
   assert.equal(post.summary.done, true)
   assert.equal(post.cleanup_n, 1)
   assert.equal(post.integration.branch, 'agentics/e1')
@@ -331,6 +332,19 @@ test('a base that moved under a leaf is handed on for a ruling, never a checkpoi
 
   append(r, 'e1', 'state:' + STAMP, { kind: 'stale-ruled', node: 'a', base_now: now, ruling: 'unaffected', why: 'same sum' })
   assert.equal(B(r, 'preflight', { root: '.', commands: COMMANDS }).stale, null, 'ruled once against this head, not asked again')
+})
+
+test('the session\'s retry clears a stop, so a running execution relaunches the node', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/add.mjs'] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  append(r, 'e1', 'events', { kind: 'escalated', node: 'a', execution: STAMP, reason: 'blocked', detail: 'needs a key' })
+  assert.equal(readTree(r, 'e1').status.get('a').status, 'escalated')
+  const run = spawnSync(process.execPath, [fileURLToPath(new URL('../lib/boundary.mjs', import.meta.url)), 'retry',
+    '--repo', r, '--effort', 'e1', '--execution', STAMP, '--node', 'a', '--node', 'nope'], { encoding: 'utf8' })
+  assert.deepEqual(JSON.parse(run.stdout), { retried: ['a'], error: null })
+  assert.notEqual(readTree(r, 'e1').status.get('a').status, 'escalated')
+  assert.deepEqual(B(r, 'schedule', { running: [] }).launch.map((l) => l.id), ['a'])
 })
 
 test('drift: a landed diff under a contract a pending node consumes is flagged; its own provider is not', async () => {

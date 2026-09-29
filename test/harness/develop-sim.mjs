@@ -286,6 +286,7 @@ export function simulate(nodes, script = {}) {
 
   sim.courier = courier
   sim.statusOf = statusOf
+  sim.event = event
   return sim
 }
 

@@ -106,7 +106,19 @@ const ROWS = [
   }],
   ['a passed and a failed named check', m({ discriminator: [disc(true, true)],
     checks: [{ command: 'a', status: 'passed' }, { command: 'b', status: 'failed' }] }), {
-    tdd: ['check'], trivial: ['check'], verify: ['check'], red: ['discriminator', 'suite'], green: true,
+    tdd: ['check'], trivial: ['check'], verify: ['check'], red: ['discriminator', 'suite'], green: ['check'],
+  }],
+  ['a check failed only by a test that fails at the base too', m({ discriminator: [disc(true, true)],
+    checks: [{ command: 'a', status: 'failed', failing_tests: [{ file: 'test/x.test.mjs', id: 'x' }],
+      baseline_failing: [{ file: 'test/x.test.mjs', id: 'x' }] }] }), { tdd: true, trivial: true, verify: true, green: true }],
+  ['a check failed by a test of its own beside one failing at the base', m({ discriminator: [disc(true, true)],
+    checks: [{ command: 'a', status: 'failed', failing_tests: [{ file: 'test/x.test.mjs', id: 'x' }, { file: 'test/x.test.mjs', id: 'y' }],
+      baseline_failing: [{ file: 'test/x.test.mjs', id: 'x' }] }] }), { tdd: ['check'], trivial: ['check'], green: ['check'] }],
+  ['a check failed naming no test', m({ checks: [{ command: 'a', status: 'failed', failing_tests: [], baseline_failing: [] }] }), {
+    trivial: ['check'], verify: ['check'],
+  }],
+  ['no leaf tests ran', m({ suite: 'not_run', discriminator: [disc(true, true)], mutations: [bites] }), {
+    tdd: true, trivial: true, verify: true, audit: ['suite'],
   }],
   ['an unrunnable named check is not a pass', m({ checks: [{ command: 'a', status: 'unrunnable' }] }), {
     verify: ['check'], trivial: ['check'],

@@ -39,7 +39,7 @@ import {
   verify, parseArgs, isTestPath, worktreeProblem, extractFailures, checksFor, journalLine,
 } from '../lib/verify.mjs'
 import { readLog } from '../lib/ledger.mjs'
-import { measurementOk } from '../lib/verdict.mjs'
+import { measurementOk, suiteFailed } from '../lib/verdict.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import {
   BRANCH, BUILD, EFFORT, NODE, SUITE, SUITE_TAP, TEST_ONE, WIDGET_TEST,
@@ -445,7 +445,7 @@ test('a commit outside the declared locus is a blocking finding', (t) => {
 test('suite_output_tail is the suite\'s own last lines, byte for byte', (t) => {
   const { worktree, base, head } = order(t, { implemented: false })
 
-  const payload = verify(options({ worktree, base, head }))
+  const payload = verify(options({ worktree, base, head, extra: ['--mode', 'integration'] }))
 
   const direct = spawnSync(SUITE, { cwd: worktree, shell: true, encoding: 'utf8' })
   const expected = ((direct.stdout || '') + (direct.stderr || '')).split('\n').slice(-40).join('\n')
@@ -468,6 +468,8 @@ test('a passing suite carries no tail: nothing downstream ever opens one', (t) =
   const payload = verify(options({ worktree, base, head }))
 
   assert.equal(payload.suite, 'passed')
+  assert.equal(payload.suite_scope, 'scoped', 'a leaf runs the test files it changed, not the suite')
+  assert.match(payload.notes, /leaf tests: test\/widget\.test\.mjs/)
   assert.equal(payload.suite_output_tail, '',
     'a passing suite\'s output has no reader and is the largest field a courier carries')
 })
@@ -613,7 +615,7 @@ test('the observation is journalled by the process that observed it, through the
   assert.deepEqual(line.checks, [])
   assert.deepEqual(Object.keys(line).sort(), [
     'base_sha', 'baseline_failing', 'branch', 'build', 'checks', 'discriminator', 'failing_tests', 'head_sha', 'kind',
-    'mutations', 'node', 'seq', 'series_findings', 'stop_reason', 'suite', 'typecheck',
+    'mutations', 'node', 'seq', 'series_findings', 'stop_reason', 'suite', 'suite_scope', 'typecheck',
     'worktree',
   ], 'a resume re-derives the verdict from this line alone, so it carries every field ' +
      'lib/verdict.mjs reads — `typecheck`, `mutations` and `checks` included')
@@ -647,30 +649,44 @@ test('a test that fails at the base too is baseline, and a test the change broke
     "test('broken before', () => assert.fail('already broken'))\ntest('widget labels', () => assert.equal(typeof label, 'function'))\n" + extra
   const base = commit({ 'test/broken.test.mjs': broken('') }, 'Add a broken test')
   const leaf = { rigor: 'trivial', locus: ['README.md', 'src/widget.mjs'] }
-  const measure = (head) => verify({ ...options({ worktree, base, head }), locus: leaf.locus, rigor: 'trivial' })
+  const measure = (head) => verify({ ...options({ worktree, base, head }), locus: leaf.locus, rigor: 'trivial', checks: [SUITE] })
 
-  const readme = measure(commit({ 'README.md': 'changed\n' }, 'Touch the readme'))
-  assert.equal(readme.suite, 'failed')
-  assert.deepEqual(readme.baseline_failing.map((f) => f.file), ['test/broken.test.mjs'], readme.notes)
-  assert.equal(readme.baseline_failing.length, readme.failing_tests.length, 'every failure there fails at the base too')
+  const readmeHead = commit({ 'README.md': 'changed\n' }, 'Touch the readme')
+  const readme = measure(readmeHead)
+  assert.equal(readme.suite, 'not_run', 'a leaf that changed no test file runs no test beyond its checks')
+  assert.equal(readme.suite_scope, 'none')
+  const [asked] = readme.checks
+  assert.equal(asked.status, 'failed')
+  assert.deepEqual(asked.baseline_failing.map((f) => f.file), ['test/broken.test.mjs'], readme.notes)
+  assert.equal(asked.baseline_failing.length, asked.failing_tests.length, 'every failure there fails at the base too')
   assert.deepEqual(measurementOk(readme, leaf).failures, [], 'a failure that was already there is not this change\'s')
 
+  const merged = verify({ ...options({ worktree, base, head: readmeHead }), mode: 'integration' })
+  assert.equal(merged.suite, 'failed')
+  assert.equal(merged.baseline_failing.length, merged.failing_tests.length, merged.notes)
+  assert.equal(suiteFailed(merged), false, 'the merged head is not charged for a failure its base had')
+
   const broke = measure(commit({ 'src/widget.mjs': 'export const widget = () => { throw new Error(\'no\') }\n' }, 'Break the widget'))
-  assert.ok(broke.failing_tests.length > broke.baseline_failing.length, 'the change broke tests that pass at the base: ' + JSON.stringify(broke.failing_tests))
-  assert.ok(broke.baseline_failing.every((f) => f.file === 'test/broken.test.mjs'))
-  assert.ok(measurementOk(broke, leaf).failures.some((f) => f.check === 'suite'), 'a regression in a file already failing at the base is not excused')
+  const [again] = broke.checks
+  assert.ok(again.failing_tests.length > again.baseline_failing.length, 'the change broke tests that pass at the base: ' + JSON.stringify(again.failing_tests))
+  assert.ok(again.baseline_failing.every((f) => f.file === 'test/broken.test.mjs'))
+  assert.ok(measurementOk(broke, leaf).failures.some((f) => f.check === 'check'), 'a regression in a file already failing at the base is not excused')
 })
 
-test('the tests run under the project\'s test lock, and the build outside it', (t) => {
+test('only a full suite runs under the project\'s test lock', (t) => {
   const { dir, worktree, base, head } = order(t)
   const lock = join(dir, '.agentics', '.state', 'locks', 'tests.lock').split('\\').join('/')
   const held = (want) => 'node -e "process.exit(require(\'fs\').existsSync(\'' + lock + '\') === ' + want + ' ? 0 : 1)"'
-  const payload = verify({
-    ...options({ worktree, base, head, extra: ['--repo', dir, '--effort', EFFORT, '--execution', EXECUTION, '--node', NODE] }),
-    rigor: 'trivial', build: held(false), suite: held(true),
-  })
-  assert.equal(payload.build, 'passed', 'the build ran with the lock free: ' + payload.notes)
-  assert.equal(payload.suite, 'passed', 'the suite ran holding the lock: ' + payload.notes)
+  const where = options({ worktree, base, head, extra: ['--repo', dir, '--effort', EFFORT, '--execution', EXECUTION, '--node', NODE] })
+
+  const merged = verify({ ...where, mode: 'integration', build: held(false), suite: held(true) })
+  assert.equal(merged.build, 'passed', 'the build ran with the lock free: ' + merged.notes)
+  assert.equal(merged.suite, 'passed', 'the merged head\'s suite ran holding the lock: ' + merged.notes)
+  assert.equal(merged.suite_scope, 'full')
+
+  const leaf = verify({ ...where, rigor: 'trivial', suite: held(true), checks: [held(false), held(true) + ' && echo whole'] })
+  assert.deepEqual(leaf.checks.map((c) => c.status), ['passed', 'passed'],
+    'a check runs with the lock free unless it runs the suite command: ' + leaf.notes)
   assert.equal(existsSync(lock), false, 'released once the tests ran')
 })
 
@@ -715,7 +731,7 @@ test('checksFor: the SPEC table, a role outranking its rigor and integration out
   assert.deepEqual(pick({ rigor: 'tests-only' }), ['tests-only', true, true, true, true, false])
   assert.deepEqual(pick({ rigor: 'tdd' }), ['tdd', true, true, true, true, false])
   assert.deepEqual(pick({ rigor: 'tdd-pair', role: 'red' }), ['red', true, true, false, false, false])
-  assert.deepEqual(pick({ rigor: 'tdd-triad', role: 'green' }), ['green', true, true, false, false, false])
+  assert.deepEqual(pick({ rigor: 'tdd-triad', role: 'green' }), ['green', true, true, false, true, false])
   assert.deepEqual(pick({ rigor: 'tdd-triad', role: 'audit' }), ['audit', true, false, true, false, true])
   assert.deepEqual(pick({}), ['tdd', true, true, true, true, false], 'no rigor measures as before rigor existed')
   assert.deepEqual(pick({ mode: 'integration', rigor: 'tdd-pair', role: 'red' }),
@@ -735,8 +751,8 @@ test('a trivial leaf asks no discriminator, and runs its named checks', (t) => {
   assert.deepEqual(payload.discriminator, [], 'a trivial change has no test that would not restate it')
   assert.deepEqual(payload.series_findings, [], 'but its series is still held to the locus')
   assert.deepEqual(payload.checks, [
-    { command: 'node -e "process.exit(0)"', status: 'passed' },
-    { command: 'node -e "process.exit(4)"', status: 'failed' },
+    { command: 'node -e "process.exit(0)"', status: 'passed', failing_tests: [], baseline_failing: [] },
+    { command: 'node -e "process.exit(4)"', status: 'failed', failing_tests: [], baseline_failing: [] },
   ])
   assert.match(payload.notes, /check "node -e \\"process.exit\(4\)\\"": failed \(exit 4\)/)
 })
@@ -750,7 +766,7 @@ test('a named check that cannot be launched is unrunnable, never failed', (t) =>
     '--rigor', 'trivial', ...check('agentics-no-such-command-anywhere --flag'),
   ] }))
 
-  assert.deepEqual(payload.checks, [{ command: 'agentics-no-such-command-anywhere --flag', status: 'unrunnable' }])
+  assert.deepEqual(payload.checks, [{ command: 'agentics-no-such-command-anywhere --flag', status: 'unrunnable', failing_tests: [], baseline_failing: [] }])
   assert.equal(payload.stop_reason, 'completed', 'an unrunnable check is an outcome the verdict reads')
 })
 
@@ -769,9 +785,10 @@ test('a verify leaf runs no series and no discriminator: it writes nothing', (t)
   assert.equal(payload.error, null, 'no single-test command is needed where no discriminator runs')
   assert.deepEqual(payload.series_findings, [])
   assert.deepEqual(payload.discriminator, [])
-  assert.deepEqual(payload.checks, [{ command: 'node -e "process.exit(0)"', status: 'passed' }])
+  assert.deepEqual(payload.checks, [{ command: 'node -e "process.exit(0)"', status: 'passed', failing_tests: [], baseline_failing: [] }])
   assert.equal(payload.build, 'passed')
-  assert.equal(payload.suite, 'passed')
+  assert.equal(payload.suite, 'not_run', 'a leaf that writes nothing has no test of its own to run')
+  assert.equal(payload.suite_scope, 'none')
   assert.match(payload.notes, /series check not run/)
 })
 

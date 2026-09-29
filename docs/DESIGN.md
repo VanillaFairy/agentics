@@ -614,7 +614,7 @@ Every leaf carries a `rigor`, set by its author. Walk the table top-down; the fi
 | rigor | the work… | leaves | verification |
 |---|---|---|---|
 | `verify` | writes nothing: confirms a premise, proves a criterion already holds, measures | no producer; the named checks run at leaf-close | the checks' results, recorded; a failure is a finding for the parent, not a fix round |
-| `trivial` | writes a change a test would only restate: literal values and user-visible text (a window title, a label, a message), config values, docs, assets, renames behind an unchanged interface, dependency versions, wiring of existing parts | one implementer leaf | the named check, when the leaf needs one to show it works (build, typecheck, the existing suite, running it, a `HUMAN:` look); a test asserting the changed value is updated in the same leaf |
+| `trivial` | writes a change a test would only restate: literal values and user-visible text (a window title, a label, a message), config values, docs, assets, renames behind an unchanged interface, dependency versions, wiring of existing parts | one implementer leaf | the named check, when the leaf needs one to show it works (build, typecheck, the tests the change can reach, running it, a `HUMAN:` look); a test asserting the changed value is updated in the same leaf |
 | `tests-only` | only adds tests to code that is already correct | one test-author leaf | each new test passes now and fails under a mutation the test-author declared |
 | `tdd` | adds behaviour whose expected results the criteria state exactly | one implementer leaf, test first | at least one new test; each fails at base and passes now |
 | `tdd-pair` | adds behaviour where a wrong reading of the criteria would pass its author's own tests: edge-case rules, parsers, state machines, concurrency, contracts other nodes consume | a `red` test-author leaf, then a `green` implementer leaf | red: its tests fail for want of the implementation; green: they pass, tests untouched |
@@ -1084,9 +1084,6 @@ an empty conflict list too. Anything that is not `mergeOk` stops the batch. A co
 defect — loci were declared disjoint — surfaced to the user as an escalation, never resolved
 silently.
 
-A merge-batch whose merged tree equals the tree of a leaf head with a recorded green measurement
-skips re-verification.
-
 **A failing merged head** is reset to the last green head, and the script bisects the batch. A leaf
 that fails alone on the new head gets a fix round on its branch refreshed from the integration
 head; a composite or a cycle that fails alone has no one producer to send it to, and escalates
@@ -1290,8 +1287,8 @@ not hold first, a `cant_tell` counted apart from `met`). The session shows it, a
 ## Verification
 
 `lib/verify.mjs` runs the mechanical checks of one leaf — the commit series, the build, the
-typecheck, the suite, the discriminator, the declared mutations and the named checks — in one
-process. **Nothing in it decides whether the leaf passed.** It observes, prints exactly the fields
+typecheck, the leaf's own tests, the discriminator, the declared mutations and the named checks —
+in one process, and of a merged head — the build, the typecheck and the full suite. **Nothing in it decides whether the leaf passed.** It observes, prints exactly the fields
 the verdict reads, and journals its own `verify-observed` line inside the process that measured, so
 there is no window between the work and the record.
 
@@ -1304,7 +1301,7 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
 | tests-only | yes | passes-now half read | required (≥ 1 declared) | when given |
 | tdd | yes | full: fails at base, passes now | when declared | when given |
 | red | yes | red: fails now, fails at base | no | — |
-| green | yes | the red leaf's tests pass now | no | — |
+| green | yes | the red leaf's tests pass now | no | when given |
 | audit | no series expected | no | required | — |
 
 - **Absent is never inferred, in either direction.** `absent` means the repository defines no such
@@ -1323,14 +1320,26 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
   back.
 - A test that could not be launched at base is `test_unrunnable`; a suite failure that cannot be
   placed against a test file raises `suite_failures_unnamed`.
-- **One test run at a time in the project.** Everything that runs tests (the suite, the
-  discriminator, the mutations, the named checks) runs under `.agentics/.state/locks/tests.lock`,
-  shared by every execution and session; build and typecheck run outside it. Suites that share the
-  machine time out for it, and a failure that is contention is nobody's to fix. The wait is long:
-  the caller is a detached job, never a courier.
-- **A failure that was already there is not the change's.** When the suite fails, each failing
-  test file the change did not touch (nor the cycle's tests) is run at the base and its failures
-  named the same way; a failing test whose same `{file, id}` fails there too is `baseline_failing`.
+- **A leaf runs the tests it is told to, and no others.** Its own tests are the test files its
+  diff changed, plus the cycle's test files for a green or an audit, each run through the
+  `test_one` template (`suite_scope: scoped`; `none`, with `suite: not_run`, when there are none).
+  Beside them it runs every criterion's `check:` command: the planner names there the narrowest
+  test run that decides the criterion, and the whole suite only when the change can reach every
+  test. The full suite runs once per merge-batch on the merged head (`suite_scope: full`), which is
+  where a leaf's reach beyond its own tests is caught and bisected back to it
+  ([Merging](#merging)). Stack-neutral on purpose: a file-level test template and a command per
+  criterion are all it asks of a repository.
+- **One full suite at a time in the project.** A full suite — the merged head's, or a named check
+  whose command contains the established suite command — runs under
+  `.agentics/.state/locks/tests.lock`, shared by every execution and session. Full suites that share
+  the machine time out for it, and a failure that is contention is nobody's to fix. Everything else
+  runs unlocked, so parallel leaves test in parallel. The wait is long: the caller is a detached
+  job, never a courier.
+- **A failure that was already there is not the change's.** When the suite or a named check
+  fails, each failing test file the change did not touch (nor the cycle's tests) is run at the base
+  and its failures named the same way; a failing test whose same `{file, id}` fails there too is
+  `baseline_failing`. A check's failures are named only when every one it printed could be placed
+  against a test file.
   A new failure in a file that was already failing for another test stays the change's. A fresh worktree missing a gitignored asset fails the same way
   at its base, and no commit inside a locus could move it.
 
@@ -1341,8 +1350,10 @@ or fail from the observations against the leaf's profile (every profile needs a 
 measurement, no failed build or typecheck and no blocking series finding; then per profile: a tdd
 leaf's new tests fail at base and pass now; a tests-only leaf's tests pass and every declared
 mutation bites; a red leaf's tests fail now and at base; a green leaf's cycle tests pass; an audit's
-mutations all bite with a passing suite; trivial and verify need their named checks and a suite
-that did not fail). A suite failed for the change only when one of its named failing tests is the
+mutations all bite over the cycle's tests; trivial, verify, tdd, tests-only and green need their
+named checks and their own tests not to have failed). A named check fails for the change when it
+did not pass, unless it failed naming tests every one of which fails at its base too
+(`checkFailed`). A suite failed for the change only when one of its named failing tests is the
 change's own: `baseline_failing` lists the failing tests, in files the change did not touch, whose
 same test fails at its base too, and `suiteFailed`/`ownFailing` leave them out, at a leaf and on an integration head
 alike (whose base is the head before the batch). A failure that names no test is never excused.
@@ -1711,11 +1722,14 @@ latest, and whether an escalation or park is newer than the replan that would cl
   merge-batch's integration check in `lib/boundary.mjs`.
 
 `stop_reason` (`completed | environment_broken`, broken exactly when `error` is set); `build`,
-`typecheck`, `suite` (`passed | failed | absent`); `suite_output_tail` (only when the suite failed);
+`typecheck` (`passed | failed | absent`); `suite` (`passed | failed | absent | not_run`) and
+`suite_scope` (`full` on a merged head, `scoped` for a leaf's own tests, `none` when nothing ran);
+`suite_output_tail` (only when the suite failed);
 `failing_tests[{file, id}]`; `baseline_failing[{file, id}]` (failing tests that fail at the base too);
 `discriminator[{test_id, failed_on_base, passes_now}]`;
 `mutations[{file, applied, unapplied_reason, expect_failing, observed_failing, bites}]`;
-`series_findings[{sha, check, message, blocking}]`; `checks[{command, status}]`; `notes`; `error`
+`series_findings[{sha, check, message, blocking}]`; `checks[{command, status, failing_tests,
+baseline_failing}]` (`status` `passed | failed | unrunnable`); `notes`; `error`
 (`null` or `{kind, message}`: `no_worktree`, `main_worktree`, `series_unreadable`,
 `command_unknown`, `shell_refused`, `suite_failures_unnamed`, `base_checkout_refused`,
 `test_unrunnable`, `tree_not_restored`); `journal` (`null` or `{written, error}`). The series checks
@@ -1739,7 +1753,7 @@ Frontmatter `{id, kind, roles, paths, observed_at, source, command?}`; body `Whe
 
 `.agentics/config.json {max_parallel}`; `slots/<n>.lock {effort, execution, node}`;
 `locks/locus/<fnv1a(path)>.lock {path, node, execution}`; `.agentics/.state/locks/tests.lock`, the
-project's test lock. Branch, test and mutex locks are taken by `withLock`: the lock is a directory
+project's full-suite lock. Branch, test and mutex locks are taken by `withLock`: the lock is a directory
 holding one holder file, named for that acquisition, `{pid, host, at}`, built beside the lock and
 renamed into place, so a lock is never seen without its holder. A holder on this host is broken
 exactly when its pid is dead; one from another host after ten minutes. Breaking removes the holder

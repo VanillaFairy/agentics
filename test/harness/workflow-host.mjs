@@ -119,8 +119,9 @@ export function scriptedAgents(script) {
 
 /** Every field lib/verify.mjs prints, in the state it prints them in when nothing was observed. */
 const BLANK_MEASUREMENT = {
-  stop_reason: 'completed', build: 'absent', typecheck: 'absent', suite: 'absent', suite_output_tail: '',
-  failing_tests: [], baseline_failing: [], discriminator: [], mutations: [], series_findings: [], notes: '',
+  stop_reason: 'completed', build: 'absent', typecheck: 'absent', suite: 'not_run', suite_scope: 'none',
+  suite_output_tail: '', failing_tests: [], baseline_failing: [], discriminator: [], mutations: [],
+  series_findings: [], checks: [], notes: '',
   error: null, journal: null,
 }
 

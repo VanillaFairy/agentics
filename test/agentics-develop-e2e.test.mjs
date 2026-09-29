@@ -90,7 +90,7 @@ for (const jobs of ['inline', 'detached']) test('an effort executes end to end t
     { id: '.', kind: 'composite', title: 'the change', defines: [{ id: 'D1', text: 'a exists' }, { id: 'D2', text: 'greet the world' }] },
     { id: 'a', kind: 'leaf', title: 'Add a', rigor: 'tdd', locus: ['src/a.mjs', 'test/a.test.mjs'], decisions: ['D1'], acceptance: [{ text: 'a() is 1', check: 'node --test', decisions: ['D1'] }] },
     { id: 'b', kind: 'composite', title: 'Greet', decisions: ['D2'] },
-    { id: 'b/c', kind: 'leaf', title: 'Write notes', rigor: 'trivial', locus: ['NOTES.md'], decisions: ['D2'], acceptance: [{ text: 'notes exist', check: 'the suite', decisions: ['D2'] }] },
+    { id: 'b/c', kind: 'leaf', title: 'Write notes', rigor: 'trivial', locus: ['NOTES.md'], decisions: ['D2'], acceptance: [{ text: 'notes exist', check: 'node --test --test-reporter=spec', decisions: ['D2'] }] },
   ])
   assert.equal(added.ok, true, JSON.stringify(added.problems))
 

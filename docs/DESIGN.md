@@ -1599,11 +1599,12 @@ Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}],
   dial, pace, commands, resumed}`, `counts {nodes, leaves, gaps, untraced}`, `freed`,
   `dirty_worktrees`, `commands`, `max_parallel`, `records`.
 - **schedule** — `launch[]`, `idle`, `max_parallel`, `commands`, `records`. A launch is one of
-  `{unit: plan, id, why, row}`, `{unit: leaf, id, row, parent, facts}`, `{unit: merge, target,
+  `{unit: plan, id, why, row}` (its row with the folder's `intent`), `{unit: leaf, id, row, parent
+  {id, title, kind, author, spec_path}, facts}`, `{unit: merge, target,
   children[{id, head_sha}], cycles[[id]]}`, `{unit: review, id, row, earned, where {branch,
   worktree, head, base}, children, unreviewed}`. `facts` is the resume ladder's row for the leaf:
   `{id, next_action, note, branch, worktree, head_sha, base_sha, approved_head, commits, dirty,
-  rounds, brief_path}`. A row is `{id, title, intent, kind, author, rigor, role, provides_n,
+  rounds, brief_path}`. A row is `{id, title, kind, author, rigor, role, provides_n,
   decisions, dispatch, ground_known, rev, spec_path, children_n, own_review}`.
 - **leaf-open** — `status` (`opened | no_slot | locus_held | busy | refused`), `branch`, `worktree`,
   `base_sha`, `head_sha`, `rebased`, `brief_path`, `brief_digest`, `report_path`, `slot`,

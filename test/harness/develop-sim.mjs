@@ -115,10 +115,15 @@ export function simulate(nodes, script = {}) {
     const r = sim.nodes.get(id)
     if (!r) return null
     return {
-      id, title: r.title, intent: r.intent || '', kind: r.kind, author: r.author, rigor: r.rigor, role: r.role,
+      id, title: r.title, kind: r.kind, author: r.author, rigor: r.rigor, role: r.role,
       provides_n: (r.provides || []).length, decisions: r.decisions, dispatch: r.dispatch, ground_known: r.ground_known,
       rev: r.rev || 0, spec_path: r.spec_path, children_n: childrenOf(sim.nodes, id).length, own_review: r.own_review === true,
     }
+  }
+
+  const parentRow = (id) => {
+    const { title, kind, author, spec_path } = rowFor(parentOf(id))
+    return { id: parentOf(id), title, kind, author, spec_path }
   }
 
   const input = (args) => {
@@ -148,8 +153,9 @@ export function simulate(nodes, script = {}) {
       return {
         boundary: 'schedule', ok: true, error: null, idle, max_parallel: 4, commands: null, todos: [], notes: [],
         launch: launch.map((l) => (l.unit === 'merge' ? l
-          : l.unit === 'leaf' ? { ...l, row: rowFor(l.id), parent: rowFor(parentOf(l.id)), facts: (script.facts || {})[l.id] || null }
-            : { ...l, row: rowFor(l.id) })),
+          : l.unit === 'leaf' ? { ...l, row: rowFor(l.id), parent: parentRow(l.id), facts: (script.facts || {})[l.id] || null }
+            : l.unit === 'plan' ? { ...l, row: { ...rowFor(l.id), intent: sim.nodes.get(l.id).intent || '' } }
+              : { ...l, row: rowFor(l.id) })),
       }
     },
     'leaf-open'(args) {
@@ -198,7 +204,7 @@ export function simulate(nodes, script = {}) {
       sim.integ.set(args.target, { branch: out.target_branch, worktree: out.target_worktree, head: out.head_sha, base: out.target_base })
       out.failed_alone = out.failed_alone.map((f) => {
         const single = (!f.ids || f.ids.length <= 1) && (sim.nodes.get(f.id) || {}).kind === 'leaf'
-        return single ? { ...f, row: rowFor(f.id), parent: rowFor(parentOf(f.id)), facts: (script.facts || {})[f.id] || null } : f
+        return single ? { ...f, row: rowFor(f.id), parent: parentRow(f.id), facts: (script.facts || {})[f.id] || null } : f
       })
       return out
     },

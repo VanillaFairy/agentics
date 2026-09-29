@@ -322,14 +322,15 @@ changes. An explanation only in chat beside the dialog, or only in your thinking
 never sees, does not count, nor does a re-ask that refers to one ("given those uses", "as above").
 <!-- /agentics:verbatim -->
 
-**a. Checkpoint.** Non-null means nothing new was dispatched.
+**a. Checkpoint.** Non-null means nothing new was dispatched; what it found is printed by
+`lib/status.mjs checkpoint --repo . --effort <e> --execution <stamp>`.
 
 | `checkpoint.reason` | means | to proceed |
 |---|---|---|
 | `existing_execution` | an open execution's root is an ancestor or descendant of this one (`detail`) | resume that one by its stamp (`lib/status.mjs list` shows it); relaunch with `confirmed_duplicate: true` only when both are meant to run |
-| `blocking_gaps` | a decision no entry realises, or evidence a node needs was not reached (`detail`, `notes`) | a re-spec (c): an entry that realises the decision — or, on the user's go, relaunch with `confirmed_gaps: true` |
+| `blocking_gaps` | a decision no entry realises, or evidence a node needs was not reached (the checkpoint's `gaps`) | a re-spec (c): an entry that realises the decision — or, on the user's go, relaunch with `confirmed_gaps: true` |
 | `parked` | `plan_only`, or nodes await the user | show the plan (`lib/status.mjs show`) or answer them (c); relaunch |
-| `stale` | the user's branch moved under the plan; `drift` lists per task the `writes` and `reads` that moved | the user rules per task; relaunch with `confirmed_stale: true` for "still valid", or re-spec a task that needs replanning first (c) |
+| `stale` | the user's branch moved under the plan; the checkpoint's `stale` lists per task the `writes` and `reads` that moved | the user rules per task; relaunch with `confirmed_stale: true` for "still valid", or re-spec a task that needs replanning first (c) |
 | anything else | the launch failed (`bad_input`, `preflight_failed`, `no_such_node`, a refusal) | fix what `detail` says; relaunch |
 
 **b. Escalations** — `{id, reason, detail}`, each to the user. They are decisions, not
@@ -357,8 +358,9 @@ parks the re-approval cleared; a park it did not clear (no spec changed, as with
 `contract_drift` ruled unaffected) is cleared by relaunching with `retry_escalated: [<id>]`. Then
 relaunch with the **same** `execution`.
 
-**d. Blocked** — `{id, blocked_by}`: never dispatched because what they depend on did not land.
-Name the root cause; do not relaunch for them while it is still escalated.
+**d. Blocked** — `{blocked_by, leaves_n}`: how many tasks were never dispatched because a node they
+depend on, or whose files they share, did not land. Name that node as the root cause; do not
+relaunch for them while it is still escalated.
 
 **e. Integration.** `integration.branch` and `head_sha`, then `reviews` per folder: criticals,
 and claims that did not hold, were parked (c); majors are the user's decision queue, reported as

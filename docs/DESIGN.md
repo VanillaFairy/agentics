@@ -1851,7 +1851,8 @@ baseline_failing}]` (`status` `passed | failed | unrunnable`); `notes`; `error`
 `command_unknown`, `shell_refused`, `suite_failures_unnamed`, `base_checkout_refused`,
 `test_unrunnable`, `tree_not_restored`); `journal` (`null` or `{written, error}`). The series checks
 come from `lib/commit-series.mjs`: `empty-series`, `empty-commit`, `locus-breach`, `wip-subject`,
-`checkpoint-commit`, `and-subject`, `subject-length`.
+`checkpoint-commit`, `and-subject`, `subject-length`. They run over `base..HEAD` less every merge
+whose later parents the base holds: a refresh from the parent, not the leaf's work.
 
 ### Gotcha file
 

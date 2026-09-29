@@ -53,7 +53,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseLog, analyzeSeries } from '../lib/commit-series.mjs'
+import { parseLog, analyzeSeries, baseMerges } from '../lib/commit-series.mjs'
 
 const SHA_A = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 const SHA_B = 'b2c3d4e5f60718293a4b5c6d7e8f90123456789a'
@@ -863,4 +863,18 @@ test('a clean CRLF series inside its locus produces no findings', () => {
   )
 
   assert.deepEqual(analyzeSeries(parseLog(text), LOCUS), [])
+})
+
+test('a merge whose later parents the base holds is a refresh; one that brings in outside work is not', () => {
+  // rev-list --parents <base>..HEAD: SHA_A and SHA_C are the leaf's, SHA_B merged the parent
+  // (SHA_D, in the base) in, SHA_E merged SHA_C, which the range holds.
+  const text = crlf([
+    SHA_E + ' ' + SHA_B + ' ' + SHA_C,
+    SHA_C + ' ' + SHA_D,
+    SHA_B + ' ' + SHA_A + ' ' + SHA_D,
+    SHA_A + ' ' + SHA_D,
+  ].join('\n') + '\n')
+
+  assert.deepEqual([...baseMerges(text)], [SHA_B])
+  assert.deepEqual([...baseMerges('')], [])
 })

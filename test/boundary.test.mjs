@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 
-import { land, runBoundary } from '../lib/boundary.mjs'
+import { land, recordsToAppend, runBoundary } from '../lib/boundary.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
 import { heldBy } from '../lib/locks.mjs'
 import { renderLanding } from '../lib/render.mjs'
@@ -416,14 +416,16 @@ test('an escalation repeated after a retry is recorded again, and a composite es
   const r = repo()
   seedTree(r, 'e1', [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { rigor: 'trivial', locus: ['src/a.mjs'] })])
   B(r, 'preflight', { root: '.', commands: COMMANDS })
-  const esc = { file: 'events', entry: { kind: 'escalated', node: 'c/a', reason: 'blocked', detail: '' } }
-  B(r, 'postflight', { status: 'paused', records: [esc] })
+  const esc = (rid) => ({ rid, file: 'events', entry: { kind: 'escalated', node: 'c/a', reason: 'blocked', detail: '' } })
+  B(r, 'postflight', { records: [esc('1.1')] })
+  B(r, 'postflight', { records: [esc('1.1')] })
+  assert.equal(readLog(r, 'e1', 'events').entries.filter((e) => e.kind === 'escalated').length, 1, 'a record sent again lands once')
   B(r, 'preflight', { root: '.', commands: COMMANDS, retry_escalated: ['c/a'], confirmed_duplicate: true })
   assert.equal(readTree(r, 'e1').status.get('c/a').status, 'planned')
-  B(r, 'postflight', { status: 'paused', records: [esc] })
+  B(r, 'postflight', { records: [esc('2.1')] })
   assert.equal(readTree(r, 'e1').status.get('c/a').status, 'escalated', 'the second occurrence landed in the ledger')
 
-  B(r, 'postflight', { status: 'paused', records: [{ file: 'events', entry: { kind: 'escalated', node: 'c', reason: 'merge_conflict', detail: '' } }] })
+  B(r, 'postflight', { records: [{ rid: '2.2', file: 'events', entry: { kind: 'escalated', node: 'c', reason: 'merge_conflict', detail: '' } }] })
   assert.equal(readTree(r, 'e1').status.get('c').status, 'escalated')
   const check = land(r, 'e1', 'check')
   assert.ok(check.open_escalations.some((e) => e.node === 'c'))
@@ -662,4 +664,13 @@ test('landing never counts .agentics/ as dirt, and still refuses any other untra
   const dirty = land(r, 'e1', 'merge')
   assert.equal(dirty.ok, false)
   assert.match(dirty.error, /dirty/)
+})
+
+test('a record lands once however often it is sent, and the same decision taken again lands again', () => {
+  const approved = (rid) => ({ rid, file: 'events', entry: { kind: 'approved', node: 'a', head_sha: 'h1' } })
+  const first = recordsToAppend([approved('1.4'), approved('1.4')], { execution: 'x' })
+  assert.equal(first.events.length, 1)
+  const onDisk = first.events.map((e, i) => ({ ...e, seq: i + 1 }))
+  assert.equal(recordsToAppend([approved('1.4')], { events: onDisk, execution: 'x' }).events.length, 0, 'sent again after a lost courier')
+  assert.equal(recordsToAppend([approved('2.1')], { events: onDisk, execution: 'x' }).events.length, 1, 'approved again at the same head after a retry')
 })

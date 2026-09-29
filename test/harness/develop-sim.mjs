@@ -9,6 +9,7 @@
 // tested against real git in test/boundary.test.mjs; the two meet at the payload shapes, which
 // live in docs/DESIGN.md#boundaries.
 
+import { recordsToAppend } from '../../lib/boundary.mjs'
 import { approvedHead } from '../../lib/resume.mjs'
 import { schedule, summarize } from '../../lib/schedule.mjs'
 import { parentOf } from '../../lib/store.mjs'
@@ -271,11 +272,10 @@ export function simulate(nodes, script = {}) {
     const [, name, token] = m
     const args = decode(token)
     sim.calls.push({ name, args })
-    for (const r of args.records || []) {
-      sim.records.push(r)
-      if (r.file === 'state') sim.state.push({ ...r.entry, seq: ++seq })
-      else event(r.entry)
-    }
+    for (const r of args.records || []) sim.records.push(r)
+    const fresh = recordsToAppend(args.records, { events: sim.events, state: sim.state, execution: '20260925-120000' })
+    fresh.events.forEach(event)
+    for (const e of fresh.state) sim.state.push({ ...e, seq: ++seq })
     const payload = JSON.parse(JSON.stringify(answer[name](args)))
     const damage = script.damage && script.damage(name, args, count('damage:' + name))
     return carriedEnvelope(payload, damage || undefined)

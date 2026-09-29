@@ -1437,6 +1437,7 @@ Fields as in [Nodes](#nodes). Event lines are `{kind, node, execution, seq, ...}
 (`return` is a replanning return, `needs_design`, `needs_respec`, `integration_critical`,
 `spec_defect`, `cant_tell` or `contract_drift`) ·
 `landed {into, merged_sha}` · `claims {head_sha, review: done | not_earned, claims[{claim, verdict, evidence}]}`.
+An event the workflow decided carries its record id, `rid`.
 
 ### Snapshot
 

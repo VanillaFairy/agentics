@@ -261,10 +261,13 @@ const COURIER_UP = { model: 'sonnet', effort: 'low' }
 // `schedule` boundary with the one row it needs. What this script holds is what only it can: the
 // units in flight, the decisions it took and has not yet handed to a boundary, and what it saw.
 
-const records = []              // decisions waiting for the next schedule, preflight or postflight
+const records = []              // decisions waiting for the next schedule or postflight
 const stoppedHere = new Set()   // nodes this invocation escalated or parked
 const planning = new Set()      // folders a running unit is replanning inline
-const running = new Map()       // unit key -> its promise
+const running = new Map()       // unit key -> its promise, until a tick has carried what it decided
+const finished = new Set()      // units that ended since the last tick was built
+let invocation = 0              // minted by preflight: what makes this invocation's record ids its own
+let minted = 0
 const failedChannels = []
 const notes = []
 const implemented = []
@@ -335,8 +338,13 @@ function courierPrompt(command) {
       : '')
 }
 
-/** The boundaries the main loop calls one at a time: only they carry the pending decisions. */
-const CARRIES_RECORDS = new Set(['preflight', 'schedule', 'postflight'])
+/**
+ * The boundaries the main loop calls one at a time: only they carry the pending decisions. Each
+ * record goes with an id of this invocation's, so a record sent again after a lost courier lands
+ * once, and the same decision taken again later (an approval after a retry) lands again.
+ */
+const CARRIES_RECORDS = new Set(['schedule', 'postflight'])
+const withId = (r) => (r.rid ? r : { ...r, rid: invocation + '.' + (++minted) })
 
 /**
  * Run one boundary entry point through a courier and believe its payload only after the digest.
@@ -347,7 +355,7 @@ const CARRIES_RECORDS = new Set(['preflight', 'schedule', 'postflight'])
  * transport failure, thrown for the caller to escalate.
  */
 async function boundary(name, a, ctx) {
-  const pending = CARRIES_RECORDS.has(name) ? records.splice(0, records.length) : []
+  const pending = CARRIES_RECORDS.has(name) ? records.splice(0, records.length).map(withId) : []
   const argsObject = { ...a, ...(CARRIES_RECORDS.has(name) ? { records: pending } : {}), progress }
   const token = base64(JSON.stringify(argsObject))
   const command = 'node "' + pluginRoot + '/lib/boundary.mjs" ' + name + ' --repo "' + repo +
@@ -1205,6 +1213,7 @@ if (pf.error) {
   note('preflight refused: ' + pf.error.message)
   return result({ reason: pf.error.kind || 'preflight_refused', detail: pf.error.message }, null)
 }
+invocation = pf.invocation
 for (const d of pf.dirty_worktrees || []) note('dirty worktree left in place (never forced): ' + d)
 const counts = pf.counts || {}
 if (counts.gaps) note(counts.gaps + ' traceability gap(s): node "' + pluginRoot + '/lib/status.mjs" checkpoint lists them when they stop a run')

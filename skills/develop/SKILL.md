@@ -260,8 +260,8 @@ No survey ran: the request named its ground.
 - **Decisions** are the request's items, one per item, `D1`…`Dn`, in the user's words and nothing
   added. Every `Dn` is realised by an entry.
 - **Plan**: a `task` for each item triage found atomic with known ground, rigor per
-  `docs/DESIGN.md#rigor`, every criterion naming its check (the narrowest tests that decide it, the
-  whole suite only when the change reaches every test) or starting `HUMAN:`; otherwise one
+  `docs/DESIGN.md#rigor`, every criterion naming its check (the tests the change clearly affects,
+  and from the gray area fast tests only, never big ones) or starting `HUMAN:`; otherwise one
   `sub-effort` with `author: planner` realising the items it covers.
 - **Evidence**: when the ground is unknown, say so and name the sub-effort whose survey will find it.
 
@@ -301,7 +301,7 @@ Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/execute-approved
 - `root` is the node to run: `.` for the root folder, a folder id, a group (`<folder>/<group>`) or
   one task. Compile `--folder` takes the folder that holds it.
 - `intelligence` on a fresh execution only. A resume passes none: it adopts its envelope.
-- `commands` only when the user named them: `{build, typecheck, suite, test_one}`.
+- `commands` only when the user named them: `{build, typecheck, suite, suite_fast, test_one}`.
 - The confirmations and `retry_escalated` only as step 4 directs.
 
 **Record the `runId`.** The execution works on `agentics/<effort>` and branches and worktrees it

@@ -131,7 +131,41 @@ test('uncommitted work in the worktree survives the discriminator', (t) => {
 
   assert.equal(payload.stop_reason, 'completed')
   assert.match(git(worktree, 'status', '--porcelain').stdout, /scratch\.txt/,
-    'the stash was popped — uncommitted work is nobody else\'s to discard')
+    'the work set aside came back — uncommitted work is nobody else\'s to discard')
+})
+
+test('the discriminator restores its own uncommitted work, whatever another tree stashes meanwhile', (t) => {
+  const { dir, worktree, base, head } = order(t)
+  writeFileSync(join(worktree, 'src', 'scratch.txt'), 'not committed\n')
+  writeFileSync(join(dir, 'tools', 'build.mjs'), '// another session\'s work\n')
+  // The test command, run once at head and once at base: at base another tree pops and pushes
+  // the stash stack every worktree of the repository shares.
+  const scratch = mkdtempSync(join(tmpdir(), 'agentics-stash-'))
+  t.after(() => rmSync(scratch, { recursive: true, force: true }))
+  const script = join(scratch, 'meanwhile.cjs').split('\\').join('/')
+  writeFileSync(script, `
+    const { spawnSync } = require('node:child_process')
+    const { existsSync, readFileSync, writeFileSync } = require('node:fs')
+    const count = ${JSON.stringify(join(scratch, 'count'))}
+    const n = (existsSync(count) ? Number(readFileSync(count, 'utf8')) : 0) + 1
+    writeFileSync(count, String(n))
+    if (n === 2) {
+      spawnSync('git', ['-C', ${JSON.stringify(dir)}, 'stash', 'pop'])
+      spawnSync('git', ['-C', ${JSON.stringify(dir)}, 'stash', 'push', '-m', 'foreign'])
+    }
+    process.exit(n === 2 ? 1 : 0)
+  `)
+
+  const payload = verify(options({ worktree, base, head, extra: ['--test-one', 'node ' + script + ' {file}'] }))
+
+  assert.equal(payload.stop_reason, 'completed', payload.notes)
+  assert.equal(payload.error, null)
+  assert.equal(git(worktree, 'status', '--porcelain').stdout.trim(), '?? src/scratch.txt',
+    'the worktree got its own work back, and nobody else\'s')
+  assert.doesNotMatch(git(dir, 'status', '--porcelain').stdout, /scratch\.txt/, 'and its work was never popped elsewhere')
+  assert.deepEqual(git(worktree, 'stash', 'list', '--format=%gs').stdout.trim().split('\n').map((s) => s.replace(/^.*: /, '')),
+    ['foreign'], 'the other tree\'s entry is still on the stack, and this one left nothing there')
+  assert.equal(git(worktree, 'for-each-ref', 'refs/worktree/').stdout.trim(), '')
 })
 
 // ---------------------------------------------------------------- the red series

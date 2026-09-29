@@ -1314,6 +1314,13 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
 - **The environment check runs first, and it refuses.** The discriminator stashes and moves HEAD,
   so the program first establishes that it stands in a linked worktree. It always puts the tree
   back, or says `tree_not_restored`.
+- **Uncommitted work is set aside by its own commit, off the shared stack.** Every worktree of a
+  repository, and every session in them, shares one stash stack, so a bare pop takes whatever is
+  on top. The work is stashed under a tag no other entry carries, kept under a ref of the
+  worktree's own (`refs/worktree/agentics-verify/<tag>`) and dropped from the stack at once; it
+  comes back by that exact commit. Nothing another tree stashes is popped here, and no pop
+  elsewhere takes this work. A drop goes by position, and one that took another entry puts it
+  back.
 - A test that could not be launched at base is `test_unrunnable`; a suite failure that cannot be
   placed against a test file raises `suite_failures_unnamed`.
 - **One test run at a time in the project.** Everything that runs tests (the suite, the

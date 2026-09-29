@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import {
-  ENTRY_KEYS, ENTRY_KINDS, GRADES, SECTIONS, checkFolder, checkSpec, hashSpec, parseSpec,
+  ENTRY_KEYS, ENTRY_KINDS, GRADES, SECTIONS, checkFolder, checkSpec, entryId, hashSpec, parseSpec,
 } from '../lib/spec.mjs'
 import { specPath } from '../lib/store.mjs'
 
@@ -493,4 +493,76 @@ test('the CLI prints {folder, problems} under its digest, and exits 0 even with 
   const dirty = cli('check', '--repo', repo, '--effort', 'e1', '--folder', 'store-layout')
   assert.equal(dirty.payload.folder, 'store-layout')
   assert.ok(dirty.payload.problems.some((p) => p.line > 0 && /store-layout\/DESIGN\.md$/.test(p.file)))
+})
+
+// ------------------------------------------------------------------ groups
+
+const GROUP = [
+  '### checks — group · after: store-layout',
+  'Check specs where they sit',
+  'One subsystem, reviewed together.',
+  '',
+  '- **lint-a** — task · realises: D2 · rigor: trivial · locus: lib/a.mjs',
+  '  Lint the first half',
+  '  - [ ] a lints — check: `node --test`',
+  '- **lint-b** — task · realises: D2 · after: lint-a, planner-part · rigor: trivial · locus: lib/b.mjs',
+  '  Lint the second half',
+  '  - [ ] b lints — check: `node --test`',
+  '',
+].join('\n')
+const GROUPED = ROOT.replace('\n## Open questions', '\n' + GROUP + '\n## Open questions')
+
+test('a group heading opens a group: its prose is its title and context, and the entries under it belong to it', () => {
+  const spec = parseSpec(GROUPED, { file: 'DESIGN.md' })
+  assert.deepEqual(spec.problems, [])
+  assert.deepEqual(checkSpec(spec, AT_ROOT), [])
+  assert.deepEqual(spec.groups, [{
+    name: 'checks', line: lineOf(GROUPED, '### checks'), title: 'Check specs where they sit',
+    context: 'One subsystem, reviewed together.', after: ['store-layout'],
+  }])
+  assert.equal(entry(spec, 'lint-a').group, 'checks')
+  assert.equal(entry(spec, 'lint-b').group, 'checks')
+  assert.equal(entry(spec, 'old-idea').group, '', 'an entry above the first group belongs to the folder')
+  assert.equal(entryId('.', entry(spec, 'lint-a')), 'checks/lint-a')
+  assert.equal(entryId('sub', entry(spec, 'spec-parser')), 'sub/spec-parser')
+})
+
+test('a group is refused when its heading is not a group, it carries a field other than after, or it holds no task', () => {
+  const heading = swap(GROUPED, '### checks', '### Checks and more')
+  refusedAt(problemsOf(heading), lineOf(heading, '### Checks'), /opens a group/)
+  const field = swap(GROUPED, '### checks', '### checks — group · realises: D2')
+  refusedAt(problemsOf(field), lineOf(field, '### checks'), /only after/)
+  const empty = GROUPED.replace(/- \*\*lint-a\*\* — task/, '- **lint-a** — deferred').replace(/- \*\*lint-b\*\* — task/, '- **lint-b** — dropped')
+    .replace(/ · rigor: trivial · locus: lib\/[ab]\.mjs/g, '').replace(/ {2}- \[ \] [ab] lints.*\n/g, '')
+  refusedAt(problemsOf(empty), lineOf(empty, '### checks'), /holds no task/)
+})
+
+test('a group holds no sub-effort, shares one namespace with the entries, and never waits on itself', () => {
+  const sub = swap(GROUPED, '- **lint-a**', '- **lint-a** — sub-effort · realises: D2').replace(' · rigor: trivial · locus: lib/a.mjs', '').replace(/ {2}- \[ \] a lints.*\n/, '')
+  refusedAt(problemsOf(sub), lineOf(sub, '- **lint-a**'), /a group holds tasks/)
+  const clash = swap(GROUPED, '### checks', '### later — group')
+  refusedAt(problemsOf(clash), lineOf(clash, '- **later**'), /named later/)
+  const own = GROUPED.replace('after: lint-a, planner-part', 'after: checks')
+  refusedAt(problemsOf(own), lineOf(own, '- **lint-b**'), /its own group/)
+  const onGroup = ROOT.replace('after: spec-parser, /store-layout', 'after: checks')
+  refusedAt(problemsOf(onGroup), lineOf(onGroup, '- **planner-part**'), /no entry or group/)
+  assert.deepEqual(problemsOf(GROUPED.replace('after: spec-parser, /store-layout', 'after: checks')), [], 'an entry may wait for a group')
+})
+
+test('a task promoted inside a group is found in the grandparent\'s plan, through the group', () => {
+  const promoted = SUB.replace(/\| store-layout\.D1 .*\n/, '').replace(', store-layout.D1', '').replace('# Store layout', '# Lint a')
+  const repo = effortOnDisk({ '.': GROUPED, 'checks/lint-a': promoted })
+  const out = checkFolder(repo, 'e1', 'checks/lint-a')
+  assert.equal(out.authoredBy, 'planner')
+  assert.equal(out.entry.name, 'lint-a')
+  assert.ok(!out.problems.some((p) => /ancestor|entry of the parent/.test(p.problem)), JSON.stringify(out.problems))
+})
+
+test('group prose may be indented, a group may not wait for its own task, and a deeper heading in the Plan is refused', () => {
+  const indented = swap(GROUPED, 'One subsystem, reviewed together.', '  One subsystem, reviewed together.')
+  assert.equal(parseSpec(indented, { file: 'DESIGN.md' }).groups[0].context, 'One subsystem, reviewed together.')
+  const own = swap(GROUPED, '### checks', '### checks — group · after: lint-a')
+  refusedAt(problemsOf(own), lineOf(own, '### checks'), /a task inside it/)
+  const deeper = swap(GROUPED, '### checks', '#### checks — group')
+  refusedAt(problemsOf(deeper), lineOf(deeper, '#### checks'), /opens a group/)
 })

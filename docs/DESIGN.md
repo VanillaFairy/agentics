@@ -1047,8 +1047,8 @@ or park sits on its dependency chain, no escalated or parked leaf holds a lock o
 slot can be had. Leaves launch up to the pool less the leaves running.
 
 A folder with nothing planned beneath it is planned, up to the pool less the plans running. A
-folder the planner wrote that its compile parked `spec_changed` is re-derived once per park: again
-only when this execution has no `plan:<id>` dispatch newer than that park.
+folder the planner wrote that its compile parked `spec_changed` (the park's `return`) is re-derived
+once per park: again only when this execution has no `plan:<id>` dispatch newer than that park.
 
 A merge-batch runs whenever approved children wait on an integration branch nobody is merging into,
 at the heads their approvals named; a leaf still running (a fix round after it failed on the

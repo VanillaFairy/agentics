@@ -93,7 +93,7 @@ export function simulate(nodes, script = {}) {
     active: (r) => [{ kind: 'dispatched', node: r.id }],
     approved: (r) => [{ kind: 'dispatched', node: r.id }, { kind: 'approved', node: r.id, head_sha: r.approved_head || 'approved-' + r.id }],
     escalated: (r) => [{ kind: 'escalated', node: r.id, reason: r.reason || '' }],
-    parked: (r) => [{ kind: 'parked', node: r.id, reason: r.reason || '', return: r.reason || '' }],
+    parked: (r) => [{ kind: 'parked', node: r.id, return: r.reason || '' }],
     merged: (r) => [{ kind: 'merged', node: r.id }],
   }
 

@@ -80,7 +80,7 @@ test('a folder with nothing planned beneath it is planned, under the pool', () =
 
 test('a planner folder parked spec_changed is re-derived once per park', () => {
   const nodes = [folder('.'), folder('x', { author: 'planner' }), leaf('x/a')]
-  const park = { kind: 'parked', node: 'x', reason: 'spec_changed' }
+  const park = { kind: 'parked', node: 'x', return: 'spec_changed' }
   const first = launched(effort(nodes, [park]), 'plan')
   assert.deepEqual(first.map((l) => l.id), ['x'])
   assert.match(first[0].why, /^spec_changed/)

@@ -456,6 +456,23 @@ test('a composite or a cycle failing on the merged head escalates, never enters 
   assert.ok(!sim.calls.some((c) => c.name === 'leaf-open' && c.args.node === 'c'))
 })
 
+test('a finished composite passes the suite gate before its review, and a failing gate escalates it unreviewed', async () => {
+  const passing = simulate([composite('.'), composite('c'), row('c/x'), row('y')], {})
+  await run(passing)
+  assert.deepEqual([...passing.gates].sort(), ['.', 'c'])
+  const gateAt = (sim, id) => sim.calls.findIndex((c) => c.name === 'suite-gate' && c.args.target === id)
+  const failing = simulate([composite('.'), composite('c'), row('c/x')], {
+    suiteGate: (args) => (args.target === 'c'
+      ? { ran: true, passed: false, failures: [{ check: 'suite', claim: 'the suite fails on the integration head' }], record: '/gates/c.json' }
+      : {}),
+  })
+  const { result, prompts } = await run(failing)
+  assert.ok(gateAt(failing, 'c') >= 0)
+  assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['c', 'fails_full_suite']])
+  assert.ok(!prompts.some((p) => p.opts.label === 'review:integration:c'))
+  assert.ok(!failing.batches.some((b) => b.target === '.' && b.children.some((ch) => ch.id === 'c')))
+})
+
 test('a resumed leaf is closed at its own round, reviewed over its own base and brief', async () => {
   const sim = simulate([composite('.'), row('a', { own_review: true })], {
     facts: { a: { id: 'a', next_action: 'verify', note: '', branch: 'agentics/e--a', worktree: '/wt/a', head_sha: 'h1', base_sha: 'b1', approved_head: '', commits: ['h1'], dirty: [], rounds: 1, brief_path: '/briefs/a-r1.md' } },

@@ -60,6 +60,7 @@ export function simulate(nodes, script = {}) {
     calls: [],            // [{name, args}]
     opens: [],            // leaf ids in open order
     batches: [],          // merge-batch args
+    gates: [],            // suite-gate targets
     records: [],          // every record the workflow handed to a boundary
     dispositions: [],     // every disposition the workflow recorded, {node, finding, outcome}
     prepared: [],         // spec-prepare args
@@ -211,6 +212,15 @@ export function simulate(nodes, script = {}) {
         return single ? { ...f, row: rowFor(f.id), parent: parentRow(f.id), facts: (script.facts || {})[f.id] || null } : f
       })
       return out
+    },
+    'suite-gate'(args) {
+      sim.gates.push(args.target)
+      const extra = script.suiteGate ? script.suiteGate(args, count('suite-gate:' + args.target), sim) || {} : {}
+      const where = sim.integ.get(args.target) || {}
+      return {
+        boundary: 'suite-gate', ok: true, error: null, status: 'done', target: args.target, head_sha: where.head || '',
+        ran: false, passed: true, failures: [], record: '', todos: [], notes: [], ...extra,
+      }
     },
     postflight() {
       const summary = summarize(input({}))

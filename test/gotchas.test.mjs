@@ -141,8 +141,8 @@ test('commandsOf reads only command gotchas an investigator wrote', () => {
   writeGotcha(r, E, command('typecheck', '', { command: { name: 'typecheck', absent: true } }), { source: { role: 'investigator' } })
   writeGotcha(r, E, pitfall(), { source: { role: 'investigator' } })
   assert.deepEqual(commandsOf(r, E), {
-    build: 'npm run build', typecheck: '', suite: '', test_one: '',
-    absent: { build: false, typecheck: true, suite: false },
+    build: 'npm run build', typecheck: '', suite: '', suite_fast: '', test_one: '',
+    absent: { build: false, typecheck: true, suite: false, suite_fast: false },
   })
 })
 

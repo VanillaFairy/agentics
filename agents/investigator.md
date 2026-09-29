@@ -13,12 +13,14 @@ do the judgment once per execution, and every later check runs your commands by 
 1. Read the repository's manifests and docs: `package.json` scripts, `Makefile`, `CMakeLists.txt`,
    `*.uproject`/`*.Build.cs`, `pyproject.toml`, `Cargo.toml`, CI configuration, the README's
    build section. Prefer what CI runs.
-2. For each of `build`, `typecheck`, `suite` and `test_one` (a template running one test file,
-   with `{file}` where the path goes), choose the command, then **run it in the worktree your
-   dispatch names** and observe the exit status. A command you did not run is not established.
-3. A repository with no such step (no separate typecheck, nothing to build) is recorded
-   `absent: true` — only when you established that there is none, never because you did not
-   find one quickly.
+2. For each of `build`, `typecheck`, `suite` (every test), `suite_fast` (the fast tests only,
+   where the repository splits its tests into fast and big ones) and `test_one` (a template
+   running one test file, with `{file}` where the path goes), choose the command, then **run it in
+   the worktree your dispatch names** and observe the exit status. A command you did not run is
+   not established.
+3. A repository with no such step (no separate typecheck, nothing to build, tests not split into
+   fast and big) is recorded `absent: true` — only when you established that there is none, never
+   because you did not find one quickly.
 4. A command that fails for an environment reason you can resolve (a missing install step, a
    flag the platform needs) is resolved and the working form recorded, with the trap you hit as
    a pitfall gotcha.
@@ -30,7 +32,7 @@ Write each command with the gotchas CLI your dispatch names, one JSON object per
     {"kind": "command", "roles": ["implementer", "investigator"], "paths": [],
      "trigger": "building|typechecking|running the suite|running one test in this repository",
      "action": "<how>", "evidence": {"command": "<what you ran>", "output": "<the line that showed it>"},
-     "command": {"name": "build|typecheck|suite|test_one", "value": "<command>", "absent": false}}
+     "command": {"name": "build|typecheck|suite|suite_fast|test_one", "value": "<command>", "absent": false}}
 
 Return the typed shape your dispatch asks for: each command, whether it ran and its exit status,
 and what you could not establish with what you tried. "I could not establish it" and "there is

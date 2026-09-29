@@ -900,7 +900,7 @@ let establishing = null
 function establishCommands(worktree) {
   if (!establishing) {
     establishing = dispatch(
-      'No build or test command is established for this repository. Establish build, typecheck, suite and test_one in ' +
+      'No build or test command is established for this repository. Establish build, typecheck, suite, suite_fast and test_one in ' +
       worktree + ', proving each by running it, and record each with:\nnode "' + pluginRoot + '/lib/gotchas.mjs" add --repo "' +
       repo + '" --effort "' + effort + "\" --role investigator --stdin <<'AGENTICS_EOF'\n[<one JSON object per command>]\nAGENTICS_EOF",
       { agentType: 'agentics:investigator', schema: ESTABLISHED, phase: 'Execute', label: 'establish-commands', model: 'sonnet', effort: 'medium' },
@@ -1245,12 +1245,29 @@ function integrationPark(item, findings, claims) {
 }
 
 /**
+ * The full suite on a finished composite's head, before its review and so before it merges up or
+ * lands. A failure is the user's to route: no one producer owns a folder's merged work.
+ */
+async function gateComposite(id) {
+  const out = await settled('suite-gate', { target: id }, { phase: 'Integrate', label: 'gate:' + id })
+  if (!out || out.error || out.ok === false) {
+    if (out && out.error && out.error.kind === 'job_failed') fault(id, 'program', out.error.message)
+    else escalate(id, 'suite_gate_failed', (out && out.error && out.error.message) || 'suite-gate refused')
+    return false
+  }
+  if (out.passed) return true
+  escalate(id, 'fails_full_suite', (out.failures || []).map((f) => f.claim).join('; ') + ' (the measurement: ' + out.record + ')')
+  return false
+}
+
+/**
  * The integration review, earned: when a child had no review loop of its own, or when two or more
  * children with work meet here for the first time. It always leaves a `claims` event at the head
  * it judged, which is what ripens the composite for merging up. A review that fails escalates.
  */
 async function reviewComposite(item) {
   const { id, where } = item
+  if (!(await gateComposite(id))) return null
   const head = (where && where.head) || ''
   if (!item.earned) {
     note(id + ': integration review not earned (' + (where ? 'one reviewed child' : 'nothing merged') + ')')

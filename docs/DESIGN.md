@@ -457,8 +457,8 @@ Integration is assigned **per composite node, dynamically**. A composite gets it
 worktree the first time something needs them, cut from its own parent's integration head, and is
 brought up to date with that head whenever the parent has moved — which is how a dependency merged
 elsewhere in the tree reaches the leaf that consumes it. Its children branch from it and merge into
-it. When its last child has merged and its integration review is done, it merges into its parent's
-integration branch like any child. A group has no branch: its tasks are cut from and merge into
+it. When its last child has merged, its head passes the [suite gate](#the-suite-gate) and its
+integration review is done, it merges into its parent's integration branch like any child. A group has no branch: its tasks are cut from and merge into
 their folder's, and a composite promoted inside a group is cut from that folder.
 
 The effort root's integration branch, `agentics/<effort>`, is the effort branch: the one landed
@@ -505,12 +505,14 @@ any fails:
    that is not yet merged (otherwise the two are ordered by a dependency, or the file goes to the
    [coupled lane](#coupled-work)).
 4. **Checkable alone.** Each acceptance criterion, except a `HUMAN:` one, names a check (a test, the
-   build, a typecheck, a command) that runs on this leaf's branch alone and decides it. A test check
-   is the narrowest run that does — the leaf's test files or its module's test directory — and the
-   whole suite only when the change can reach every test (the test runner's config, shared test
-   setup, a module nearly everything imports): these checks are all the testing a leaf gets
-   before it merges ([Verification](#verification)).
-5. **Green when done.** After it merges, the tree builds and the suite passes — except the declared
+   build, a typecheck, a command) that runs on this leaf's branch alone and decides it. The planner
+   picks the tests: those the change clearly affects, whatever their size; none it clearly cannot
+   reach; and from the gray area between, tests it might reach, fast ones only, never big ones. Big
+   tests are those outside the repository's fast suite (`suite_fast`); a repository that does not
+   split its tests has none. The whole fast suite only when the change can reach every test (the
+   test runner's config, shared test setup, a module nearly everything imports): these checks are
+   all the testing a leaf gets before it merges ([Verification](#verification)).
+5. **Green when done.** After it merges, the tree builds and the suites pass — except the declared
    failing tests of a `red` leaf, which never reach the effort branch without their green.
 6. **Decided.** Its brief carries every decision the executor needs.
 7. **Fits one executor.** Brief + locus files + reads fit the executor model's context budget with
@@ -975,7 +977,7 @@ launches it with a stamp it minted, because a workflow cannot read a clock.
 
 ### Boundaries
 
-Every deterministic step runs at one of six boundaries, each one courier dispatch running one
+Every deterministic step runs at one of seven boundaries, each one courier dispatch running one
 `lib/boundary.mjs` entry point under one digest. Every entry point is **idempotent**: re-running it
 after an unobserved outcome converges on the same state, because each step first checks whether its
 effect already exists (a merge already in the branch, a record already in the log, a worktree
@@ -987,7 +989,8 @@ already attached).
 | **schedule** | append the workflow's decisions; compute what to launch from the tree on disk (`lib/schedule.mjs`, see [Scheduling](#scheduling)); attach to each launch the one row it needs, and to a leaf's its parent's row and its resume ladder; move the todos of the nodes it touched |
 | **leaf-open** | acquire a slot and the locus locks; ensure the parent's integration branch (lazily, refreshed from its own parent) and cut or attach the leaf's branch and worktree; assemble its brief; append `dispatched`; move the todo |
 | **leaf-close** | commit a shell-less author's locus files (anything outside is reverted and reported as a breach); build, typecheck, suite, discriminator, declared mutations and named checks by rigor; journal the observation; write and delete reported gotchas; compute the close decision; move the todo |
-| **merge-batch** | under the branch lock, record `batch-started` with the head it starts from; merge every approved child into one integration branch in dependency order; verify the merged head; bisect a red one; append `merged` and `merge-observed`; release locus locks; append a `batch` state line; complete the todos. A batch that started and never recorded its outcome is reset to where it started and done again, so an unverified merge is never recorded as landed |
+| **merge-batch** | under the branch lock, record `batch-started` with the head it starts from; merge every approved child into one integration branch in dependency order; verify the merged head with the fast suite; bisect a red one; append `merged` and `merge-observed`; release locus locks; append a `batch` state line; complete the todos. A batch that started and never recorded its outcome is reset to where it started and done again, so an unverified merge is never recorded as landed |
+| **suite-gate** | on a composite whose children have all merged, under its branch lock: run the full suite on its integration head, against the head it was cut from; write the measurement; append a `gate` state line. It runs nothing where the repository does not split its tests, or where the full suite already passed at that head in this execution ([The suite gate](#the-suite-gate)) |
 | **postflight** | append the workflow's last decisions; release this execution's slots; summarize the subtree from disk (counts, the nodes the user must act on, the leaves waiting behind each, cycle members held); append `closed` when every leaf in scope merged; count the branches eligible for cleanup |
 
 Schedule and postflight first append the workflow's pending decisions (`records`: approvals,
@@ -1088,6 +1091,9 @@ an empty conflict list too. Anything that is not `mergeOk` stops the batch. A co
 defect — loci were declared disjoint — surfaced to the user as an escalation, never resolved
 silently.
 
+A merged head is measured with the fast suite (`suite_fast`), or the full one where the repository
+does not split its tests. The big tests wait for the [suite gate](#the-suite-gate).
+
 **A failing merged head** is reset to the last green head, and the script bisects the batch. A leaf
 that fails alone on the new head gets a fix round on its branch refreshed from the integration
 head; a composite or a cycle that fails alone has no one producer to send it to, and escalates
@@ -1096,6 +1102,30 @@ head; a composite or a cycle that fails alone has no one producer to send it to,
 cannot run at all escalates its target (`merge_batch_failed`), and one that merged nothing and
 reported no failure escalates too (`merge_no_progress`): nothing is re-batched into a stopped
 target.
+
+### The suite gate
+
+A repository may split its tests into fast and big ones, and name the fast ones as `suite_fast`
+beside the full `suite`. Then the tests run in three places, each wider than the last: a leaf runs
+the tests its planner picked ([Atomicity](#atomicity-when-to-stop-splitting), condition 4); every
+merge-batch runs the fast suite on the merged head; and once a composite's last child has merged,
+before its integration review and so before it merges up or lands, `suite-gate` runs the full suite
+on its integration head. At the effort root, that is the last measurement before landing.
+
+A test failing on the gate that fails at the head the branch was cut from is not the composite's
+(`baseline_failing`, as everywhere). Any other failure escalates the composite
+(`fails_full_suite`): its merged work has no one producer a fix round could go to, and the user
+routes it, as with a composite that fails alone on a merge. A gate that could not run escalates as
+`suite_gate_failed`. A passing gate is recorded against its head and not run again there; a failing
+one is run again by the next invocation, since what failed it may be the environment.
+
+Where the repository does not split its tests, every merge-batch already ran the full suite on
+the very head the gate would measure, and the gate runs nothing.
+
+**Why the big tests wait:** they are slow, and a run of one per merge-batch would make every merge
+pay for them. A folder's integration branch is where the work of many leaves first meets whole,
+and it is the last point before the work leaves the folder: one full run there catches what the
+fast suite misses before anything outside depends on it.
 
 ### Scheduling
 
@@ -1292,7 +1322,8 @@ not hold first, a `cant_tell` counted apart from `met`). The session shows it, a
 
 `lib/verify.mjs` runs the mechanical checks of one leaf — the commit series, the build, the
 typecheck, the leaf's own tests, the discriminator, the declared mutations and the named checks —
-in one process, and of a merged head — the build, the typecheck and the full suite. **Nothing in it decides whether the leaf passed.** It observes, prints exactly the fields
+in one process, and of a merged head — the build, the typecheck and the fast or the full suite, as
+the caller asks. **Nothing in it decides whether the leaf passed.** It observes, prints exactly the fields
 the verdict reads, and journals its own `verify-observed` line inside the process that measured, so
 there is no window between the work and the record.
 
@@ -1327,15 +1358,16 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
 - **A leaf runs the tests it is told to, and no others.** Its own tests are the test files its
   diff changed, plus the cycle's test files for a green or an audit, each run through the
   `test_one` template (`suite_scope: scoped`; `none`, with `suite: not_run`, when there are none).
-  Beside them it runs every criterion's `check:` command: the planner names there the narrowest
-  test run that decides the criterion, and the whole suite only when the change can reach every
-  test. The full suite runs once per merge-batch on the merged head (`suite_scope: full`), which is
-  where a leaf's reach beyond its own tests is caught and bisected back to it
-  ([Merging](#merging)). Stack-neutral on purpose: a file-level test template and a command per
-  criterion are all it asks of a repository.
-- **One full suite at a time in the project.** A full suite — the merged head's, or a named check
-  whose command contains the established suite command — runs under
-  `.agentics/.state/locks/tests.lock`, shared by every execution and session. Full suites that share
+  Beside them it runs every criterion's `check:` command: the tests the planner picked to decide
+  the criterion ([Atomicity](#atomicity-when-to-stop-splitting), condition 4). The fast suite runs
+  once per merge-batch on the merged head (`suite_scope: fast`; `full` where the repository does not
+  split its tests), which is where a leaf's reach beyond its own tests is caught and bisected back
+  to it ([Merging](#merging)); the full suite runs on a finished composite's head
+  ([The suite gate](#the-suite-gate)). Stack-neutral on purpose: a file-level test template, a
+  command per criterion and, optionally, a fast-suite command are all it asks of a repository.
+- **One whole suite at a time in the project.** A whole suite, fast or full — a merged head's, a
+  gate's, or a named check whose command contains an established suite command — runs under
+  `.agentics/.state/locks/tests.lock`, shared by every execution and session. Suites that share
   the machine time out for it, and a failure that is contention is nobody's to fix. Everything else
   runs unlocked, so parallel leaves test in parallel. The wait is long: the caller is a detached
   job, never a courier.
@@ -1689,14 +1721,15 @@ nothing was written.
 
 ### State and journal lines
 
-- **Owner:** `lib/boundary.mjs` (`batch`, `checkpoint`, `closed`, `merge-observed`, `series-done`
+- **Owner:** `lib/boundary.mjs` (`batch`, `gate`, `checkpoint`, `closed`, `merge-observed`, `series-done`
   for shell-less authors), `dispatch` in `execute-approved-plan-in-worktrees`, `journalLine` in `lib/verify.mjs`.
 - **Restated in:** the implementer's `series-done` heredoc in `execute-approved-plan-in-worktrees`; `lib/resume.mjs`
   and `lib/status.mjs` (readers).
 
 `state.jsonl` (what the workflow decided): `dispatch {label, node, role, model, effort, tokens}` —
 `tokens` is `null` where the host reports none; `batch {target, merged[], head_sha, verified,
-failed_alone[], combination[], conflict}`; `checkpoint {reason, detail, executions?, gaps?}`
+failed_alone[], combination[], conflict}`; `gate {target, head_sha, passed}`, one per suite gate
+that ran; `checkpoint {reason, detail, executions?, gaps?}`
 (the lists the checkpoint found; `lib/status.mjs checkpoint` prints them); `closed {status}`;
 `batch-started {target, pre, children}`; `checkpoint-confirmed {gaps?}` (what the user
 confirmed past, printed by the same command); `drift-ruled {node, contract, head_sha, ruling, why, said?}`
@@ -1727,7 +1760,7 @@ latest, and whether an escalation or park is newer than the replan that would cl
 
 `stop_reason` (`completed | environment_broken`, broken exactly when `error` is set); `build`,
 `typecheck` (`passed | failed | absent`); `suite` (`passed | failed | absent | not_run`) and
-`suite_scope` (`full` on a merged head, `scoped` for a leaf's own tests, `none` when nothing ran);
+`suite_scope` (`fast` or `full` on a merged head, `scoped` for a leaf's own tests, `none` when nothing ran);
 `suite_output_tail` (only when the suite failed);
 `failing_tests[{file, id}]`; `baseline_failing[{file, id}]` (failing tests that fail at the base too);
 `discriminator[{test_id, failed_on_base, passes_now}]`;
@@ -1802,6 +1835,9 @@ Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}],
   whose consumed contract the merge touched; `stopped` names its escalation or park, which the
   drift is reported beside and never parked over), `drift_diff` (the path of the merged change to
   the files an unstopped consumer consumes, or `''`), `unexamined_n` (undesigned nodes drift could not check).
+- **suite-gate** — `status` (`done | pending`), `target`, `head_sha`, `ran`, `passed`,
+  `failures[{check, claim}]`, `record` (the path of `gates/<target>-<head>.json`, with the
+  measurement and each failure's evidence; `''` when nothing ran).
 - **postflight** — `summary {nodes_n, leaves_n, merged_n, not_merged_n, blocked_n,
   blocked[{blocked_by, leaves_n}], root_status, root_done, done, stopped[{id, status, reason}],
   held[{id, behind}]}`, `integration {branch, head_sha}` of the execution's root, `cleanup_n`,

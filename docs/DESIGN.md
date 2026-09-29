@@ -1283,6 +1283,10 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
   shared by every execution and session; build and typecheck run outside it. Suites that share the
   machine time out for it, and a failure that is contention is nobody's to fix. The wait is long:
   the caller is a detached job, never a courier.
+- **A failure that was already there is not the change's.** When the suite fails, each failing
+  test file the change did not touch (nor the cycle's tests) is run at the base; those that fail
+  there too are `baseline_failing`. A fresh worktree missing a gitignored asset fails the same way
+  at its base, and no commit inside a locus could move it.
 
 ### What a verdict is computed from
 
@@ -1292,7 +1296,11 @@ measurement, no failed build or typecheck and no blocking series finding; then p
 leaf's new tests fail at base and pass now; a tests-only leaf's tests pass and every declared
 mutation bites; a red leaf's tests fail now and at base; a green leaf's cycle tests pass; an audit's
 mutations all bite with a passing suite; trivial and verify need their named checks and a suite
-that did not fail). `closeDecision` turns that into the next step: `review`, `approve`, `fix`,
+that did not fail). A suite failed for the change only when one of its named failing tests is the
+change's own: `baseline_failing` lists the failing test files the change did not touch that fail at
+its base too, and `suiteFailed`/`ownFailing` leave them out, at a leaf and on an integration head
+alike (whose base is the head before the batch). A failure that names no test is never excused.
+`closeDecision` turns that into the next step: `review`, `approve`, `fix`,
 `escalate`, `command_unknown`, or — for a `verify` leaf — `finding`. The same functions re-derive
 the verdict on resume, which is what makes a journal written by the measuring process safe.
 
@@ -1616,8 +1624,8 @@ confirmed past, printed by the same command); `invocation {}`, one per preflight
 numbers the invocation's record ids; `fault {node, channel, detail}`, a unit a plugin fault ended. A line the workflow decided carries its `rid`.
 
 `journal.jsonl` (what was observed, by whoever observed it): `verify-observed {node, branch,
-worktree, base_sha, head_sha, stop_reason, build, typecheck, suite, failing_tests, discriminator,
-mutations, series_findings, checks}`; `merge-observed {node, branch, into, merged_sha, head_sha}`;
+worktree, base_sha, head_sha, stop_reason, build, typecheck, suite, failing_tests, baseline_failing,
+discriminator, mutations, series_findings, checks}`; `merge-observed {node, branch, into, merged_sha, head_sha}`;
 `series-done {node, branch, head_sha, commits[{sha, subject}]}`.
 
 ### The seq counter
@@ -1637,7 +1645,8 @@ latest, and whether an escalation or park is newer than the replan that would cl
 
 `stop_reason` (`completed | environment_broken`, broken exactly when `error` is set); `build`,
 `typecheck`, `suite` (`passed | failed | absent`); `suite_output_tail` (only when the suite failed);
-`failing_tests[{file, id}]`; `discriminator[{test_id, failed_on_base, passes_now}]`;
+`failing_tests[{file, id}]`; `baseline_failing[]` (failing test files that fail at the base too);
+`discriminator[{test_id, failed_on_base, passes_now}]`;
 `mutations[{file, applied, unapplied_reason, expect_failing, observed_failing, bites}]`;
 `series_findings[{sha, check, message, blocking}]`; `checks[{command, status}]`; `notes`; `error`
 (`null` or `{kind, message}`: `no_worktree`, `main_worktree`, `series_unreadable`,

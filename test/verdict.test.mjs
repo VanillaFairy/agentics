@@ -14,7 +14,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { closeDecision, measurementOk, profileOf } from '../lib/verdict.mjs'
+import { closeDecision, measurementOk, ownFailing, profileOf, suiteFailed } from '../lib/verdict.mjs'
 import { normalizeNode } from '../lib/tree.mjs'
 
 const leaf = (over = {}) => normalizeNode({
@@ -256,4 +256,24 @@ test('no oscillation without alternation: the same state twice, or states of oth
   const breachAndSuite = m({ ...suite, series_findings: breach.series_findings })
   assert.equal(closeDecision(breachAndSuite, LEAVES.tdd, [breachAndSuite, broken]).next, 'fix',
     'a breach is "lone" only when it is the only failing fact')
+})
+
+// ---------------------------------------------------------------- the baseline
+
+test('a suite whose every named failure fails at the base too did not fail for this change', () => {
+  const before = m({ suite: 'failed', failing_tests: [{ file: 'test/old.test.mjs', id: 'old' }], baseline_failing: ['test/old.test.mjs'] })
+  assert.equal(suiteFailed(before), false)
+  assert.equal(measurementOk(before, LEAVES.trivial).ok, true)
+  assert.equal(closeDecision(before, LEAVES.trivial).next, 'approve')
+
+  const own = { ...before, failing_tests: [...before.failing_tests, { file: 'test/x.test.mjs', id: 'x' }] }
+  assert.equal(suiteFailed(own), true, 'one failure of its own is enough')
+  assert.deepEqual(ownFailing(own).map((f) => f.file), ['test/x.test.mjs'])
+
+  assert.equal(suiteFailed(m({ suite: 'failed', failing_tests: [], baseline_failing: [] })), true, 'a failure that names nothing is never excused')
+})
+
+test('a red leaf is judged on its own failures: a baseline failure outside its locus is not collateral', () => {
+  const measured = m({ ...red, failing_tests: [...red.failing_tests, { file: 'test/old.test.mjs', id: 'old' }], baseline_failing: ['test/old.test.mjs'] })
+  assert.deepEqual(measurementOk(measured, LEAVES.red).failures, [])
 })

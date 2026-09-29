@@ -39,6 +39,7 @@ import {
   verify, parseArgs, isTestPath, worktreeProblem, extractFailures, checksFor, journalLine,
 } from '../lib/verify.mjs'
 import { readLog } from '../lib/ledger.mjs'
+import { measurementOk } from '../lib/verdict.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import {
   BRANCH, BUILD, EFFORT, NODE, SUITE, SUITE_TAP, TEST_ONE, WIDGET_TEST,
@@ -577,7 +578,7 @@ test('the observation is journalled by the process that observed it, through the
   assert.deepEqual(line.discriminator, parsed.payload.discriminator)
   assert.deepEqual(line.checks, [])
   assert.deepEqual(Object.keys(line).sort(), [
-    'base_sha', 'branch', 'build', 'checks', 'discriminator', 'failing_tests', 'head_sha', 'kind',
+    'base_sha', 'baseline_failing', 'branch', 'build', 'checks', 'discriminator', 'failing_tests', 'head_sha', 'kind',
     'mutations', 'node', 'seq', 'series_findings', 'stop_reason', 'suite', 'typecheck',
     'worktree',
   ], 'a resume re-derives the verdict from this line alone, so it carries every field ' +
@@ -598,6 +599,28 @@ test('verify() journals in-process, and each append mints the next seq', (t) => 
   const seqs = readLog(dir, EFFORT, 'journal:' + EXECUTION).entries.map((e) => e.seq)
   assert.equal(seqs.length, 2)
   assert.ok(seqs[1] > seqs[0], 'one monotonic counter per effort, minted under its lock')
+})
+
+test('a test that fails at the base too is baseline, and a test the change broke is not', (t) => {
+  const { worktree } = order(t)
+  const commit = (files, subject) => {
+    for (const [path, text] of Object.entries(files)) writeFileSync(join(worktree, path), text)
+    git(worktree, 'add', '-A')
+    git(worktree, 'commit', '-q', '-m', subject)
+    return rev(worktree, 'HEAD')
+  }
+  const base = commit({ 'test/broken.test.mjs': "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\ntest('broken before', () => assert.fail('already broken'))\n" }, 'Add a broken test')
+  const leaf = { rigor: 'trivial', locus: ['README.md', 'src/widget.mjs'] }
+  const measure = (head) => verify({ ...options({ worktree, base, head }), locus: leaf.locus, rigor: 'trivial' })
+
+  const readme = measure(commit({ 'README.md': 'changed\n' }, 'Touch the readme'))
+  assert.equal(readme.suite, 'failed')
+  assert.deepEqual(readme.baseline_failing, ['test/broken.test.mjs'], readme.notes)
+  assert.deepEqual(measurementOk(readme, leaf).failures, [], 'a failure that was already there is not this change\'s')
+
+  const broke = measure(commit({ 'src/widget.mjs': 'export const widget = () => { throw new Error(\'no\') }\n' }, 'Break the widget'))
+  assert.deepEqual(broke.baseline_failing, ['test/broken.test.mjs'], 'the widget test passes at the base, so it is the change\'s own')
+  assert.ok(measurementOk(broke, leaf).failures.some((f) => f.check === 'suite'))
 })
 
 test('the tests run under the project\'s test lock, and the build outside it', (t) => {

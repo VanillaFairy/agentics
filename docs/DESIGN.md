@@ -412,7 +412,7 @@ approved, so the two cannot disagree about a decision.
 ### The ledger
 
 `lib/ledger.mjs` is the only writer of every `.jsonl` under an effort. It mints `seq` per effort
-under the effort's lock file — a script minting a counter, so no agent ever supplies one, and a
+under the effort's lock — a script minting a counter, so no agent ever supplies one, and a
 `seq` that arrives on an entry is overwritten — and refuses a batch that does not parse, has an
 entry without a `kind`, or fails its caller's digest. Appends are all or nothing and never
 read-then-write. Readers are tolerant: a torn line is counted, never thrown on.
@@ -1732,8 +1732,14 @@ Frontmatter `{id, kind, roles, paths, observed_at, source, command?}`; body `Whe
 
 `.agentics/config.json {max_parallel}`; `slots/<n>.lock {effort, execution, node}`;
 `locks/locus/<fnv1a(path)>.lock {path, node, execution}`; `.agentics/.state/locks/tests.lock`, the
-project's test lock; branch, test and mutex locks hold `{pid, host, at}`. A lock on this host is broken exactly when its holder's pid is dead; one from another host
-after ten minutes.
+project's test lock. Branch, test and mutex locks are taken by `withLock`: the lock is a directory
+holding one holder file, named for that acquisition, `{pid, host, at}`, built beside the lock and
+renamed into place, so a lock is never seen without its holder. A holder on this host is broken
+exactly when its pid is dead; one from another host after ten minutes. Breaking removes the holder
+file it judged, by that name, and then the directory only if that emptied it: a judgement the lock
+outran — its holder released, another took it — removes nothing, because a directory with a holder
+in it is never empty. A rename onto a lock that is held, or still being released, is refused, and
+the taker waits.
 
 ### Boundary payloads
 

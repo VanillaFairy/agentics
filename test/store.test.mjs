@@ -1,14 +1,16 @@
 // test/store.test.mjs — where agentics keeps its state: `.agentics/` in the main checkout, the
-// project-wide `.state/`, one directory per effort and per folder, the segment rule, and the
-// project settings file.
+// project-wide `.state/`, one directory per effort and per folder, the segment rule, the project
+// settings file and the lock every writer shares.
 //
 // Design: docs/DESIGN.md#storage.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { execFileSync, spawnSync } from 'node:child_process'
+import {
+  existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync,
+} from 'node:fs'
+import { hostname, tmpdir } from 'node:os'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 
 import { append, readLog } from '../lib/ledger.mjs'
@@ -16,7 +18,7 @@ import {
   AGENTICS_DIR, CONFIG_FILE, EVIDENCE_RENDER, ROOT_ID, SPEC_FILE, STATE_DIR,
   agenticsRoot, briefPath, configPath, contextDir, effortDir, effortStateDir, effortsRoot,
   evidenceStoreDir, executionDir, executionsRoot, folderDir, mainCheckout, mkdirState,
-  projectStateDir, readConfig, reportPath, safeSlug, saidOf, slotsDir, specPath,
+  projectStateDir, readConfig, reportPath, safeSlug, saidOf, slotsDir, specPath, withLock,
 } from '../lib/store.mjs'
 
 const fresh = (area) => mkdtempSync(join(tmpdir(), 'agentics-store-' + area + '-'))
@@ -233,4 +235,43 @@ test('saidOf reads what the author wrote, falls back to the record, and says so 
   assert.equal(saidOf({ kind: 'escalated', detail: 'merge conflict in a.js' }), 'merge conflict in a.js')
   assert.match(saidOf({ kind: 'parked', question: '', said: join(dir, 'gone.md') }), /did not write .*gone\.md/)
   assert.equal(saidOf({ kind: 'parked', question: 'the line', said: join(dir, 'gone.md') }), 'the line')
+})
+
+// ------------------------------------------------------------------ the lock
+
+const deadPid = () => spawnSync(process.execPath, ['-e', '']).pid
+
+/** Put the holder file of a holder that is gone into the lock directory at `path`. */
+const goneHolder = (path) =>
+  writeFileSync(join(path, 'gone'), JSON.stringify({ pid: deadPid(), host: hostname(), at: new Date().toISOString() }))
+
+const attempt = (path, waitMs) => {
+  try {
+    return withLock(path, () => 'taken', { waitMs })
+  } catch (err) {
+    return err.message
+  }
+}
+
+test('a lock whose holder is gone is broken and taken', () => {
+  const path = join(fresh('lock'), 'held')
+  mkdirSync(path, { recursive: true })
+  goneHolder(path)
+  assert.equal(attempt(path, 5000), 'taken')
+  assert.equal(existsSync(path), false, 'released afterwards')
+})
+
+test('breaking a gone holder never frees a lock someone holds now', () => {
+  const dir = fresh('lock')
+  const path = join(dir, 'held')
+  withLock(path, () => {
+    const mine = readdirSync(path)
+    // A waiter judged a holder gone while the lock changed hands: the name it judged is in the
+    // lock it acts on now, beside the holder that took it since.
+    goneHolder(path)
+    assert.match(attempt(path, 100), /could not take the lock/)
+    assert.deepEqual(readdirSync(path), mine, 'the gone holder was removed and the live one kept')
+    assert.deepEqual(readdirSync(dir), ['held'], 'a waiter that gave up leaves nothing beside the lock')
+  })
+  assert.equal(existsSync(path), false)
 })

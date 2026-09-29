@@ -759,7 +759,7 @@ async function prepare(id, reviewed) {
     escalate(id, 'compile_refused', (compiled.problems || []).map((p) => p.file + ':' + p.line + ' ' + p.problem).join('; '))
     return null
   }
-  log('prepared ' + id + ' on ' + reviewed + '; compiled ' + (compiled.written || []).length + ' node(s)')
+  log('prepared ' + id + ' on ' + reviewed + '; compiled ' + (compiled.written_n || 0) + ' node(s)')
   if (out.row && out.row.kind !== 'leaf' && out.row.children_n === 0) {
     escalate(id, 'planner_wrote_nothing', 'compiled ' + id + ' with no plan entry beneath it')
     return null
@@ -1038,7 +1038,7 @@ async function mergeInto(item) {
         ', which ' + d.node + ' consumes: rule it unaffected, re-design it or re-slice it')
     }
   }
-  if ((out.unexamined || []).length) note('undesigned nodes not examined for drift: ' + out.unexamined.join(', '))
+  if (out.unexamined_n) note(out.unexamined_n + ' undesigned node(s) not examined for drift')
   for (const f of out.failed_alone || []) {
     const why = (f.failures || []).map((x) => x.claim).join('; ')
     // A composite, or a cycle that lands as a unit, has no one producer a fix round could go to:

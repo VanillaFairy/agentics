@@ -1545,7 +1545,9 @@ nothing was written.
 `tokens` is `null` where the host reports none; `batch {target, merged[], head_sha, verified,
 failed_alone[], combination[], conflict}`; `checkpoint {reason, detail, executions?, stale?, gaps?}`
 (the lists the checkpoint found; `lib/status.mjs checkpoint` prints them); `closed {status}`;
-`batch-started {target, pre, children}`.
+`batch-started {target, pre, children}`; `checkpoint-confirmed {stale?, gaps?}` (what the user
+confirmed past, printed by the same command); `invocation {}`, one per preflight, whose count
+numbers the invocation's record ids. A line the workflow decided carries its `rid`.
 
 `journal.jsonl` (what was observed, by whoever observed it): `verify-observed {node, branch,
 worktree, base_sha, head_sha, stop_reason, build, typecheck, suite, failing_tests, discriminator,
@@ -1605,9 +1607,9 @@ after ten minutes.
 
 Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}], notes}` plus:
 
-- **preflight** — `checkpoint {reason, detail}`, `envelope {stamp, root, base_branch, base_sha,
-  dial, pace, commands, resumed}`, `counts {nodes, leaves, gaps, untraced}`, `freed`,
-  `dirty_worktrees`, `commands`, `max_parallel`, `records`.
+- **preflight** — `invocation`, `checkpoint {reason, detail}`, `envelope {stamp, root, base_branch,
+  base_sha, dial, pace, commands, resumed}`, `counts {nodes, leaves, gaps, untraced}`, `freed`,
+  `dirty_worktrees`, `commands`, `max_parallel`.
 - **schedule** — `launch[]`, `idle`, `max_parallel`, `commands`, `records`. A launch is one of
   `{unit: plan, id, why, row}` (its row with the folder's `intent`), `{unit: leaf, id, row, parent
   {id, title, kind, author, spec_path}, facts}`, `{unit: merge, target,
@@ -1626,7 +1628,8 @@ Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}],
   `merged[{id, merged_sha}]`, `conflict {node, nodes, paths, reason}`, `head_sha`, `verified`,
   `measurement`, `failed_alone[{id, ids, failures, row?, parent?, facts?}]` (the row, the
   parent's row and the resume facts for a single leaf, whose fix round launches from them),
-  `combination[]`.
+  `combination[]`, `drift[{node, contract, files}]` (a pending node, not a stopped one, whose
+  consumed contract the merge touched), `unexamined_n` (undesigned nodes drift could not check).
 - **postflight** — `summary {nodes_n, leaves_n, merged_n, not_merged_n, blocked_n,
   blocked[{blocked_by, leaves_n}], root_status, root_done, done, stopped[{id, status, reason}],
   held[{id, behind}]}`, `integration {branch, head_sha}` of the execution's root, `cleanup_n`,
@@ -1640,8 +1643,8 @@ Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}],
   line (`complete`, `remaining`, `ambiguities`).
 - **spec-gate** — `ratifiable`, `open`, `coverage_complete`, `remaining`, `reviewed`: the
   `approvalGate` of the folder's spec as it stands.
-- **spec-prepare** — `status` (`prepared | refused`), `hash`, `compile` (the `compileEffort`
-  result), `problems`, `row` (the prepared node as compiled, which is how a replan learns whether
+- **spec-prepare** — `status` (`prepared | refused`), `hash`, `compile {ok, problems, written_n}`
+  (of the `compileEffort` result), `problems`, `row` (the prepared node as compiled, which is how a replan learns whether
   it changed the node and whether it planned anything beneath it). A `spec_changed` park its compile raises on the prepared folder is cleared
   by a `replanned` event, reason `spec_rederived`.
 - **land** (the session's, plain JSON) — `check`: `open_escalations`, `parked`, `human`,

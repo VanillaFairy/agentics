@@ -262,7 +262,7 @@ export function simulate(nodes, script = {}) {
       }
       return {
         boundary: 'spec-prepare', ok: true, error: null, status: 'prepared', hash: 'h',
-        compile: { ok: true, problems: [], written: [args.node], retired: [], parked: [], flagged: [], skipped: [] },
+        compile: { ok: true, problems: [], written_n: 1 },
         row: rowFor(args.node), todos: [], notes: [], ...extra,
       }
     },

@@ -323,7 +323,7 @@ test('drift: a landed diff under a contract a pending node consumes is flagged; 
   const tree = readTree(r, 'e1')
   const out = driftOf(tree, ['x'], ['src/other.mjs', 'src/shape/one.mjs', 'src/api.mjs'])
   assert.deepEqual(out.drift.map((d) => [d.node, d.contract]).sort(), [['c', 'api'], ['d', 'shape']])
-  assert.deepEqual(out.unexamined, ['later'])
+  assert.equal(out.unexamined, 1)
   assert.deepEqual(driftOf(tree, ['p'], ['src/api.mjs']).drift, [], 'the provider landing its own contract is expected work')
 })
 
@@ -616,8 +616,8 @@ test('spec-prepare clears the spec_changed park its own compile raises on the fo
 
   const again = B(r, 'spec-prepare', { node: 'p', review: '20260926-120000-probe' })
   assert.equal(again.status, 'prepared')
-  assert.ok(again.compile.parked.some((p) => p.node === 'p' && p.reason === 'spec_changed'), 'compile saw the change under dispatched work')
   const tree = readTree(r, 'e1')
+  assert.ok(tree.events.some((e) => e.kind === 'parked' && e.node === 'p' && e.return === 'spec_changed'), 'compile saw the change under dispatched work')
   assert.notEqual(tree.status.get('p').status, 'parked', 'the planner\'s re-derivation answers the park it raised')
   assert.equal(tree.events.filter((e) => e.kind === 'replanned' && e.node === 'p' && e.reason === 'spec_rederived').length, 1)
 })

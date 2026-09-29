@@ -404,3 +404,12 @@ test('the store ignores itself: an opened effort and its records leave git statu
   assert.equal(git(repo, 'status', '--porcelain'), '', 'local state never shows up as a change to commit')
   assert.equal(readFileSync(join(repo, store.AGENTICS_DIR, '.gitignore'), 'utf8'), '*\n')
 })
+
+test('a rename rewrites a group heading\'s after, and a group\'s name counts as taken', () => {
+  const repo = approvedEffort()
+  const group = '### watch — group · after: api\nWatch configs\n\n- **reload** — task · rigor: trivial · locus: src/reload.js\n  Reload configs\n  - [ ] it reloads — check: `node --test`\n\n'
+  putSpec(repo, '.', readSpec(repo, '.').replace('## Open questions', group + '## Open questions'))
+  assert.equal(renameSubEffort(repo, E, 'api', 'watch').ok, false, 'a group already holds the name')
+  assert.equal(renameSubEffort(repo, E, 'api', 'loader').ok, true)
+  assert.deepEqual(parseSpec(readSpec(repo, '.')).groups[0].after, ['loader'])
+})

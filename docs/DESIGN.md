@@ -1411,6 +1411,11 @@ absent it says so and the session takes the `--no-progress` path.
 A service step carries `user-invocable: false`: it is gone from the `/` menu, and the model still
 runs it when asked in chat.
 
+**A stopped node named to develop is a question, not a launch.** Words that name a parked or
+escalated node (a pasted Next line, the viewer's prompt) take develop straight to asking the user
+about that node; its execution is relaunched only once the answer is recorded. A relaunch without
+the answer runs everything else and hands the same stop back at the end.
+
 A skill file holds the router and the steps; step detail lives in reference files loaded when the
 step is reached. A contract several files must state identically is a verbatim block, placed only
 in the files whose reader acts on it.

@@ -119,6 +119,9 @@ from the root (`foundations/entities`). A name equal to the words is the match; 
 folder whose name or title contains them. **One match** is the folder this run builds. **Several**:
 ask which with `AskUserQuestion`. **None**: the words are a request, and step 1 takes them.
 
+**Words naming a parked or escalated node** are a question, not a launch: take that node through
+4b or 4c now, and relaunch its execution (step 3, its stamp) only once the answer is recorded.
+
 For a matched folder, first match:
 
 | the folder | go to |

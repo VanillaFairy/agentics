@@ -143,9 +143,10 @@ export function simulate(nodes, script = {}) {
   const answer = {
     preflight(args) {
       sim.root = args.root
+      sim.invocations = (sim.invocations || 0) + 1
       const extra = script.preflight ? script.preflight(args, sim, count('preflight')) || {} : {}
       return {
-        boundary: 'preflight', ok: true, error: null, checkpoint: null,
+        boundary: 'preflight', ok: true, error: null, checkpoint: null, invocation: sim.invocations,
         envelope: { root: args.root, base_branch: 'main', base_sha: 'base0', dial: args.dial, pace: args.pace, resumed: false },
         counts: { nodes: sim.nodes.size, leaves: [...sim.nodes.values()].filter((r) => r.kind === 'leaf').length, gaps: 0, untraced: 0 },
         freed: [], dirty_worktrees: [], commands: null, max_parallel: 4, todos: [], notes: [], ...extra,

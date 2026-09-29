@@ -265,13 +265,14 @@ test('preflight checkpoints: an overlapping open execution, a blocking gap, a pa
 test('resume: a preflight after a lost invocation names each leaf\'s next undone action', () => {
   const r = repo()
   seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] }), leaf('b', { rigor: 'trivial', locus: ['README.md'] })])
-  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const first = B(r, 'preflight', { root: '.', commands: COMMANDS })
   const open = B(r, 'leaf-open', { node: 'a', role: 'implementer', round: 1 })
   commitIn(open.worktree, { 'test/a.test.mjs': A_TEST, 'src/a.mjs': 'export const a = () => 1\n' }, 'Add a')
   B(r, 'leaf-close', { node: 'a', role: 'implementer', round: 1, base_sha: open.base_sha })
   // The invocation dies here. The next one resumes the same execution.
   const again = B(r, 'preflight', { root: '.', commands: COMMANDS })
   assert.equal(again.envelope.resumed, true)
+  assert.notEqual(again.invocation, first.invocation, 'each invocation numbers its record ids afresh')
   const tick = B(r, 'schedule', { running: [] })
   const next = Object.fromEntries(tick.launch.map((l) => [l.id, l.facts.next_action]))
   assert.deepEqual(next, { a: 'merge', b: 'code' })

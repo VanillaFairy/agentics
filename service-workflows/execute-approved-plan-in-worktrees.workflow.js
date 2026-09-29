@@ -267,7 +267,7 @@ const planning = new Set()      // folders a running unit is replanning inline
 const running = new Map()       // unit key -> its promise, until a tick has carried what it decided
 const finished = new Set()      // units that ended since the last tick was built
 let invocation = 0              // minted by preflight: what makes this invocation's record ids its own
-let minted = 0
+const minted = new Map()        // record content key -> how many times this invocation decided it
 const failedChannels = []
 const notes = []
 const implemented = []
@@ -340,11 +340,20 @@ function courierPrompt(command) {
 
 /**
  * The boundaries the main loop calls one at a time: only they carry the pending decisions. Each
- * record goes with an id of this invocation's, so a record sent again after a lost courier lands
- * once, and the same decision taken again later (an approval after a retry) lands again.
+ * record goes with an id: this invocation's number and the record's own content, counted when the
+ * invocation decides the same thing twice. A record sent again after a lost courier lands once; the
+ * same decision taken in a later invocation (an approval after a retry) lands again; and a run a
+ * host resumes, which replays the dead run's preflight and so its number, re-derives the same id
+ * for the same decision whatever order its units finish in.
  */
 const CARRIES_RECORDS = new Set(['schedule', 'postflight'])
-const withId = (r) => (r.rid ? r : { ...r, rid: invocation + '.' + (++minted) })
+function withId(r) {
+  if (r.rid) return r
+  const key = invocation + ':' + fnv1a(canonical({ file: r.file, entry: r.entry }))
+  const n = (minted.get(key) || 0) + 1
+  minted.set(key, n)
+  return { ...r, rid: n === 1 ? key : key + '#' + n }
+}
 
 /**
  * Run one boundary entry point through a courier and believe its payload only after the digest.

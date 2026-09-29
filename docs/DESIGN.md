@@ -973,11 +973,13 @@ already attached).
 
 Schedule and postflight first append the workflow's pending decisions (`records`: approvals,
 escalations, parks, integration verdicts, dispatch cost lines). No other boundary carries them, and
-the main loop calls those two one at a time. Each record carries an id, `<invocation>.<n>`: preflight
-mints the invocation's number on disk (the workflow has no clock and no randomness, so a resume can
-replay it), and the workflow counts the rest. A record sent again after a lost courier lands once;
-the same decision taken again — an approval at the same head after a retry — has a new id and lands
-again. A record the lib writes itself (a merge-batch run again) is known by its content.
+the main loop calls those two one at a time. Each record carries an id: the invocation's number,
+which preflight mints on disk (the workflow has no clock and no randomness), and a digest of the
+record's content, counted when one invocation decides the same thing twice. A record sent again
+after a lost courier lands once; the same decision taken in a later invocation — an approval at the
+same head after a retry — has a new id and lands again; a run the host resumes replays the dead
+run's preflight, and so re-derives the same id for the same decision in whatever order its units
+finish. A record the lib writes itself (a merge-batch run again) is known by its content.
 
 **A unit is in flight until a tick has carried what it decided.** A unit that ends while a schedule
 call is out stays in the workflow's running set, so that call launches nothing beneath it or twice,

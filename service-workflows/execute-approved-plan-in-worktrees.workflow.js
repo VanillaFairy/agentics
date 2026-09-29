@@ -262,7 +262,7 @@ const COURIER_UP = { model: 'sonnet', effort: 'low' }
 // units in flight, the decisions it took and has not yet handed to a boundary, and what it saw.
 
 const records = []              // decisions waiting for the next schedule or postflight
-const stoppedHere = new Set()   // nodes this invocation escalated or parked
+const stoppedHere = new Set()   // nodes this invocation escalated, parked or held on a fault
 const planning = new Set()      // folders a running unit is replanning inline
 const running = new Map()       // unit key -> its promise, until a tick has carried what it decided
 const finished = new Set()      // units that ended since the last tick was built
@@ -273,6 +273,7 @@ const notes = []
 const implemented = []
 const escalations = []
 const parked = []
+const faults = []               // units a plugin fault ended: never the user's, retried by the next invocation
 const reviews = []
 const drift = []
 let dispatches = 0
@@ -545,12 +546,24 @@ function approve(row, st, atIntegration) {
   leavesFinished++
 }
 
+/**
+ * A plugin fault — a boundary that stayed unbelievable, or a throw in this script — is not a
+ * decision for the user: the node records no stop on disk, is held for the rest of this
+ * invocation, and the next invocation takes it up where its records say it stands.
+ */
+function fault(id, channel, detail) {
+  stoppedHere.add(id)
+  faults.push({ id, channel, detail: detail || '' })
+  records.push({ file: 'state', entry: { kind: 'fault', node: id, channel, detail: String(detail || '').slice(0, 500) } })
+  note('plugin fault on ' + id + ' (' + channel + '): ' + detail + ' — held for the next invocation')
+}
+
 function launch(key, fn) {
   const p = Promise.resolve().then(fn).catch((err) => {
     const id = key.slice(key.indexOf(':') + 1)
     const channel = err instanceof TransportError ? 'transport' : 'pipeline'
     failedChannels.push(channel)
-    if (!stoppedHere.has(id)) escalate(id, channel, channel === 'transport' ? err.message : String(err && err.message))
+    if (!stoppedHere.has(id)) fault(id, channel, String(err && err.message))
   }).finally(() => finished.add(key))
   running.set(key, p)
 }
@@ -1159,6 +1172,7 @@ function result(checkpoint, post) {
     .concat(parked.filter((p) => p.carried).map((p) => p.id + ': parked earlier — ' + p.return))
     .concat(escalations.filter((e) => !e.carried).map((e) => e.id + ': escalated — ' + e.reason))
     .concat(parked.filter((p) => !p.carried).map((p) => p.id + ': parked — ' + p.return))
+    .concat(faults.map((f) => f.id + ': held on a plugin fault (' + f.channel + ') — relaunch to retry'))
     .concat(blocked.map((b) => b.leaves_n + ' leaf/leaves blocked — ' + b.blocked_by + ' did not land'))
     .concat(s.not_merged_n > 0 ? [s.not_merged_n + ' of ' + s.leaves_n + ' leaves not merged in this invocation' + (stopping ? ' (' + stopping + ')' : '')] : [])
     .concat(checkpoint ? ['checkpoint ' + checkpoint.reason + ': nothing was dispatched'] : [])
@@ -1169,14 +1183,14 @@ function result(checkpoint, post) {
   return {
     effort, root: rootId, execution, checkpoint: checkpoint || null,
     nodes_n: s.nodes_n,
-    implemented, escalations, parked, blocked,
+    implemented, escalations, parked, faults, blocked,
     integration: { branch: integration.branch, head_sha: integration.head_sha, reviews },
     drift, cleanup_n: (post && post.cleanup_n) || 0,
     cost: { dispatches, by_model: byModel, tokens: budget && budget.total ? budget.spent() : null },
     stopped: stopping || '',
     notes,
     coverage: {
-      complete: !checkpoint && Boolean(post) && s.not_merged_n === 0 && s.root_done && escalations.length === 0 && parked.length === 0 && !lostReview,
+      complete: !checkpoint && Boolean(post) && s.not_merged_n === 0 && s.root_done && escalations.length === 0 && parked.length === 0 && faults.length === 0 && !lostReview,
       dropped: [],
       incomplete: [],
       failed_channels: [...new Set(failedChannels)],

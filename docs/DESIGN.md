@@ -1040,8 +1040,16 @@ lock held longer than a leaf-open may wait answers `busy`, and the workflow re-d
 **Retries are sized to what was observed.** A courier that returned nothing or could not run the
 command is re-run once, because the entry point is idempotent; a payload that fails its digest
 buys one refetch on a stronger model; an argument token the program refused as damaged buys one
-fresh courier; a program failure is not retried. What is still unbelievable escalates as a
-transport failure.
+fresh courier; a program failure is not retried.
+
+**A plugin fault is never the user's decision.** A boundary that stays unbelievable, or a throw in
+the workflow itself, ends that unit as a `fault {node, channel, detail}` state line: no `escalated`
+event lands, so the node's status on disk is what its last real record says, it is held for the
+rest of the invocation, and the result lists it under `faults` and in `coverage.unreached`. develop
+relaunches the execution once at once, and the next invocation takes the node up where it stands;
+a fault on the same node again is reported as a plugin defect with what it left undone, never asked
+as a question. The user is reached for two things only: a premise a parallel change made obsolete
+(after an analyst ruled it so, [Merging](#merging)), and a complication no agent could resolve.
 
 ### Merging
 
@@ -1600,7 +1608,7 @@ failed_alone[], combination[], conflict}`; `checkpoint {reason, detail, executio
 (the lists the checkpoint found; `lib/status.mjs checkpoint` prints them); `closed {status}`;
 `batch-started {target, pre, children}`; `checkpoint-confirmed {stale?, gaps?}` (what the user
 confirmed past, printed by the same command); `invocation {}`, one per preflight, whose count
-numbers the invocation's record ids. A line the workflow decided carries its `rid`.
+numbers the invocation's record ids; `fault {node, channel, detail}`, a unit a plugin fault ended. A line the workflow decided carries its `rid`.
 
 `journal.jsonl` (what was observed, by whoever observed it): `verify-observed {node, branch,
 worktree, base_sha, head_sha, stop_reason, build, typecheck, suite, failing_tests, discriminator,
@@ -1761,8 +1769,8 @@ with `renamed_from`.
   pause, progress, retry_escalated, confirmed_duplicate, confirmed_gaps, confirmed_stale, base_ref,
   commands, plugin_root`. Returns `{effort, root, execution, checkpoint, nodes_n,
   implemented[{id, rigor, role, rounds, review_rounds, at_integration, salvaged}],
-  escalations[{id, reason, detail}], parked[{id, return, question}], blocked[{blocked_by, leaves_n}],
-  integration{branch, head_sha, reviews[{target, findings, claims, notes, reviewed}]}, drift, cleanup_n,
+  escalations[{id, reason, detail}], parked[{id, return, question}], faults[{id, channel, detail}],
+  blocked[{blocked_by, leaves_n}], integration{branch, head_sha, reviews[{target, findings, claims, notes, reviewed}]}, drift, cleanup_n,
   cost{dispatches, by_model, tokens}, stopped, notes, coverage}`. `coverage.unreached` names every
   stopped node and counts the rest; `coverage.resumable.remaining` names the execution's root,
   because a relaunch with the same stamp re-derives everything below it.

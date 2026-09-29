@@ -240,6 +240,20 @@ test('a payload damaged in transit is refetched on a stronger courier', async ()
   assert.equal(result.coverage.complete, true)
 })
 
+test('a payload no courier can carry is a plugin fault: the node is held, never escalated to the user', async () => {
+  const sim = simulate([composite('.'), row('a'), row('b')], {
+    damage: (name, args) => (name === 'leaf-close' && args.node === 'a' ? (env) => { env.payload.head_sha = 'retyped' } : null),
+  })
+  const { result } = await run(sim)
+  assert.deepEqual(result.escalations, [])
+  assert.deepEqual(result.faults.map((f) => [f.id, f.channel]), [['a', 'transport']])
+  assert.equal(sim.statusOf('a'), 'active', 'no stop lands on disk: the next invocation takes the leaf up')
+  assert.deepEqual(recordsOf(sim, 'fault').map((r) => r.node), ['a'])
+  assert.equal(sim.statusOf('b'), 'merged', 'the rest of the run goes on')
+  assert.equal(result.coverage.complete, false)
+  assert.ok(result.coverage.unreached.some((u) => /a: held on a plugin fault/.test(u)))
+})
+
 test('no slot: leaf-open is re-dispatched until the pool admits the leaf', async () => {
   const sim = simulate([composite('.'), row('a')], { open: { a: ['no_slot', 'no_slot', 'opened'] } })
   const { result } = await run(sim)

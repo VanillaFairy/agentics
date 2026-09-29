@@ -344,6 +344,10 @@ never sees, does not count, nor does a re-ask that refers to one ("given those u
 information; do not resolve them yourself. Once a cause is dealt with, relaunch with the same
 `execution` and `retry_escalated: [<ids>]`.
 
+**Faults** — `{id, channel, detail}`: a plugin fault, never a question. Relaunch the same
+`execution` at once, asking nothing; a fault on the same node again is reported to the user as a
+plugin defect, with the node and what it left undone.
+
 **c. Parked nodes** — `{id, return, question}`. Ask the user each question, one topic at a time,
 with your recommendation marked `(Recommended)`. Never answer for them. **Every answer is a
 re-spec**: edit the spec that owns the fault, have it re-approved, recompile, relaunch.

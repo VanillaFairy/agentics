@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url'
 
 import { append, seqMax } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
-import { checkpointOf, costOf, efforts, questionsSince, renderTodos, todosOf } from '../lib/status.mjs'
+import { checkpointOf, costOf, efforts, questionsSince, renderTodos, snapshotOf, todosOf } from '../lib/status.mjs'
 import { effortDir, effortStateDir, executionDir } from '../lib/store.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/status.mjs', import.meta.url))
@@ -257,7 +257,7 @@ test('a watch sees each question an execution raises after it started, and stops
   append(repo, E, 'events', { kind: 'parked', node: 'b', execution: X1, return: 'needs_decision', question: 'keep the cache?\nor drop it' })
   append(repo, E, 'events', { kind: 'escalated', node: 'c', execution: X2, reason: 'blocked', detail: 'another execution' })
   const q = questionsSince(repo, E, X1, start)
-  assert.deepEqual(q.lines.map((l) => l.line), ['parked b (needs_decision): keep the cache? / or drop it'])
+  assert.deepEqual(q.lines.map((l) => l.line), ['parked b (needs_decision): keep the cache?'], 'one line: the rest is in the file or the snapshot')
   assert.equal(q.ended, false)
 
   append(repo, E, 'state:' + X1, { kind: 'ended' })
@@ -275,4 +275,15 @@ test('the watch command prints each question as it lands and exits when the invo
   append(repo, E, 'state:' + X1, { kind: 'ended' })
   assert.equal(await exited, 0)
   assert.equal(out.trim(), 'escalated a (blocked): needs a key')
+})
+
+test('a question its author wrote to a file reaches the watch and the snapshot from that file', () => {
+  const repo = effortWith(TREE)
+  const said = join(mkdtempSync(join(tmpdir(), 'agentics-said-')), 'q.md')
+  writeFileSync(said, 'Keep the cache?\nIt costs 2 GB.\n')
+  const start = seqMax(repo, E)
+  append(repo, E, 'events', { kind: 'parked', node: 'a', execution: X1, return: 'needs_decision', question: '', said })
+  assert.deepEqual(questionsSince(repo, E, X1, start).lines.map((l) => l.line), ['parked a (needs_decision): Keep the cache? (in full: ' + said + ')'])
+  const node = snapshotOf(repo, E).nodes.find((n) => n.id === 'a')
+  assert.equal(node.event.question, 'Keep the cache?\nIt costs 2 GB.', 'the viewer gets the whole question')
 })

@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
@@ -78,6 +78,7 @@ test('a leaf from preflight to landing: open, measure, merge, close, land, clean
   const pre = B(r, 'preflight', { root: '.', commands: COMMANDS })
   assert.equal(pre.ok, true, JSON.stringify(pre.error))
   assert.equal(pre.checkpoint, null)
+  assert.ok(statSync(pre.said_dir).isDirectory(), 'the agents of the execution have somewhere to write what they say')
   assert.equal(JSON.parse(readFileSync(join(executionDir(r, 'e1', STAMP), 'execution.json'), 'utf8')).base_branch, 'main')
   assert.deepEqual(pre.counts, { nodes: 2, leaves: 1, gaps: 0, untraced: 0 })
   assert.deepEqual(pre.todos.map((t) => t.key), ['.'])

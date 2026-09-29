@@ -173,9 +173,10 @@ test('what an agent asks the user never rides a record: the record carries the f
     'implementer:a#1': () => ({ status: 'needs_decision', detail: 'which format: JSON or YAML?', concerns: [], commits: [] }),
   })
   const told = prompts.find((p) => p.opts.label === 'implementer:a#1').prompt
-  assert.match(told, /first write that detail in full to \/said\/implementer-a-1\.md/)
+  const file = /first write that detail in full to (\S+)/.exec(told)[1]
+  assert.match(file, /^\/said\/\d+-\d+-implementer-a-1\.md$/)
   const [record] = recordsOf(sim, 'parked')
-  assert.equal(record.said, '/said/implementer-a-1.md')
+  assert.equal(record.said, file)
   assert.equal(record.question, '', 'no prose of the agent\'s crosses the courier')
   assert.equal(result.parked[0].question, 'which format: JSON or YAML?', 'the session still gets it whole from the return')
 })
@@ -350,8 +351,30 @@ test('contract drift an analyst rules affected parks the consumer with its quest
   assert.ok(result.implemented.some((i) => i.id === 'c'))
   assert.deepEqual(result.drift.map((d) => d.node), ['b'])
   const asked = prompts.find((p) => p.opts.label === 'rule:drift:.')
-  assert.equal(asked.opts.agentType, 'agentics:analyst')
+  assert.equal(asked.opts.agentType, 'agentics:ruler')
   assert.match(asked.prompt, /\/merges\/root\.drift\.diff[\s\S]*node b consumes contract api/)
+})
+
+test('each drifted consumer gets a ruling file of its own, which its park points at', async () => {
+  const sim = driftSim()
+  const { result, prompts } = await run(sim, { 'rule:drift:.': ruling('affected', 'does b still read one?') })
+  const asked = prompts.find((p) => p.opts.label === 'rule:drift:.')
+  assert.equal(asked.opts.agentType, 'agentics:ruler')
+  const file = /- b: (\S+)/.exec(asked.prompt)[1]
+  assert.match(file, /^\/said\/\d+-\d+-rule-drift-.-b\.md$/)
+  const [record] = recordsOf(sim, 'parked')
+  assert.equal(record.said, file)
+  assert.equal(record.question, 'merged work touched contract api, which b consumes', 'the record holds the workflow\'s line, not the ruler\'s words')
+  assert.equal(result.parked[0].question, 'does b still read one?')
+})
+
+test('a fix round that returns done with no commits escalates on the workflow\'s own line, pointing at no file', async () => {
+  const sim = simulate([composite('.'), row('a')], { close: { a: [{ next: 'fix', reason: '', failures: [{ check: 'suite', claim: 'test x fails' }] }] } })
+  const { result } = await run(sim, { 'implementer:a#2': () => ({ status: 'done', detail: 'nothing to change', concerns: [], commits: [] }) })
+  assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['a', 'fix_without_commits']])
+  const [record] = recordsOf(sim, 'escalated')
+  assert.equal(record.said, undefined)
+  assert.equal(record.detail, 'fix round 2 returned no commits')
 })
 
 test('contract drift an analyst rules unaffected never reaches the user: the consumer runs', async () => {
@@ -866,7 +889,7 @@ test('claims all met: nothing parks, and the verdicts are recorded for the landi
   const recorded = recordsOf(sim, 'claims')
   assert.deepEqual(recorded.map((e) => [e.node, e.claims]), [['.', claims.map(({ claim, verdict }) => ({ claim, verdict }))]],
     'the verdicts ride the record; the evidence stays in the reviewer\'s own file')
-  assert.equal(recorded[0].said, '/said/review-integration-..md')
+  assert.match(recorded[0].said, /^\/said\/\d+-\d+-review-integration-\.\.md$/)
   assert.ok(recorded[0].head_sha, 'the verdicts name the head they judged')
   assert.deepEqual(result.integration.reviews.find((r) => r.target === '.').claims, claims)
 })

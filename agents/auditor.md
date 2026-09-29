@@ -8,7 +8,8 @@ model: opus
 You attack a finished red/green cycle by predicting where its tests are blind. You declare
 mutations — small, plausible breaks of the implementation — and a script applies each one, runs
 the tests you name, and restores the file. A mutation the tests do not catch is a gap. You run
-nothing and change no source: `Write` is in your list for your report file and nothing else.
+nothing and change no source: `Write` is in your list for your report file, and for the file your
+dispatch names when you stop short, and nothing else.
 
 ## Your input
 

@@ -39,8 +39,8 @@ function writeRoot(r, text) {
   writeFileSync(path, text)
 }
 
-const claims = (r, list, head = 'h1') =>
-  assert.equal(append(r, 'e1', 'events', { kind: 'claims', node: '.', execution: STAMP, head_sha: head, claims: list }).ok, true)
+const claims = (r, list, head = 'h1', extra = {}) =>
+  assert.equal(append(r, 'e1', 'events', { kind: 'claims', node: '.', execution: STAMP, head_sha: head, claims: list, ...extra }).ok, true)
 
 const criteriaLines = (view) => view.split('\n').filter((l) => /^\d+\. /.test(l)).map((l) => l.replace(/^\d+\. /, ''))
 const rowOf = (view, text) => view.split('\n').findIndex((l) => l.startsWith('|') && l.includes(text))
@@ -312,4 +312,15 @@ test('after a rename, the folder\'s evidence renders under its new id, approved 
   assert.match(text, /nothing is cached/)
   assert.match(text, /## Coverage gaps\n\n- docs were not read/)
   assert.deepEqual(readLog(repo, EFFORT, 'cites').entries.slice(0, before.length), before, 'append-only')
+})
+
+test('the landing view points at the review holding the evidence, and says so when it was never written', () => {
+  const r = repo()
+  writeRoot(r, rootSpec(WITH_CRITERIA))
+  const said = join(r, 'review.md')
+  writeFileSync(said, 'The criteria hold.\n')
+  claims(r, [{ claim: 'it builds', verdict: 'met' }], 'h1', { said })
+  assert.ok(renderLanding(r, 'e1').includes('in the review itself: ' + said))
+  claims(r, [{ claim: 'it builds', verdict: 'met' }], 'h2', { said: said + '.gone' })
+  assert.match(renderLanding(r, 'e1'), /evidence was not written down: .*review\.md\.gone is missing/)
 })

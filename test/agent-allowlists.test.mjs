@@ -34,10 +34,9 @@ const AGENTS = new URL('../agents/', import.meta.url)
  * file without reading it.
  */
 const ALLOWLISTS = {
-  // No Grep or Glob: an analyst judges what it is handed and cannot widen the evidence base, which
-  // is the point of the role. Write only for the file its dispatch names, where its rulings and
-  // questions go in full, so no courier retypes them.
-  analyst: ['Read', 'Write'],
+  // `Read` alone: the host refuses an agent with no tools, and an analyst judges what it is handed
+  // — without Grep or Glob it cannot widen the evidence base, which is the point of the role.
+  analyst: ['Read'],
   // Writes only its report file; it declares mutations and a script applies them.
   auditor: ['Glob', 'Grep', 'Read', 'Write'],
   // Runs one lib command and pastes stdout; the task tools move the launching session's todo
@@ -50,6 +49,9 @@ const ALLOWLISTS = {
   planner: ['Bash', 'Glob', 'Grep', 'Read', 'Write'],
   // Write only for its own review file, where its findings and claim evidence go in full.
   reviewer: ['Bash', 'Glob', 'Grep', 'Read', 'Write'],
+  // Judges what it is handed, like the analyst; Write only for the ruling files its dispatch
+  // names, where each ruling goes in full so no courier retypes it.
+  ruler: ['Read', 'Write'],
   scout: ['Glob', 'Grep', 'Read'],
   'test-author': ['Edit', 'Glob', 'Grep', 'Read', 'Write'],
 }
@@ -65,7 +67,7 @@ const ALLOWLISTS = {
  * failing tests and must not be able to run, implement or commit them, so a Bash added here would
  * dissolve the separation the whole role exists for without changing a word of its charter.
  */
-const NO_SHELL = ['analyst', 'auditor', 'doc-researcher', 'scout', 'test-author']
+const NO_SHELL = ['analyst', 'auditor', 'doc-researcher', 'ruler', 'scout', 'test-author']
 
 /** `tools:` out of the frontmatter block. CR-stripped: core.autocrlf is true on Windows. */
 function toolsOf(source) {

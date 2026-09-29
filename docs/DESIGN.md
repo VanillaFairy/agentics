@@ -979,7 +979,7 @@ already attached).
 
 | boundary | fused steps |
 |---|---|
-| **preflight** | refuse an execution overlapping an open one; drift check against the envelope's base; traceability; free this execution's slots and its dead worktrees (clean ones only — a dirty one is reported, never forced); write the leaves the base moved under, and the diff, for the analyst's ruling; create the execution root's todo. A checkpoint's lists (the overlapping executions, the gaps) go on its state line, for the session to read with `lib/status.mjs checkpoint`; the payload carries counts |
+| **preflight** | refuse an execution overlapping an open one; drift check against the envelope's base; traceability; free this execution's slots and its dead worktrees (clean ones only — a dirty one is reported, never forced); write the leaves the base moved under, and the diff, for the ruler; create the execution root's todo. A checkpoint's lists (the overlapping executions, the gaps) go on its state line, for the session to read with `lib/status.mjs checkpoint`; the payload carries counts |
 | **schedule** | append the workflow's decisions; compute what to launch from the tree on disk (`lib/schedule.mjs`, see [Scheduling](#scheduling)); attach to each launch the one row it needs, and to a leaf's its parent's row and its resume ladder; move the todos of the nodes it touched |
 | **leaf-open** | acquire a slot and the locus locks; ensure the parent's integration branch (lazily, refreshed from its own parent) and cut or attach the leaf's branch and worktree; assemble its brief; append `dispatched`; move the todo |
 | **leaf-close** | commit a shell-less author's locus files (anything outside is reverted and reported as a breach); build, typecheck, suite, discriminator, declared mutations and named checks by rigor; journal the observation; write and delete reported gotchas; compute the close decision; move the todo |
@@ -1023,12 +1023,15 @@ builds that round's brief from it; the arguments carry none. A close that decide
 **What an agent says to the user, it writes itself.** The workflow's records reach disk inside a
 schedule or postflight token a courier retypes, so they carry no agent's prose. Preflight names
 the execution's `said/` directory; every agent that can stop a node — an executor, the planner
-writing or settling a spec, a reviewer, the analyst ruling on drift or a moved base — is told the
-file `said/<dispatch label>.md` and writes there, in full, the question, the need, the review or
-the rulings it returns. The record carries that path (`said`) and no text of the agent's; its own
-`question` or `detail` holds only a line the workflow or the lib composed. Every reader — the
-Next line, the watch, the snapshot, the landing check — shows the file (`saidOf`), and says so
-plainly when its author did not write it. Text the workflow holds itself — a
+writing or settling a spec, a reviewer, the ruler ruling on drift or a moved base — is told a file
+there and writes to it, in full, the question, the need, the review or one node's ruling, its first
+line saying it in one sentence. Each file is its own: named by the invocation, a count within it
+and the dispatch label (a node id's `/` written `.`), so no later dispatch overwrites what an open
+stop points at and a file its author did not write is seen missing, never mistaken for an older
+one; the ruler gets one file per node. The record carries that path (`said`) and no text of the
+agent's; its own `question` or `detail` holds only a line the workflow composed, or nothing. Every
+reader — the Next line and the watch (the first line), the snapshot and the landing check (the
+whole) — shows the file (`saidOf`), and says so plainly when its author did not write it. Text the workflow holds itself — a
 reviewer's findings — goes to the executor in its dispatch prompt, which is never retyped. A
 payload field the workflow does not read is not printed.
 
@@ -1063,7 +1066,7 @@ freed — and the result lists it under `faults` and in `coverage.unreached`. de
 relaunches the execution once at once, and the next invocation takes the node up where it stands;
 a fault on the same node again is reported as a plugin defect with what it left undone, never asked
 as a question. The user is reached for two things only: a premise a parallel change made obsolete
-(after an analyst ruled it so, [Landing and drift](#landing-and-drift)), and a complication no agent
+(after the ruler ruled it so, [Landing and drift](#landing-and-drift)), and a complication no agent
 could resolve: a review or a replan that does not converge, a merge conflict, a broken environment,
 an executor that is blocked.
 
@@ -1234,7 +1237,7 @@ merge-batch. Coupled leaves run one at a time; everything else keeps running.
 
 The node's author sets `dispatch` per stage, because it holds the context. Defaults: **producers**
 (implementer, test-author) run the cheaper model, with effort scaled to the leaf's difficulty;
-**gates** (reviewer, planner, analyst) run the stronger model at moderate effort. A leaf whose
+**gates** (reviewer, planner, analyst, ruler) run the stronger model at moderate effort. A leaf whose
 output is a yardstick — `red`, `audit`, or one that `provides` a contract — runs its producer on the
 stronger model too. A fix round that failed to clear its blockers raises the producer one step, and
 that step may exceed the user's ceiling. The user's intelligence dial is otherwise a ceiling,
@@ -1249,24 +1252,24 @@ without asking; the user's tree is not involved.
 
 After each merge-batch, the landed diff is intersected with the `consumes` path prefixes of every
 pending designed node. Merge-batch writes the merged change to the files hit
-(`merges/<target>-<pre>.drift.diff`) and names each consumer's spec; one analyst reads both and
+(`merges/<target>-<pre>.drift.diff`) and names each consumer's spec; one ruler reads both and
 rules each consumer `unaffected` (a `drift-ruled` state line; it runs on, and the user never hears
 of it) or `affected`, with the one question its owner must answer. A consumer is not launched while
 it is being ruled on. Only an affected consumer is parked (`contract_drift`) for the user; so is
-one no analyst ruled on after a second dispatch, because drift is found only on the batch that
+one no ruler ruled on after a second dispatch, because drift is found only on the batch that
 landed it and a held consumer would lose it. Everything else keeps running. Undesigned nodes are
 reported as unexamined.
 
 The same holds for a base branch that moved under a resumed execution: preflight writes the leaves
 whose files moved, and the diff, to `stale-<now>.json` and `.diff` beside the state log and hands
-their ids on; one analyst rules them before anything runs. Each ruling gets a `stale-ruled` state
+their ids on; one ruler rules them before anything runs. Each ruling gets a `stale-ruled` state
 line keyed to that base head, so a resume against the same head asks about neither again: an
 unaffected leaf runs on, an affected one is parked `premise_mismatch` with the question, and the
-user's answer stands. A leaf no analyst ruled on after a second dispatch is held as a fault and
+user's answer stands. A leaf no ruler ruled on after a second dispatch is held as a fault and
 ruled on by the next invocation; a leaf already stopped is left out until its stop clears. No
 checkpoint stops the run for it.
 
-**Why an analyst first:** hash drift says a premise may have moved, not that it did. Most drift
+**Why a ruler first:** hash drift says a premise may have moved, not that it did. Most drift
 touches what a consumer does not rely on, and putting every hit to the user makes the user the
 filter for noise; a reader that did not write either side rules first, and the user is reached
 only when a premise really moved.
@@ -1454,11 +1457,12 @@ disagree about it.
 | role | does | cannot | tools |
 |---|---|---|---|
 | scout, historian, doc-researcher | find, to exhaustion | conclude | search tools; historian read-only git; doc-researcher the web |
-| analyst | judge what it is handed | search | read; write (the one file its dispatch names) |
+| analyst | judge what it is handed | search | `Read` only |
+| ruler | rule whether a change moved the premises of nodes not yet done | search, touch the work | read; write (the ruling files its dispatch names) |
 | planner | write the spec of a folder develop owns (an `author: planner` sub-effort, a promoted task, its own folder replanned) and settle its autonomous review | state a decision, implement | read, search, shell (for `lib/spec.mjs check`), write |
 | implementer | code one leaf as a focused series, or its fix round | leave its locus, amend, merge, certify | read, edit, shell |
 | test-author | write a leaf's tests and declare mutations | implement, execute anything | read, edit |
-| auditor | declare mutations against an implementation | edit source, execute anything | read, write (its report only) |
+| auditor | declare mutations against an implementation | edit source, execute anything | read, write (its report, and its said file when it stops short) |
 | reviewer | attack a span | approve, edit | read, read-only git; write (its own review file) |
 | investigator | establish build and test commands when none are known, recorded as `command` gotchas | judge quality, fix anything | read, shell |
 | courier | run one command (after the token writes it is handed), paste stdout; move todos | anything else | shell, task tools |
@@ -1466,7 +1470,7 @@ disagree about it.
 ### Capability layer
 
 Capability is the tool allowlist and nothing else — no hooks. The test-author, auditor, analyst,
-scout and doc-researcher carry no shell, so the authors of every yardstick are structurally unable
+ruler, scout and doc-researcher carry no shell, so the authors of every yardstick are structurally unable
 to run what they wrote; their files are committed and their mutations applied by leaf-close.
 Agents with a shell are restrained by their definitions and audited post hoc (the locus by the
 commit-series check): the criterion is zero breaches surviving to review. The allowlists are pinned
@@ -1674,8 +1678,8 @@ failed_alone[], combination[], conflict}`; `checkpoint {reason, detail, executio
 (the lists the checkpoint found; `lib/status.mjs checkpoint` prints them); `closed {status}`;
 `batch-started {target, pre, children}`; `checkpoint-confirmed {gaps?}` (what the user
 confirmed past, printed by the same command); `drift-ruled {node, contract, head_sha, ruling, why, said?}`
-(an analyst's `unaffected`) and `stale-ruled {node, base_now, ruling, why, said?}` (either ruling;
-`why` is empty when the analyst's `said` file holds it); `invocation {}`, one per preflight, whose count
+(the ruler's `unaffected`) and `stale-ruled {node, base_now, ruling, why, said?}` (either ruling;
+`why` is empty when the ruler's `said` file holds it); `invocation {}`, one per preflight, whose count
 numbers the invocation's record ids; `fault {node, channel, detail}`, a unit a plugin fault ended;
 `ended {}`, one per postflight, where a watching session stops. A line the workflow decided carries its `rid`.
 
@@ -1842,7 +1846,7 @@ with `renamed_from`.
   pause, progress, retry_escalated, confirmed_duplicate, confirmed_gaps, base_ref,
   commands, plugin_root`. Returns `{effort, root, execution, checkpoint, nodes_n,
   implemented[{id, rigor, role, rounds, review_rounds, at_integration, salvaged}],
-  escalations[{id, reason, detail}], parked[{id, return, question}], faults[{id, channel, detail}],
+  escalations[{id, reason, detail, said?}], parked[{id, return, question, said?}], faults[{id, channel, detail}],
   blocked[{blocked_by, leaves_n}], integration{branch, head_sha, reviews[{target, findings, claims, notes, reviewed}]}, drift, cleanup_n,
   cost{dispatches, by_model, tokens}, stopped, notes, coverage}`. `coverage.unreached` names every
   stopped node and counts the rest; `coverage.resumable.remaining` names the execution's root,

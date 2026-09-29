@@ -94,7 +94,7 @@ judgment nobody asked it for. Only the user moves it off that mapping — a bare
 `normal` or `low` token, or `--intelligence=<tier>`.
 <!-- /agentics:verbatim -->
 
-The dial is a ceiling on the gates (planner, reviewer, auditor, analyst); producers run the
+The dial is a ceiling on the gates (planner, reviewer, auditor, analyst, ruler); producers run the
 cheaper model unless their task's entry set otherwise (`docs/DESIGN.md#model-tier`). At `low`,
 say before launching that no strong reader remains anywhere in the loop.
 
@@ -372,7 +372,7 @@ re-spec**: edit the spec that owns the fault, have it re-approved, recompile, re
 | `integration_critical` | the folder's spec: the user rules which part is wrong; a `task` entry that fixes it, or the corrected criterion |
 | `spec_defect` | the spec the question names: the claim cannot be met as written; the user rules how it changes |
 | `cant_tell` | the folder's spec: make the claim decidable, a criterion with a check or a `HUMAN:` criterion the user judges at landing |
-| `contract_drift` | an analyst already ruled the drift affected, and the question is its own. The consumer's entry: the user rules it unaffected (then relaunch with `retry_escalated: [<id>]` and edit nothing), re-designs it, or re-slices it |
+| `contract_drift` | a ruler already ruled the drift affected, and the question is its own. The consumer's entry: the user rules it unaffected (then relaunch with `retry_escalated: [<id>]` and edit nothing), re-designs it, or re-slices it |
 | `spec_changed` | compile parked a folder you wrote because its spec was re-approved while work under it was under way: the user rules whether the dispatched work still stands, and re-specs what does not. A folder develop's planner wrote never reaches you with this return: the run hands it back to the planner, which re-derives it |
 
 For each spec you edited: show the change, and on the user's approval in so many words run

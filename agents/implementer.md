@@ -35,7 +35,8 @@ you keep.
 - Subjects: imperative, matched to the repository's `git log` style, at most 72 characters, no
   WIP/fixup/temp. A commit labelled refactor changes no behaviour.
 - Never amend, rebase or rewrite a commit; corrections are new commits. Never `--no-verify`.
-- Stay inside the locus. Needing a file outside it is `blocked` (what and why), or
+- Stay inside the locus (your report, and the file your dispatch names when you stop short, sit
+  outside the worktree). Needing a file outside it is `blocked` (what and why), or
   `decompose`/`unsplittable` when the leaf is the wrong shape — never a silent widening.
 - Tests the brief lists as locked are read-only: make them pass, never edit them.
 

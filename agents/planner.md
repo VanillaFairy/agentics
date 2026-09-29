@@ -28,7 +28,9 @@ execution tree from your spec once it has passed its autonomous review.
 - **plan entry**: one named unit of work in a spec's Plan: a `sub-effort` (its own folder and spec),
   a `task` (built directly), `deferred` (not now) or `dropped` (abandoned; the decisions it
   realises are accepted as not realised). An entry lists the decision ids it `realises` and what it
-  waits for in `after`: a sibling's name, or a path from the root folder starting with `/`.
+  waits for in `after`: a name in the same plan, or a path from the root folder starting with `/`.
+- **group**: a `### <name> — group` heading in a Plan that gathers the tasks under it by concern.
+  It has no spec, branch or review: its tasks merge into its folder, and its `after` binds them all.
 - **author**: who writes a sub-effort's spec: `you` (the default; it goes through the design loop
   with the user) or `planner` (develop's planner writes it, and an autonomous review must pass it).
 - **decision**: a ruling of the user's, in their words with their why, with an id: `D<n>` in the
@@ -42,11 +44,12 @@ execution tree from your spec once it has passed its autonomous review.
   **Edited since approval**: a line exists and the hash differs; compile leaves the spec out until
   it is approved again.
 - **compile**: the operation that turns approved and prepared specs into the execution graph, and
-  the only writer of nodes. A folder becomes a `composite` node, a sub-effort with no approved or
-  prepared spec a `design` node (the frontier), and a task a `leaf`.
+  the only writer of nodes. A folder becomes a `composite` node, a group a `group` node, a
+  sub-effort with no approved or prepared spec a `design` node (the frontier), and a task a `leaf`.
 - **task promotion**: a task that must be decomposed gets its own spec in
-  `<folder>/<task>/DESIGN.md`. Compile then builds it as a composite that realises the task's
-  decisions and carries its criteria.
+  `<folder>/<task>/DESIGN.md`, or `<folder>/<group>/<task>/DESIGN.md` for a task in a group.
+  Compile then builds it as a composite that realises the task's decisions and carries its
+  criteria.
 - **finding**: one result of a review, graded `ambiguity` (blocks until settled), `gap` (designed
   away or accepted out loud) or `note` (advisory). To **settle** a finding is to incorporate it
   into the spec or to discard it.
@@ -86,7 +89,7 @@ is a `needs_decision` return, never a guess.
 | dispatched for | you write | you never touch |
 |---|---|---|
 | a sub-effort with `author: planner` | its folder's `DESIGN.md`, new | the parent's spec |
-| a task promoted by `decompose`, `unsplittable` or `premise_mismatch` | `<folder>/<task>/DESIGN.md`, for that task alone: its entries realise every decision the task realised and carry its criteria forward | the spec holding the task's entry, even to change the entry |
+| a task promoted by `decompose`, `unsplittable` or `premise_mismatch` | `<folder>/<task>/DESIGN.md` (or `<folder>/<group>/<task>/`), for that task alone: its entries realise every decision the task realised and carry its criteria forward | the spec holding the task's entry, even to change the entry |
 | a replan of a folder you wrote | that folder's `DESIGN.md`, rewritten whole | any spec above it |
 
 Anything else (a change to a spec the user wrote, a contract, a decision) is the user's: return
@@ -124,6 +127,22 @@ entry realised reaches at least one entry here. A contract keeps the name the an
 `dispatch` moves a stage off its default: producers run sonnet with effort scaled to difficulty,
 and a red, audit or contract-providing task's producer runs opus. A folder that owns lockfiles,
 config roots or barrel files lists them in `shared` on the entry that plans it.
+
+**Groups.** Past a handful of tasks, gather the ones that belong together (one subsystem, one area
+of the code, work a reader would review side by side) under a group, so the tree reads by concern:
+
+```
+### <name> — group · after: <entry or group>, …
+<title: one imperative line>
+<context, optional>
+
+- **<name>** — task · …
+```
+
+Entries above the first group heading belong to the folder; every entry below a heading belongs to
+that group. A group holds tasks only. Names are unique across the plan, groups included; `after`
+may name a group (all its tasks), and a group's `after` binds every task in it. Group by concern,
+never by rigor or role.
 
 ## Atomicity: a task when every condition holds
 

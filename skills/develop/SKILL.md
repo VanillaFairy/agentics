@@ -29,7 +29,9 @@ Invoking this skill **is** the user's opt-in for the `Workflow` tool. Do not ask
 - **plan entry**: one named unit of work in a spec's Plan: a `sub-effort` (its own folder and spec),
   a `task` (built directly), `deferred` (not now) or `dropped` (abandoned; the decisions it
   realises are accepted as not realised). An entry lists the decision ids it `realises` and what it
-  waits for in `after`: a sibling's name, or a path from the root folder starting with `/`.
+  waits for in `after`: a name in the same plan, or a path from the root folder starting with `/`.
+- **group**: a `### <name> — group` heading in a Plan that gathers the tasks under it by concern.
+  It has no spec, branch or review: its tasks merge into its folder, and its `after` binds them all.
 - **author**: who writes a sub-effort's spec: `you` (the default; it goes through the design loop
   with the user) or `planner` (develop's planner writes it, and an autonomous review must pass it).
 - **decision**: a ruling of the user's, in their words with their why, with an id: `D<n>` in the
@@ -43,11 +45,12 @@ Invoking this skill **is** the user's opt-in for the `Workflow` tool. Do not ask
   **Edited since approval**: a line exists and the hash differs; compile leaves the spec out until
   it is approved again.
 - **compile**: the operation that turns approved and prepared specs into the execution graph, and
-  the only writer of nodes. A folder becomes a `composite` node, a sub-effort with no approved or
-  prepared spec a `design` node (the frontier), and a task a `leaf`.
+  the only writer of nodes. A folder becomes a `composite` node, a group a `group` node, a
+  sub-effort with no approved or prepared spec a `design` node (the frontier), and a task a `leaf`.
 - **task promotion**: a task that must be decomposed gets its own spec in
-  `<folder>/<task>/DESIGN.md`. Compile then builds it as a composite that realises the task's
-  decisions and carries its criteria.
+  `<folder>/<task>/DESIGN.md`, or `<folder>/<group>/<task>/DESIGN.md` for a task in a group.
+  Compile then builds it as a composite that realises the task's decisions and carries its
+  criteria.
 - **finding**: one result of a review, graded `ambiguity` (blocks until settled), `gap` (designed
   away or accepted out loud) or `note` (advisory). To **settle** a finding is to incorporate it
   into the spec or to discard it.
@@ -291,7 +294,8 @@ Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/execute-approved
 ```
 
 - `plugin_root` is this plugin's absolute root (`${CLAUDE_PLUGIN_ROOT}`) — required.
-- `root` is the folder id: `.` for the root folder.
+- `root` is the node to run: `.` for the root folder, a folder id, a group (`<folder>/<group>`) or
+  one task. Compile `--folder` takes the folder that holds it.
 - `intelligence` on a fresh execution only. A resume passes none: it adopts its envelope.
 - `commands` only when the user named them: `{build, typecheck, suite, test_one}`.
 - The confirmations and `retry_escalated` only as step 4 directs.

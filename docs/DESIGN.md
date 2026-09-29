@@ -152,8 +152,8 @@ topology nobody can audit grows back to the maximum.
 ### GP3 — One execution tree, planned and scheduled dynamically
 
 All work is one tree. The repository is the root; an **effort** is a subtree; every node is a
-`design`, `composite` or `leaf` node, with the same schema, event log and derived status at every
-depth. Any node can be the root of an execution.
+`design`, `composite`, `group` or `leaf` node, with the same schema, event log and derived status
+at every depth. Any node can be the root of an execution.
 
 - **Decompose until atomic, no further** (see [Atomicity](#atomicity-when-to-stop-splitting)).
 - **Replan locally.** A node that is larger than its grain, rests on a false premise, or needs a
@@ -227,7 +227,9 @@ thing in every prompt.
 - **plan entry**: one named unit of work in a spec's Plan: a `sub-effort` (its own folder and spec),
   a `task` (built directly), `deferred` (not now) or `dropped` (abandoned; the decisions it
   realises are accepted as not realised). An entry lists the decision ids it `realises` and what it
-  waits for in `after`: a sibling's name, or a path from the root folder starting with `/`.
+  waits for in `after`: a name in the same plan, or a path from the root folder starting with `/`.
+- **group**: a `### <name> — group` heading in a Plan that gathers the tasks under it by concern.
+  It has no spec, branch or review: its tasks merge into its folder, and its `after` binds them all.
 - **author**: who writes a sub-effort's spec: `you` (the default; it goes through the design loop
   with the user) or `planner` (develop's planner writes it, and an autonomous review must pass it).
 - **decision**: a ruling of the user's, in their words with their why, with an id: `D<n>` in the
@@ -241,11 +243,12 @@ thing in every prompt.
   **Edited since approval**: a line exists and the hash differs; compile leaves the spec out until
   it is approved again.
 - **compile**: the operation that turns approved and prepared specs into the execution graph, and
-  the only writer of nodes. A folder becomes a `composite` node, a sub-effort with no approved or
-  prepared spec a `design` node (the frontier), and a task a `leaf`.
+  the only writer of nodes. A folder becomes a `composite` node, a group a `group` node, a
+  sub-effort with no approved or prepared spec a `design` node (the frontier), and a task a `leaf`.
 - **task promotion**: a task that must be decomposed gets its own spec in
-  `<folder>/<task>/DESIGN.md`. Compile then builds it as a composite that realises the task's
-  decisions and carries its criteria.
+  `<folder>/<task>/DESIGN.md`, or `<folder>/<group>/<task>/DESIGN.md` for a task in a group.
+  Compile then builds it as a composite that realises the task's decisions and carries its
+  criteria.
 - **finding**: one result of a review, graded `ambiguity` (blocks until settled), `gap` (designed
   away or accepted out loud) or `note` (advisory). To **settle** a finding is to incorporate it
   into the spec or to discard it.
@@ -286,7 +289,7 @@ owns the record, its validation and every node's derived status.
 | `id` | stable, path-like (`auth/session/refresh-token`); `.` is the effort root; segments are lower-case letters, digits and dashes, so the parent is the id's prefix |
 | `title` | imperative; the todo subject |
 | `intent` | what this node makes true, in the user's or the parent design's words |
-| `kind` | `design` (a sub-effort whose spec is not approved or prepared: the frontier), `composite` (a folder whose spec is), `leaf` (a task) |
+| `kind` | `design` (a sub-effort whose spec is not approved or prepared: the frontier), `composite` (a folder whose spec is), `group` (tasks of one folder gathered by concern), `leaf` (a task) |
 | `author` | design and composite nodes: who writes the folder's spec, `you` (the default) or `planner` |
 | `defines[]` | `{id, text}` — the decisions this node states: a composite's are its spec's Decisions rows |
 | `decisions[]` | ids of the decisions this node realises (see [Traceability](#traceability)) |
@@ -309,7 +312,17 @@ last replan and last revision (a replan or the user's answer clears it); `approv
 its last dispatch (a held cycle member is approved and not merged); `active` while a dispatch has
 nothing terminal after it; `planned`. A composite is `merged` on its own event, the root `landed`
 on its, `escalated` or `parked` on its own open event (cleared like a leaf's), and otherwise
-summarizes its children (`integrated` once all have merged).
+summarizes its children (`integrated` once all have merged). A group summarizes its children the
+same way, except that it is `merged` once all of them are: it has no branch of its own to merge.
+
+A group sits in a composite and holds only leaves and promoted tasks. It has no spec, author,
+decisions, contracts, branch or integration review. Its `deps` bind every task in it, and a
+dependency on a group waits for all of them; cycle detection, atomicity's ordering and
+traceability read through a group the same way. A group never takes the id of a node that
+dispatched or merged work stood under. Its tasks belong to the folder above it: `ownerOf` in
+`lib/tree.mjs` passes over groups, and every question of which spec lists a node, which branch it
+is cut from and merges into, and which integration review reads it goes to that owner. `unitsOf`
+lists what merges into a composite, with each group replaced by its children.
 
 Nodes are written through `lib/tree.mjs` `addNodes`, by compile alone, from approved and prepared
 specs ([Specs, approval and compile](#specs-approval-and-compile)); develop's planner writes specs,
@@ -380,7 +393,8 @@ axis and each ambiguity it returned has a disposition, from any round. An edit l
 the new text, so the gate stays shut until one reads it.
 
 `lib/compile.mjs` turns approved and prepared specs into nodes. A folder becomes a composite; a
-sub-effort with no approved or prepared spec, a design node; a task, a leaf; and a task whose own
+group, a group node whose tasks' ids sit under it (`<folder>/<group>/<task>`); a sub-effort with
+no approved or prepared spec, a design node; a task, a leaf; and a task whose own
 folder holds such a spec (task promotion), a composite that carries the task's criteria and must
 realise every decision the task did. It appends only what changed, through `addNodes` with
 `by: 'compile'`, and records the hash it built from, so a second run appends nothing. A spec
@@ -444,7 +458,8 @@ worktree the first time something needs them, cut from its own parent's integrat
 brought up to date with that head whenever the parent has moved — which is how a dependency merged
 elsewhere in the tree reaches the leaf that consumes it. Its children branch from it and merge into
 it. When its last child has merged and its integration review is done, it merges into its parent's
-integration branch like any child.
+integration branch like any child. A group has no branch: its tasks are cut from and merge into
+their folder's, and a composite promoted inside a group is cut from that folder.
 
 The effort root's integration branch, `agentics/<effort>`, is the effort branch: the one landed
 into the user's branch. Every other node's branch is its sibling, `agentics/<effort>--<flat>`,
@@ -1050,10 +1065,10 @@ The workflow says what it has in flight — its running units, and the folders a
 replanning inline — and launches what comes back. Nothing below a running or replanning node
 launches.
 
-A leaf's dependencies are its own and every ancestor's: a dependency declared on a composite binds
-every leaf beneath it. A leaf is ready when its dependencies' outputs exist where it will be cut —
-a dependency (or its ancestor just below the two nodes' lowest common ancestor) has merged into
-that ancestor's integration branch, or, for a cycle predecessor, is approved — no open escalation
+A leaf's dependencies are its own and every ancestor's: a dependency declared on a composite or a
+group binds every leaf beneath it. A leaf is ready when its dependencies' outputs exist where it
+will be cut — a dependency (or its ancestor just below the two nodes' lowest common ancestor,
+groups passed over) has merged into that ancestor's integration branch, or, for a cycle predecessor, is approved — no open escalation
 or park sits on its dependency chain, no escalated or parked leaf holds a lock on its locus, and a
 slot can be had. Leaves launch up to the pool less the leaves running.
 
@@ -1470,9 +1485,10 @@ acceptance, status, event, stage, branch, worktree, commits, files}`: `status` f
 return, question}`), null for every other status; `stage` is `todoFor`’s `activeForm` while its
 `status` is `in_progress`, null otherwise; `branch` is the node’s own branch name, always; `worktree`
 is its path only when checked out; `commits` is `{count, last_subject, last_at}` over the leaf’s
-own branch since its parent’s, null unless the leaf is `active` (an inactive leaf, or anything that
+own branch since its folder’s, null unless the leaf is `active` (an inactive leaf, or anything that
 is not a leaf, never earns the git call) or either branch is missing; `files.spec` is `{path, line}`
-— a leaf’s parent spec at its plan entry’s line, a folder’s own spec at no particular line — and
+— a leaf’s folder spec at its plan entry’s line, a group’s at its heading’s, a folder’s own spec
+at no particular line — and
 `files.briefs`/`files.reports` list only the paths that exist on disk. `cost` is `costOf`’s totals
 and `per_leaf`, trimmed to `{dispatches, tokens, tokens_unreported}`.
 
@@ -1500,11 +1516,29 @@ root and `<folder id with / as .>.D<n>` below it. Open questions: `- **blocking:
   - [ ] HUMAN: <criterion>
 ```
 
-Kinds: `sub-effort`, `task`, `deferred`, `dropped`. Keys: `realises`, `after` (a sibling's name,
-or `/a/b` from the root folder), `provides` (`<name> (<path>, …)`), `consumes`, `ground`;
+Kinds: `sub-effort`, `task`, `deferred`, `dropped`. Keys: `realises`, `after` (a name in the same
+plan, or `/a/b` from the root folder), `provides` (`<name> (<path>, …)`), `consumes`, `ground`;
 `author` (`you` or `planner`) and `shared` on a sub-effort; `rigor`, `role`, `locus`, `reads` and
 `dispatch` (`producer=<model>/<effort>, reviewer=<model>/<effort>`) on a task, which also needs a
 criterion. A checked box is refused. Headings and forms inside a fenced block are prose.
+
+A group:
+
+```
+### <name> — group · after: <name>, /<path>
+<title: one imperative line>
+<context prose>
+
+- **<name>** — task · …
+```
+
+A heading of three or more `#` in a Plan must be a group heading, and `after` is its only key; a
+group may not wait for a task inside it. Entries above the first group heading belong to the
+folder; each entry below a heading belongs to that group, which must hold at least one task and no
+sub-effort. Names are unique across the plan, groups included,
+so a bare name in `after` names one entry or group wherever it sits. `parseSpec` returns the
+groups beside the entries (`{name, line, title, context, after}`), and each entry carries its
+`group` (`''` above the first heading); `entryId` gives the node id compile builds from one.
 `node lib/spec.mjs check --repo <r> --effort <e> --folder <id>` prints `{folder, problems}`, each
 problem `{file, line, problem}`.
 

@@ -254,6 +254,16 @@ test('a payload no courier can carry is a plugin fault: the node is held, never 
   assert.ok(result.coverage.unreached.some((u) => /a: held on a plugin fault/.test(u)))
 })
 
+test('leaves held on plugin faults never crowd out the rest of the pool', async () => {
+  const faulty = ['a', 'b', 'c', 'd']
+  const sim = simulate([composite('.'), ...['a', 'b', 'c', 'd', 'e', 'f'].map((id) => row(id))], {
+    damage: (name, args) => (name === 'leaf-close' && faulty.includes(args.node) ? (env) => { env.payload.head_sha = 'retyped' } : null),
+  })
+  const { result } = await run(sim)
+  assert.deepEqual(result.faults.map((f) => f.id).sort(), faulty)
+  assert.ok(sim.opens.includes('e') && sim.opens.includes('f'), 'e and f ran although four faulted leaves filled the pool: ' + sim.opens.join(','))
+})
+
 test('no slot: leaf-open is re-dispatched until the pool admits the leaf', async () => {
   const sim = simulate([composite('.'), row('a')], { open: { a: ['no_slot', 'no_slot', 'opened'] } })
   const { result } = await run(sim)
@@ -341,21 +351,27 @@ test('contract drift an analyst rules unaffected never reaches the user: the con
 })
 
 test('a base that moved under leaves is ruled by an analyst: only a leaf really affected waits for the user', async () => {
-  const stale = { nodes: ['a', 'b'], now: 'n1', list: '/x/stale-n1.json', diff: '/x/stale-n1.diff' }
-  const sim = simulate([composite('.'), row('a'), row('b'), row('c')], { preflight: () => ({ stale }) })
+  const stale = { nodes: ['a', 'b', 'd'], now: 'n1', list: '/x/stale-n1.json', diff: '/x/stale-n1.diff' }
+  const sim = simulate([composite('.'), row('a'), row('b'), row('c'), row('d')], { preflight: () => ({ stale }) })
   const { result, prompts } = await run(sim, {
-    'rule:stale': () => ({ rulings: [{ node: 'a', ruling: 'unaffected', why: 'only comments moved', question: '' }] }),
+    'rule:stale': () => ({ rulings: [
+      { node: 'a', ruling: 'unaffected', why: 'only comments moved', question: '' },
+      { node: 'b', ruling: 'affected', why: 'the parser it extends was removed', question: 'the parser b extends is gone: rebuild on the new one?' },
+    ] }),
   })
   assert.match(prompts.find((p) => p.opts.label === 'rule:stale').prompt, /\/x\/stale-n1\.json[\s\S]*\/x\/stale-n1\.diff/)
-  assert.deepEqual(recordsOf(sim, 'stale-ruled').map((r) => [r.node, r.base_now]), [['a', 'n1']])
-  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['b', 'premise_mismatch']], 'a leaf the ruling left out is never run unasked')
-  assert.ok(sim.opens.includes('a') && sim.opens.includes('c') && !sim.opens.includes('b'))
+  assert.deepEqual(recordsOf(sim, 'stale-ruled').map((r) => [r.node, r.ruling, r.base_now]), [['a', 'unaffected', 'n1'], ['b', 'affected', 'n1']],
+    'both rulings are kept, so a resume against the same head asks neither again')
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return, p.question]), [['b', 'premise_mismatch', 'the parser b extends is gone: rebuild on the new one?']])
+  assert.deepEqual(result.faults.map((f) => f.id), ['d'], 'a leaf the ruling left out is held, never run unasked, and never put to the user')
+  assert.ok(sim.opens.includes('a') && sim.opens.includes('c') && !sim.opens.includes('b') && !sim.opens.includes('d'))
   assert.equal(result.checkpoint, null, 'no checkpoint stops the run')
 })
 
-test('contract drift no analyst could rule parks the consumer for the user', async () => {
+test('contract drift no analyst could rule, twice, parks the consumer for the user', async () => {
   const sim = driftSim()
-  const { result } = await run(sim, { 'rule:drift:.': () => { throw new Error('analyst died') } })
+  const { result, prompts } = await run(sim, { 'rule:drift:': () => { throw new Error('analyst died') } })
+  assert.deepEqual(labels(prompts).filter((l) => l.startsWith('rule:')), ['rule:drift:.', 'rule:drift:.#2'])
   assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['b', 'contract_drift']])
   assert.match(result.parked[0].question, /no analyst could rule/)
 })
@@ -671,11 +687,12 @@ test('spec-check problems escalate spec_refused before any review', async () => 
   assert.deepEqual(sim.prepared, [])
 })
 
-test('a review that throws escalates review_failed and names its channel', async () => {
+test('a review that throws is a plugin fault on the folder, never a question, and names its channel', async () => {
   const sim = plannerDesign()
   const probe = probes([])   // its first call is unscripted, so it throws
   const { result } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, { workflow: probe })
-  assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'review_failed']])
+  assert.deepEqual(result.escalations, [])
+  assert.deepEqual(result.faults.map((f) => [f.id, f.channel]), [['p', 'dispatch']])
   assert.ok(result.coverage.failed_channels.includes('autonomous-review'))
   assert.deepEqual(sim.reviewed, [])
   assert.deepEqual(sim.prepared, [])
@@ -699,11 +716,12 @@ test('a prepared folder that compiles with no children escalates planner_wrote_n
   assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'planner_wrote_nothing']])
 })
 
-test('a settle dispatch that returns nothing escalates settle_returned_nothing', async () => {
+test('a settle dispatch that returns nothing is a plugin fault on the folder, never a question', async () => {
   const sim = plannerDesign()
   const probe = probes([probeReturn({ findings: [probeFinding('P1', 'gap', 'no retry is designed')] })])
   const { result } = await run(sim, { 'plan:': written(row('p').spec_path), 'settle:': () => null }, {}, { workflow: probe })
-  assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'settle_returned_nothing']])
+  assert.deepEqual(result.escalations, [])
+  assert.deepEqual(result.faults.map((f) => [f.id, f.channel]), [['p', 'dispatch']])
   assert.deepEqual(sim.dispositions, [])
   assert.deepEqual(sim.prepared, [])
 })

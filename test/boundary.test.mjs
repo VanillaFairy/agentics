@@ -222,6 +222,10 @@ test('a failing merged head is bisected: the leaf that fails alone is named, the
   assert.deepEqual(out.merged.map((m) => m.id), ['y'])
   assert.deepEqual(out.combination, [])
   assert.equal(readTree(r, 'e1').status.get('x').status, 'active')
+  assert.equal(out.failed_alone[0].failures[0].evidence, undefined, 'no suite output crosses the courier')
+  const again = B(r, 'leaf-open', { node: 'x', role: 'implementer', round: out.failed_alone[0].facts.rounds + 1, refresh: true })
+  assert.match(readFileSync(again.brief_path, 'utf8'), /## Fix round 2[\s\S]*\[integration\] the suite fails on the merged head[\s\S]*```text/,
+    'the fix round the workflow opens reads the failure and its evidence merge-batch left for it')
 })
 
 test('children that pass alone and fail together are a combination failure, and nothing merges', () => {

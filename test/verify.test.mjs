@@ -609,18 +609,22 @@ test('a test that fails at the base too is baseline, and a test the change broke
     git(worktree, 'commit', '-q', '-m', subject)
     return rev(worktree, 'HEAD')
   }
-  const base = commit({ 'test/broken.test.mjs': "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\ntest('broken before', () => assert.fail('already broken'))\n" }, 'Add a broken test')
+  const broken = (extra) => "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { label } from '../src/widget.mjs'\n" +
+    "test('broken before', () => assert.fail('already broken'))\ntest('widget labels', () => assert.equal(typeof label, 'function'))\n" + extra
+  const base = commit({ 'test/broken.test.mjs': broken('') }, 'Add a broken test')
   const leaf = { rigor: 'trivial', locus: ['README.md', 'src/widget.mjs'] }
   const measure = (head) => verify({ ...options({ worktree, base, head }), locus: leaf.locus, rigor: 'trivial' })
 
   const readme = measure(commit({ 'README.md': 'changed\n' }, 'Touch the readme'))
   assert.equal(readme.suite, 'failed')
-  assert.deepEqual(readme.baseline_failing, ['test/broken.test.mjs'], readme.notes)
+  assert.deepEqual(readme.baseline_failing.map((f) => f.file), ['test/broken.test.mjs'], readme.notes)
+  assert.equal(readme.baseline_failing.length, readme.failing_tests.length, 'every failure there fails at the base too')
   assert.deepEqual(measurementOk(readme, leaf).failures, [], 'a failure that was already there is not this change\'s')
 
   const broke = measure(commit({ 'src/widget.mjs': 'export const widget = () => { throw new Error(\'no\') }\n' }, 'Break the widget'))
-  assert.deepEqual(broke.baseline_failing, ['test/broken.test.mjs'], 'the widget test passes at the base, so it is the change\'s own')
-  assert.ok(measurementOk(broke, leaf).failures.some((f) => f.check === 'suite'))
+  assert.ok(broke.failing_tests.length > broke.baseline_failing.length, 'the change broke tests that pass at the base: ' + JSON.stringify(broke.failing_tests))
+  assert.ok(broke.baseline_failing.every((f) => f.file === 'test/broken.test.mjs'))
+  assert.ok(measurementOk(broke, leaf).failures.some((f) => f.check === 'suite'), 'a regression in a file already failing at the base is not excused')
 })
 
 test('the tests run under the project\'s test lock, and the build outside it', (t) => {

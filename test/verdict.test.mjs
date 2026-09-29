@@ -261,19 +261,19 @@ test('no oscillation without alternation: the same state twice, or states of oth
 // ---------------------------------------------------------------- the baseline
 
 test('a suite whose every named failure fails at the base too did not fail for this change', () => {
-  const before = m({ suite: 'failed', failing_tests: [{ file: 'test/old.test.mjs', id: 'old' }], baseline_failing: ['test/old.test.mjs'] })
+  const before = m({ suite: 'failed', failing_tests: [{ file: 'test/old.test.mjs', id: 'old' }], baseline_failing: [{ file: 'test/old.test.mjs', id: 'old' }] })
   assert.equal(suiteFailed(before), false)
   assert.equal(measurementOk(before, LEAVES.trivial).ok, true)
   assert.equal(closeDecision(before, LEAVES.trivial).next, 'approve')
 
-  const own = { ...before, failing_tests: [...before.failing_tests, { file: 'test/x.test.mjs', id: 'x' }] }
-  assert.equal(suiteFailed(own), true, 'one failure of its own is enough')
-  assert.deepEqual(ownFailing(own).map((f) => f.file), ['test/x.test.mjs'])
+  const own = { ...before, failing_tests: [...before.failing_tests, { file: 'test/old.test.mjs', id: 'totals' }] }
+  assert.equal(suiteFailed(own), true, 'a new failure in a file that was already failing is still the change\'s')
+  assert.deepEqual(ownFailing(own).map((f) => f.id), ['totals'])
 
   assert.equal(suiteFailed(m({ suite: 'failed', failing_tests: [], baseline_failing: [] })), true, 'a failure that names nothing is never excused')
 })
 
 test('a red leaf is judged on its own failures: a baseline failure outside its locus is not collateral', () => {
-  const measured = m({ ...red, failing_tests: [...red.failing_tests, { file: 'test/old.test.mjs', id: 'old' }], baseline_failing: ['test/old.test.mjs'] })
+  const measured = m({ ...red, failing_tests: [...red.failing_tests, { file: 'test/old.test.mjs', id: 'old' }], baseline_failing: [{ file: 'test/old.test.mjs', id: 'old' }] })
   assert.deepEqual(measurementOk(measured, LEAVES.red).failures, [])
 })

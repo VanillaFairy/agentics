@@ -1017,7 +1017,8 @@ crosses the channel in either direction. leaf-close writes everything it measure
 the todos; merge-batch writes its measurement to `merges/<target>-<pre>.json`. Whoever decides a
 node's next round — leaf-close on `fix`, merge-batch for a leaf that fails on the integration head
 alone — writes the failures with their evidence to `fixes/<node>-r<round>.json`, and leaf-open
-builds that round's brief from it; the arguments carry none. Text the workflow holds itself — a
+builds that round's brief from it; the arguments carry none. A close that decides anything but
+`fix` removes the file for the round after it. Text the workflow holds itself — a
 reviewer's findings — goes to the executor in its dispatch prompt, which is never retyped. A
 payload field the workflow does not read is not printed.
 
@@ -1028,8 +1029,8 @@ where the tree already is removes both: the script holds only its units in fligh
 **Long checks run detached.** leaf-close and merge-batch run in a child process keyed by their
 arguments and by what their answer depends on — the worktree's head and state, the report, the
 established commands, the target's head, the payload's format — and are polled; a poll that reaches the limit (kept
-under a host's default shell limit) answers `pending`, and the workflow re-dispatches the same
-boundary, which finds the same job. A host's shell timeout can end a courier, never the work. The
+under the courier's own shell-call limit) answers `pending`, and the workflow re-dispatches the
+same boundary, which finds the same job. A host's shell timeout can end a courier, never the work. The
 same arguments over a moved tree are a new job, and a job that failed is never kept as an answer.
 
 **Integration branches are locked while they move.** leaf-open creates, attaches and refreshes
@@ -1042,14 +1043,19 @@ command is re-run once, because the entry point is idempotent; a payload that fa
 buys one refetch on a stronger model; an argument token the program refused as damaged buys one
 fresh courier; a program failure is not retried.
 
-**A plugin fault is never the user's decision.** A boundary that stays unbelievable, or a throw in
-the workflow itself, ends that unit as a `fault {node, channel, detail}` state line: no `escalated`
-event lands, so the node's status on disk is what its last real record says, it is held for the
-rest of the invocation, and the result lists it under `faults` and in `coverage.unreached`. develop
+**A plugin fault is never the user's decision.** A boundary that stays unbelievable (`transport`),
+a detached job that threw (`program`), an agent dispatch that returned nothing (`dispatch`), a
+ledger that refused a record (`ledger`), or a throw in the workflow itself (`pipeline`) ends that
+unit as a `fault {node, channel, detail}` state line: no `escalated` event lands, so the node's
+status on disk is what its last real record says. It is held for the rest of the invocation — the
+schedule is told (`held`) and neither launches it nor counts it against the pool, and its slot is
+freed — and the result lists it under `faults` and in `coverage.unreached`. develop
 relaunches the execution once at once, and the next invocation takes the node up where it stands;
 a fault on the same node again is reported as a plugin defect with what it left undone, never asked
 as a question. The user is reached for two things only: a premise a parallel change made obsolete
-(after an analyst ruled it so, [Merging](#merging)), and a complication no agent could resolve.
+(after an analyst ruled it so, [Landing and drift](#landing-and-drift)), and a complication no agent
+could resolve: a review or a replan that does not converge, a merge conflict, a broken environment,
+an executor that is blocked.
 
 ### Merging
 
@@ -1082,8 +1088,8 @@ target.
 A ready set per execution, recomputed by the `schedule` boundary (`lib/schedule.mjs`, pure over
 the node records, the event log and the execution's state log) whenever anything in flight settles.
 The workflow says what it has in flight — its running units, and the folders a running unit is
-replanning inline — and launches what comes back. Nothing below a running or replanning node
-launches.
+replanning inline, and the nodes it holds on a plugin fault — and launches what comes back.
+Nothing below a running or replanning node launches, and a held node does not launch at all.
 
 A leaf's dependencies are its own and every ancestor's: a dependency declared on a composite or a
 group binds every leaf beneath it. A leaf is ready when its dependencies' outputs exist where it
@@ -1235,15 +1241,20 @@ After each merge-batch, the landed diff is intersected with the `consumes` path 
 pending designed node. Merge-batch writes the merged change to the files hit
 (`merges/<target>-<pre>.drift.diff`) and names each consumer's spec; one analyst reads both and
 rules each consumer `unaffected` (a `drift-ruled` state line; it runs on, and the user never hears
-of it) or `affected`, with the one question its owner must answer. Only an affected consumer, or
-one no analyst could rule, is parked (`contract_drift`) for the user; everything else keeps
-running. Undesigned nodes are reported as unexamined.
+of it) or `affected`, with the one question its owner must answer. A consumer is not launched while
+it is being ruled on. Only an affected consumer is parked (`contract_drift`) for the user; so is
+one no analyst ruled on after a second dispatch, because drift is found only on the batch that
+landed it and a held consumer would lose it. Everything else keeps running. Undesigned nodes are
+reported as unexamined.
 
 The same holds for a base branch that moved under a resumed execution: preflight writes the leaves
 whose files moved, and the diff, to `stale-<now>.json` and `.diff` beside the state log and hands
-their ids on; one analyst rules them before anything runs. An unaffected leaf gets a `stale-ruled`
-state line keyed to that base head and is not asked about again; an affected one, or one left
-unruled, is parked `premise_mismatch` with the question. No checkpoint stops the run for it.
+their ids on; one analyst rules them before anything runs. Each ruling gets a `stale-ruled` state
+line keyed to that base head, so a resume against the same head asks about neither again: an
+unaffected leaf runs on, an affected one is parked `premise_mismatch` with the question, and the
+user's answer stands. A leaf no analyst ruled on after a second dispatch is held as a fault and
+ruled on by the next invocation; a leaf already stopped is left out until its stop clears. No
+checkpoint stops the run for it.
 
 **Why an analyst first:** hash drift says a premise may have moved, not that it did. Most drift
 touches what a consumer does not rely on, and putting every hit to the user makes the user the
@@ -1298,8 +1309,9 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
   machine time out for it, and a failure that is contention is nobody's to fix. The wait is long:
   the caller is a detached job, never a courier.
 - **A failure that was already there is not the change's.** When the suite fails, each failing
-  test file the change did not touch (nor the cycle's tests) is run at the base; those that fail
-  there too are `baseline_failing`. A fresh worktree missing a gitignored asset fails the same way
+  test file the change did not touch (nor the cycle's tests) is run at the base and its failures
+  named the same way; a failing test whose same `{file, id}` fails there too is `baseline_failing`.
+  A new failure in a file that was already failing for another test stays the change's. A fresh worktree missing a gitignored asset fails the same way
   at its base, and no commit inside a locus could move it.
 
 ### What a verdict is computed from
@@ -1311,8 +1323,8 @@ leaf's new tests fail at base and pass now; a tests-only leaf's tests pass and e
 mutation bites; a red leaf's tests fail now and at base; a green leaf's cycle tests pass; an audit's
 mutations all bite with a passing suite; trivial and verify need their named checks and a suite
 that did not fail). A suite failed for the change only when one of its named failing tests is the
-change's own: `baseline_failing` lists the failing test files the change did not touch that fail at
-its base too, and `suiteFailed`/`ownFailing` leave them out, at a leaf and on an integration head
+change's own: `baseline_failing` lists the failing tests, in files the change did not touch, whose
+same test fails at its base too, and `suiteFailed`/`ownFailing` leave them out, at a leaf and on an integration head
 alike (whose base is the head before the batch). A failure that names no test is never excused.
 `closeDecision` turns that into the next step: `review`, `approve`, `fix`,
 `escalate`, `command_unknown`, or — for a `verify` leaf — `finding`. The same functions re-derive
@@ -1649,7 +1661,7 @@ failed_alone[], combination[], conflict}`; `checkpoint {reason, detail, executio
 (the lists the checkpoint found; `lib/status.mjs checkpoint` prints them); `closed {status}`;
 `batch-started {target, pre, children}`; `checkpoint-confirmed {gaps?}` (what the user
 confirmed past, printed by the same command); `drift-ruled {node, contract, head_sha, ruling, why}`
-and `stale-ruled {node, base_now, ruling, why}` (an analyst's `unaffected`); `invocation {}`, one per preflight, whose count
+(an analyst's `unaffected`) and `stale-ruled {node, base_now, ruling, why}` (either ruling); `invocation {}`, one per preflight, whose count
 numbers the invocation's record ids; `fault {node, channel, detail}`, a unit a plugin fault ended;
 `ended {}`, one per postflight, where a watching session stops. A line the workflow decided carries its `rid`.
 
@@ -1675,7 +1687,7 @@ latest, and whether an escalation or park is newer than the replan that would cl
 
 `stop_reason` (`completed | environment_broken`, broken exactly when `error` is set); `build`,
 `typecheck`, `suite` (`passed | failed | absent`); `suite_output_tail` (only when the suite failed);
-`failing_tests[{file, id}]`; `baseline_failing[]` (failing test files that fail at the base too);
+`failing_tests[{file, id}]`; `baseline_failing[{file, id}]` (failing tests that fail at the base too);
 `discriminator[{test_id, failed_on_base, passes_now}]`;
 `mutations[{file, applied, unapplied_reason, expect_failing, observed_failing, bites}]`;
 `series_findings[{sha, check, message, blocking}]`; `checks[{command, status}]`; `notes`; `error`

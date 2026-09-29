@@ -284,6 +284,7 @@ const COURIER_UP = { model: 'sonnet', effort: 'low' }
 const records = []              // decisions waiting for the next schedule or postflight
 const stoppedHere = new Set()   // nodes this invocation escalated, parked or held on a fault
 const planning = new Set()      // folders a running unit is replanning inline
+const ruling = new Set()        // drift consumers an analyst is ruling on: not launched meanwhile
 const running = new Map()       // unit key -> its promise, until a tick has carried what it decided
 const finished = new Set()      // units that ended since the last tick was built
 let invocation = 0              // minted by preflight: what makes this invocation's record ids its own
@@ -382,7 +383,7 @@ function withId(r) {
  * Retries are sized to what was observed: a courier that returned nothing or could not run the
  * command is re-run (every entry point is idempotent); a payload damaged in transit buys one
  * refetch on a stronger model; a program failure is not retried. What stays unbelievable is a
- * transport failure, thrown for the caller to escalate.
+ * transport failure, thrown: the unit ends as a plugin fault, never a question for the user.
  */
 async function boundary(name, a, ctx) {
   const pending = CARRIES_RECORDS.has(name) ? records.splice(0, records.length).map(withId) : []
@@ -524,15 +525,22 @@ function stalePrompt(stale) {
     RULING_CHARGE
 }
 
-/** One analyst rules each node a change touched: a map node -> ruling, or null when none came back. */
+/**
+ * One analyst rules each node a change touched: a map node -> ruling, or null when two dispatches
+ * brought none back (the second a fresh one, since a dispatch that returned nothing may just have
+ * been lost).
+ */
 async function rule(label, prompt, phaseName) {
-  const res = await Promise.resolve().then(() => dispatch(prompt, {
-    agentType: 'agentics:analyst', schema: RULINGS, phase: phaseName, label, ...tierFor(JUDGE, 'high'),
-  }, '')).catch((err) => {
-    note(label + ' returned nothing: ' + (err && err.message))
-    return null
-  })
-  return res ? new Map((res.rulings || []).map((r) => [r.node, r])) : null
+  for (const attempt of [1, 2]) {
+    const res = await Promise.resolve().then(() => dispatch(prompt, {
+      agentType: 'agentics:analyst', schema: RULINGS, phase: phaseName, label: label + (attempt > 1 ? '#' + attempt : ''), ...tierFor(JUDGE, 'high'),
+    }, '')).catch((err) => {
+      note(label + ' returned nothing: ' + (err && err.message))
+      return null
+    })
+    if (res) return new Map((res.rulings || []).map((r) => [r.node, r]))
+  }
+  return null
 }
 
 function plannerPrompt(row, why, evidence) {
@@ -588,8 +596,10 @@ function park(id, why, question) {
 function answered(id) {
   stoppedHere.delete(id)
   for (const list of [escalations, parked]) {
-    const at = list.findIndex((x) => x.id === id)
-    if (at !== -1) list.splice(at, 1)
+    for (let at = list.findIndex((x) => x.id === id); at !== -1; at = list.findIndex((x) => x.id === id)) {
+      if (list === escalations) leavesFinished--
+      list.splice(at, 1)
+    }
   }
   note(id + ': answered while the run went on — relaunched')
 }
@@ -724,7 +734,7 @@ async function reviewSpec(id, spec) {
       return null
     })
     if (!review) {
-      escalate(id, 'review_failed', 'the autonomous review of ' + checked.spec_path + ' returned nothing')
+      fault(id, 'dispatch', 'the autonomous review of ' + checked.spec_path + ' returned nothing')
       return null
     }
     // A finding's settlement id: its evidence item, or the reviewed hash and its P-id when the
@@ -739,7 +749,7 @@ async function reviewSpec(id, spec) {
       ambiguities: (review.findings || []).filter((f) => f.severity === 'ambiguity').map(idOf),
     }, { phase: 'Plan', label: 'spec-reviewed:' + id })
     if (reviewed.error || reviewed.ok === false) {
-      escalate(id, 'ledger_refused', (reviewed.error && reviewed.error.message) || 'spec-reviewed refused')
+      fault(id, 'ledger', (reviewed.error && reviewed.error.message) || 'spec-reviewed refused')
       return null
     }
     if (!whole) {
@@ -762,7 +772,7 @@ async function reviewSpec(id, spec) {
         node: id, dispositions: dispositions.map((d) => ({ finding: idOf(byId.get(d.finding)), outcome: d.outcome })),
       }, { phase: 'Plan', label: 'spec-settle:' + id })
       if (settledOut.error || settledOut.ok === false) {
-        escalate(id, 'ledger_refused', (settledOut.error && settledOut.error.message) || 'spec-settle refused')
+        fault(id, 'ledger', (settledOut.error && settledOut.error.message) || 'spec-settle refused')
         return null
       }
       for (const f of fresh) settled.add(idOf(f))
@@ -799,7 +809,7 @@ async function settle(id, spec, findings) {
       agentType: 'agentics:planner', schema: SETTLED, phase: 'Plan', label: 'settle:' + id + '#' + attempt, ...tierFor(JUDGE, 'high'),
     }, id)
     if (!res) {
-      escalate(id, 'settle_returned_nothing', 'the planner returned nothing for ' + findings.length + ' finding(s)')
+      fault(id, 'dispatch', 'the planner returned nothing for ' + findings.length + ' finding(s)')
       return null
     }
     if (res.status === 'needs_decision') {
@@ -832,7 +842,7 @@ async function settle(id, spec, findings) {
 async function prepare(id, reviewed) {
   const out = await boundary('spec-prepare', { node: id, review: reviewed }, { phase: 'Plan', label: 'spec-prepare:' + id })
   if (out.error || out.ok === false) {
-    escalate(id, 'ledger_refused', (out.error && out.error.message) || 'spec-prepare refused')
+    fault(id, 'ledger', (out.error && out.error.message) || 'spec-prepare refused')
     return null
   }
   if (out.status !== 'prepared') {
@@ -976,7 +986,7 @@ async function runLeaf(item, entry) {
           label: st.role + ':' + id + '#' + st.round, ...tier,
         }, id)
         if (!res) {
-          escalate(id, 'executor_returned_nothing', 'the ' + st.role + ' dispatch returned nothing')
+          fault(id, 'dispatch', 'the ' + st.role + ' dispatch returned nothing')
           return null
         }
         st.concerns = res.concerns || []
@@ -1014,7 +1024,12 @@ async function runLeaf(item, entry) {
         if (st.inReview && closed.head_sha !== st.head) st.deltaBase = st.head
         st.head = closed.head_sha
       }
-      const d = closed.decision || { next: 'escalate', reason: 'no_decision' }
+      if (!closed.decision) {
+        // The program itself failed (a detached job that threw): the plugin's, never the user's.
+        fault(id, 'program', (closed.error && closed.error.message) || 'leaf-close returned no decision')
+        return null
+      }
+      const d = closed.decision
       if (d.next === 'approve') {
         stage = 'approve'
         continue
@@ -1056,7 +1071,7 @@ async function runLeaf(item, entry) {
         label: 'review:' + id + '#' + round, ...reviewerTier(row),
       }, id)
       if (!res) {
-        escalate(id, 'review_returned_nothing', 'round ' + round)
+        fault(id, 'dispatch', 'review round ' + round + ' returned nothing')
         return null
       }
       const findings = res.findings || []
@@ -1109,7 +1124,8 @@ async function mergeInto(item) {
   if (out.error || out.ok === false) {
     // The batch could not run at all (a refresh that conflicted, a dirty integration worktree, a
     // job that failed): the target is stopped, and nothing is re-batched into it until the user acts.
-    escalate(target, 'merge_batch_failed', (out.error && out.error.message) || 'merge-batch refused')
+    if (out.error && out.error.kind === 'job_failed') fault(target, 'program', out.error.message)
+    else escalate(target, 'merge_batch_failed', (out.error && out.error.message) || 'merge-batch refused')
     return null
   }
   if (out.conflict) {
@@ -1125,7 +1141,9 @@ async function mergeInto(item) {
     } else if (!stoppedHere.has(d.node)) toRule.push(d)
   }
   if (toRule.length) {
+    for (const d of toRule) ruling.add(d.node)
     const rulings = await rule('rule:drift:' + target, driftPrompt(target, toRule, out.drift_diff), 'Integrate')
+      .finally(() => { for (const d of toRule) ruling.delete(d.node) })
     for (const d of toRule) {
       const r = rulings && rulings.get(d.node)
       if (r && r.ruling === 'unaffected') {
@@ -1211,7 +1229,7 @@ async function reviewComposite(item) {
   const claims = res ? res.claims || [] : []
   reviews.push({ target: id, findings, claims, notes: res ? res.notes : '', reviewed: Boolean(res) })
   if (!res) {
-    escalate(id, 'review_failed', 'the integration review of ' + id + ' returned nothing')
+    fault(id, 'dispatch', 'the integration review of ' + id + ' returned nothing')
     return null
   }
   recordEvent({ kind: 'claims', node: id, head_sha: head, review: 'done', claims })
@@ -1332,9 +1350,12 @@ if (pf.stale) {
     if (r && r.ruling === 'unaffected') {
       note(id + ': the base moved under it; ruled unaffected — ' + r.why)
       records.push({ file: 'state', entry: { kind: 'stale-ruled', node: id, base_now: pf.stale.now, ruling: 'unaffected', why: r.why } })
+    } else if (r) {
+      park(id, 'premise_mismatch', r.question)
+      records.push({ file: 'state', entry: { kind: 'stale-ruled', node: id, base_now: pf.stale.now, ruling: 'affected', why: r.why } })
     } else {
-      park(id, 'premise_mismatch', r ? r.question
-        : 'the base branch moved files ' + id + ' writes or reads (' + pf.stale.list + ') and no analyst could rule on it: is its plan entry still valid?')
+      // No analyst could rule: the leaf is held, and the next invocation asks again.
+      fault(id, 'dispatch', 'the base moved under it and no analyst ruled on it')
     }
   }
 }
@@ -1355,7 +1376,7 @@ const UNITS = {
  */
 const stillLaunchable = (item) => {
   const id = item.id || item.target
-  if (stoppedHere.has(id) || (item.waits_on || []).some((d) => stoppedHere.has(d))) return false
+  if (stoppedHere.has(id) || ruling.has(id) || (item.waits_on || []).some((d) => stoppedHere.has(d))) return false
   return ![...planning].some((p) => p === id || p === '.' || id.startsWith(p + '/'))
 }
 
@@ -1372,7 +1393,7 @@ for (;;) {
   const carriedStops = new Set(stoppedHere)
   try {
     ticks++
-    tick = await boundary('schedule', { running: [...running.keys()], planning: [...planning], stopping: Boolean(stopping) },
+    tick = await boundary('schedule', { running: [...running.keys()], planning: [...planning], held: faults.map((f) => f.id), stopping: Boolean(stopping) },
       { phase: 'Execute', label: 'schedule#' + ticks })
   } catch (err) {
     tick = { error: { message: String(err && err.message) } }

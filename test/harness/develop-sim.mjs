@@ -134,7 +134,7 @@ export function simulate(nodes, script = {}) {
     const nodesNow = tree()
     return {
       nodes: nodesNow, status: deriveStatus(nodesNow, sim.events), events: sim.events, state: sim.state, root: args.root || sim.root || '.',
-      running: args.running || [], planning: args.planning || [], stopping: args.stopping === true, maxParallel: 4,
+      running: args.running || [], planning: args.planning || [], held: args.held || [], stopping: args.stopping === true, maxParallel: 4,
       integrationOf: (id) => sim.integ.get(id) || null,
       lockedBy: (id) => sim.locked.get(id) || '',
       approvedHead: (id) => approvedHead(sim.events, id),

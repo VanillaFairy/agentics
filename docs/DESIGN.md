@@ -1278,6 +1278,11 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
   back, or says `tree_not_restored`.
 - A test that could not be launched at base is `test_unrunnable`; a suite failure that cannot be
   placed against a test file raises `suite_failures_unnamed`.
+- **One test run at a time in the project.** Everything that runs tests (the suite, the
+  discriminator, the mutations, the named checks) runs under `.agentics/.state/locks/tests.lock`,
+  shared by every execution and session; build and typecheck run outside it. Suites that share the
+  machine time out for it, and a failure that is contention is nobody's to fix. The wait is long:
+  the caller is a detached job, never a courier.
 
 ### What a verdict is computed from
 
@@ -1657,8 +1662,8 @@ Frontmatter `{id, kind, roles, paths, observed_at, source, command?}`; body `Whe
 - **Owner:** `lib/locks.mjs`, `withLock` in `lib/store.mjs`.
 
 `.agentics/config.json {max_parallel}`; `slots/<n>.lock {effort, execution, node}`;
-`locks/locus/<fnv1a(path)>.lock {path, node, execution}`; branch and mutex locks hold `{pid, host,
-at}`. A lock on this host is broken exactly when its holder's pid is dead; one from another host
+`locks/locus/<fnv1a(path)>.lock {path, node, execution}`; `.agentics/.state/locks/tests.lock`, the
+project's test lock; branch, test and mutex locks hold `{pid, host, at}`. A lock on this host is broken exactly when its holder's pid is dead; one from another host
 after ten minutes.
 
 ### Boundary payloads

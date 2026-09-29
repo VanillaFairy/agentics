@@ -29,7 +29,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -598,6 +598,19 @@ test('verify() journals in-process, and each append mints the next seq', (t) => 
   const seqs = readLog(dir, EFFORT, 'journal:' + EXECUTION).entries.map((e) => e.seq)
   assert.equal(seqs.length, 2)
   assert.ok(seqs[1] > seqs[0], 'one monotonic counter per effort, minted under its lock')
+})
+
+test('the tests run under the project\'s test lock, and the build outside it', (t) => {
+  const { dir, worktree, base, head } = order(t)
+  const lock = join(dir, '.agentics', '.state', 'locks', 'tests.lock').split('\\').join('/')
+  const held = (want) => 'node -e "process.exit(require(\'fs\').existsSync(\'' + lock + '\') === ' + want + ' ? 0 : 1)"'
+  const payload = verify({
+    ...options({ worktree, base, head, extra: ['--repo', dir, '--effort', EFFORT, '--execution', EXECUTION, '--node', NODE] }),
+    rigor: 'trivial', build: held(false), suite: held(true),
+  })
+  assert.equal(payload.build, 'passed', 'the build ran with the lock free: ' + payload.notes)
+  assert.equal(payload.suite, 'passed', 'the suite ran holding the lock: ' + payload.notes)
+  assert.equal(existsSync(lock), false, 'released once the tests ran')
 })
 
 test('without somewhere to write, nothing is journalled and the payload says so by null', (t) => {

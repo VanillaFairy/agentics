@@ -25,6 +25,11 @@ Run the checks with:
 
 ## Rules for changing this repository
 
+- **Redesign, never work around.** The plugin is young and any refactor is affordable. When a
+  limit — a host's output cap, a transport, a contract, a tool's shape — gets in the way, change
+  the design so the limit stops mattering. Never add a mechanism whose only job is to squeeze
+  past it: paging, chunking, size-tuned retries, a second path for the big case. If the clean,
+  efficient fix means reshaping workflows, the lib or the contracts, reshape them.
 - **Docs land with the code, in the same commit series.** `docs/DESIGN.md` is the single design
   document: the whole system **as it is right now**. A behaviour-changing change is not done until
   DESIGN.md says what the code now does. Agent definitions and skill texts count as code here. It

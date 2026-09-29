@@ -288,6 +288,7 @@ const ruling = new Set()        // drift consumers an analyst is ruling on: not 
 const running = new Map()       // unit key -> its promise, until a tick has carried what it decided
 const finished = new Set()      // units that ended since the last tick was built
 let invocation = 0              // minted by preflight: what makes this invocation's record ids its own
+let saidDir = ''                // minted by preflight: where authors write what a record only points at
 const minted = new Map()        // record content key -> how many times this invocation decided it
 const failedChannels = []
 const notes = []
@@ -442,7 +443,7 @@ async function settled(name, a, ctx) {
 
 const listOf = (items) => (items && items.length ? items.map((x) => '- ' + x).join('\n') : '(none)')
 
-function executorPrompt(row, role, round, opened, mode, findings) {
+function executorPrompt(row, role, round, opened, mode, findings, said) {
   const id = row.id
   const fetch = role === 'implementer'
     ? 'Fetch it: node "' + pluginRoot + '/lib/brief.mjs" fetch --path "' + opened.brief_path + '" --digest ' + opened.brief_digest
@@ -468,10 +469,11 @@ function executorPrompt(row, role, round, opened, mode, findings) {
     'Worktree: ' + opened.worktree + ' (branch ' + opened.branch + ', base ' + opened.base_sha + ').\n' +
     'Brief: ' + opened.brief_path + '. ' + fetch + '\n' +
     'Report file: ' + opened.report_path + '.' + finish +
-    '\n\nReturn status, detail (what you established, tried and need, for any status but done), concerns and commits.'
+    '\n\nReturn status, detail (what you established, tried and need, for any status but done), concerns and commits.' +
+    (said ? ' For any status but done, first write that detail in full to ' + said + ': it is what the user reads.' : '')
 }
 
-function reviewerPrompt(row, st, round, prior) {
+function reviewerPrompt(row, st, round, prior, said) {
   const id = row.id
   const span = round === 1 ? st.base + '..' + st.head : st.deltaBase + '..' + st.head
   return 'Adversarially review leaf ' + id + ' ("' + row.title + '"), round ' + round + '. You are fresh: nothing ' +
@@ -489,10 +491,11 @@ function reviewerPrompt(row, st, round, prior) {
       ? 'Prior blockers — rule on each in fix_verdicts, and re-report under its id any you rule not_fixed or regressed:\n' +
         prior.map((f) => '- ' + f.id + ' [' + f.severity + '] ' + f.claim).join('\n') + '\n'
       : '') +
-    'Return claims: [] — claim verdicts belong to integration reviews.\n'
+    'Return claims: [] — claim verdicts belong to integration reviews.\n' +
+    (said ? 'Before returning, write your findings in full to ' + said + '.\n' : '')
 }
 
-function integrationPrompt(item) {
+function integrationPrompt(item, said) {
   const { id, row, where } = item
   return 'Integration review of composite ' + id + ' ("' + row.title + '").\n' +
     'Worktree: ' + where.worktree + '. Merged diff: ' + where.base + '..' + where.head + '.\n' +
@@ -504,7 +507,8 @@ function integrationPrompt(item) {
     'Children merged here: ' + item.children.join(', ') + '.\n' +
     'Review these against their own criteria too — they had no review loop of their own:\n' +
     listOf(item.unreviewed) + '\n' +
-    'Look for defects that exist only with the children together, and for any decision no child realised.'
+    'Look for defects that exist only with the children together, and for any decision no child realised.' +
+    (said ? '\nBefore returning, write your findings and every claim verdict with its evidence, in full, to ' + said + '.' : '')
 }
 
 const RULING_CHARGE = 'For each node, rule `unaffected` when everything its spec entry assumes, and every criterion it must ' +
@@ -531,8 +535,10 @@ function stalePrompt(stale) {
  * been lost).
  */
 async function rule(label, prompt, phaseName) {
+  const said = saidPath(label)
+  const told = prompt + (said ? '\nBefore returning, write every ruling with its why and its question, in full, to ' + said + '.' : '')
   for (const attempt of [1, 2]) {
-    const res = await Promise.resolve().then(() => dispatch(prompt, {
+    const res = await Promise.resolve().then(() => dispatch(told, {
       agentType: 'agentics:analyst', schema: RULINGS, phase: phaseName, label: label + (attempt > 1 ? '#' + attempt : ''), ...tierFor(JUDGE, 'high'),
     }, '')).catch((err) => {
       note(label + ' returned nothing: ' + (err && err.message))
@@ -543,7 +549,7 @@ async function rule(label, prompt, phaseName) {
   return null
 }
 
-function plannerPrompt(row, why, evidence) {
+function plannerPrompt(row, why, evidence, said) {
   const id = row.id
   const check = 'node "' + pluginRoot + '/lib/spec.mjs" check --repo "' + repo + '" --effort "' + effort + '" --folder "' + id + '"'
   const charge = row.kind === 'leaf'
@@ -559,10 +565,11 @@ function plannerPrompt(row, why, evidence) {
     'Check the spec until it prints no problems: ' + check + '\n' +
     'Never write a Decisions row: a decision you need is a needs_decision return.\n' +
     (evidence ? '\nEvidence (a survey of this folder\'s ground):\n' + evidence + '\n' : '') +
-    '\nReturn status written with the spec\'s path in written, or the user-bound need.'
+    '\nReturn status written with the spec\'s path in written, or the user-bound need.' +
+    (said ? ' For any other status, first write the question or the need, in full, to ' + said + ': it is what the user reads.' : '')
 }
 
-function settlePrompt(id, path, findings, refused) {
+function settlePrompt(id, path, findings, refused, said) {
   return 'Settle the autonomous review of folder ' + id + ' of effort ' + effort + ' (repository ' + repo + '). Its spec: ' + path + '.\n' +
     'Give every finding below one disposition: incorporated (you edited the spec\'s Design, Plan or Open questions because of it) ' +
     'or discarded. An ambiguity or a gap can only be incorporated; a note may be discarded. A finding whose fix would state or ' +
@@ -570,6 +577,7 @@ function settlePrompt(id, path, findings, refused) {
     'After editing, check the spec until it prints no problems: node "' + pluginRoot + '/lib/spec.mjs" check --repo "' + repo +
     '" --effort "' + effort + '" --folder "' + id + '"\n' +
     (refused.length ? 'Refused last time, settle these again: ' + refused.map((r) => r.why).join('; ') + '\n' : '') +
+    (said ? 'If you return needs_decision or blocked, first write the question or the need, in full, to ' + said + '.\n' : '') +
     '\nFindings:\n' + findings.map((f) => '- ' + f.id + ' [' + f.severity + ', ' + f.axis + ', ' + f.section + '] ' + f.claim + ' — ' + f.evidence).join('\n')
 }
 
@@ -577,18 +585,27 @@ function settlePrompt(id, path, findings, refused) {
 
 const recordEvent = (entry) => records.push({ file: 'events', entry: { execution, ...entry } })
 
-function escalate(id, reason, detail) {
+/**
+ * Where the agent behind `label` writes, in full, what it says to the user: the record then carries
+ * this path, never the prose, because a courier retypes every record on its way to disk.
+ */
+const saidPath = (label) => (saidDir ? saidDir + '/' + label.replace(/[^A-Za-z0-9._-]+/g, '-') + '.md' : '')
+
+/** The text a record carries: none when its author wrote it to `said`, else this script's own line. */
+const onRecord = (text, said) => (said ? '' : String(text || '').slice(0, 2000))
+
+function escalate(id, reason, detail, said) {
   stoppedHere.add(id)
-  escalations.push({ id, reason, detail: detail || '' })
-  recordEvent({ kind: 'escalated', node: id, reason, detail: String(detail || '').slice(0, 2000) })
+  escalations.push({ id, reason, detail: detail || '', ...(said ? { said } : {}) })
+  recordEvent({ kind: 'escalated', node: id, reason, detail: onRecord(detail, said), ...(said ? { said } : {}) })
   note('escalated ' + id + ': ' + reason)
   leavesFinished++
 }
 
-function park(id, why, question) {
+function park(id, why, question, said) {
   stoppedHere.add(id)
-  parked.push({ id, return: why, question: question || '' })
-  recordEvent({ kind: 'parked', node: id, return: why, question: String(question || '').slice(0, 2000) })
+  parked.push({ id, return: why, question: question || '', ...(said ? { said } : {}) })
+  recordEvent({ kind: 'parked', node: id, return: why, question: onRecord(question, said), ...(said ? { said } : {}) })
   note('parked ' + id + ' (' + why + '): waiting on the user')
 }
 
@@ -644,10 +661,10 @@ function launch(key, fn) {
  * only when the planner wrote that folder. A folder the user wrote is theirs to re-spec. Returns
  * the node as compiled after its spec was prepared, or null when it was parked or escalated.
  */
-async function planNode(row, why) {
+async function planNode(row, why, said) {
   const id = row.id
   if (row.kind !== 'leaf' && row.author !== 'planner') {
-    if (why) park(id, 'needs_respec', why + ' — edit ' + row.spec_path + ', re-approve it and recompile')
+    if (why) park(id, 'needs_respec', why + ' — edit ' + row.spec_path + ', re-approve it and recompile', said)
     else park(id, 'needs_design', row.kind === 'design'
       ? 'sub-effort ' + id + ' has no approved spec: run the design skill on it'
       : 'folder ' + id + ' plans nothing: its spec ' + row.spec_path + ' needs a Plan')
@@ -682,7 +699,8 @@ async function writeSpec(row, why) {
     }
   }
   const tier = tierFor(JUDGE, 'high')
-  const res = await dispatch(plannerPrompt(row, why, evidence), {
+  const said = saidPath('plan:' + id)
+  const res = await dispatch(plannerPrompt(row, why, evidence, said), {
     agentType: 'agentics:planner', schema: PLANNED, phase: 'Plan', label: 'plan:' + id, ...tier,
   }, id)
   if (!res) throw new Error('the planner returned nothing')
@@ -693,10 +711,10 @@ async function writeSpec(row, why) {
     return { path: row.spec_path, written: res.written || [] }
   }
   if (['needs_decision', 'contract_changed', 'premise_mismatch'].includes(res.status)) {
-    park(id, res.status, res.question || res.detail)
+    park(id, res.status, res.question || res.detail, said)
     return null
   }
-  escalate(id, 'plan_' + res.status, res.detail)
+  escalate(id, 'plan_' + res.status, res.detail, said)
   return null
 }
 
@@ -760,7 +778,7 @@ async function reviewSpec(id, spec) {
     const fresh = (review.findings || []).filter((f) => !settled.has(idOf(f)))
     const back = fresh.find((f) => incorporated.has(findingKey(f)))
     if (back) {
-      escalate(id, 'review_not_converging', 'finding ' + back.id + ' came back unchanged after it was incorporated: ' + back.claim)
+      escalate(id, 'review_not_converging', 'finding ' + back.id + ' came back unchanged after it was incorporated')
       return null
     }
     let taken = []
@@ -805,7 +823,8 @@ async function reviewSpec(id, spec) {
 async function settle(id, spec, findings) {
   let refused = []
   for (let attempt = 1; ; attempt++) {
-    const res = await dispatch(settlePrompt(id, spec.path, findings, refused), {
+    const said = saidPath('settle:' + id + '#' + attempt)
+    const res = await dispatch(settlePrompt(id, spec.path, findings, refused, said), {
       agentType: 'agentics:planner', schema: SETTLED, phase: 'Plan', label: 'settle:' + id + '#' + attempt, ...tierFor(JUDGE, 'high'),
     }, id)
     if (!res) {
@@ -813,11 +832,11 @@ async function settle(id, spec, findings) {
       return null
     }
     if (res.status === 'needs_decision') {
-      park(id, 'needs_decision', res.question || res.detail)
+      park(id, 'needs_decision', res.question || res.detail, said)
       return null
     }
     if (res.status === 'blocked') {
-      escalate(id, 'blocked', res.detail)
+      escalate(id, 'blocked', res.detail, said)
       return null
     }
     const outcome = new Map((res.dispositions || []).map((d) => [d.finding, d.outcome]))
@@ -981,7 +1000,8 @@ async function runLeaf(item, entry) {
       if (st.role) {
         const headBefore = st.head
         const tier = producerTier(row, st.raise)
-        const res = await dispatch(executorPrompt(row, st.role, st.round, opened, stage === 'code' ? 'fresh' : stage, toClear), {
+        const said = saidPath(st.role + ':' + id + '#' + st.round)
+        const res = await dispatch(executorPrompt(row, st.role, st.round, opened, stage === 'code' ? 'fresh' : stage, toClear, said), {
           agentType: EXECUTOR_TYPE[st.role], schema: EXECUTOR, phase: 'Execute',
           label: st.role + ':' + id + '#' + st.round, ...tier,
         }, id)
@@ -992,24 +1012,24 @@ async function runLeaf(item, entry) {
         st.concerns = res.concerns || []
         if (['decompose', 'unsplittable', 'premise_mismatch'].includes(res.status)) {
           note(id + ': ' + res.status + ' — replanning its subtree')
-          const after = await planNode(row, res.status + ': ' + res.detail)
+          const after = await planNode(row, res.status + ': ' + res.detail, said)
           // A replan that wrote no new revision of the leaf would send the same executor back to
           // the same wall.
           if (after && after.kind === 'leaf' && after.rev === row.rev) {
-            escalate(id, 'replan_not_converging', 'the planner answered ' + res.status + ' without changing the leaf: ' + res.detail)
+            escalate(id, 'replan_not_converging', 'the planner answered ' + res.status + ' without changing the leaf: ' + res.detail, said)
           }
           return null
         }
         if (['needs_decision', 'contract_changed'].includes(res.status)) {
-          park(id, res.status, res.detail)
+          park(id, res.status, res.detail, said)
           return null
         }
         if (res.status === 'blocked' || res.status === 'needs_context') {
-          escalate(id, res.status, res.detail)
+          escalate(id, res.status, res.detail, said)
           return null
         }
         if (stage === 'fix' && st.role === 'implementer' && (res.commits || []).length === 0) {
-          escalate(id, 'fix_without_commits', 'fix round ' + st.round + ' returned no commits: ' + res.detail)
+          escalate(id, 'fix_without_commits', 'fix round ' + st.round + ' returned no commits: ' + res.detail, said)
           return null
         }
         st.executorStatus = res.status
@@ -1066,7 +1086,7 @@ async function runLeaf(item, entry) {
       st.inReview = true
       st.reviewRounds++
       const round = st.reviewRounds
-      const res = await dispatch(reviewerPrompt(row, st, round, st.priorBlockers), {
+      const res = await dispatch(reviewerPrompt(row, st, round, st.priorBlockers, saidPath('review:' + id + '#' + round)), {
         agentType: 'agentics:reviewer', schema: FINDINGS, phase: 'Execute',
         label: 'review:' + id + '#' + round, ...reviewerTier(row),
       }, id)
@@ -1142,17 +1162,20 @@ async function mergeInto(item) {
   }
   if (toRule.length) {
     for (const d of toRule) ruling.add(d.node)
+    const ruled = saidPath('rule:drift:' + target)
     const rulings = await rule('rule:drift:' + target, driftPrompt(target, toRule, out.drift_diff), 'Integrate')
       .finally(() => { for (const d of toRule) ruling.delete(d.node) })
     for (const d of toRule) {
       const r = rulings && rulings.get(d.node)
       if (r && r.ruling === 'unaffected') {
         note(d.node + ': merged work touched contract ' + d.contract + '; ruled unaffected — ' + r.why)
-        records.push({ file: 'state', entry: { kind: 'drift-ruled', node: d.node, contract: d.contract, head_sha: out.head_sha || '', ruling: 'unaffected', why: r.why } })
+        records.push({ file: 'state', entry: { kind: 'drift-ruled', node: d.node, contract: d.contract, head_sha: out.head_sha || '', ruling: 'unaffected', why: onRecord(r.why, ruled), ...(ruled ? { said: ruled } : {}) } })
       } else if (!stoppedHere.has(d.node)) {
-        park(d.node, 'contract_drift', r ? r.question
-          : 'merged work touched ' + d.files.join(', ') + ' under contract ' + d.contract + ', which ' + d.node +
+        if (r) park(d.node, 'contract_drift', r.question, ruled)
+        else {
+          park(d.node, 'contract_drift', 'merged work touched ' + d.files.join(', ') + ' under contract ' + d.contract + ', which ' + d.node +
             ' consumes, and no analyst could rule on it: rule it unaffected, re-design it or re-slice it')
+        }
       }
     }
   }
@@ -1218,7 +1241,8 @@ async function reviewComposite(item) {
     recordEvent({ kind: 'claims', node: id, head_sha: head, review: 'not_earned', claims: [] })
     return null
   }
-  const res = await dispatch(integrationPrompt(item), {
+  const said = saidPath('review:integration:' + id)
+  const res = await dispatch(integrationPrompt(item, said), {
     agentType: 'agentics:reviewer', schema: FINDINGS, phase: 'Integrate', label: 'review:integration:' + id, ...tierFor(JUDGE, 'high'),
   }, id).catch((err) => {
     failedChannels.push('integration-review')
@@ -1232,9 +1256,10 @@ async function reviewComposite(item) {
     fault(id, 'dispatch', 'the integration review of ' + id + ' returned nothing')
     return null
   }
-  recordEvent({ kind: 'claims', node: id, head_sha: head, review: 'done', claims })
+  // The verdicts ride the record; each claim's evidence is in the reviewer's own file.
+  recordEvent({ kind: 'claims', node: id, head_sha: head, review: 'done', claims: claims.map((c) => ({ claim: c.claim, verdict: c.verdict })), ...(said ? { said } : {}) })
   const held = integrationPark(item, findings, claims)
-  if (held) park(id, held.why, held.question)
+  if (held) park(id, held.why, held.question, said)
   return null
 }
 
@@ -1332,6 +1357,7 @@ if (pf.error) {
   return result({ reason: pf.error.kind || 'preflight_refused', detail: pf.error.message }, null)
 }
 invocation = pf.invocation
+saidDir = pf.said_dir || ''
 for (const d of pf.dirty_worktrees || []) note('dirty worktree left in place (never forced): ' + d)
 const counts = pf.counts || {}
 if (counts.gaps) note(counts.gaps + ' traceability gap(s): node "' + pluginRoot + '/lib/status.mjs" checkpoint lists them when they stop a run')
@@ -1344,15 +1370,16 @@ if (pf.checkpoint) {
 // The base branch moved under leaves not yet merged: an analyst rules each before anything runs,
 // and only a leaf whose premise really moved waits for the user.
 if (pf.stale) {
+  const ruled = saidPath('rule:stale')
   const rulings = await rule('rule:stale', stalePrompt(pf.stale), 'Preflight')
   for (const id of pf.stale.nodes) {
     const r = rulings && rulings.get(id)
     if (r && r.ruling === 'unaffected') {
       note(id + ': the base moved under it; ruled unaffected — ' + r.why)
-      records.push({ file: 'state', entry: { kind: 'stale-ruled', node: id, base_now: pf.stale.now, ruling: 'unaffected', why: r.why } })
+      records.push({ file: 'state', entry: { kind: 'stale-ruled', node: id, base_now: pf.stale.now, ruling: 'unaffected', why: onRecord(r.why, ruled), ...(ruled ? { said: ruled } : {}) } })
     } else if (r) {
-      park(id, 'premise_mismatch', r.question)
-      records.push({ file: 'state', entry: { kind: 'stale-ruled', node: id, base_now: pf.stale.now, ruling: 'affected', why: r.why } })
+      park(id, 'premise_mismatch', r.question, ruled)
+      records.push({ file: 'state', entry: { kind: 'stale-ruled', node: id, base_now: pf.stale.now, ruling: 'affected', why: onRecord(r.why, ruled), ...(ruled ? { said: ruled } : {}) } })
     } else {
       // No analyst could rule: the leaf is held, and the next invocation asks again.
       fault(id, 'dispatch', 'the base moved under it and no analyst ruled on it')

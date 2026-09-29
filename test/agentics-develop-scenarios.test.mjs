@@ -167,6 +167,19 @@ test('a user-bound return parks the leaf and the rest keeps running', async () =
   assert.deepEqual(recordsOf(sim, 'parked').map((e) => e.node), ['a'])
 })
 
+test('what an agent asks the user never rides a record: the record carries the file the agent wrote it to', async () => {
+  const sim = simulate([composite('.'), row('a')])
+  const { result, prompts } = await run(sim, {
+    'implementer:a#1': () => ({ status: 'needs_decision', detail: 'which format: JSON or YAML?', concerns: [], commits: [] }),
+  })
+  const told = prompts.find((p) => p.opts.label === 'implementer:a#1').prompt
+  assert.match(told, /first write that detail in full to \/said\/implementer-a-1\.md/)
+  const [record] = recordsOf(sim, 'parked')
+  assert.equal(record.said, '/said/implementer-a-1.md')
+  assert.equal(record.question, '', 'no prose of the agent\'s crosses the courier')
+  assert.equal(result.parked[0].question, 'which format: JSON or YAML?', 'the session still gets it whole from the return')
+})
+
 const written = (path) => () => ({ status: 'written', written: [path], accepted_warnings: [], uncovered: [], question: '', detail: '' })
 
 test('decompose: the promoted task passes its review, compiles, and its children run', async () => {
@@ -851,7 +864,9 @@ test('claims all met: nothing parks, and the verdicts are recorded for the landi
   assert.deepEqual(result.parked, [])
   assert.equal(result.coverage.complete, true, JSON.stringify(result.coverage.unreached))
   const recorded = recordsOf(sim, 'claims')
-  assert.deepEqual(recorded.map((e) => [e.node, e.claims]), [['.', claims]])
+  assert.deepEqual(recorded.map((e) => [e.node, e.claims]), [['.', claims.map(({ claim, verdict }) => ({ claim, verdict }))]],
+    'the verdicts ride the record; the evidence stays in the reviewer\'s own file')
+  assert.equal(recorded[0].said, '/said/review-integration-..md')
   assert.ok(recorded[0].head_sha, 'the verdicts name the head they judged')
   assert.deepEqual(result.integration.reviews.find((r) => r.target === '.').claims, claims)
 })

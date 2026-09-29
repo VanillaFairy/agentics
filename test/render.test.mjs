@@ -96,13 +96,13 @@ test('the latest claims event on the root is the one rendered', () => {
   assert.equal(rowOf(view, 'an old claim'), -1)
 })
 
-test('a claim holding a pipe still renders three columns', () => {
+test('a claim holding a pipe still renders two columns', () => {
   const r = repo()
   writeRoot(r, rootSpec(WITH_CRITERIA))
   claims(r, [{ claim: 'a | b stays one claim', verdict: 'deviates', evidence: 'src/a.js:1' }])
   const view = renderLanding(r, 'e1')
   const row = view.split('\n')[rowOf(view, 'stays one claim')]
-  assert.equal(row.split(/(?<!\\)\|/).length, 5, row)
+  assert.equal(row.split(/(?<!\\)\|/).length, 4, row)
 })
 
 test('CRLF and LF specs list the same criteria', () => {

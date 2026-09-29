@@ -149,7 +149,7 @@ export function simulate(nodes, script = {}) {
       return {
         boundary: 'preflight', ok: true, error: null, checkpoint: null, invocation: sim.invocations,
         counts: { nodes: sim.nodes.size, leaves: [...sim.nodes.values()].filter((r) => r.kind === 'leaf').length, gaps: 0, untraced: 0 },
-        dirty_worktrees: [], max_parallel: 4, todos: [], notes: [], ...extra,
+        dirty_worktrees: [], said_dir: '/said', max_parallel: 4, todos: [], notes: [], ...extra,
       }
     },
     schedule(args) {

@@ -16,7 +16,7 @@ import {
   AGENTICS_DIR, CONFIG_FILE, EVIDENCE_RENDER, ROOT_ID, SPEC_FILE, STATE_DIR,
   agenticsRoot, briefPath, configPath, contextDir, effortDir, effortStateDir, effortsRoot,
   evidenceStoreDir, executionDir, executionsRoot, folderDir, mainCheckout, mkdirState,
-  projectStateDir, readConfig, reportPath, safeSlug, slotsDir, specPath,
+  projectStateDir, readConfig, reportPath, safeSlug, saidOf, slotsDir, specPath,
 } from '../lib/store.mjs'
 
 const fresh = (area) => mkdtempSync(join(tmpdir(), 'agentics-store-' + area + '-'))
@@ -223,4 +223,14 @@ test('an effort\'s executions and reports sit in its .state', () => {
     .startsWith(spell(executionDir(r, 'e1', '20260926-120000')) + '/'))
   assert.ok(spell(reportPath(r, 'e1', '20260926-120000', 'a/b', 'implementer', 1))
     .startsWith(spell(effortStateDir(r, 'e1')) + '/'))
+})
+
+test('saidOf reads what the author wrote, falls back to the record, and says so when the file is missing', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentics-said-'))
+  const file = join(dir, 'q.md')
+  writeFileSync(file, 'Keep the cache?\nIt costs 2 GB.\n')
+  assert.equal(saidOf({ kind: 'parked', question: '', said: file }), 'Keep the cache?\nIt costs 2 GB.')
+  assert.equal(saidOf({ kind: 'escalated', detail: 'merge conflict in a.js' }), 'merge conflict in a.js')
+  assert.match(saidOf({ kind: 'parked', question: '', said: join(dir, 'gone.md') }), /did not write .*gone\.md/)
+  assert.equal(saidOf({ kind: 'parked', question: 'the line', said: join(dir, 'gone.md') }), 'the line')
 })

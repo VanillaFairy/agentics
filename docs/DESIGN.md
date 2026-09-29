@@ -358,7 +358,7 @@ command, `show`: nothing outside compile calls `addNodes`, and there is no CLI v
       cites.jsonl                 each folder's evidence citations ([Cites](#cites))
       knowledge/                  gotchas (see Gotchas)
       executions/<stamp>/         one execution of a subtree: execution.json, state.jsonl,
-                                  journal.jsonl, briefs/, jobs/, closes/, merges/, fixes/
+                                  journal.jsonl, briefs/, jobs/, closes/, merges/, fixes/, said/
       reports/                    executor reports, one file per dispatch
       locks/                      locus and branch locks
 ```
@@ -1018,7 +1018,17 @@ the todos; merge-batch writes its measurement to `merges/<target>-<pre>.json`. W
 node's next round — leaf-close on `fix`, merge-batch for a leaf that fails on the integration head
 alone — writes the failures with their evidence to `fixes/<node>-r<round>.json`, and leaf-open
 builds that round's brief from it; the arguments carry none. A close that decides anything but
-`fix` removes the file for the round after it. Text the workflow holds itself — a
+`fix` removes the file for the round after it.
+
+**What an agent says to the user, it writes itself.** The workflow's records reach disk inside a
+schedule or postflight token a courier retypes, so they carry no agent's prose. Preflight names
+the execution's `said/` directory; every agent that can stop a node — an executor, the planner
+writing or settling a spec, a reviewer, the analyst ruling on drift or a moved base — is told the
+file `said/<dispatch label>.md` and writes there, in full, the question, the need, the review or
+the rulings it returns. The record carries that path (`said`) and no text of the agent's; its own
+`question` or `detail` holds only a line the workflow or the lib composed. Every reader — the
+Next line, the watch, the snapshot, the landing check — shows the file (`saidOf`), and says so
+plainly when its author did not write it. Text the workflow holds itself — a
 reviewer's findings — goes to the executor in its dispatch prompt, which is never retyped. A
 payload field the workflow does not read is not printed.
 
@@ -1444,12 +1454,12 @@ disagree about it.
 | role | does | cannot | tools |
 |---|---|---|---|
 | scout, historian, doc-researcher | find, to exhaustion | conclude | search tools; historian read-only git; doc-researcher the web |
-| analyst | judge what it is handed | search | `Read` only |
+| analyst | judge what it is handed | search | read; write (the one file its dispatch names) |
 | planner | write the spec of a folder develop owns (an `author: planner` sub-effort, a promoted task, its own folder replanned) and settle its autonomous review | state a decision, implement | read, search, shell (for `lib/spec.mjs check`), write |
 | implementer | code one leaf as a focused series, or its fix round | leave its locus, amend, merge, certify | read, edit, shell |
 | test-author | write a leaf's tests and declare mutations | implement, execute anything | read, edit |
 | auditor | declare mutations against an implementation | edit source, execute anything | read, write (its report only) |
-| reviewer | attack a span | approve, edit | read, read-only git |
+| reviewer | attack a span | approve, edit | read, read-only git; write (its own review file) |
 | investigator | establish build and test commands when none are known, recorded as `command` gotchas | judge quality, fix anything | read, shell |
 | courier | run one command (after the token writes it is handed), paste stdout; move todos | anything else | shell, task tools |
 
@@ -1537,10 +1547,13 @@ Two conventions hold throughout:
 Fields as in [Nodes](#nodes). Event lines are `{kind, node, execution, seq, ...}`:
 `planned {by}` · `replanned {reason, by}` (also `retry_escalated` and `answered`) ·
 `dispatched {role, round, model, effort}` · `approved {head_sha, review_rounds, at_integration}` ·
-`merged {into, merged_sha, head_sha}` · `escalated {reason, detail}` · `parked {return, question}`
+`merged {into, merged_sha, head_sha}` · `escalated {reason, detail, said?}` · `parked {return,
+question, said?}` (`said` is the file the agent behind it wrote, in full; `detail` or `question` is
+then empty, and `saidOf` in `lib/store.mjs` reads either)
 (`return` is a replanning return, `needs_design`, `needs_respec`, `integration_critical`,
 `spec_defect`, `cant_tell` or `contract_drift`) ·
-`landed {into, merged_sha}` · `claims {head_sha, review: done | not_earned, claims[{claim, verdict, evidence}]}`.
+`landed {into, merged_sha}` · `claims {head_sha, review: done | not_earned, claims[{claim, verdict}],
+said?}` (each verdict's evidence is in the reviewer's `said` file).
 An event the workflow decided carries its record id, `rid`.
 
 ### Snapshot
@@ -1560,7 +1573,7 @@ from `approvalState`. `nodes` is every live node, the root’s subtree first and
 tree cannot reach, each `{id, parent, kind, title, intent, context, rigor, role, locus, deps,
 acceptance, status, event, stage, branch, worktree, commits, files}`: `status` from `deriveStatus`;
 `event` is the escalated or parked node’s own event (`{kind, seq, reason, detail}` or `{kind, seq,
-return, question}`), null for every other status; `stage` is `todoFor`’s `activeForm` while its
+return, question}`, the text read through `saidOf`), null for every other status; `stage` is `todoFor`’s `activeForm` while its
 `status` is `in_progress`, null otherwise; `branch` is the node’s own branch name, always; `worktree`
 is its path only when checked out; `commits` is `{count, last_subject, last_at}` over the leaf’s
 own branch since its folder’s, null unless the leaf is `active` (an inactive leaf, or anything that
@@ -1660,8 +1673,9 @@ nothing was written.
 failed_alone[], combination[], conflict}`; `checkpoint {reason, detail, executions?, gaps?}`
 (the lists the checkpoint found; `lib/status.mjs checkpoint` prints them); `closed {status}`;
 `batch-started {target, pre, children}`; `checkpoint-confirmed {gaps?}` (what the user
-confirmed past, printed by the same command); `drift-ruled {node, contract, head_sha, ruling, why}`
-(an analyst's `unaffected`) and `stale-ruled {node, base_now, ruling, why}` (either ruling); `invocation {}`, one per preflight, whose count
+confirmed past, printed by the same command); `drift-ruled {node, contract, head_sha, ruling, why, said?}`
+(an analyst's `unaffected`) and `stale-ruled {node, base_now, ruling, why, said?}` (either ruling;
+`why` is empty when the analyst's `said` file holds it); `invocation {}`, one per preflight, whose count
 numbers the invocation's record ids; `fault {node, channel, detail}`, a unit a plugin fault ended;
 `ended {}`, one per postflight, where a watching session stops. A line the workflow decided carries its `rid`.
 
@@ -1724,7 +1738,8 @@ after ten minutes.
 
 Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}], notes}` plus:
 
-- **preflight** — `invocation`, `checkpoint {reason, detail}`, `stale {nodes, now, list, diff}`
+- **preflight** — `invocation`, `checkpoint {reason, detail}`, `said_dir` (where the execution's
+  agents write what a record only points at), `stale {nodes, now, list, diff}`
   (null unless the base moved under unruled leaves), `counts {nodes, leaves, gaps, untraced}`,
   `dirty_worktrees`, `max_parallel`.
 - **schedule** — `launch[]`, `idle`, `max_parallel`, `records`. A launch is one of

@@ -34,9 +34,10 @@ const AGENTS = new URL('../agents/', import.meta.url)
  * file without reading it.
  */
 const ALLOWLISTS = {
-  // `Read` alone: the host refuses an agent with no tools, and an analyst judges what it is handed
-  // — without Grep or Glob it cannot widen the evidence base, which is the point of the role.
-  analyst: ['Read'],
+  // No Grep or Glob: an analyst judges what it is handed and cannot widen the evidence base, which
+  // is the point of the role. Write only for the file its dispatch names, where its rulings and
+  // questions go in full, so no courier retypes them.
+  analyst: ['Read', 'Write'],
   // Writes only its report file; it declares mutations and a script applies them.
   auditor: ['Glob', 'Grep', 'Read', 'Write'],
   // Runs one lib command and pastes stdout; the task tools move the launching session's todo
@@ -47,7 +48,8 @@ const ALLOWLISTS = {
   implementer: ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write'],
   investigator: ['Bash', 'Glob', 'Grep', 'Read'],
   planner: ['Bash', 'Glob', 'Grep', 'Read', 'Write'],
-  reviewer: ['Bash', 'Glob', 'Grep', 'Read'],
+  // Write only for its own review file, where its findings and claim evidence go in full.
+  reviewer: ['Bash', 'Glob', 'Grep', 'Read', 'Write'],
   scout: ['Glob', 'Grep', 'Read'],
   'test-author': ['Edit', 'Glob', 'Grep', 'Read', 'Write'],
 }

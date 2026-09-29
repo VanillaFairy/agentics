@@ -963,11 +963,10 @@ async function openLeaf(row, st, mode) {
   const id = row.id
   for (;;) {
     const opened = await boundary('leaf-open', {
-      node: id, role: st.role, round: st.round, mode, refresh: st.refresh === true,
+      node: id, role: st.role, round: st.round, mode,
       dispatch: st.role ? producerTier(row, st.raise) : COURIER,
     }, { phase: 'Execute', label: 'open:' + id + '#' + st.round })
     if (opened.status === 'opened') {
-      st.refresh = false
       st.worktree = opened.worktree
       st.branch = opened.branch
       st.brief = opened.brief_path
@@ -1030,10 +1029,9 @@ async function runLeaf(item, entry) {
     reviewRounds: 0, raise: false,
     base: facts.base_sha || '', head: facts.head_sha || '', deltaBase: '', concerns: [],
     salvaged: false, worktree: facts.worktree || '', branch: facts.branch || '', brief: facts.brief_path || '',
-    refresh: false, lastFailures: '', priorBlockers: [], priorUnfixed: new Set(), cleanStreak: 0,
+    lastFailures: '', priorBlockers: [], priorUnfixed: new Set(), cleanStreak: 0,
   }
   let toClear = []
-  if (entry && entry.refresh) st.refresh = true
   if (['close', 'review', 'approve', 'continue'].includes(stage) && facts.head_sha) st.salvaged = true
   if (st.salvaged) note(id + ': salvaged from an earlier invocation at ' + (facts.next_action || stage))
 
@@ -1251,11 +1249,9 @@ async function mergeInto(item) {
       for (const m of (f.ids && f.ids.length ? f.ids : [f.id])) escalate(m, 'fails_on_integration', why)
       continue
     }
-    note(f.id + ': fails on the integration head alone — a fix round on the refreshed branch')
+    note(f.id + ': fails on the integration head alone — a fix round on its branch, brought up to that head')
     if (running.has('leaf:' + f.id)) continue
-    launch('leaf:' + f.id, () => runLeaf({ unit: 'leaf', id: f.id, row: f.row, parent: f.parent, facts: f.facts }, {
-      stage: 'fix', refresh: true,
-    }))
+    launch('leaf:' + f.id, () => runLeaf({ unit: 'leaf', id: f.id, row: f.row, parent: f.parent, facts: f.facts }, { stage: 'fix' }))
   }
   const progressed = (out.merged || []).length + (out.failed_alone || []).length + (out.combination || []).length + (out.conflict ? 1 : 0)
   if (progressed === 0) escalate(target, 'merge_no_progress', 'a merge-batch into ' + target + ' merged nothing and reported no failure')

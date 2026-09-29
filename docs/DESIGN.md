@@ -464,6 +464,14 @@ it. When its last child has merged, its head passes the [suite gate](#the-suite-
 integration review is done, it merges into its parent's integration branch like any child. A group has no branch: its tasks are cut from and merge into
 their folder's, and a composite promoted inside a group is cut from that folder.
 
+A leaf follows its parent the same way. Every leaf-open merges the parent's integration head into
+a leaf branch that does not hold it, and that head becomes the leaf's base: the series is still
+the leaf's own commits, a tdd leaf's new tests still fail at its base, and whatever reached the
+parent since the cut is in the tree the leaf is measured on. The refresh merge is not the leaf's
+work, and the series check leaves it out. A cycle member takes its parent only at the cut, with
+the merge as its base: it is cut from its predecessor's head, which the parent does not hold, so a
+later refresh would count its predecessor's commits as its own.
+
 The effort root's integration branch, `agentics/<effort>`, is the effort branch: the one landed
 into the user's branch. Every other node's branch is its sibling, `agentics/<effort>--<flat>`,
 where `flat` spells the id's `/` as `.`. **Why not `agentics/<effort>/<id>`:** git stores a branch
@@ -991,7 +999,7 @@ already attached).
 |---|---|
 | **preflight** | refuse an execution overlapping an open one; check whether the base moved under its leaves; traceability; free this execution's slots and its dead worktrees (clean ones only — a dirty one is reported, never forced); write the ruler's brief for the leaves the base moved under; create the execution root's todo. A checkpoint's lists (the overlapping executions, the gaps) go on its state line, for the session to read with `lib/status.mjs checkpoint`; the payload carries counts |
 | **schedule** | append the workflow's decisions; compute what to launch from the tree on disk (`lib/schedule.mjs`, see [Scheduling](#scheduling)); attach to each launch the one row it needs, and to a leaf's its parent's row and its resume ladder; move the todos of the nodes it touched |
-| **leaf-open** | acquire a slot and the locus locks; ensure the parent's integration branch (lazily, refreshed from its own parent) and cut or attach the leaf's branch and worktree; assemble its brief; append `dispatched`; move the todo |
+| **leaf-open** | acquire a slot and the locus locks; ensure the parent's integration branch (lazily, refreshed from its own parent) and cut or attach the leaf's branch and worktree, brought up to that parent's head; assemble its brief; append `dispatched`; move the todo |
 | **leaf-close** | commit a shell-less author's locus files (anything outside is reverted and reported as a breach); build, typecheck, suite, discriminator, declared mutations and named checks by rigor; journal the observation; write and delete reported gotchas; compute the close decision; move the todo |
 | **merge-batch** | under the branch lock, record `batch-started` with the head it starts from; merge every approved child into one integration branch in dependency order; verify the merged head with the fast suite; bisect a red one; append `merged` and `merge-observed`; release locus locks; append a `batch` state line; complete the todos. A batch that started and never recorded its outcome is reset to where it started and done again, so an unverified merge is never recorded as landed |
 | **suite-gate** | on a composite whose children have all merged, under its branch lock: run the full suite on its integration head, against the head it was cut from; write the measurement; append a `gate` state line. It runs nothing where the repository does not split its tests, or where the full suite already passed at that head in this execution ([The suite gate](#the-suite-gate)) |

@@ -322,13 +322,12 @@ test('command_unknown: the investigator establishes commands once, then the leaf
   assert.equal(result.coverage.complete, true)
 })
 
-test('a leaf failing alone on the merged head gets a fix round on a refreshed branch', async () => {
+test('a leaf failing alone on the merged head gets a fix round', async () => {
   const sim = simulate([composite('.'), row('a')], {
     merge: (args, n) => (n === 0 ? { merged: [], failed_alone: [{ id: 'a', failures: [{ check: 'suite', claim: 'breaks x', evidence: 't' }] }] } : {}),
   })
   const { result } = await run(sim)
-  const refresh = sim.calls.find((c) => c.name === 'leaf-open' && c.args.refresh === true)
-  assert.ok(refresh, 'the fix round asked for a refreshed branch')
+  assert.equal(sim.opens.filter((id) => id === 'a').length, 2, 'the leaf that failed alone was opened again for its fix round')
   assert.equal(result.coverage.complete, true)
 })
 

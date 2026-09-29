@@ -32,9 +32,34 @@ test('a failing merged head is bisected: the leaf that fails alone is named, the
   assert.deepEqual(out.combination, [])
   assert.equal(readTree(r, 'e1').status.get('x').status, 'active')
   assert.equal(out.failed_alone[0].failures[0].evidence, undefined, 'no suite output crosses the courier')
-  const again = B(r, 'leaf-open', { node: 'x', role: 'implementer', round: out.failed_alone[0].facts.rounds + 1, refresh: true })
+  const again = B(r, 'leaf-open', { node: 'x', role: 'implementer', round: out.failed_alone[0].facts.rounds + 1 })
   assert.match(readFileSync(again.brief_path, 'utf8'), /## Fix round 2[\s\S]*\[integration\] the suite fails on the merged head[\s\S]*```text/,
     'the fix round the workflow opens reads the failure and its evidence merge-batch left for it')
+})
+
+test('a reopened leaf follows its moved parent: the parent head is its base, and the merge is not its work', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(),
+    leaf('x', { rigor: 'trivial', locus: ['src/add.mjs'] }),
+    leaf('y', { rigor: 'trivial', locus: ['README.md'] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const x = B(r, 'leaf-open', { node: 'x', role: 'implementer', round: 1 })
+  const xs = commitIn(x.worktree, { 'src/add.mjs': 'export const add = (a, b) => b + a\n' }, 'Add in the other order')
+  const y = B(r, 'leaf-open', { node: 'y', role: 'implementer', round: 1 })
+  const ys = commitIn(y.worktree, { 'README.md': 'hello world\n' }, 'Greet the world')
+  assert.deepEqual(B(r, 'merge-batch', { target: '.', children: [{ id: 'y', head_sha: ys }], cycles: [] }).merged.map((m) => m.id), ['y'])
+  const parentHead = git(r, 'rev-parse', 'agentics/e1')
+
+  const again = B(r, 'leaf-open', { node: 'x', role: 'implementer', round: 2 })
+  assert.equal(again.rebased, true)
+  assert.equal(again.base_sha, parentHead, 'the base is the head it was brought up to, not the merge')
+  assert.equal(git(r, 'merge-base', '--is-ancestor', ys, again.head_sha), '')
+  assert.equal(git(r, 'log', '--format=%H', again.base_sha + '..' + again.head_sha).split('\n').includes(xs), true,
+    'its own commit stays in its series')
+
+  const close = B(r, 'leaf-close', { node: 'x', role: 'implementer', round: 2, executor_status: 'done', base_sha: again.base_sha })
+  const measurement = JSON.parse(readFileSync(close.record, 'utf8')).measurement
+  assert.deepEqual(measurement.series_findings, [], 'the refresh merge is neither empty work nor a locus breach')
 })
 
 test('children that pass alone and fail together are a combination failure, and nothing merges', () => {

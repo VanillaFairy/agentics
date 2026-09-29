@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url'
 
 import { append } from '../lib/ledger.mjs'
 import {
-  addNodes, cycleOf, deriveStatus, executorRole, liveNodes, normalizeNode, ownReview, readTree,
-  renderTree, subtreeOf, treeProblems,
+  addNodes, cycleOf, deriveStatus, executorRole, liveNodes, normalizeNode, ownReview, ownerOf, readTree,
+  renderTree, subtreeOf, treeProblems, unitsOf,
 } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 import { checkAtomicity, coupledOf, fitOf } from '../lib/atomicity.mjs'
@@ -408,4 +408,55 @@ test('a replan may not drop or re-path a contract a node consumes', () => {
   }
   const out = addNodes(r, 'e1', [leaf('b')], { by: 'compile', approved: new Map(), owned: new Set(['b']) })
   assert.equal(out.ok, true, JSON.stringify(out.problems))
+})
+
+const group = (id, extra = {}) => ({ id, kind: 'group', title: 'gather ' + id, ...extra })
+
+test('a group sits in a folder and holds only tasks: its owner is the folder, and its units merge there', () => {
+  const nodes = tree(root(), group('g'), leaf('g/a'), leaf('g/b', { deps: ['g/a'] }), leaf('c'))
+  assert.deepEqual(treeProblems(nodes), [])
+  assert.equal(ownerOf(nodes, 'g/a'), '.')
+  assert.equal(ownerOf(nodes, 'g'), '.')
+  assert.equal(ownerOf(nodes, '.'), null)
+  assert.deepEqual(unitsOf(nodes, '.'), ['c', 'g/a', 'g/b'])
+  assert.match(renderTree(nodes, deriveStatus(nodes, [])), /g \[group\]/)
+})
+
+test('a group is refused inside a group or a leaf, holding a design node, or carrying anything but its tasks', () => {
+  const said = (nodes, id, re) => assert.ok(treeProblems(nodes).some((p) => p.node === id && re.test(p.problem)), JSON.stringify(treeProblems(nodes)))
+  said(tree(root(), group('g'), group('g/h'), leaf('g/h/a')), 'g/h', /group/)
+  said(tree(root(), group('g'), { id: 'g/d', kind: 'design', title: 'later' }), 'g/d', /holds only tasks/)
+  said(tree(root(), group('g', { decisions: ['D1'] }), leaf('g/a')), 'g', /only gathers/)
+  said(tree(root(), group('g', { author: 'planner' }), leaf('g/a')), 'g', /no author/)
+})
+
+test('a group is merged once every task in it is, since it has no branch of its own', () => {
+  const nodes = tree(root(), group('g'), leaf('g/a'), leaf('g/b'))
+  const merged = (id, seq) => ({ kind: 'merged', node: id, seq })
+  assert.equal(deriveStatus(nodes, [merged('g/a', 10)]).get('g').status, 'active')
+  const both = deriveStatus(nodes, [merged('g/a', 10), merged('g/b', 11)])
+  assert.equal(both.get('g').status, 'merged')
+  assert.equal(both.get('.').status, 'integrated')
+})
+
+test('atomicity: waiting for a group, or sitting in a group that waits, orders a leaf against every task in it', () => {
+  const shared = { locus: ['src/same.js'] }
+  const byGroupDep = tree(root(), group('g'), leaf('g/a', shared), leaf('b', { ...shared, deps: ['g'] }))
+  assert.deepEqual(checkAtomicity(byGroupDep, 'b').filter((f) => f.condition === 3), [])
+  const byGroupAfter = tree(root(), leaf('a', shared), group('g', { deps: ['a'] }), leaf('g/b', shared))
+  assert.deepEqual(checkAtomicity(byGroupAfter, 'g/b').filter((f) => f.condition === 3), [])
+  const unordered = tree(root(), group('g'), leaf('g/a', shared), leaf('b', shared))
+  assert.equal(checkAtomicity(unordered, 'b').filter((f) => f.condition === 3).length, 1)
+})
+
+test('traceability passes through a group: a decision its tasks realise is no gap at the folder', () => {
+  const nodes = tree(root(), group('g'), leaf('g/a'))
+  assert.deepEqual(trace(nodes, '.').gaps, [])
+})
+
+test('a cycle through a group is refused: a dep on a group reaches its tasks, and a group\'s after binds them', () => {
+  const cyclic = (nodes) => treeProblems(nodes).some((p) => /cycle/.test(p.problem))
+  assert.ok(cyclic(tree(root(), leaf('u', { deps: ['g'] }), group('g'), leaf('g/t', { deps: ['u'] }))))
+  assert.ok(cyclic(tree(root(), group('g', { deps: ['g/t'] }), leaf('g/t'))))
+  assert.ok(!cyclic(tree(root(), leaf('u'), group('g', { deps: ['u'] }), leaf('g/t'))))
 })

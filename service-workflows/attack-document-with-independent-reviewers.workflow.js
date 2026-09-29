@@ -349,6 +349,8 @@ function carriedRead(held) {
 
 const COURIER = { model: 'haiku', effort: 'low' }
 const COURIER_UP = { model: 'sonnet', effort: 'low' }
+// The refusals that mean the token was damaged on its way in, not that the program failed.
+const DAMAGED_IN = ['digest_mismatch', 'args_unreadable']
 
 function courierPrompt(command, writes) {
   const steps = writes.length === 0
@@ -373,6 +375,9 @@ function courierPrompt(command, writes) {
  */
 async function carry(command, label, phaseName, writes = []) {
   const ladder = [COURIER]
+  // A token written by file is copied by the courier, and a copy that failed once is retyped by
+  // the stronger model rather than by the same one again.
+  const again = writes.length > 0 ? COURIER_UP : COURIER
   let why = ''
 
   for (let i = 0; i < ladder.length; i++) {
@@ -387,9 +392,9 @@ async function carry(command, label, phaseName, writes = []) {
     const c = carriedRead(held)
     if (c.payload) {
       const refused = c.payload.ok === false && c.payload.error
-      if (refused && c.payload.error.kind === 'digest_mismatch' && i === 0) {
+      if (refused && DAMAGED_IN.includes(c.payload.error.kind) && i === 0) {
         why = c.payload.error.message || 'the argument token was damaged on its way in'
-        ladder.push(COURIER)
+        ladder.push(again)
         continue
       }
       if (refused) return { payload: null, why: 'the program refused: ' + (c.payload.error.message || c.payload.error.kind) }
@@ -397,7 +402,7 @@ async function carry(command, label, phaseName, writes = []) {
     }
 
     why = c.why || why
-    if (c.retry === 'again' && ladder.length < 2) ladder.push(COURIER)
+    if (c.retry === 'again' && ladder.length < 2) ladder.push(again)
     else if (c.retry === 'stronger' && !ladder.includes(COURIER_UP)) ladder.push(COURIER_UP)
   }
 

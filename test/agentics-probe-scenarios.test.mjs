@@ -814,6 +814,18 @@ test('findings too many for one line are recorded by one courier, written in chu
   assert.deepEqual(result.unrecorded, [])
 })
 
+test('a token file the first courier failed to write or the reader refused is copied again by the stronger courier', async () => {
+  const unreadable = carriedEnvelope({ ok: false, error: { kind: 'args_unreadable', message: 'the argument is not JSON' } })
+  for (const first of [failedCourier, unreadable]) {
+    const { result, prompts } = await runWorkflow(WF, {
+      args: ARGS, agent: probeAgents({ record: first, 'record#2': recordAll, 'probe:yagni': found([withLines()]) }),
+    })
+    const recs = prompts.filter((p) => /^record/.test(p.opts.label))
+    assert.deepEqual(recs.map((p) => [p.opts.label, p.opts.model]), [['record', 'haiku'], ['record#2', 'sonnet']])
+    assert.deepEqual(result.unrecorded, [])
+  }
+})
+
 test('a courier copying the chunked writes as the harness shows them, every line indented, writes the token intact', async () => {
   const many = Array.from({ length: 12 }, (_, i) =>
     withLines({ claim: `gap ${i}: it's C:\\src\\x ~b~q $HOME \`id\` "quoted" ` + 'x'.repeat(600) }))

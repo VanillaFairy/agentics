@@ -420,6 +420,8 @@ is written `~q` (`lib/store.mjs jsonFileText`). Each write is one line, because 
 indents every line of a computed prompt and a courier copies that indent: before a command it is
 harmless, inside a multi-line body such as a heredoc it lands in the token. A courier's cost is its
 dispatch, not its bytes, so a long token buys more Bash calls on one courier, never more couriers.
+Copying is where such a carry fails, so its one retry — after a courier that could not finish, or
+a token the lib refused as unreadable or not matching its digest — goes to the stronger model.
 
 A location list is the exception: it is only paths and line numbers, so it travels as plain text
 (`path:line:line,path:line`) with a digest over the exact string, because a courier copies paths

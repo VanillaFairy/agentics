@@ -386,13 +386,17 @@ function withId(r) {
  * refetch on a stronger model; a program failure is not retried. What stays unbelievable is a
  * transport failure, thrown: the unit ends as a plugin fault, never a question for the user.
  */
+/** The shell command that runs one boundary entry point over these arguments, under their digest. */
+function commandOf(name, argsObject) {
+  return 'node "' + pluginRoot + '/lib/boundary.mjs" ' + name + ' --repo "' + repo +
+    '" --effort "' + effort + '" --execution "' + execution + '" --digest ' + fnv1a(canonical(argsObject)) +
+    ' --b64 ' + base64(JSON.stringify(argsObject))
+}
+
 async function boundary(name, a, ctx) {
   const pending = CARRIES_RECORDS.has(name) ? records.splice(0, records.length).map(withId) : []
   const argsObject = { ...a, ...(CARRIES_RECORDS.has(name) ? { records: pending } : {}), progress }
-  const token = base64(JSON.stringify(argsObject))
-  const command = 'node "' + pluginRoot + '/lib/boundary.mjs" ' + name + ' --repo "' + repo +
-    '" --effort "' + effort + '" --execution "' + execution + '" --digest ' + fnv1a(canonical(argsObject)) +
-    ' --b64 ' + token
+  const command = commandOf(name, argsObject)
 
   const plan = [COURIER]
   let why = ''
@@ -419,6 +423,8 @@ async function boundary(name, a, ctx) {
         plan.push(COURIER)
         continue
       }
+      // A refusal may have written nothing. A record lands once by its id, so it goes again.
+      if (c.payload.error) records.unshift(...pending)
       return c.payload
     }
     why = c.why || why
@@ -1303,7 +1309,7 @@ const RUN_ID = 'unknown-to-script: pair `remaining` with the runId from the Work
 const NO_SUMMARY = { nodes_n: 0, leaves_n: 0, merged_n: 0, not_merged_n: 0, blocked_n: 0, blocked: [], root_done: false, done: false, stopped: [], held: [] }
 
 /** The return: postflight's summary of the subtree on disk, and what this invocation saw itself. */
-function result(checkpoint, post) {
+function result(checkpoint, post, postflight = '') {
   const s = (post && post.summary) || NO_SUMMARY
   // Stopped nodes this invocation did not stop itself are carried from an earlier one: they lead
   // the result as much as fresh ones, or a resume reads cleaner than the run it resumed.
@@ -1346,20 +1352,30 @@ function result(checkpoint, post) {
         runId: RUN_ID,
         remaining: s.done ? [] : [rootId],
         args: { effort, root: rootId, execution },
+        ...(postflight ? { postflight } : {}),
       },
     },
   }
 }
 
-/** Close the invocation: postflight lands the last decisions and summarizes the subtree from disk. */
+/**
+ * Close the invocation: postflight lands the last decisions and summarizes the subtree from disk.
+ * When no courier can carry it, the session is handed the command itself: it has a shell, and
+ * until it runs the command the stops this invocation decided last are on no disk.
+ */
 async function finish(checkpoint) {
+  let why = ''
   try {
-    return result(checkpoint, await boundary('postflight', {}, { phase: 'Postflight', label: 'postflight' }))
+    const post = await boundary('postflight', {}, { phase: 'Postflight', label: 'postflight' })
+    if (!post.error) return result(checkpoint, post)
+    why = post.error.message || post.error.kind || 'postflight refused'
   } catch (err) {
-    failedChannels.push('postflight')
-    note('postflight could not be carried: ' + (err && err.message) + ' — decisions since the last boundary were not recorded; a resume re-derives them')
-    return result(checkpoint, null)
+    why = err && err.message
   }
+  failedChannels.push('postflight')
+  const command = commandOf('postflight', { records: records.splice(0, records.length).map(withId), progress: false })
+  note('postflight could not be carried: ' + why + ' — the last decisions of this invocation are not recorded until the session runs coverage.resumable.postflight, as it stands')
+  return result(checkpoint, null, command)
 }
 
 // ---------------------------------------------------------------- the run

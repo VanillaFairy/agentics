@@ -268,6 +268,32 @@ test('a payload no courier can carry is a plugin fault: the node is held, never 
   assert.ok(result.coverage.unreached.some((u) => /a: held on a plugin fault/.test(u)))
 })
 
+test('a postflight no courier can carry hands the session its command, and running it records the last decisions', async () => {
+  const sim = simulate([composite('.'), row('a')])
+  const noShell = () => ({ stop_reason: 'failed', payload_raw: '', notes: 'no shell' })
+  // The couriers die after the leaf stopped: neither the tick that would carry the stop nor
+  // postflight reaches a shell.
+  const { result } = await run(sim, {
+    'implementer:a#1': () => ({ status: 'blocked', detail: 'needs a key', concerns: [], commits: [] }),
+    'schedule#2': noShell, 'schedule#2#2': noShell, postflight: noShell, 'postflight#2': noShell,
+  })
+  assert.ok(result.coverage.failed_channels.includes('postflight'))
+  assert.equal(result.coverage.complete, false)
+  assert.deepEqual(result.escalations.map((e) => e.id), ['a'], 'the run decided a stop')
+  assert.notEqual(sim.statusOf('a'), 'escalated', 'and no boundary carried it')
+
+  const command = result.coverage.resumable.postflight
+  assert.ok(result.notes.some((n) => n.includes('coverage.resumable.postflight')), 'the result says what to run')
+  sim.courier(command)
+  assert.equal(sim.statusOf('a'), 'escalated', 'the session ran the command, and the stop is on disk')
+})
+
+test('a run whose postflight was carried hands the session no command', async () => {
+  const sim = simulate([composite('.'), row('a')])
+  const { result } = await run(sim)
+  assert.ok(!('postflight' in result.coverage.resumable))
+})
+
 test('leaves held on plugin faults never crowd out the rest of the pool', async () => {
   const faulty = ['a', 'b', 'c', 'd']
   const sim = simulate([composite('.'), ...['a', 'b', 'c', 'd', 'e', 'f'].map((id) => row(id))], {

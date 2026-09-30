@@ -2,7 +2,7 @@
 //
 // These fixtures are REAL: a real git repository, a real linked worktree, a real commit series,
 // and a real test suite that really passes or really fails. None of that is negotiable — the
-// whole value of test/verify.test.mjs is that the discriminator moves HEAD, restores files, runs
+// whole value of test/verify-*.test.mjs is that the discriminator moves HEAD, restores files, runs
 // a suite there and puts the tree back, and not one of those steps is observable against a mock.
 //
 // What IS negotiable is building the same starting repository from scratch once per test. That
@@ -17,7 +17,7 @@
 // --git-dir` differs from `--git-common-dir`, `worktree list` sees it, and the discriminator's
 // detached checkout and restore work exactly as they do on a freshly built one.
 //
-// The equivalence is not asserted here, it is TESTED: test/verify.test.mjs pins that a real
+// The equivalence is not asserted here, it is TESTED: test/verify-fixture.test.mjs pins that a real
 // verify() run over a clone produces a byte-identical payload to one over a freshly built
 // fixture, for a green order and for a red one. That test is the licence for this file, and if
 // a future change makes a clone diverge from real construction it fails rather than drifting.
@@ -37,6 +37,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
+import { parseArgs } from '../../lib/verify.mjs'
+
 // This file's consumers run under `node --test`, and the fixtures' own suites are `node --test`
 // too. Node marks its test children with NODE_TEST_CONTEXT and a grandchild that sees it refuses
 // to run any file at all — silently, with exit 0, which would make every fixture suite "pass".
@@ -52,10 +54,27 @@ export const BUILD = 'node tools/build.mjs'
 // The runner's output format is pinned rather than left to Node's default, which is `spec` on a
 // terminal and differs by major version otherwise (Node 22 writes TAP to a pipe, later versions
 // `spec`). A fixture whose suite prints a different format on another machine is a test that
-// passes on one of them. The TAP path is covered on its own, by name, in test/verify.test.mjs.
+// passes on one of them. The TAP path is covered on its own, by name, in test/verify-output.test.mjs.
 export const SUITE = 'node --test --test-reporter=spec'
 export const TEST_ONE = 'node --test --test-reporter=spec {file}'
 export const SUITE_TAP = 'node --test --test-reporter=tap'
+export const EXECUTION = '20260925-120000'
+
+/** The options a leaf's measurement of the widget order is called with. */
+export const options = (over = {}) => parseArgs([
+  '--worktree', over.worktree,
+  '--base', over.base,
+  '--head', over.head,
+  '--locus', 'src/widget.mjs',
+  '--locus', 'test/widget.test.mjs',
+  '--build', BUILD,
+  '--typecheck-absent',
+  '--suite', SUITE,
+  '--test-one', TEST_ONE,
+  ...(over.extra || []),
+])
+
+export const mutations = (specs) => ['--mutations-b64', Buffer.from(JSON.stringify(specs)).toString('base64')]
 
 export const git = (cwd, ...args) => spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8' })
 export const rev = (cwd, ref) => git(cwd, 'rev-parse', ref).stdout.trim()

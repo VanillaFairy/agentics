@@ -2,7 +2,7 @@
 //
 // One measurement shape per row, judged against each rigor and role. The payloads are built by
 // hand rather than measured: what is under test is the arithmetic from observed facts to a
-// verdict, and test/verify.test.mjs already pins that the facts are observed faithfully.
+// verdict, and test/verify-*.test.mjs already pins that the facts are observed faithfully.
 //
 // The properties that matter most:
 //   every failing conjunct names itself — a leaf never fails with an empty failure list;

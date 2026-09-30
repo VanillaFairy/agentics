@@ -352,6 +352,24 @@ test('the session\'s retry clears a stop, so a running execution relaunches the 
   assert.deepEqual(B(r, 'schedule', { running: [] }).launch.map((l) => l.id), ['a'])
 })
 
+test('the session\'s note is recorded on the node and changes no status', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/add.mjs'] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  append(r, 'e1', 'events', { kind: 'escalated', node: 'a', execution: STAMP, reason: 'blocked', detail: 'needs a key' })
+  const note = (...args) => JSON.parse(spawnSync(process.execPath, [fileURLToPath(new URL('../lib/boundary.mjs', import.meta.url)), 'note',
+    '--repo', r, '--effort', 'e1', '--execution', STAMP, ...args], { encoding: 'utf8' }).stdout)
+
+  assert.deepEqual(note('--node', 'a', '--text', ' the key is in the vault '), { noted: 'a', error: null })
+  const noted = readTree(r, 'e1').events.filter((e) => e.kind === 'noted')
+  assert.deepEqual(noted.map((e) => [e.node, e.execution, e.by, e.text]), [['a', STAMP, 'session', 'the key is in the vault']])
+  assert.equal(readTree(r, 'e1').status.get('a').status, 'escalated')
+
+  assert.match(note('--node', 'nope', '--text', 'x').error, /no live node/)
+  assert.match(note('--node', 'a').error, /--text/)
+  assert.equal(readTree(r, 'e1').events.filter((e) => e.kind === 'noted').length, 1)
+})
+
 test('drift: a landed diff under a contract a pending node consumes is flagged; its own provider is not', async () => {
   const { driftOf } = await import('../lib/boundary.mjs')
   const r = repo()

@@ -1622,7 +1622,7 @@ An event the workflow decided carries its record id, `rid`.
 
 `node lib/status.mjs snapshot --repo <r> --effort <e> --json` prints the effort’s whole state in
 one read-only call, under a digest — it writes no file, no lock and no `seq`. The payload:
-`format` (1; changing a field this entry lists bumps it), `store` (the main checkout’s
+`format` (2; changing a field this entry lists bumps it), `store` (the main checkout’s
 `.agentics`, whether or not `repo` is a linked worktree), `effort`, `about`, `seq_max`, `malformed`,
 `folders`, `nodes` and `cost`.
 
@@ -1640,8 +1640,11 @@ own branch since its folder’s, null unless the leaf is `active` (an inactive l
 is not a leaf, never earns the git call) or either branch is missing; `files.spec` is `{path, line}`
 — a leaf’s folder spec at its plan entry’s line, a group’s at its heading’s, a folder’s own spec
 at no particular line — and
-`files.briefs`/`files.reports` list only the paths that exist on disk. `cost` is `costOf`’s totals
-and `per_leaf`, trimmed to `{dispatches, tokens, tokens_unreported}`.
+`files.briefs`/`files.reports` list only the paths that exist on disk. `cost` is `costOf`’s totals,
+`{dispatches, tokens, usd, tokens_unreported, usage}`, and `per_leaf`, the same five fields per leaf.
+`usage` is `{<model id>: {input, cache_write, cache_read, output, usd}}`, the models that were
+billed; a model `lib/usage.mjs` has no price for carries `usd: null`, and the `usd` total is over
+the models that have one.
 
 `node lib/status.mjs list --repo <r> --json` also carries `store`, present whether or not the
 effort store exists.
@@ -1727,12 +1730,17 @@ nothing was written.
 ### State and journal lines
 
 - **Owner:** `lib/boundary.mjs` (`batch`, `gate`, `checkpoint`, `closed`, `merge-observed`, `series-done`
-  for shell-less authors), `dispatch` in `execute-approved-plan-in-worktrees`, `journalLine` in `lib/verify.mjs`.
+  for shell-less authors), `dispatch` in `execute-approved-plan-in-worktrees`, `collectUsage` in
+  `lib/usage.mjs` (`usage`), `journalLine` in `lib/verify.mjs`.
 - **Restated in:** the implementer's `series-done` heredoc in `execute-approved-plan-in-worktrees`; `lib/resume.mjs`
   and `lib/status.mjs` (readers).
 
-`state.jsonl` (what the workflow decided): `dispatch {label, node, role, model, effort, tokens}` —
-`tokens` is `null` where the host reports none; `batch {target, merged[], head_sha, verified,
+`state.jsonl` (what the workflow decided): `dispatch {label, node, role, model, effort}`;
+`usage {agent, label, models{<model id>: {input, cache_write_5m, cache_write_1h, cache_read, output}}}`,
+what one agent spent, the last line per `agent` standing: a `dispatch` is reported when a `usage`
+carries its `label`, and the spend is the node's that the label names (`<what>:<node id>#<round>`,
+the form every `dispatch` call in the workflow gives a label about a node);
+`batch {target, merged[], head_sha, verified,
 failed_alone[], combination[], conflict}`; `gate {target, head_sha, passed}`, one per suite gate
 that ran; `checkpoint {reason, detail, executions?, gaps?}`
 (the lists the checkpoint found; `lib/status.mjs checkpoint` prints them); `closed {status}`;
@@ -1982,9 +1990,14 @@ outcome: incorporated|discarded}], question, detail}`.
   somewhere. Defined-never-dispatched, written-never-read and read-never-written fail the suite.
 - **Budgets:** each skill and agent definition has a size budget in `tools/budgets.json`; the
   `size-budget` lint rule fails a file over it, or one with no budget.
-- **Cost report:** every execution records its dispatches with model and effort (and tokens where
-  the host reports them) as `dispatch` state lines; `lib/status.mjs cost` aggregates them so the
-  next triage quotes measured figures.
+- **Cost report:** every execution records its dispatches with model and effort as `dispatch`
+  state lines. A workflow is told nothing of what an agent spent, so `preflight` and `postflight`
+  read it from the host’s own subagent transcripts (`collectUsage` in `lib/usage.mjs`): the runs
+  of an execution are the ones whose preflight courier was handed its boundary command, and each
+  of their agents gets a `usage` line with its token counts per model. `lib/status.mjs cost`
+  prices them from the list in `lib/usage.mjs` and aggregates them, so the next triage quotes
+  measured figures. A run that died is collected by the execution’s next invocation; a transcript
+  the host has removed, or a layout it has changed, leaves the dispatch unreported, never zero.
 - **Migration:** `tools/migrate-legacy.mjs` is the one-shot copy of a repository's 3.2.0 layout
   into `.agentics/`: each effort's files into its `.state/`, its design documents into its
   `.legacy/`, and its slot configuration into `config.json`. It never deletes: it lists the

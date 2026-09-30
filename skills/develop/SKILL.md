@@ -147,7 +147,7 @@ computation) is within this session's budget — then hand over:
 `Skill({ skill: 'agentics:task', args: '<the request, verbatim>' })`. **Dispatched** otherwise.
 
 Say the recommendation in one or two sentences, with the cost where one is measured
-(`lib/status.mjs cost --repo . --effort <an earlier effort>` gives `leaf_mean_tokens`); with no
+(`lib/status.mjs cost --repo . --effort <an earlier effort>` gives `leaf_mean_usd`); with no
 measurement, say there is none rather than quoting a constant. **It is a recommendation.** "Run it
 anyway" ends the discussion: proceed in the mode the user chose and say nothing more about cost.
 

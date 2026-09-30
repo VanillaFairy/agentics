@@ -318,7 +318,7 @@ async function dispatch(prompt, opts, node) {
   byModel[opts.model || 'inherit'] = (byModel[opts.model || 'inherit'] || 0) + 1
   records.push({
     file: 'state',
-    entry: { kind: 'dispatch', label: opts.label || '', node: node || '', role: (opts.agentType || '').replace('agentics:', ''), model: opts.model || '', effort: opts.effort || '', tokens: null },
+    entry: { kind: 'dispatch', label: opts.label || '', node: node || '', role: (opts.agentType || '').replace('agentics:', ''), model: opts.model || '', effort: opts.effort || '' },
   })
   return agent(prompt, opts)
 }

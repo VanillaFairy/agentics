@@ -78,6 +78,6 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" cost --repo . --effort <e>
 - `show` renders the compiled tree with each node's kind, rigor, derived status and title.
 - `todos` is one execution's derived todo list under a display header (`ONGOING`, `DONE`,
   `NEEDS_INPUT`): a rendering, never a state.
-- `cost` counts dispatches per model and role, sums measured tokens, and gives the mean over merged
-  tasks whose every dispatch was measured. Dispatches the host reported no tokens for are counted
-  as unreported: never quote them as zero, and never quote a projected figure as a measured one.
+- `cost` counts dispatches per model and role, sums measured tokens and dollars per model, and gives
+  the mean over merged tasks whose every dispatch was measured. Dispatches with no usage recorded are
+  counted as unreported: never quote them as zero, and never quote a projected figure as a measured one.

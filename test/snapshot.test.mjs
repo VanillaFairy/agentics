@@ -196,8 +196,9 @@ function effortFixture() {
   writeFileSync(report, 'report for a/impl\n')
 
   append(repo, EFFORT, 'state:' + STAMP, [
-    { kind: 'dispatch', label: 'a/impl:implementer', node: 'a/impl', role: 'implementer', model: 'sonnet', effort: 'medium', tokens: 1200 },
-    { kind: 'dispatch', label: 'a/fix:implementer', node: 'a/fix', role: 'implementer', model: 'sonnet', effort: 'medium', tokens: null },
+    { kind: 'dispatch', label: 'implementer:a/impl#1', node: 'a/impl', role: 'implementer', model: 'sonnet', effort: 'medium' },
+    { kind: 'dispatch', label: 'implementer:a/fix#1', node: 'a/fix', role: 'implementer', model: 'sonnet', effort: 'medium' },
+    { kind: 'usage', agent: 'a1', label: 'implementer:a/impl#1', models: { 'claude-sonnet-5': { input: 100, cache_write_5m: 40, cache_write_1h: 0, cache_read: 1000, output: 60 } } },
   ])
 
   return { repo, effort: EFFORT, stamp: STAMP }
@@ -209,9 +210,9 @@ function linkedWorktree(repo) {
   return wt
 }
 
-test('snapshot carries format 1', () => {
+test('snapshot carries format 2', () => {
   const { repo, effort } = effortFixture()
-  assert.equal(snapshotOf(repo, effort).format, 1)
+  assert.equal(snapshotOf(repo, effort).format, 2)
 })
 
 test("store names the main checkout's .agentics", () => {
@@ -425,12 +426,11 @@ test('cost matches costOf', () => {
   const snap = snapshotOf(repo, effort)
   const c = costOf(repo, effort)
   assert.equal(snap.cost.dispatches, c.dispatches)
-  assert.equal(snap.cost.tokens, c.tokens)
-  assert.equal(snap.cost.tokens_unreported, c.tokens_unreported)
+  assert.ok(c.tokens > 0 && c.tokens_unreported > 0, 'the fixture has both a measured and an unreported dispatch')
+  for (const field of ['tokens', 'usd', 'tokens_unreported', 'usage']) assert.deepEqual(snap.cost[field], c[field], field)
   for (const [id, leafCost] of Object.entries(c.per_leaf)) {
     assert.equal(snap.cost.per_leaf[id].dispatches, leafCost.dispatches, id)
-    assert.equal(snap.cost.per_leaf[id].tokens, leafCost.tokens, id)
-    assert.equal(snap.cost.per_leaf[id].tokens_unreported, leafCost.tokens_unreported, id)
+    for (const field of ['tokens', 'usd', 'tokens_unreported', 'usage']) assert.deepEqual(snap.cost.per_leaf[id][field], leafCost[field], id + ' ' + field)
   }
 })
 

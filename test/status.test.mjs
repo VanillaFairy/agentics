@@ -6,8 +6,8 @@
 //   todos     the --no-progress list: one item per node of the execution's subtree, the stage as
 //             activeForm (implementing, writing tests, fix round N, held, awaiting merge, waiting
 //             on user, escalated: <reason>), and the ONGOING / DONE / NEEDS_INPUT header
-//   cost      dispatches per model and role, tokens summed where reported and counted where not,
-//             and the measured cost per merged leaf
+//   cost      dispatches per model and role, tokens and dollars per model where usage was
+//             recorded, dispatches counted where it was not, and the measured cost per merged leaf
 //   CLI       --json prints the envelope; the default is for a person
 //
 // Design: docs/DESIGN.md#progress, docs/DESIGN.md#self-checks.
@@ -24,6 +24,7 @@ import { append, seqMax } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import { checkpointOf, costOf, efforts, questionsSince, renderTodos, snapshotOf, todosOf } from '../lib/status.mjs'
 import { effortDir, effortStateDir, executionDir } from '../lib/store.mjs'
+import { tokensOf, usdOf } from '../lib/usage.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/status.mjs', import.meta.url))
 const fresh = () => mkdtempSync(join(tmpdir(), 'agentics-status-')).split('\\').join('/')
@@ -181,29 +182,61 @@ test('an effort with no tree yet reads as unplanned', () => {
 test('the cost report counts per model and role, and never reads an unreported token as zero', () => {
   const repo = effortWith([composite('.'), leaf('x'), leaf('y'), leaf('z')])
   mkdirSync(executionDir(repo, E, X2), { recursive: true })
-  const d = (stamp, node, role, model, tokens) =>
-    append(repo, E, 'state:' + stamp, { kind: 'dispatch', label: node + ':' + role, node, role, model, effort: 'medium', tokens })
-  d(X1, 'x', 'implementer', 'sonnet', 1000)
-  d(X1, 'x', 'reviewer', 'opus', 500)
-  d(X2, 'y', 'implementer', 'sonnet', 2000)
+  const SONNET = 'claude-sonnet-5'
+  const OPUS = 'claude-opus-5-5'
+  const spent = (input, cache_read, output) => ({ input, cache_write_5m: 0, cache_write_1h: 0, cache_read, output })
+  let agents = 0
+  const d = (stamp, node, role, model, models) => {
+    const label = role + ':' + node + '#1'
+    append(repo, E, 'state:' + stamp, { kind: 'dispatch', label, node, role, model, effort: 'medium' })
+    if (models) append(repo, E, 'state:' + stamp, { kind: 'usage', agent: 'a' + agents++, label, models })
+  }
+  const x1 = spent(100, 800, 100)
+  const x2 = spent(50, 400, 50)
+  const y = spent(200, 1600, 200)
+  const root = spent(30, 240, 30)
+  d(X1, 'x', 'implementer', 'sonnet', { [SONNET]: x1 })
+  d(X1, 'x', 'reviewer', 'opus', { [OPUS]: x2 })
+  d(X2, 'y', 'implementer', 'sonnet', { [SONNET]: y })
   d(X2, 'z', 'implementer', 'sonnet', null)
-  d(X2, '.', 'reviewer', 'opus', 300)
+  d(X2, '.', 'reviewer', 'opus', { 'claude-next': root })
   append(repo, E, 'state:' + X2, { kind: 'checkpoint', reason: 'x' })
   for (const id of ['x', 'y', 'z']) ev(repo, 'merged', id, { into: 'agentics/eff', merged_sha: 'm', head_sha: 'h' })
 
+  // A later line for the same agent replaces its earlier one.
+  append(repo, E, 'state:' + X1, { kind: 'usage', agent: 'a0', label: 'implementer:x#1', models: { [SONNET]: spent(1, 1, 1) } })
+  append(repo, E, 'state:' + X1, { kind: 'usage', agent: 'a0', label: 'implementer:x#1', models: { [SONNET]: x1 } })
+  // An agent whose dispatch was never recorded is still its leaf's spend, by its label.
+  const lost = spent(7, 70, 7)
+  append(repo, E, 'state:' + X2, { kind: 'usage', agent: 'lost', label: 'close:z#2#2', models: { [SONNET]: lost } })
+
+  const shown = (c, usd) => ({ input: c.input, cache_write: 0, cache_read: c.cache_read, output: c.output, usd })
+  const xUsd = usdOf(SONNET, x1) + usdOf(OPUS, x2)
   const c = costOf(repo, E)
   assert.equal(c.dispatches, 5)
   assert.deepEqual(c.by_model, { sonnet: 3, opus: 2 })
   assert.deepEqual(c.by_role, { implementer: 3, reviewer: 2 })
-  assert.equal(c.tokens, 3800)
+  assert.equal(c.tokens, [x1, x2, y, root, lost].reduce((sum, s) => sum + tokensOf(s), 0))
+  assert.ok(Math.abs(c.usd - (xUsd + usdOf(SONNET, y) + usdOf(SONNET, lost))) < 1e-9, 'a model with no price adds no dollars')
+  assert.equal(c.usage['claude-next'].usd, null, 'and says so, never 0')
+  assert.deepEqual(c.usage[OPUS], shown(x2, usdOf(OPUS, x2)))
+  assert.equal(c.usage[SONNET].input, x1.input + y.input + lost.input)
   assert.equal(c.tokens_unreported, 1)
-  assert.deepEqual(c.per_leaf.x, { dispatches: 2, tokens: 1500, tokens_unreported: 0, status: 'merged' })
+  assert.deepEqual(c.per_leaf.x, {
+    dispatches: 2, tokens: tokensOf(x1) + tokensOf(x2), usd: xUsd, tokens_unreported: 0,
+    usage: { [SONNET]: shown(x1, usdOf(SONNET, x1)), [OPUS]: shown(x2, usdOf(OPUS, x2)) }, status: 'merged',
+  })
   assert.equal(c.per_leaf.z.tokens_unreported, 1)
+  assert.equal(c.per_leaf.z.tokens, tokensOf(lost))
+  assert.equal(c.per_leaf.z.dispatches, 1)
   assert.equal(c.per_leaf['.'], undefined, 'a composite\'s dispatch is cost, not a leaf\'s')
   assert.equal(c.leaves_measured, 2, 'z has an unreported dispatch, so it is not measured')
-  assert.equal(c.leaf_mean_tokens, 1750)
+  assert.equal(c.leaf_mean_tokens, Math.round((c.per_leaf.x.tokens + c.per_leaf.y.tokens) / 2))
+  assert.equal(c.leaf_mean_usd, (c.per_leaf.x.usd + c.per_leaf.y.usd) / 2)
 
-  assert.equal(costOf(effortWith([composite('.')]), E).leaf_mean_tokens, null, 'nothing measured is null, not 0')
+  const bare = costOf(effortWith([composite('.')]), E)
+  assert.equal(bare.leaf_mean_tokens, null, 'nothing measured is null, not 0')
+  assert.equal(bare.leaf_mean_usd, null)
 })
 
 const cli = (...args) => execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8' })
@@ -211,7 +244,7 @@ const cli = (...args) => execFileSync(process.execPath, [CLI, ...args], { encodi
 test('the CLI prints an envelope with --json and a readable view without it', () => {
   const repo = effortWith(TREE)
   dispatched(repo, 'a/impl', 'implementer')
-  append(repo, E, 'state:' + X1, { kind: 'dispatch', label: 'l', node: 'a/impl', role: 'implementer', model: 'sonnet', effort: 'low', tokens: 10 })
+  append(repo, E, 'state:' + X1, { kind: 'dispatch', label: 'l', node: 'a/impl', role: 'implementer', model: 'sonnet', effort: 'low' })
 
   for (const verb of [['list'], ['show', '--effort', E], ['todos', '--effort', E, '--execution', X1], ['cost', '--effort', E]]) {
     const out = JSON.parse(cli(...verb, '--repo', repo, '--json'))

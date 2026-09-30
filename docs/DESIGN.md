@@ -198,7 +198,9 @@ of a node, an execution or an effort is computed from append-only logs and git o
 anything that displays a status renders it, and nothing trusts a rendered status. One monotonic
 `seq` per effort orders records; it is a counter minted by the ledger script, never by an agent,
 and never a clock. Resume names the single next undone action per node, trusting a stage only
-where the record and git agree.
+where the record and git agree. What a session learns about a node (why it stopped, what the user
+ruled, what was done to its branch by hand) is an observation like any other: the session records
+it as a `noted` event, and no status is derived from it.
 
 **Why:** a record written after the fact leaves a window where work exists and nothing says so; a
 status written down outlives what it described; a clock an agent can read is a clock it can invent.
@@ -1004,6 +1006,13 @@ same head after a retry — has a new id and lands again; a run the host resumes
 run's preflight, and so re-derives the same id for the same decision in whatever order its units
 finish. A record the lib writes itself (a merge-batch run again) is known by its content.
 
+**A decision is never left in the workflow alone.** Records a boundary refused, or that no courier
+could carry, go back on the pending list for the next carry. When postflight itself cannot be
+carried there is no next carry, so the result hands the session the postflight command whole
+(`coverage.resumable.postflight`): the session has a shell, runs it as it stands, and the last
+decisions land under the same digest and the same ids. Until it has, the stops that invocation
+decided last are in its result and on no disk.
+
 **A unit is in flight until a tick has carried what it decided.** A unit that ends while a schedule
 call is out stays in the workflow's running set, so that call launches nothing beneath it or twice,
 and the loop ticks again at once to land its records. Launches that come back are checked against
@@ -1478,6 +1487,29 @@ once, it is answered while other work goes on and the node rejoins the run.
 The agentics viewer (vanillafairy's `agentics-viewer/`) draws an effort live from
 `lib/status.mjs snapshot`. It reads, and never writes, the effort store.
 
+### The node card
+
+A session started on one node reads one thing first: `lib/status.mjs node --node <id>`, the node's
+entry of the snapshot. Beside the status and the stop it carries the card, computed on every read:
+
+- **the next action** a relaunch would take for the leaf, from the resume ladder itself
+  (`resumeLeaves`), so the card and the relaunch cannot disagree;
+- **how far behind** the leaf's branch is of its folder's: a stopped leaf that lacks commits its
+  folder has since taken is often stopped by exactly what they fix;
+- **the lead of its latest report**, what the agent that last worked on it said first;
+- **the notes** earlier sessions left (`lib/boundary.mjs note`): the cause they established, the
+  user's ruling, what they did to the branch by hand;
+- **the relaunch arguments**: the open execution that holds the node, its root, and the node in
+  `retry_escalated` when it escalated itself.
+
+The viewer shows the card and puts it in the prompt it offers for the node.
+
+**Why:** the status was always one read away, but the reason and the next step were spread over
+the event log, the journal, the closes, the reports and git, and what a session worked out about a
+stop was written nowhere, so the next session worked it out again or relaunched without it. The
+card is a rendering, so it cannot go stale; the note is the one part that cannot be computed, so it
+is the one part recorded.
+
 ### The Next line
 
 `lib/next.mjs` computes the one command to run next for an effort from its specs, the ledger, the
@@ -1612,7 +1644,8 @@ then empty, and `saidOf` in `lib/store.mjs` reads either)
 (`return` is a replanning return, `needs_design`, `needs_respec`, `integration_critical`,
 `spec_defect`, `cant_tell` or `contract_drift`) ·
 `landed {into, merged_sha}` · `claims {head_sha, review: done | not_earned, claims[{claim, verdict}],
-said?}` (each verdict's evidence is in the reviewer's `said` file).
+said?}` (each verdict's evidence is in the reviewer's `said` file) · `noted {by, text}` (what a
+session learned about the node; no status is derived from it).
 An event the workflow decided carries its record id, `rid`.
 
 ### Snapshot
@@ -1622,7 +1655,7 @@ An event the workflow decided carries its record id, `rid`.
 
 `node lib/status.mjs snapshot --repo <r> --effort <e> --json` prints the effort’s whole state in
 one read-only call, under a digest — it writes no file, no lock and no `seq`. The payload:
-`format` (2; changing a field this entry lists bumps it), `store` (the main checkout’s
+`format` (3; changing a field this entry lists bumps it), `store` (the main checkout’s
 `.agentics`, whether or not `repo` is a linked worktree), `effort`, `about`, `seq_max`, `malformed`,
 `folders`, `nodes` and `cost`.
 
@@ -1630,21 +1663,32 @@ one read-only call, under a digest — it writes no file, no lock and no `seq`. 
 spec: {path}}`: `title` and `blocking` (its open `blocking` questions) from `parseSpec`, `approval`
 from `approvalState`. `nodes` is every live node, the root’s subtree first and then any node the
 tree cannot reach, each `{id, label, parent, kind, title, intent, context, rigor, role, locus, deps,
-acceptance, status, event, stage, branch, worktree, commits, files}`: `label` is the node's own
+acceptance, status, event, stage, branch, worktree, commits, files, card}`: `label` is the node's own
 label, else the last segment of its id (the effort's name at the root); `status` from `deriveStatus`;
-`event` is the escalated or parked node’s own event (`{kind, seq, reason, detail}` or `{kind, seq,
-return, question}`, the text read through `saidOf`), null for every other status; `stage` is `todoFor`’s `activeForm` while its
+`event` is the escalated or parked node’s own event (`{kind, seq, reason, detail, said}` or `{kind,
+seq, return, question, said}`, the text read through `saidOf`, `said` its author's file when that
+exists, else empty), null for every other status; `stage` is `todoFor`’s `activeForm` while its
 `status` is `in_progress`, null otherwise; `branch` is the node’s own branch name, always; `worktree`
 is its path only when checked out; `commits` is `{count, last_subject, last_at}` over the leaf’s
 own branch since its folder’s, null unless the leaf is `active` (an inactive leaf, or anything that
 is not a leaf, never earns the git call) or either branch is missing; `files.spec` is `{path, line}`
 — a leaf’s folder spec at its plan entry’s line, a group’s at its heading’s, a folder’s own spec
 at no particular line — and
-`files.briefs`/`files.reports` list only the paths that exist on disk. `cost` is `costOf`’s totals,
+`files.briefs`/`files.reports` list only the paths that exist on disk. `card` is
+[the node card](#the-node-card), `{next, behind, report, notes, relaunch}`: `next` is `{action,
+why}` from the resume ladder, for a leaf that is not merged, null otherwise; `behind` counts the
+commits of its folder's branch the leaf's branch lacks, null unless the leaf is unmerged and both
+branches exist; `report` is `{path, lead}` for the latest dispatch that left a report, else null;
+`notes` is the node's `noted` events, newest first, each `{seq, by, text}`; `relaunch` is
+`{execution, root, retry_escalated}` for the latest open execution whose root is the node or above
+it, `retry_escalated` holding the node's id when it escalated itself, else null. `cost` is `costOf`’s totals,
 `{dispatches, tokens, usd, tokens_unreported, usage}`, and `per_leaf`, the same five fields per leaf.
 `usage` is `{<model id>: {input, cache_write, cache_read, output, usd}}`, the models that were
 billed; a model `lib/usage.mjs` has no price for carries `usd: null`, and the `usd` total is over
 the models that have one.
+
+`node lib/status.mjs node --repo <r> --effort <e> --node <id> [--json]` prints one entry of
+`nodes`, the same shape, asking git about that node alone.
 
 `node lib/status.mjs list --repo <r> --json` also carries `store`, present whether or not the
 effort store exists.
@@ -1871,6 +1915,9 @@ Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}],
 - **land** (the session's, plain JSON) — `check`: `open_escalations`, `parked`, `human`,
   `drift {base_sha, base_moved, commits, overlap}`, `root_status`, `root_claims`, `landing`;
   `merge`: `merged_sha`; `cleanup`: `removed`, `kept`.
+- **retry** and **note** (the session's, plain JSON) — `retry --node <id>…`: `{retried[], error}`;
+  `note --node <id> --text <t>`: `{noted, error}`, `noted` the node a `noted` event was appended
+  for, empty when the node is not live or the text is empty.
 
 ### Replanning returns
 
@@ -1890,7 +1937,9 @@ Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}],
 `complete` (computed, per workflow; for `execute-approved-plan-in-worktrees`: no checkpoint, every leaf in scope
 merged, the root integrated, nothing escalated or parked — carried from an earlier invocation or
 not — and no earned integration review or survey lost), `dropped[]`, `incomplete[]`,
-`failed_channels[]`, `unreached[]` (prose, loss first), `resumable {runId, remaining, args?}`.
+`failed_channels[]`, `unreached[]` (prose, loss first), `resumable {runId, remaining, args?,
+postflight?}`. `postflight` is `execute-approved-plan-in-worktrees`'s alone, present only when no
+courier could carry its postflight: the boundary's command, whole, for the session to run.
 
 ### Evidence item store
 

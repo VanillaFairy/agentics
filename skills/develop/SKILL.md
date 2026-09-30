@@ -119,8 +119,18 @@ from the root (`foundations/entities`). A name equal to the words is the match; 
 folder whose name or title contains them. **One match** is the folder this run builds. **Several**:
 ask which with `AskUserQuestion`. **None**: the words are a request, and step 1 takes them.
 
-**Words naming a parked or escalated node** are a question, not a launch: take that node through
-4b or 4c now, and relaunch its execution (step 3, its stamp) only once the answer is recorded.
+**Words naming a task or a group**: read its card before anything else, and look up nothing the
+card already says:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" node --repo . --effort <e> --node <id>
+```
+
+It prints the stop and its reason, the next action a relaunch would take, how many commits the
+task's branch lacks of its folder's (say so before relaunching an escalated task that is behind),
+the notes earlier sessions left, and the relaunch arguments. **A parked or escalated node** is a
+question, not a launch: take it through 4b or 4c now, and relaunch its execution (step 3, the
+card's stamp) only once the answer is recorded.
 
 For a matched folder, first match:
 
@@ -343,6 +353,10 @@ changes. An explanation only in chat beside the dialog, or only in your thinking
 never sees, does not count, nor does a re-ask that refers to one ("given those uses", "as above").
 <!-- /agentics:verbatim -->
 
+**First, when `coverage.failed_channels` holds `postflight`:** run the command in
+`coverage.resumable.postflight` exactly as it stands. Until it has run, the stops the result lists
+are on no disk, and every status the store shows is older than the run.
+
 **a. Checkpoint.** Non-null means nothing new was dispatched; what it found is printed by
 `lib/status.mjs checkpoint --repo . --effort <e> --execution <stamp>`.
 
@@ -356,6 +370,14 @@ never sees, does not count, nor does a re-ask that refers to one ("given those u
 **b. Escalations** — `{id, reason, detail}`, each to the user. They are decisions, not
 information; do not resolve them yourself. Once a cause is dealt with, relaunch with the same
 `execution` and `retry_escalated: [<ids>]`.
+
+**Leave a note on the node** whenever you establish why it stopped, the user rules on it, or you
+touch its branch by hand, before you relaunch. One paragraph, plain words; the next session
+reads it on the card instead of finding it out again:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" note --repo . --effort <e> --execution <stamp> --node <id> --text "<what stopped it, what was done or ruled>"
+```
 
 **Faults** — `{id, channel, detail}`: a plugin fault, never a question. Relaunch the same
 `execution` at once, asking nothing; a fault on the same node again is reported to the user as a

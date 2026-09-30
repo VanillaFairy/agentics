@@ -245,7 +245,7 @@ put it>.
 
 ## Plan
 
-- **<name>** — task · realises: D1 · rigor: <rigor> · locus: <path>, … · reads: <path>, …
+- **<name>** — task · realises: D1 · label: <the work> · rigor: <rigor> · locus: <path>, … · reads: <path>, …
   <title: one imperative line>
   <context: self-contained, for an executor who never saw this conversation>
   - [ ] <criterion> — check: `<command>`

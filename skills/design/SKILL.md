@@ -173,6 +173,7 @@ and the plan entries, which `check-plan-block` parses:
 - **<name>** — <sub-effort | task | deferred | dropped> · realises: D1, D2 · after: <sibling>, /<path>
   · author: you|planner · provides: <contract> (<path>, …) · consumes: <contract>
   · rigor: <rigor> · locus: <path>, … · reads: <path>, …
+  · label: <the work, as the viewer shows it: world-red-tests, not world-red>
   <title: one imperative line>
   <context: free prose>
   - [ ] <criterion> — check: `<command>`

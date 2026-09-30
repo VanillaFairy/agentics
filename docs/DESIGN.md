@@ -287,6 +287,7 @@ owns the record, its validation and every node's derived status.
 | field | meaning |
 |---|---|
 | `id` | stable, path-like (`auth/session/refresh-token`); `.` is the effort root; segments are lower-case letters, digits and dashes, so the parent is the id's prefix |
+| `label` | the node's visible name, from its entry's `label`: the work done there, not its parents (the id carries those); absent when none was written, and the viewer then shows the last id segment |
 | `title` | imperative; the todo subject |
 | `intent` | what this node makes true, in the user's or the parent design's words |
 | `kind` | `design` (a sub-effort whose spec is not approved or prepared: the frontier), `composite` (a folder whose spec is), `group` (tasks of one folder gathered by concern), `leaf` (a task) |
@@ -1628,8 +1629,9 @@ one read-only call, under a digest — it writes no file, no lock and no `seq`. 
 `folders` is every folder that holds a spec, root first, each `{id, title, approval, blocking,
 spec: {path}}`: `title` and `blocking` (its open `blocking` questions) from `parseSpec`, `approval`
 from `approvalState`. `nodes` is every live node, the root’s subtree first and then any node the
-tree cannot reach, each `{id, parent, kind, title, intent, context, rigor, role, locus, deps,
-acceptance, status, event, stage, branch, worktree, commits, files}`: `status` from `deriveStatus`;
+tree cannot reach, each `{id, label, parent, kind, title, intent, context, rigor, role, locus, deps,
+acceptance, status, event, stage, branch, worktree, commits, files}`: `label` is the node's own
+label, else the last segment of its id (the effort's name at the root); `status` from `deriveStatus`;
 `event` is the escalated or parked node’s own event (`{kind, seq, reason, detail}` or `{kind, seq,
 return, question}`, the text read through `saidOf`), null for every other status; `stage` is `todoFor`’s `activeForm` while its
 `status` is `in_progress`, null otherwise; `branch` is the node’s own branch name, always; `worktree`
@@ -1669,7 +1671,10 @@ Kinds: `sub-effort`, `task`, `deferred`, `dropped`. Keys: `realises`, `after` (a
 plan, or `/a/b` from the root folder), `provides` (`<name> (<path>, …)`), `consumes`, `ground`;
 `author` (`you` or `planner`) and `shared` on a sub-effort; `rigor`, `role`, `locus`, `reads` and
 `dispatch` (`producer=<model>/<effort>, reviewer=<model>/<effort>`) on a task, which also needs a
-criterion. A checked box is refused. Headings and forms inside a fenced block are prose.
+criterion; `label` on either, the node's visible name. A node's id is its path and carries its
+parents; the label names the work done there, at most 60 characters (`foundations/world/world-red`
+is shown as `world-red-tests`). The viewer draws the label, and the last id segment where none was
+written. A checked box is refused. Headings and forms inside a fenced block are prose.
 
 A group:
 

@@ -120,3 +120,37 @@ The laws themselves are in `docs/DESIGN.md#iron-laws`.
 | IL3 — nothing judges itself | `tools/rules/no-self-verdict.mjs`; `lib/verdict.mjs`; the computed review-loop exit in `execute-approved-plan-in-worktrees` |
 | IL4 — the user owns decisions and their tree | `lib/boundary.mjs land` behind the session's gate; `lib/verify.mjs`'s linked-worktree refusal; `decisionProblems` in `lib/tree.mjs`, which admits a decision only from compile, against the approved copy on the ledger (`lib/approval.mjs`), and refuses a replan that changes a contract or drops a realised decision |
 | GP2 — nothing outlives its consumer | `test/liveness.test.mjs`; `tools/rules/size-budget.mjs` |
+
+## Build
+
+    node tools/lint.mjs && node --test
+    node --test test/<file>.test.mjs
+    claude plugin validate .
+
+## Architecture
+
+- `lib/` — deterministic CLIs: tree, ledger, compile, boundary, verify (`lib/INDEX.md`)
+- `tools/` — lint, its rules, size budgets, one-shot migration (`tools/INDEX.md`)
+- `agents/` — subagent definitions; allowlist is capability (`docs/kb/agents.md`)
+- `service-workflows/` — sandboxed orchestration scripts; reach lib via courier (`service-workflows/INDEX.md`)
+- `skills/` — user entry points: design, develop, task, investigate, next (`docs/kb/skills.md`)
+- `test/harness/` — runs workflows offline with scripted agents (`test/harness/INDEX.md`)
+
+## Knowledge base
+
+Each module in the Architecture map has an index at the path shown there: `INDEX.md` beside the
+source, or `docs/kb/<module>.md` where a file in the module's folder would load as runtime text.
+An index holds what the code and `docs/DESIGN.md` cannot say: couplings, fences, what a change
+breaks elsewhere. It never repeats what a signature or a header comment already states.
+
+- `docs/kb/CONVENTIONS.md` — lib file idioms, CLI exit codes, what to touch when adding an agent/skill/workflow/rule.
+- `docs/kb/GOTCHAS.md` — copies that must move together, LF, plugin cache, branch naming.
+- `docs/kb/BUILD.md` — checks, manifest validation, versioning and distribution.
+- `docs/kb/TESTING.md` — running tests, the `node --test test/` trap, what each layer proves.
+
+The KB is a routing aid that bottoms out in source. For exact constants, enumerations or
+sequences, read the source. The KB carries no counts.
+
+The KB is refreshed once per finished effort, never inside the commits that build it; until then,
+where it disagrees with source, source wins. When an effort is complete, run `/kb:update` with no
+argument, which commits its result separately.

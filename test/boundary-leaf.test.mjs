@@ -166,6 +166,32 @@ test('a green is cut from its red and brought up to the parent head, so its othe
   assert.notEqual(redHead, green.base_sha)
 })
 
+test('a green opened again after its refresh names the same base, and the parent\'s commits stay out of its series', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(),
+    leaf('l', { rigor: 'trivial', locus: ['src/l.mjs'] }),
+    leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'] }),
+    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], locus: ['src/r.mjs'] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const red = B(r, 'leaf-open', { node: 'r', role: 'test-author', round: 1 })
+  const redHead = commitIn(red.worktree, { 'test/r.test.mjs': "import { test } from 'node:test'\ntest('r', () => {})\n" }, 'Pin r')
+  const l = B(r, 'leaf-open', { node: 'l', role: 'implementer', round: 1 })
+  const ls = commitIn(l.worktree, { 'src/l.mjs': 'export const l = 1\n' }, 'Add l')
+  B(r, 'merge-batch', { target: '.', children: [{ id: 'l', head_sha: ls }], cycles: [] })
+
+  const first = B(r, 'leaf-open', { node: 'g', role: 'implementer', round: 1 })
+  const replay = B(r, 'leaf-open', { node: 'g', role: 'implementer', round: 1 })
+  assert.equal(git(r, 'rev-parse', first.base_sha + '^1'), redHead, 'the base is the refresh merge on red\'s head')
+  assert.equal(replay.base_sha, first.base_sha, 'the open run again after a lost courier names the same base')
+
+  commitIn(replay.worktree, { 'src/r.mjs': 'export const r = () => 2\n' }, 'Implement r')
+  const close = B(r, 'leaf-close', { node: 'g', role: 'implementer', round: 1, base_sha: replay.base_sha })
+  const measurement = JSON.parse(readFileSync(close.record, 'utf8')).measurement
+  assert.deepEqual(measurement.series_findings, [], 'l\'s commit and the merges are not g\'s work')
+  const round2 = B(r, 'leaf-open', { node: 'g', role: 'implementer', round: 2 })
+  assert.equal(round2.base_sha, first.base_sha, 'and a fix round measures from it too')
+})
+
 test('a leaf decomposed in place releases its claim: its children are not locked out by it', () => {
   const r = repo()
   seedTree(r, 'e1', [root(), leaf('a', { rigor: 'trivial', locus: ['src/a.mjs', 'src/b.mjs'] })])

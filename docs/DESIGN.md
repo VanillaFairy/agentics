@@ -523,6 +523,14 @@ work, and the series check leaves it out. A cycle member takes its parent only a
 the merge as its base: it is cut from its predecessor's head, which the parent does not hold, so a
 later refresh would count its predecessor's commits as its own.
 
+The base is read off the branch, never carried from the call that made it (`leafBase` in
+`lib/integration.mjs`): the oldest commit on the leaf's first-parent line, from where it left its
+cycle predecessor, that holds what it took from its parent. leaf-open is re-run whenever a
+courier's copy is lost, and resume starts from git alone; an open that did the refresh and one
+that finds it done must name the same base, or a replay measures the parent's commits as the
+leaf's. Every leaf-open reports it, and the workflow measures each round from the one it was
+handed.
+
 The effort root's integration branch, `agentics/<effort>`, is the effort branch: the one landed
 into the user's branch. Every other node's branch is its sibling, `agentics/<effort>--<flat>`,
 where `flat` spells the id's `/` as `.`. **Why not `agentics/<effort>/<id>`:** git stores a branch
@@ -1996,7 +2004,7 @@ Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}],
   `{id, next_action, branch, worktree, head_sha, base_sha, rounds, brief_path}`. A row is `{id, title, kind, author, rigor, role, provides_n,
   decisions, dispatch, ground_known, rev, spec_path, children_n, own_review}`.
 - **leaf-open** — `status` (`opened | no_slot | locus_held | busy | refused`), `branch`, `worktree`,
-  `base_sha`, `head_sha`, `rebased`, `brief_path`, `brief_digest`, `report_path`, `slot`,
+  `base_sha`, `head_sha`, `brief_path`, `brief_digest`, `report_path`, `slot`,
   `max_parallel`, `held_by[{effort, path, node, execution, status}]`.
 - **leaf-close** — `status` (`done | pending`), `node`, `head_sha`, `decision {next, reason,
   failures[{check, claim}]}`, `record` (the path of `closes/<stem>.json`: `{node, role, round,

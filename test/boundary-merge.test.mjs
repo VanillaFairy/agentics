@@ -51,7 +51,6 @@ test('a reopened leaf follows its moved parent: the parent head is its base, and
   const parentHead = git(r, 'rev-parse', 'agentics/e1')
 
   const again = B(r, 'leaf-open', { node: 'x', role: 'implementer', round: 2 })
-  assert.equal(again.rebased, true)
   assert.equal(again.base_sha, parentHead, 'the base is the head it was brought up to, not the merge')
   assert.equal(git(r, 'merge-base', '--is-ancestor', ys, again.head_sha), '')
   assert.equal(git(r, 'log', '--format=%H', again.base_sha + '..' + again.head_sha).split('\n').includes(xs), true,

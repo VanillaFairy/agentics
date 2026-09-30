@@ -980,7 +980,7 @@ async function openLeaf(row, st, mode) {
       st.worktree = opened.worktree
       st.branch = opened.branch
       st.brief = opened.brief_path
-      if (!st.base || st.round === 1 || opened.rebased) st.base = opened.base_sha
+      st.base = opened.base_sha
       if (!st.head) st.head = opened.head_sha || opened.base_sha
       return opened
     }

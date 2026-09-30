@@ -1,0 +1,26 @@
+# .kbignore — paths excluded from knowledge-base analysis (/kb:init, /kb:update, /kb:check).
+#
+# Syntax is the same as .gitignore: globs, `#` comments, `!` negation, trailing `/` for dirs.
+# Built-in defaults are ALWAYS applied, even if this file is empty. This file only adds to them.
+#
+# --- Built-in defaults (already in effect; listed for reference only) ---
+# node_modules/  .git/  vendor/  dist/  build/  out/  target/  obj/  coverage/
+# .next/  .cache/  .turbo/  .venv/  venv/  __pycache__/  .idea/  .vscode/
+# *.lock  package-lock.json  yarn.lock  pnpm-lock.yaml  *.min.js  *.min.css  *.map
+# *.generated.*  *.png  *.jpg  *.svg  *.woff*  *.ttf  *.mp4  *.pdf  *.zip
+
+# --- From .gitignore ---
+docs/superpowers/
+.worktrees/
+
+# --- Directories worth considering ---
+# test/
+test/fixtures/
+# docs/
+.agentics/
+# .claude/
+
+# --- Common test file patterns ---
+# *.test.*
+# *.spec.*
+# *.snap

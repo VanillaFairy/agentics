@@ -1672,8 +1672,8 @@ plan, or `/a/b` from the root folder), `provides` (`<name> (<path>, …)`), `con
 `author` (`you` or `planner`) and `shared` on a sub-effort; `rigor`, `role`, `locus`, `reads` and
 `dispatch` (`producer=<model>/<effort>, reviewer=<model>/<effort>`) on a task, which also needs a
 criterion; `label` on either, the node's visible name. A node's id is its path and carries its
-parents; the label names the work done there, at most 60 characters (`foundations/world/world-red`
-is shown as `world-red-tests`). The viewer draws the label, and the last id segment where none was
+parents; the label names the work done there in free text for people, at most 16 characters so
+it fits a node's block in the viewer (`foundations/world/world-red` is shown as `World tests`). The viewer draws the label, and the last id segment where none was
 written. A checked box is refused. Headings and forms inside a fenced block are prose.
 
 A group:

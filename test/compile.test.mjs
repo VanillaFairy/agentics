@@ -15,7 +15,7 @@ import { approvalState, recordApproval, recordPreparation } from '../lib/approva
 import { compileEffort } from '../lib/compile.mjs'
 import { append, fileFor, readLog } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
-import { hashSpec, parseSpec } from '../lib/spec.mjs'
+import { LABEL_MAX, hashSpec, parseSpec } from '../lib/spec.mjs'
 import { snapshotOf } from '../lib/status.mjs'
 import { specPath } from '../lib/store.mjs'
 import { childrenOf, readTree } from '../lib/tree.mjs'
@@ -120,19 +120,21 @@ test('an approved root and sub-effort compile to composites and leaves, each fie
 })
 
 test('a label rides its entry onto the node and into the snapshot; without one the snapshot shows the last id segment', () => {
-  const labelled = ROOT.replace('- **cli** — task · realises: D1', '- **cli** — task · label: command-line-config · realises: D1')
+  const label = 'CLI config file'
+  const labelled = ROOT.replace('- **cli** — task · realises: D1', '- **cli** — task · label: ' + label + ' · realises: D1')
   const repo = effort({ '.': labelled, api: API })
   approve(repo, '.')
   approve(repo, 'api')
   compiled(repo)
-  assert.equal(nodes(repo).get('cli').label, 'command-line-config')
+  assert.equal(nodes(repo).get('cli').label, label)
   assert.equal('label' in nodes(repo).get('reload'), false, 'an unlabelled node carries no label, so it compares as it did')
   const shown = new Map(snapshotOf(repo, E).nodes.map((n) => [n.id, n.label]))
-  assert.equal(shown.get('cli'), 'command-line-config')
+  assert.equal(shown.get('cli'), label)
   assert.equal(shown.get('api/parse'), 'parse')
   assert.equal(shown.get('.'), E)
-  const long = parseSpec(ROOT.replace('- **cli** — task · realises: D1', '- **cli** — task · label: ' + 'x'.repeat(61) + ' · realises: D1'), { file: 'DESIGN.md' })
-  assert.ok(long.problems.some((p) => /label/.test(p.problem)))
+  const withLabel = (text) => parseSpec(ROOT.replace('- **cli** — task · realises: D1', '- **cli** — task · label: ' + text + ' · realises: D1'), { file: 'DESIGN.md' })
+  assert.equal(withLabel('x'.repeat(LABEL_MAX)).problems.some((p) => /label/.test(p.problem)), false)
+  assert.ok(withLabel('x'.repeat(LABEL_MAX + 1)).problems.some((p) => /label/.test(p.problem)))
 })
 
 test('after resolves to sibling ids, and a consumed contract takes its provider\'s paths', () => {

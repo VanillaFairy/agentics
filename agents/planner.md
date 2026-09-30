@@ -115,7 +115,7 @@ Headings in this order: `# <title>`, `## Intent`, `## Decisions`, `## Design`, `
 - **<name>** — task · realises: D1, a.D2 · after: <sibling>, /<path from the root>
   · rigor: <rigor> · role: <role> · locus: <path>, … · reads: <path>, …
   · provides: <contract> (<path>, …) · consumes: <contract> · dispatch: producer=sonnet/medium
-  · label: <the work, as the viewer shows it: world-red-tests, not world-red>
+  · label: <the work in free text, at most 16 characters: World tests, not world-red>
   <title: one imperative line>
   <context: self-contained, for an executor who never saw your conversation>
   - [ ] <criterion> — check: `<command>`

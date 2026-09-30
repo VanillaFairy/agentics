@@ -446,20 +446,22 @@ function viaJsonFile(cli, token, root) {
 /** What a courier carried back: the payload, or why it cannot be believed and how to retry. */
 function carriedRead(held) {
   if (!held) return { payload: null, why: 'the dispatch returned nothing', retry: 'again' }
-  if (held.stop_reason !== 'carried') {
-    return { payload: null, why: held.notes || 'the courier could not run the command', retry: 'again' }
-  }
+  // What the program printed decides. The courier's `stop_reason` is read only where it printed
+  // nothing to decide by, because a courier may call a typed refusal a failed run.
+  const notRun = held.stop_reason !== 'carried'
+    ? { payload: null, why: held.notes || 'the courier could not run the command', retry: 'again' }
+    : null
 
   let parsed = null
   try {
     parsed = JSON.parse(held.payload_raw)
   } catch (e) {
-    return { payload: null, why: 'it did not survive transcription: ' + (e && e.message), retry: 'stronger' }
+    return notRun || { payload: null, why: 'it did not survive transcription: ' + (e && e.message), retry: 'stronger' }
   }
 
   if (parsed && parsed.error) return { payload: null, why: 'the program failed: ' + parsed.error, retry: '' }
   if (!parsed || !parsed.payload || typeof parsed.payload_digest !== 'string') {
-    return { payload: null, why: 'what came back is not a digest-covered envelope', retry: 'stronger' }
+    return notRun || { payload: null, why: 'what came back is not a digest-covered envelope', retry: 'stronger' }
   }
 
   const actual = fnv1a(canonical(parsed.payload))
@@ -500,7 +502,7 @@ function courierPrompt(command, writes) {
  * Retries are sized to what was observed, as `execute-approved-plan-in-worktrees`'s boundaries size them: a courier
  * that returned nothing or could not run the command is run again once; a payload damaged in
  * transit buys one refetch on a stronger model; a token the program refused as damaged on its way
- * IN is sent again; a program failure is not retried. What stays unbelievable comes back as
+ * IN is copied again by the stronger model; a program failure is not retried. What stays unbelievable comes back as
  * `{payload: null, why}` — every carry in this workflow is a side channel with a fallback, so
  * none of them may throw. `writes` are the file writes a token too long for one argv slot
  * travels by, run by the same courier before `command`.
@@ -524,9 +526,11 @@ async function carry(command, label, phaseName, writes = []) {
     const c = carriedRead(held)
     if (c.payload) {
       const refused = c.payload.ok === false && c.payload.error
-      if (refused && DAMAGED_IN.includes(c.payload.error.kind) && i === 0) {
+      // A model that miscopies a token miscopies it the same way again: the copy goes to the
+      // stronger one.
+      if (refused && DAMAGED_IN.includes(c.payload.error.kind) && !ladder.includes(COURIER_UP)) {
         why = c.payload.error.message || 'the argument token was damaged on its way in'
-        ladder.push(again)
+        ladder.push(COURIER_UP)
         continue
       }
       if (refused) return { payload: null, why: 'the program refused: ' + (c.payload.error.message || c.payload.error.kind) }

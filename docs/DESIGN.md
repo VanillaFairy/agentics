@@ -1134,8 +1134,13 @@ lock held longer than a leaf-open may wait answers `busy`, and the workflow re-d
 
 **Retries are sized to what was observed.** A courier that returned nothing or could not run the
 command is re-run once, because the entry point is idempotent; a payload that fails its digest
-buys one refetch on a stronger model; an argument token the program refused as damaged buys one
-fresh courier; a program failure is not retried.
+buys one refetch on a stronger model; an argument token the program refused as damaged
+(`digest_mismatch`, `args_unreadable`) is copied again by the stronger model, because a model that
+miscopies a token miscopies it the same way again, and one refused there too is a `transport`
+fault; a program failure is not retried. What the program printed decides which of these it is:
+a digest-covered payload is read whatever `stop_reason` the courier gave it, since a courier may
+call a typed refusal a failed run, and `stop_reason` is consulted only where nothing believable
+was printed.
 
 **A plugin fault is never the user's decision.** A boundary that stays unbelievable (`transport`),
 a detached job that threw (`program`), an agent dispatch that returned nothing (`dispatch`), a

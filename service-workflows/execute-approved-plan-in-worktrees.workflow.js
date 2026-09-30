@@ -274,6 +274,8 @@ const reviewerTier = (row) => {
 
 const COURIER = { model: 'haiku', effort: 'low' }
 const COURIER_UP = { model: 'sonnet', effort: 'low' }
+// The refusals that mean the token was damaged on its way in, not that the program failed.
+const DAMAGED_IN = ['digest_mismatch', 'args_unreadable']
 
 // ---------------------------------------------------------------- state
 //
@@ -327,19 +329,25 @@ async function dispatch(prompt, opts, node) {
 
 class TransportError extends Error {}
 
-/** What a courier carried back: the payload, or why it cannot be believed and whether to retry. */
+/**
+ * What a courier carried back: the payload, or why it cannot be believed and whether to retry.
+ * What the program printed decides; the courier's `stop_reason` is read only where it printed
+ * nothing to decide by, because a courier may call a typed refusal a failed run.
+ */
 function carried(held) {
   if (!held) return { payload: null, why: 'the dispatch returned nothing', retry: 'again' }
-  if (held.stop_reason !== 'carried') return { payload: null, why: 'the courier could not run the command', retry: 'again' }
+  const notRun = held.stop_reason !== 'carried'
+    ? { payload: null, why: 'the courier could not run the command', retry: 'again' }
+    : null
   let parsed
   try {
     parsed = JSON.parse(held.payload_raw)
   } catch (e) {
-    return { payload: null, why: 'the payload did not survive transcription: ' + (e && e.message), retry: 'stronger' }
+    return notRun || { payload: null, why: 'the payload did not survive transcription: ' + (e && e.message), retry: 'stronger' }
   }
   if (parsed && parsed.error) return { payload: null, why: 'the program failed: ' + parsed.error, retry: '' }
   if (!parsed || !parsed.payload || typeof parsed.payload_digest !== 'string') {
-    return { payload: null, why: 'what came back is not a digest-covered envelope', retry: 'stronger' }
+    return notRun || { payload: null, why: 'what came back is not a digest-covered envelope', retry: 'stronger' }
   }
   const actual = fnv1a(canonical(parsed.payload))
   if (actual !== parsed.payload_digest) {
@@ -382,9 +390,10 @@ function withId(r) {
  * Run one boundary entry point through a courier and believe its payload only after the digest.
  *
  * Retries are sized to what was observed: a courier that returned nothing or could not run the
- * command is re-run (every entry point is idempotent); a payload damaged in transit buys one
- * refetch on a stronger model; a program failure is not retried. What stays unbelievable is a
- * transport failure, thrown: the unit ends as a plugin fault, never a question for the user.
+ * command is re-run (every entry point is idempotent); a payload damaged in transit, or an
+ * argument token the program refused as damaged on its way in, buys one more trip on a stronger
+ * model; a program failure is not retried. What stays unbelievable is a transport failure,
+ * thrown: the unit ends as a plugin fault, never a question for the user.
  */
 /** The shell command that runs one boundary entry point over these arguments, under their digest. */
 function commandOf(name, argsObject) {
@@ -417,10 +426,11 @@ async function boundary(name, a, ctx) {
         taskToolsMissing = true
         note('the couriers had no task tools: the todo list did not move — derive it with lib/status.mjs todos')
       }
-      if (c.payload.error && c.payload.error.kind === 'digest_mismatch' && i === 0) {
-        // The argument token was damaged on its way in; the program wrote nothing.
+      if (c.payload.error && DAMAGED_IN.includes(c.payload.error.kind)) {
+        // The program wrote nothing. A model that miscopies a token miscopies it the same way
+        // again, so the copy goes to the stronger one; damaged there too, it is a transport fault.
         why = c.payload.error.message
-        plan.push(COURIER)
+        if (!plan.includes(COURIER_UP)) plan.push(COURIER_UP)
         continue
       }
       // A refusal may have written nothing. A record lands once by its id, so it goes again.

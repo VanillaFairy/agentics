@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 
-import { runWorkflow } from './harness/workflow-host.mjs'
+import { carriedEnvelope, runWorkflow } from './harness/workflow-host.mjs'
 import { agents, composite, recordsOf, row, simulate } from './harness/develop-sim.mjs'
 
 const WF = fileURLToPath(new URL('../service-workflows/execute-approved-plan-in-worktrees.workflow.js', import.meta.url))
@@ -266,6 +266,32 @@ test('a payload no courier can carry is a plugin fault: the node is held, never 
   assert.equal(sim.statusOf('b'), 'merged', 'the rest of the run goes on')
   assert.equal(result.coverage.complete, false)
   assert.ok(result.coverage.unreached.some((u) => /a: held on a plugin fault/.test(u)))
+})
+
+/** The program's refusal of an argument token, pasted whole by a courier that labels the run as it sees fit. */
+const refusedToken = (boundary, stop_reason) => () => ({
+  ...carriedEnvelope({ boundary, ok: false, error: { kind: 'digest_mismatch', message: 'the token changed in transit' }, todos: [], notes: [] }),
+  stop_reason, task_tools: 'skipped',
+})
+
+test('a token the program refused as damaged on its way in is copied again by the stronger courier', async () => {
+  const sim = simulate([composite('.'), row('a')])
+  // A courier may call a typed refusal a failed run: the program's output decides, not that label.
+  const { result, prompts } = await run(sim, { 'close:a#1': refusedToken('leaf-close', 'failed') })
+  const closes = prompts.filter((p) => /^close:a/.test(p.opts.label))
+  assert.deepEqual(closes.map((p) => [p.opts.label, p.opts.model]), [['close:a#1', 'haiku'], ['close:a#1#2', 'sonnet']])
+  assert.deepEqual(result.faults, [])
+  assert.equal(sim.statusOf('a'), 'merged')
+})
+
+test('a token no courier copies whole is a plugin fault, never a refusal the user is asked about', async () => {
+  const sim = simulate([composite('.'), row('a'), row('b')])
+  const refused = refusedToken('leaf-open', 'carried')
+  const { result, prompts } = await run(sim, { 'open:a#1': refused, 'open:a#1#2': refused })
+  assert.deepEqual(prompts.filter((p) => /^open:a/.test(p.opts.label)).map((p) => p.opts.model), ['haiku', 'sonnet'])
+  assert.deepEqual(result.escalations, [])
+  assert.deepEqual(result.faults.map((f) => [f.id, f.channel]), [['a', 'transport']])
+  assert.equal(sim.statusOf('b'), 'merged', 'the rest of the run goes on')
 })
 
 test('a postflight no courier can carry hands the session its command, and running it records the last decisions', async () => {

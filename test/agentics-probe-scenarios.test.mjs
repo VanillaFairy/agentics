@@ -814,6 +814,18 @@ test('findings too many for one line are recorded by one courier, written in chu
   assert.deepEqual(result.unrecorded, [])
 })
 
+test('a token the reader refused as damaged on its way in is copied again by the stronger courier', async () => {
+  const refusal = carriedEnvelope({ ok: false, error: { kind: 'digest_mismatch', message: 'the token changed' } })
+  const { result, prompts } = await runWorkflow(WF, {
+    args: ARGS,
+    // A courier may call a typed refusal a failed run: the program's output decides, not that label.
+    agent: probeAgents({ 'ground-context': { ...refusal, stop_reason: 'failed' }, 'ground-context#2': carriedContext }),
+  })
+  const carries = prompts.filter((p) => /^ground-context/.test(p.opts.label))
+  assert.deepEqual(carries.map((p) => [p.opts.label, p.opts.model]), [['ground-context', 'haiku'], ['ground-context#2', 'sonnet']])
+  assert.equal(result.coverage.complete, true)
+})
+
 test('a token file the first courier failed to write or the reader refused is copied again by the stronger courier', async () => {
   const unreadable = carriedEnvelope({ ok: false, error: { kind: 'args_unreadable', message: 'the argument is not JSON' } })
   for (const first of [failedCourier, unreadable]) {

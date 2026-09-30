@@ -669,14 +669,16 @@ test('a context payload damaged in transit is refetched on a stronger courier, t
   assert.equal(result.coverage.complete, true)
 })
 
-test('a token the program refused as damaged on its way in is sent again', async () => {
+test('a token the program refused as damaged on its way in is copied again by the stronger courier', async () => {
+  const refusal = carriedEnvelope({ ok: false, error: { kind: 'digest_mismatch', message: 'the token changed' } })
   const { prompts } = await run({
     plan: PLAN(), 'scout:': HITS(),
-    assemble: carriedEnvelope({ ok: false, error: { kind: 'digest_mismatch', message: 'the token changed' } }),
+    // A courier may call a typed refusal a failed run: the program's output decides, not that label.
+    assemble: { ...refusal, stop_reason: 'failed' },
     'assemble#2': resolveAll,
   })
 
-  assert.equal(prompts.find((p) => p.opts.label === 'assemble#2').opts.model, 'haiku')
+  assert.equal(prompts.find((p) => p.opts.label === 'assemble#2').opts.model, 'sonnet')
   assert.match(promptFor(prompts, 'judge'), /CONTEXT FILES/)
 })
 

@@ -46,7 +46,7 @@ test('a leaf behind an escalated dependency, directly or through another, does n
   assert.deepEqual(s.blocked, [{ blocked_by: 'a', leaves_n: 2 }])
 })
 
-test('a leaf whose files a stopped leaf holds does not launch and is counted behind the holder', () => {
+test('a leaf whose files another leaf holds does not launch and is counted behind the holder', () => {
   const input = effort([folder('.'), leaf('a'), leaf('b')], [], { lockedBy: (id) => (id === 'b' ? 'z' : '') })
   assert.deepEqual(leafIds(input), ['a'])
   assert.deepEqual(summarize(input).blocked, [{ blocked_by: 'z', leaves_n: 1 }])

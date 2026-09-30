@@ -974,15 +974,15 @@ async function openLeaf(row, st, mode) {
       if (!st.head) st.head = opened.head_sha || opened.base_sha
       return opened
     }
-    if (opened.status === 'locus_held' && opened.stuck) {
-      // Held by an escalated or parked leaf: it frees only when the user acts on that leaf, and
-      // the scheduler sees the same lock, so the leaf is not launched again until then.
+    if (opened.status === 'locus_held') {
+      // Its files free when their holder merges. The scheduler reads the same lock, so the leaf
+      // is launched again only then: nothing is dispatched to wait.
       const holder = (opened.held_by || [])[0] || {}
-      note(id + ': its files are held by ' + (holder.node || 'a stopped leaf') + ', which waits on the user')
+      note(id + ': its files are held by ' + (holder.node || 'another leaf') + (holder.status ? ' (' + holder.status + ')' : '') + ', which has not merged')
       return null
     }
-    if (opened.status === 'no_slot' || opened.status === 'locus_held' || opened.status === 'busy') {
-      log('open:' + id + ': ' + opened.status + ' — waiting for ' + (opened.held_by ? JSON.stringify(opened.held_by) : 'the pool'))
+    if (opened.status === 'no_slot' || opened.status === 'busy') {
+      log('open:' + id + ': ' + opened.status + ' — asking again')
       continue
     }
     escalate(id, 'open_refused', (opened.error && opened.error.message) || opened.status)

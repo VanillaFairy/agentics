@@ -174,7 +174,7 @@ naming the condition. Aim at commit series of dozens of lines.
 | `trivial` | a change a test would only restate: literals, user-visible text, config values, docs, assets, renames behind an unchanged interface, dependency versions, wiring existing parts | one implementer task |
 | `tests-only` | only adds tests to code that is already correct | one test-author task |
 | `tdd` | adds behaviour whose expected results the criteria state exactly | one implementer task, test first |
-| `tdd-pair` | behaviour where a wrong reading would pass its author's own tests: edge-case rules, parsers, state machines, concurrency, contracts others consume | `red` (test files only) then `green` (implementation only, `after: <red>`) |
+| `tdd-pair` | behaviour where a wrong reading would pass its author's own tests: edge-case rules, parsers, state machines, concurrency, contracts others consume | `red` (test files; where the typecheck covers tests, also the files green builds, as signatures that throw) then `green` (the implementation, `after: <red>`) |
 | `tdd-triad` | as tdd-pair, and a miss ships silently into durable state or is costly: persistence formats, migrations, data loss, security, money | red, green, then `audit` (`after: <green>`, locus: its report only) |
 
 Unsure between trivial and tdd: tdd. Between tdd and tdd-pair: tdd when small. A cycle's tasks

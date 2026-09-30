@@ -648,8 +648,11 @@ Unsure between `tdd` and `tdd-pair`: `tdd` when the leaf is small, `tdd-pair` wh
 - **`tdd-pair` and `tdd-triad` are separate leaves** with `deps` (green on red, audit on green),
   each with its own branch, todo, review and resume action. Green is cut from red's branch and
   receives red's committed tests as artifacts, never red's report. No agent authors both a
-  behaviour's tests and its code; the declared loci are the separation, checked by the
-  commit-series check.
+  behaviour's tests and its code. Red's locus is the test files and, where the repository's
+  typecheck covers tests, the files green builds: red writes those as signatures whose bodies
+  throw, so its tests compile and fail for want of the behaviour, and green fills the bodies in.
+  What keeps red from implementing is the measurement — its tests must fail now — and what keeps
+  green off the tests is its locus, checked by the commit-series check.
 - **A cycle lands as a unit.** Red is held on approval; its cycle merges together, through its
   tip, once the last member is approved, so the effort branch is never red.
 - **Mutations are declarations.** A test-author or auditor declares `{file, find, replace,
@@ -1158,8 +1161,8 @@ A leaf's dependencies are its own and every ancestor's: a dependency declared on
 group binds every leaf beneath it. A leaf is ready when its dependencies' outputs exist where it
 will be cut — a dependency (or its ancestor just below the two nodes' lowest common ancestor,
 groups passed over) has merged into that ancestor's integration branch, or, for a cycle predecessor, is approved — no open escalation
-or park sits on its dependency chain, no escalated or parked leaf holds a lock on its locus, and a
-slot can be had. Leaves launch up to the pool less the leaves running.
+or park sits on its dependency chain, no unmerged leaf outside its cycle holds a lock on its locus,
+and a slot can be had. Leaves launch up to the pool less the leaves running.
 
 A folder with nothing planned beneath it is planned, up to the pool less the plans running. A
 folder the planner wrote that its compile parked `spec_changed` (the park's `return`) is re-derived
@@ -1181,19 +1184,24 @@ on the next dispatch in every running execution at once. Slots are lock files na
 leaf, acquired at leaf-open. A slot is free when its holder's derived status is no longer active
 (approved, held, merged, escalated or parked) — or when it is no longer a leaf, because a replan
 decomposed it — so release needs no write of its own; a locus lock whose holder was decomposed, or
-whose revision dropped that path, is free for the same reason; a slot whose
+whose revision dropped that path, is free for the same reason. A locus lock otherwise holds until
+its holder merges — except within a cycle, which holds its files as one unit: the cycle is cut as
+one chain of branches and lands as one merge, so the next member takes over the lock of an approved
+one. A slot whose
 holder belongs to an execution that is no longer running is freed by that execution's next
 preflight, or by the user.
 
 **Who controls what.** The `schedule` boundary decides *which* leaves are ready and in what order —
 arithmetic over the plan and the events, on disk — and launches no more leaf chains than the
-pool's current size. *Admission* is decided by `lib/locks.mjs` inside leaf-open: the entry point takes a slot and the locus locks atomically, or
-waits for them in-process (polling the lock files locally, costing no tokens) until they come free.
-A wait that reaches the host's shell-call limit returns `no_slot` or `locus_held`, and the script
-re-dispatches leaf-open for that leaf; nothing else stalls. A lock held by an escalated or parked
-leaf frees only when the user acts, so leaf-open answers `stuck` at once, the scheduler reads the
-same lock and does not launch the leaf again, and the leaf is reported blocked by that holder
-rather than waited on. The user controls the limit.
+pool's current size. *Admission* is decided by `lib/locks.mjs` inside leaf-open: the entry point takes a slot and the locus locks atomically.
+A slot is shared with every other execution and session, so nothing in this execution says when one
+frees: leaf-open waits for it in-process (polling the lock files locally), and a wait that reaches
+the host's shell-call limit returns `no_slot`, on which the script re-dispatches leaf-open for that
+leaf; nothing else stalls. A held locus is never waited for. It frees when its holder merges, the
+scheduler reads the same lock through the same check, and so it launches the leaf only once the
+lock is free; a leaf-open that still finds it held answers `locus_held` at once and the leaf goes
+back to the scheduler. A leaf whose holder never merges is reported blocked by that holder,
+whatever the holder's status, and costs no dispatch while it waits. The user controls the limit.
 
 When the session set a token target, the scheduler does not start a leaf that the remaining budget
 cannot cover at the execution's measured cost per leaf; it stops after the next merge-batch
@@ -1909,7 +1917,7 @@ Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}],
   decisions, dispatch, ground_known, rev, spec_path, children_n, own_review}`.
 - **leaf-open** — `status` (`opened | no_slot | locus_held | busy | refused`), `branch`, `worktree`,
   `base_sha`, `head_sha`, `rebased`, `brief_path`, `brief_digest`, `report_path`, `slot`,
-  `max_parallel`, `held_by[{effort, path, node, execution, status}]`, `stuck`.
+  `max_parallel`, `held_by[{effort, path, node, execution, status}]`.
 - **leaf-close** — `status` (`done | pending`), `node`, `head_sha`, `decision {next, reason,
   failures[{check, claim}]}`, `record` (the path of `closes/<stem>.json`: `{node, role, round,
   head_sha, measurement, decision}` with each failure's `evidence`, `gotchas_written`,

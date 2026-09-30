@@ -498,8 +498,8 @@ test('contract drift no analyst could rule, twice, parks the consumer for the us
   assert.match(result.parked[0].question, /no analyst could rule/)
 })
 
-test('a leaf whose files are held by a stopped leaf is reported blocked, never re-dispatched in a loop', async () => {
-  const sim = simulate([composite('.'), row('a'), row('b')], { open: { b: ['stuck'] } })
+test('a leaf whose files another leaf holds is reported blocked, never re-dispatched to wait', async () => {
+  const sim = simulate([composite('.'), row('a'), row('b')], { open: { b: ['held'] } })
   const { result } = await run(sim)
   assert.equal(sim.opens.filter((o) => o === 'b').length, 1)
   assert.deepEqual(result.blocked, [{ blocked_by: 'x', leaves_n: 1 }])

@@ -168,9 +168,9 @@ export function simulate(nodes, script = {}) {
       const plan = script.open && script.open[args.node]
       const n = count('open:' + args.node)
       const st = Array.isArray(plan) ? plan[n] || 'opened' : 'opened'
-      if (st === 'stuck') {
+      if (st === 'held') {
         sim.locked.set(args.node, 'x')
-        return { boundary: 'leaf-open', ok: true, error: null, status: 'locus_held', stuck: true, held_by: [{ node: 'x', status: 'escalated' }], todos: [] }
+        return { boundary: 'leaf-open', ok: true, error: null, status: 'locus_held', held_by: [{ node: 'x', status: 'approved' }], todos: [] }
       }
       if (st === 'opened') event({ kind: 'dispatched', node: args.node, role: args.role, round: args.round })
       return {

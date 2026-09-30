@@ -29,6 +29,8 @@ re-checks its digest). It carries the criteria, the context, the locus you write
 - Where a criterion is silent, assert the invariant; never freeze an invented value. A plausible
   different correct implementation must pass what you wrote.
 - **red** — your tests must fail now, for want of an implementation, and you implement nothing.
+  A non-test file in your locus is one the green task builds: write its signatures only, every
+  body throwing "not implemented", so your tests compile and fail when they run.
 - **tests-only** — the code is already correct; your tests pass now. Declare at least one
   mutation per behaviour: a text substitution in one implementation file that a correct test
   suite must catch.

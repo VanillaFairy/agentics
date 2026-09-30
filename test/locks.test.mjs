@@ -14,7 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { append } from '../lib/ledger.mjs'
 import {
-  acquire, heldBy, locusFileOf, maxParallel, poolConfig, releaseLocus, releaseSlots, stuckReader, withBranchLock,
+  acquire, heldBy, locusFileOf, maxParallel, poolConfig, holderReader, releaseLocus, releaseSlots, withBranchLock,
 } from '../lib/locks.mjs'
 import { configPath, effortStateDir, mkdirState, slotsDir } from '../lib/store.mjs'
 import { addNodes } from '../lib/tree.mjs'
@@ -332,25 +332,55 @@ test('CLI: held prints the pool', () => {
   })
 })
 
-test('a locus held by an escalated leaf answers at once as stuck instead of waiting', () => {
+test('a held locus is answered at once, never waited for: it frees at a merge the scheduler sees', () => {
   const repo = effortRepo(['a', 'b'])
-  assert.equal(acquire(repo, { effort: E, execution: X, node: 'a', locus: ['src/shared.js'] }).ok, true)
-  event(repo, 'escalated', 'a', { reason: 'test' })
+  assert.equal(take(repo, 'a', { locus: ['src/shared.js'] }).ok, true)
   const started = Date.now()
   const out = acquire(repo, { effort: E, execution: X, node: 'b', locus: ['src/shared.js'], waitMs: 60000, pollMs: 50 })
-  assert.equal(out.ok, false)
   assert.equal(out.reason, 'locus_held')
-  assert.equal(out.stuck, true)
   assert.ok(Date.now() - started < 5000, 'it did not wait out the minute')
 })
 
-test('stuckReader names the stopped leaf holding a locus, and nothing while its holder still works', () => {
+test('holderReader names the unmerged leaf holding a locus, whatever its status', () => {
   const repo = effortRepo(['a', 'b'])
-  const stuck = (node, locus) => stuckReader(repo)({ effort: E, node, locus })
-  assert.equal(acquire(repo, { effort: E, execution: X, node: 'a', locus: ['src/shared.js'] }).ok, true)
-  assert.equal(stuck('b', ['src/shared.js']), '')
+  const holder = (node, locus) => holderReader(repo)({ effort: E, node, locus })
+  assert.equal(holder('b', ['src/shared.js']), '')
+  assert.equal(take(repo, 'a', { locus: ['src/shared.js'] }).ok, true)
+  assert.equal(holder('b', ['src/shared.js']), 'a')
+  assert.equal(holder('b', ['src/other.js']), '')
+  assert.equal(holder('a', ['src/shared.js']), '')
   event(repo, 'escalated', 'a', { reason: 'test' })
-  assert.equal(stuck('b', ['src/shared.js']), 'a')
-  assert.equal(stuck('b', ['src/other.js']), '')
-  assert.equal(stuck('a', ['src/shared.js']), '')
+  assert.equal(holder('b', ['src/shared.js']), 'a')
+  event(repo, 'merged', 'a', { into: 'agentics/e1', merged_sha: 'def', head_sha: 'abc' })
+  assert.equal(holder('b', ['src/shared.js']), '')
+})
+
+/** A red and a green that both claim the module file: red writes its signatures, green fills them. */
+function pairRepo() {
+  const repo = newRepo()
+  const member = (id, role, locus, deps = []) => ({ ...leaf(id), rigor: 'tdd-pair', role, locus, deps })
+  const out = seedTree(repo, E, [
+    { id: '.', kind: 'composite', title: 'the change', defines: [{ id: 'D1', text: 'do it' }] },
+    member('r', 'red', ['src/m.test.js', 'src/m.js']),
+    member('g', 'green', ['src/m.js'], ['r']),
+    { ...leaf('c'), locus: ['src/m.js'], deps: ['g'] },
+  ])
+  assert.ok(out.ok, JSON.stringify(out.problems))
+  return repo
+}
+
+test('a cycle holds its files as one: green takes over what its approved red holds, and nobody else does', () => {
+  const repo = pairRepo()
+  const holder = (node) => holderReader(repo)({ effort: E, node, locus: ['src/m.js'] })
+  event(repo, 'dispatched', 'r', { role: 'test-author', round: 1, model: 'opus', effort: 'medium' })
+  assert.equal(take(repo, 'r', { locus: ['src/m.test.js', 'src/m.js'] }).ok, true)
+  assert.equal(take(repo, 'g', { locus: ['src/m.js'] }).reason, 'locus_held', 'red is still writing')
+
+  event(repo, 'approved', 'r', { head_sha: 'abc', review_rounds: 1, at_integration: false })
+  assert.equal(holder('c'), 'r', 'a leaf outside the cycle waits for the merge')
+  assert.equal(holder('g'), '')
+  assert.equal(take(repo, 'g', { locus: ['src/m.js'] }).ok, true)
+  assert.deepEqual(heldBy(repo).locus.map((l) => [l.path, l.node]), [['src/m.js', 'g'], ['src/m.test.js', 'r']])
+
+  assert.deepEqual(releaseLocus(repo, E, ['r', 'g']).released.sort(), ['src/m.js', 'src/m.test.js'])
 })

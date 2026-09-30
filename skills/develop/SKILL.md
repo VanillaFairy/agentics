@@ -385,7 +385,7 @@ plugin defect, with the node and what it left undone.
 
 **c. Parked nodes** — `{id, return, question}`. Ask the user each question, one topic at a time,
 with your recommendation marked `(Recommended)`. Never answer for them. **Every answer is a
-re-spec**: edit the spec that owns the fault, have it re-approved, recompile, relaunch.
+re-spec**: edit the spec that owns the fault, have the change ruled (below), relaunch.
 
 | `return` | the spec to edit |
 |---|---|
@@ -396,13 +396,30 @@ re-spec**: edit the spec that owns the fault, have it re-approved, recompile, re
 | `spec_defect` | the spec the question names: the claim cannot be met as written; the user rules how it changes |
 | `cant_tell` | the folder's spec: make the claim decidable, a criterion with a check or a `HUMAN:` criterion the user judges at landing |
 | `contract_drift` | merged work touched a contract the node consumes, and the planner could not take it: no ruler could rule, work already stood on the node's plan when it was ruled affected, or its replan faulted. The consumer's entry: the user rules it unaffected (then relaunch with `retry_escalated: [<id>]` and edit nothing), re-designs it, or re-slices it |
-| `spec_changed` | compile parked a folder you wrote because its spec was re-approved while work under it was under way: the user rules whether the dispatched work still stands, and re-specs what does not. A folder develop's planner wrote never reaches you with this return: the run hands it back to the planner, which re-derives it |
+| `spec_changed` | a folder you wrote was re-approved while work under it was under way, and no ruling found that work untouched: the user rules whether the dispatched work still stands, and re-specs what does not. A folder develop's planner wrote never reaches you with this return: the run hands it back to the planner, which re-derives it |
 
-For each spec you edited: show the change, and on the user's approval in so many words run
-`approval.mjs approve` for that folder and the compile of step 3. Compile's `answered` lists the
-parks the re-approval cleared; a park it did not clear (no spec changed, as with a
-`contract_drift` ruled unaffected) is cleared by relaunching with `retry_escalated: [<id>]`. Then
-relaunch with the **same** `execution`.
+**Each spec you edited is ruled before anyone is asked to approve it**, a parent before its child:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/respec.mjs" brief --repo . --effort <e> --folder <id>
+```
+
+Dispatch `agentics:ruler` in the foreground with the printed `prompt`, verbatim, then run the
+same command with `settle` in place of `brief`:
+
+- `approved` — nothing the change reaches is moved by it: it is approved on that ruling and
+  compiled, and what it reaches is spared its parks. Tell the user what changed in one line; ask nothing.
+- `needs_user` — for each `affected` with a `fix`, make that edit in the spec owning the node, rule
+  that spec the same way, then brief this one again. Ask the user each `question` left; show the
+  change and, on their approval in so many words, run `settle --user-approved`.
+- `compile_refused` — its `problems` name file and line: the fix is an edit, ruled again.
+- `refused` — by its `next`: `user_approves`, show the change and on the user's approval in so many
+  words run `approval.mjs approve` and the compile of step 3; `fix_spec`, edit what `problems`
+  name; `rule_parent_first`, rule the spec `why` names; `rule_it`, brief and dispatch again;
+  `planner`, leave it to the run; `nothing`, it is approved as it stands.
+
+A park no re-spec cleared (a `contract_drift` ruled unaffected) is cleared by relaunching with
+`retry_escalated: [<id>]`. Then relaunch with the **same** `execution`.
 
 **d. Blocked** — `{blocked_by, leaves_n}`: how many tasks were never dispatched because a node they
 depend on, or whose files they share, did not land. Name that node as the root cause; do not

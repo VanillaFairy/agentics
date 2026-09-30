@@ -98,7 +98,9 @@ the examinee marking the exam.
 ### IL4 — The user owns decisions and their tree
 
 The user is the only author of design decisions; an unanswered recommendation is not adopted, and
-no replan may alter a decision the user made. The user's branch and working tree change only by
+no replan may alter a decision the user made. A spec is first approved by the user alone. A change
+to one approved before is approved without them only when a ruler finds that it moves nothing it
+reaches ([A changed spec](#a-changed-spec)); the decisions in it are still the user's own words. The user's branch and working tree change only by
 the user's explicit act: an inline task the user asked for edits the files it was asked to edit;
 anything dispatched works on branches and worktrees the framework owns, and reaches the user's
 branch only at landing, on an explicit go, with no open escalation. A check that stashes or moves
@@ -108,7 +110,9 @@ branch only at landing, on an explicit go, with no open escalation. A check that
 `lib/verify.mjs` refuses to run outside a linked worktree; `decisionProblems` in `lib/tree.mjs`
 admits a batch that states or changes a decision only from compile, as the approved copy on the
 ledger states it (see [Specs, approval and compile](#specs-approval-and-compile)), and refuses a
-replan that changes a contract or drops a realised decision (see [Replanning](#replanning)).
+replan that changes a contract or drops a realised decision (see [Replanning](#replanning));
+`lib/respec.mjs` approves a changed spec without the user only when every ruling on it is
+`unaffected`, and records the rulings it rested on as a `ruled` ledger line.
 
 ---
 
@@ -355,7 +359,9 @@ command, `show`: nothing outside compile calls `addNodes`, and there is no CLI v
       effort.json                 {about, roots, opened_at}, written once
       nodes.jsonl                 node revisions, append-only
       events.jsonl                node events, append-only
-      ledger.jsonl                approvals, preparations, compiles, dispositions
+      ledger.jsonl                approvals, preparations, compiles, dispositions, rulings
+      specs/                      the text each folder was compiled from, <folder>@<hash>.md
+      respec/                     a changed spec's brief and its rulings, <folder>@<hash>-<basis>.*
       seq, .lock                  the counter and the effort mutex
       branch.json                 where the effort branch was cut, written once
       cites.jsonl                 each folder's evidence citations ([Cites](#cites))
@@ -389,8 +395,9 @@ Approval is a ledger line holding the spec's hash: `fnv1a` over its text, with `
 `\n` and a byte-order mark dropped, so a checkout's line endings never read as an edit.
 `lib/approval.mjs` records it and derives the folder's state on every read: `approved` or
 `prepared` while the spec's hash equals the latest such line's, `edited` once it differs, `none`
-before. `approved` is recorded only after the user approves in so many words; `prepared` only for
-a planner-written spec, naming the review return it passed. The review gate is derived the same
+before. `approved` is recorded after the user approves in so many words, or, for a change to a
+spec compiled before, by a ruling that the change moves nothing (`by: ruling`, naming its `ruled`
+line); `prepared` only for a planner-written spec, naming the review return it passed. The review gate is derived the same
 way (`approvalGate`): ratifiable once the latest review of the spec's current text examined every
 axis and each ambiguity it returned has a disposition, from any round. An edit leaves no review of
 the new text, so the gate stays shut until one reads it.
@@ -407,10 +414,54 @@ approved again with other text, compile parks every consumer of a contract it pr
 revision, parks the folder when work under it was dispatched (`spec_changed`), and retires the
 entries it no longer lists — refusing, by name, one with dispatched or merged work. A parked node
 whose spec was approved or prepared after the park gets a new revision (`answered`), which clears
-the park. Nothing is written when anything is refused.
+the park. Nothing is written when anything is refused. Compile keeps the text it built each folder
+from, by hash, under `.state/specs/`: the next change to that spec is shown against it, and the
+copies are the record of every text that was ever built.
 
 **Why:** the user reads and approves a document, never JSON. The graph is derived from what they
 approved, so the two cannot disagree about a decision.
+
+### A changed spec
+
+A spec that was compiled and is then edited — an answer to a parked question written into it, a
+criterion corrected — is ruled before anyone is asked to approve it. `lib/respec.mjs brief`
+previews the compile of the text as it stands (`compileEffort` with `preview`, which reads the
+edited spec as approved, validates the batch and writes nothing) and writes one brief: the change
+as a diff against the copy compile kept, and every node it reaches. The spec itself is one node,
+ruled with the work dispatched or merged under it and with every stop its approval would clear —
+a park compile answers because the spec owns the node, a stop on an entry that gets a new
+revision, wherever it is stated — each with its question. Every consumer of a contract it provides, merged ones
+included, and every node realising a decision whose text changed is a node of its own when another
+spec states it. Any other node that already waits on the user is listed and not ruled. One ruler reads the
+brief and the specs it names and writes a ruling per node: `unaffected`, or `affected` with the
+question its owner must answer, and a `fix` when the new text itself dictates the edit.
+
+Rulings are bound to a **basis**: a digest of the text ruled, the nodes and their revisions, the
+other specs the brief names, the work under the spec and the stops it would clear. The brief and
+the rulings file are named by it, so when any of that moves on there are no rulings to settle
+from and the change is briefed and ruled again. `lib/respec.mjs settle` takes the rulings only
+whole and records them as a `ruled` ledger line, a new one whenever the basis or a ruling
+differs. When every node is `unaffected` it records the approval `by: ruling`, naming that line,
+and compiles. Compile reads the ruling the approval names and spares every node it found
+unaffected the `spec_changed` and `contract_changed` parks (`spared` in its result), so any
+compile of that text honours the ruling and no stop is written only to be cleared. Otherwise
+settle returns `needs_user` and approves nothing: the session makes each `fix` in the spec that
+owns the node and has that spec ruled the same way, asks the user the questions left, and on
+their approval in so many words `settle --user-approved` records it `by: user`, naming the ruling
+it was approved over, and compile spares only what was ruled unaffected. An approval recorded and
+not yet compiled is compiled by the next `settle`, or by any compile.
+
+What cannot be ruled is refused with what to do next (`next`): a spec never compiled, or whose
+compiled text was not kept or cannot be diffed, is the user's to approve; one with problems is
+edited; one whose parent spec is edited waits for the parent; a planner's spec is re-derived.
+
+**Why:** most edits to an approved spec move nothing built on it, and asking the user to approve
+each one, then to clear each park it raised, spends their attention on what a reader of the diff
+can see. The approval is still nobody's own verdict (IL3): the session that made the edit does
+not rule on it, and the script approves only when no ruling is `affected`. What was approved this
+way is on the ledger — the `ruled` line with every ruling and the stops the approval cleared, the
+`approved` line that names it, the brief and the kept text on disk — so it can be read back and
+overturned by another edit.
 
 ### The ledger
 
@@ -820,7 +871,8 @@ passes. It runs inside `execute-approved-plan-in-worktrees`, one folder at a tim
 A park or an escalation stops only that folder; develop keeps running whatever does not depend on
 it. A `spec_changed` park on a folder the planner wrote goes back to the planner, which re-derives
 it through these same steps; its preparation clears the park its own compile raises. The same
-park on a folder the user wrote waits for the user.
+park on a folder the user wrote waits for the user; a change ruled to move nothing never raises it
+([A changed spec](#a-changed-spec)).
 
 **Why:** the parts the user lets go autonomously still get a reader that did not write them
 (IL3), and the planner may shape a plan but never a decision (IL4).
@@ -1584,7 +1636,7 @@ disagree about it.
 |---|---|---|---|
 | scout, historian, doc-researcher | find, to exhaustion | conclude | search tools; historian read-only git; doc-researcher the web |
 | analyst | judge what it is handed | search | `Read` only |
-| ruler | rule whether a change moved the premises of nodes not yet done | search, touch the work | read; write (the ruling files its dispatch names) |
+| ruler | rule whether a change — drift, a moved base, an edited spec — moved the premises of the nodes it reaches | search, touch the work | read; write (the ruling files its dispatch names) |
 | planner | write the spec of a folder develop owns (an `author: planner` sub-effort, a promoted task, its own folder replanned) and settle its autonomous review | state a decision, implement | read, search, shell (for `lib/spec.mjs check`), write |
 | implementer | code one leaf as a focused series, or its fix round | leave its locus, amend, merge, certify | read, edit, shell |
 | test-author | write a leaf's tests and declare mutations | implement, execute anything | read, edit |
@@ -1784,12 +1836,17 @@ problem `{file, line, problem}`.
 
 ### Ledger lines
 
-- **Owner:** `lib/approval.mjs`; the file names in `EFFORT_FILES` in `lib/ledger.mjs`.
+- **Owner:** `lib/approval.mjs`, and `lib/respec.mjs` for `ruled`; the file names in `EFFORT_FILES`
+  in `lib/ledger.mjs`.
 - **Restated in:** `lib/compile.mjs` (reads `approved`, `prepared` and `compiled`); `lib/effort.mjs`
   (`renameSubEffort` copies those lines).
 
 `ledger.jsonl` shares the effort's `seq` counter with the node and event logs:
-`approved {folder, hash, decisions[{id, text}], by: user, renamed_from?}` · `prepared {folder, hash,
+`approved {folder, hash, decisions[{id, text}], by: user | ruling, ruled?, renamed_from?}` (`ruled`
+is the `seq` of the ruling it rests on, or that the user approved over; compile reads it) · `ruled
+{folder, hash, from, basis, rulings[{node, ruling: unaffected | affected, why, question, fix}],
+standing[], clears[{node, status, why}], brief, by: ruler}` (`from` is the compiled hash the text
+was diffed against) · `prepared {folder, hash,
 review, by: planner, renamed_from?}` · `compiled {folder, hash}` · `disposition {folder, finding,
 outcome: incorporated | discarded, by: user | planner}` · `review_skipped {folder, hash, reason}` ·
 `reviewed {folder, hash, complete, remaining[], ambiguities[]}` (one per review round; `lib/next.mjs`
@@ -1806,9 +1863,27 @@ never stored, and a spec with an open `blocking` question is refused approval.
 - **Owner:** `compileEffort` in `lib/compile.mjs`.
 
 `{ok, problems[{file, line, problem}], written[], retired[], parked[{node, reason}],
-flagged[{node, decision}], skipped[{folder, why}], answered[]}`, printed by
+spared[{node, reason}], consumers[{node, contract}], flagged[{node, decision}], skipped[{folder,
+why}], answered[]}`, printed by
 `node lib/compile.mjs --repo <r> --effort <e> [--folder <id>]` under a digest. `ok: false` means
-nothing was written.
+nothing was written. `compileEffort`'s `preview` option returns the same shape for an edited spec
+read as approved, and writes nothing.
+
+### Changed-spec returns
+
+- **Owner:** `respecBrief` and `respecSettle` in `lib/respec.mjs`.
+- **Restated in:** `skills/develop/SKILL.md` (step 4c reads `status`, `prompt`, `affected` and `next`);
+  `agents/ruler.md` (the brief gives the shape of the rulings file).
+
+`node lib/respec.mjs brief|settle --repo <r> --effort <e> --folder <id> [--user-approved]`, each
+under a digest. `brief`: `{status: brief, folder, hash, from, basis, brief, rulings, nodes[],
+standing[], clears[], prompt}` or `{status: refused, next: user_approves | fix_spec |
+rule_parent_first | rule_it | planner | nothing, why, problems[]}`. `settle`: `{status: approved,
+folder, hash, ruled, by: ruling | user, written[], retired[], flagged[], spared[], parked[],
+answered[]}`,
+`{status: needs_user, folder, hash, ruled, affected[{node, ruling, why, question, fix}]}`,
+`{status: compile_refused, folder, hash, ruled, problems[]}` or the same `refused`. The rulings
+file is `{rulings: [{node, ruling, why, question, fix}]}`, one per node of `nodes`.
 
 ### State and journal lines
 

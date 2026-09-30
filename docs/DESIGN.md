@@ -988,7 +988,7 @@ already attached).
 
 | boundary | fused steps |
 |---|---|
-| **preflight** | refuse an execution overlapping an open one; drift check against the envelope's base; traceability; free this execution's slots and its dead worktrees (clean ones only — a dirty one is reported, never forced); write the leaves the base moved under, and the diff, for the ruler; create the execution root's todo. A checkpoint's lists (the overlapping executions, the gaps) go on its state line, for the session to read with `lib/status.mjs checkpoint`; the payload carries counts |
+| **preflight** | refuse an execution overlapping an open one; check whether the base moved under its leaves; traceability; free this execution's slots and its dead worktrees (clean ones only — a dirty one is reported, never forced); write the ruler's brief for the leaves the base moved under; create the execution root's todo. A checkpoint's lists (the overlapping executions, the gaps) go on its state line, for the session to read with `lib/status.mjs checkpoint`; the payload carries counts |
 | **schedule** | append the workflow's decisions; compute what to launch from the tree on disk (`lib/schedule.mjs`, see [Scheduling](#scheduling)); attach to each launch the one row it needs, and to a leaf's its parent's row and its resume ladder; move the todos of the nodes it touched |
 | **leaf-open** | acquire a slot and the locus locks; ensure the parent's integration branch (lazily, refreshed from its own parent) and cut or attach the leaf's branch and worktree; assemble its brief; append `dispatched`; move the todo |
 | **leaf-close** | commit a shell-less author's locus files (anything outside is reverted and reported as a breach); build, typecheck, suite, discriminator, declared mutations and named checks by rigor; journal the observation; write and delete reported gotchas; compute the close decision; move the todo |
@@ -1292,28 +1292,45 @@ An execution delivers into its root's parent integration branch, and ultimately 
 without asking; the user's tree is not involved.
 
 After each merge-batch, the landed diff is intersected with the `consumes` path prefixes of every
-pending designed node. Merge-batch writes the merged change to the files hit
-(`merges/<target>-<pre>.drift.diff`) and names each consumer's spec; one ruler reads both and
-rules each consumer `unaffected` (a `drift-ruled` state line; it runs on, and the user never hears
-of it) or `affected`, with the one question its owner must answer. A consumer is not launched while
-it is being ruled on. Only an affected consumer is parked (`contract_drift`) for the user; so is
-one no ruler ruled on after a second dispatch, because drift is found only on the batch that
-landed it and a held consumer would lose it. Everything else keeps running. Undesigned nodes are
-reported as unexamined.
+pending designed node. Merge-batch writes the ruler one brief
+(`merges/<target>-<pre>.drift.md`): per consumer, the node as its executor will be briefed (intent,
+context, criteria, what it writes, reads and consumes) and the merged change to the files it
+consumes. One ruler reads it and rules each consumer `unaffected` or `affected`, with the one
+question its owner must answer; either ruling is a `drift-ruled` state line. A consumer is not
+launched while it is being ruled on or replanned.
 
-The same holds for a base branch that moved under a resumed execution: preflight writes the leaves
-whose files moved, and the diff, to `stale-<now>.json` and `.diff` beside the state log and hands
-their ids on; one ruler rules them before anything runs. Each ruling gets a `stale-ruled` state
-line keyed to that base head, so a resume against the same head asks about neither again: an
-unaffected leaf runs on, an affected one is parked `premise_mismatch` with the question, and the
-user's answer stands. A leaf no ruler ruled on after a second dispatch is held as a fault and
-ruled on by the next invocation; a leaf already stopped is left out until its stop clears. No
-checkpoint stops the run for it.
+The same holds for a base branch that moved under a resumed execution. Preflight measures each
+unmerged, unstopped leaf from its own **anchor**: the base head the execution's root branch already
+holds (its merge-base with the base branch, never older than the envelope's base), or the head the
+leaf was last ruled against when that is newer. A base head merged into the execution's branch is
+the ground its leaves are cut from, not a move under them, and a leaf ruled against one head is
+asked only about what moved after it. For the leaves whose files moved since their anchor,
+preflight writes the same kind of brief to `stale-<now>.md` beside the state log, each leaf with
+its own diff, and hands on their ids and rows; one ruler rules them before anything runs, and each
+ruling is a `stale-ruled` state line naming that base head. A leaf no ruler ruled on after a second
+dispatch is held as a fault and ruled on by the next invocation; a leaf already stopped is left out
+until its stop clears. No checkpoint stops the run for it.
 
-**Why a ruler first:** hash drift says a premise may have moved, not that it did. Most drift
-touches what a consumer does not rely on, and putting every hit to the user makes the user the
-filter for noise; a reader that did not write either side rules first, and the user is reached
-only when a premise really moved.
+**An unaffected node runs on, and the user never hears of it. An affected one goes to the planner
+first**, with the ruler's question as the reason, exactly as an executor's `premise_mismatch` does
+([Replanning](#replanning)): a task is promoted and replanned; a folder the planner wrote is
+rewritten; a folder the user wrote parks `needs_respec`. The user is reached only by what the
+planner cannot settle (its own `needs_decision`, `contract_changed` or `premise_mismatch`), and
+a replan that leaves the leaf as it was escalates `replan_not_converging`. Two cases still park
+`contract_drift` with no replan: a consumer no ruler ruled on after a second dispatch, because
+drift is found only on the batch that landed it and a held consumer would lose it; and a consumer
+whose chain was already running when it was ruled affected, which cannot be replanned under its
+executor. Everything else keeps running. Undesigned nodes are reported as unexamined.
+
+**Why the brief is written by the lib:** the ruler has no search tools, and a ruling made without
+the entry is a guess that lands on the user. The node record is what the executor will be handed,
+so it is the premise itself, and it is always on disk.
+
+**Why a ruler, then the planner:** hash drift says a premise may have moved, not that it did. Most
+drift touches what a consumer does not rely on, and putting every hit to the user makes the user
+the filter for noise; a reader that did not write either side rules first. A premise that did move
+is a planning fault before it is a decision: the planner can re-derive a task on the new ground
+without touching a decision or a contract, and only a change to one of those is the user's.
 
 **Landing is the one ask.** When the effort is complete, or the user says to land what exists, the
 session runs `lib/boundary.mjs land --action check`: how the user's branch drifted since the
@@ -1790,8 +1807,8 @@ that ran; `checkpoint {reason, detail, executions?, gaps?}`
 (the lists the checkpoint found; `lib/status.mjs checkpoint` prints them); `closed {status}`;
 `batch-started {target, pre, children}`; `checkpoint-confirmed {gaps?}` (what the user
 confirmed past, printed by the same command); `drift-ruled {node, contract, head_sha, ruling, why, said?}`
-(the ruler's `unaffected`) and `stale-ruled {node, base_now, ruling, why, said?}` (either ruling;
-`why` is empty when the ruler's `said` file holds it); `invocation {}`, one per preflight, whose count
+and `stale-ruled {node, base_now, ruling, why, said?}` (either ruling; `why` is empty when the
+ruler's `said` file holds it; the newest `stale-ruled` of a leaf is its anchor for the next moved base); `invocation {}`, one per preflight, whose count
 numbers the invocation's record ids; `fault {node, channel, detail}`, a unit a plugin fault ended;
 `ended {}`, one per postflight, where a watching session stops. A line the workflow decided carries its `rid`.
 
@@ -1864,8 +1881,9 @@ the taker waits.
 Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}], notes}` plus:
 
 - **preflight** — `invocation`, `checkpoint {reason, detail}`, `said_dir` (where the execution's
-  agents write what a record only points at), `stale {nodes, now, list, diff}`
-  (null unless the base moved under unruled leaves), `counts {nodes, leaves, gaps, untraced}`,
+  agents write what a record only points at), `stale {nodes, rows, now, brief}`
+  (null unless the base moved under a leaf since its anchor; `rows` are those leaves' launch rows,
+  `brief` the path of what the ruler reads), `counts {nodes, leaves, gaps, untraced}`,
   `dirty_worktrees`, `max_parallel`.
 - **schedule** — `launch[]`, `idle`, `max_parallel`, `records`. A launch is one of
   `{unit: plan, id, why, row}` (its row with the folder's `intent`), `{unit: leaf, id, row, parent
@@ -1888,10 +1906,10 @@ Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}],
   `failed_alone[{id, ids, failures[{check, claim}], row?, parent?, facts?}]` (the row, the
   parent's row and the resume facts for a single leaf, whose fix round launches from them and
   whose `fixes/` file merge-batch writes),
-  `combination[]`, `drift[{node, contract, files, spec_path?, stopped?}]` (a node not yet merged
-  whose consumed contract the merge touched; `stopped` names its escalation or park, which the
-  drift is reported beside and never parked over), `drift_diff` (the path of the merged change to
-  the files an unstopped consumer consumes, or `''`), `unexamined_n` (undesigned nodes drift could not check).
+  `combination[]`, `drift[{node, contract, files, row?, stopped?}]` (a node not yet merged
+  whose consumed contract the merge touched, with its launch row; `stopped` names its escalation
+  or park, which the drift is reported beside and never parked over), `drift_brief` (the path of
+  what the ruler reads about the unstopped consumers, or `''`), `unexamined_n` (undesigned nodes drift could not check).
 - **suite-gate** — `status` (`done | pending`), `target`, `head_sha`, `ran`, `passed`,
   `failures[{check, claim}]`, `record` (the path of `gates/<target>-<head>.json`, with the
   measurement and each failure's evidence; `''` when nothing ran).

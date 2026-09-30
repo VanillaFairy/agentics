@@ -395,7 +395,7 @@ re-spec**: edit the spec that owns the fault, have it re-approved, recompile, re
 | `integration_critical` | the folder's spec: the user rules which part is wrong; a `task` entry that fixes it, or the corrected criterion |
 | `spec_defect` | the spec the question names: the claim cannot be met as written; the user rules how it changes |
 | `cant_tell` | the folder's spec: make the claim decidable, a criterion with a check or a `HUMAN:` criterion the user judges at landing |
-| `contract_drift` | a ruler already ruled the drift affected, and the question is its own. The consumer's entry: the user rules it unaffected (then relaunch with `retry_escalated: [<id>]` and edit nothing), re-designs it, or re-slices it |
+| `contract_drift` | merged work touched a contract the node consumes, and the planner could not take it: no ruler could rule, or the node was already running when it was ruled affected. The consumer's entry: the user rules it unaffected (then relaunch with `retry_escalated: [<id>]` and edit nothing), re-designs it, or re-slices it |
 | `spec_changed` | compile parked a folder you wrote because its spec was re-approved while work under it was under way: the user rules whether the dispatched work still stands, and re-specs what does not. A folder develop's planner wrote never reaches you with this return: the run hands it back to the planner, which re-derives it |
 
 For each spec you edited: show the change, and on the user's approval in so many words run

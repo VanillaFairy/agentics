@@ -363,35 +363,47 @@ test('bad input returns a coverage block, never undefined', async () => {
   assert.equal(result.coverage.complete, false)
 })
 
-const driftSim = () => simulate([composite('.'), row('a'), row('b', { deps: ['a'], consumes: [{ name: 'api', paths: ['src/api.js'] }] }), row('c')], {
+const B_CONSUMES = { deps: ['a'], consumes: [{ name: 'api', paths: ['src/api.js'] }] }
+const driftSim = (script = {}) => simulate([composite('.'), row('a'), row('b', B_CONSUMES), row('c')], {
   merge: (args) => (args.children.some((ch) => ch.id === 'a')
-    ? { drift: [{ node: 'b', contract: 'api', files: ['src/api.js'], spec_path: '/repo/.agentics/e1/DESIGN.md' }], drift_diff: '/merges/root.drift.diff' } : {}),
+    ? { drift: [{ node: 'b', contract: 'api', files: ['src/api.js'], row: row('b', B_CONSUMES) }], drift_brief: '/merges/root.drift.md' } : {}),
+  ...script,
 })
 const ruling = (ruling, question = '') => () => ({ rulings: [{ node: 'b', ruling, why: 'because', question }] })
+/** The tree after the planner rewrote b as a new revision of the same leaf. */
+const bReplanned = () => [composite('.'), row('a', { status: 'merged' }), row('b', { ...B_CONSUMES, rev: 1 }), row('c')]
 
-test('contract drift an analyst rules affected parks the consumer with its question, and the rest keeps running', async () => {
-  const sim = driftSim()
-  const { result, prompts } = await run(sim, { 'rule:drift:.': ruling('affected', 'api now returns a list: does b still read one?') })
-  assert.deepEqual(result.parked.map((p) => [p.id, p.return, p.question]), [['b', 'contract_drift', 'api now returns a list: does b still read one?']])
-  assert.ok(!sim.opens.includes('b'))
+test('contract drift a ruler rules affected is replanned, and runs, without the user', async () => {
+  const sim = driftSim({ compiled: bReplanned })
+  const { result, prompts } = await run(sim, {
+    'rule:drift:.': ruling('affected', 'api now returns a list: does b still read one?'),
+    'plan:': written(row('b').spec_path),
+  }, {}, { workflow: probes([probeReturn()]) })
+  assert.deepEqual(result.parked, [])
+  assert.deepEqual(result.escalations, [])
+  assert.ok(sim.opens.includes('b'), 'the replanned consumer runs')
   assert.ok(result.implemented.some((i) => i.id === 'c'))
   assert.deepEqual(result.drift.map((d) => d.node), ['b'])
+  assert.deepEqual(recordsOf(sim, 'drift-ruled').map((r) => [r.node, r.ruling]), [['b', 'affected']])
   const asked = prompts.find((p) => p.opts.label === 'rule:drift:.')
   assert.equal(asked.opts.agentType, 'agentics:ruler')
-  assert.match(asked.prompt, /\/merges\/root\.drift\.diff[\s\S]*node b consumes contract api/)
+  assert.ok(asked.prompt.includes('Read /merges/root.drift.md.'), 'one file holds the entry and the change')
+  assert.ok(!asked.prompt.includes('DESIGN.md'), 'the ruler is never sent to find a spec')
+  const plan = prompts.find((p) => p.opts.label === 'plan:b')
+  assert.ok(plan.prompt.includes('premise_mismatch: api now returns a list: does b still read one?'), 'the planner is told what moved')
 })
 
-test('each drifted consumer gets a ruling file of its own, which its park points at', async () => {
+test('a replan of drift that needs a decision parks the consumer with the planner\'s question, and the rest keeps running', async () => {
   const sim = driftSim()
-  const { result, prompts } = await run(sim, { 'rule:drift:.': ruling('affected', 'does b still read one?') })
+  const { result, prompts } = await run(sim, {
+    'rule:drift:.': ruling('affected', 'does b still read one?'),
+    'plan:': () => ({ status: 'needs_decision', written: [], accepted_warnings: [], uncovered: [], question: 'a list or one item: which does b serve?', detail: '' }),
+  })
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return, p.question]), [['b', 'needs_decision', 'a list or one item: which does b serve?']])
+  assert.ok(!sim.opens.includes('b'))
+  assert.ok(result.implemented.some((i) => i.id === 'c'))
   const asked = prompts.find((p) => p.opts.label === 'rule:drift:.')
-  assert.equal(asked.opts.agentType, 'agentics:ruler')
-  const file = /- b: (\S+)/.exec(asked.prompt)[1]
-  assert.match(file, /^\/said\/\d+-\d+-rule-drift-.-b\.md$/)
-  const [record] = recordsOf(sim, 'parked')
-  assert.equal(record.said, file)
-  assert.equal(record.question, 'merged work touched contract api, which b consumes', 'the record holds the workflow\'s line, not the ruler\'s words')
-  assert.equal(result.parked[0].question, 'does b still read one?')
+  assert.match(/- b: (\S+)/.exec(asked.prompt)[1], /^\/said\/\d+-\d+-rule-drift-.-b\.md$/, 'each drifted consumer gets a ruling file of its own')
 })
 
 test('a fix round that returns done with no commits escalates on the workflow\'s own line, pointing at no file', async () => {
@@ -412,22 +424,47 @@ test('contract drift an analyst rules unaffected never reaches the user: the con
   assert.equal(result.coverage.complete, true)
 })
 
-test('a base that moved under leaves is ruled by an analyst: only a leaf really affected waits for the user', async () => {
-  const stale = { nodes: ['a', 'b', 'd'], now: 'n1', list: '/x/stale-n1.json', diff: '/x/stale-n1.diff' }
-  const sim = simulate([composite('.'), row('a'), row('b'), row('c'), row('d')], { preflight: () => ({ stale }) })
-  const { result, prompts } = await run(sim, {
-    'rule:stale': () => ({ rulings: [
-      { node: 'a', ruling: 'unaffected', why: 'only comments moved', question: '' },
-      { node: 'b', ruling: 'affected', why: 'the parser it extends was removed', question: 'the parser b extends is gone: rebuild on the new one?' },
-    ] }),
+const staleOf = (rows) => ({ nodes: rows.map((r) => r.id), rows, now: 'n1', brief: '/x/stale-n1.md' })
+const STALE_B = { node: 'b', ruling: 'affected', why: 'the parser it extends was removed', question: 'the parser b extends is gone: rebuild on the new one?' }
+
+test('a base that moved under leaves is ruled first: an affected leaf is replanned and runs, and nothing waits for the user', async () => {
+  const sim = simulate([composite('.'), row('a'), row('b'), row('c'), row('d')], {
+    preflight: () => ({ stale: staleOf([row('a'), row('b'), row('d')]) }),
+    compiled: () => [composite('.'), row('a'), row('b', { rev: 1 }), row('c'), row('d')],
   })
-  assert.match(prompts.find((p) => p.opts.label === 'rule:stale').prompt, /\/x\/stale-n1\.json[\s\S]*\/x\/stale-n1\.diff/)
+  const { result, prompts } = await run(sim, {
+    'rule:stale': () => ({ rulings: [{ node: 'a', ruling: 'unaffected', why: 'only comments moved', question: '' }, STALE_B] }),
+    'plan:': written(row('b').spec_path),
+  }, {}, { workflow: probes([probeReturn()]) })
+  const asked = prompts.find((p) => p.opts.label === 'rule:stale').prompt
+  assert.ok(asked.includes('a, b, d') && asked.includes('Read /x/stale-n1.md.'), 'one file holds each entry and its change')
   assert.deepEqual(recordsOf(sim, 'stale-ruled').map((r) => [r.node, r.ruling, r.base_now]), [['a', 'unaffected', 'n1'], ['b', 'affected', 'n1']],
-    'both rulings are kept, so a resume against the same head asks neither again')
-  assert.deepEqual(result.parked.map((p) => [p.id, p.return, p.question]), [['b', 'premise_mismatch', 'the parser b extends is gone: rebuild on the new one?']])
+    'both rulings are kept, so a later head asks each only about what moved after this one')
+  assert.ok(prompts.find((p) => p.opts.label === 'plan:b').prompt.includes('premise_mismatch: the parser b extends is gone'))
+  assert.deepEqual(result.parked, [])
   assert.deepEqual(result.faults.map((f) => f.id), ['d'], 'a leaf the ruling left out is held, never run unasked, and never put to the user')
-  assert.ok(sim.opens.includes('a') && sim.opens.includes('c') && !sim.opens.includes('b') && !sim.opens.includes('d'))
+  assert.ok(['a', 'b', 'c'].every((id) => sim.opens.includes(id)) && !sim.opens.includes('d'))
   assert.equal(result.checkpoint, null, 'no checkpoint stops the run')
+})
+
+test('a moved base the planner cannot answer without a decision parks the leaf with the planner\'s question', async () => {
+  const sim = simulate([composite('.'), row('b'), row('c')], { preflight: () => ({ stale: staleOf([row('b')]) }) })
+  const { result } = await run(sim, {
+    'rule:stale': () => ({ rulings: [STALE_B] }),
+    'plan:': () => ({ status: 'needs_decision', written: [], accepted_warnings: [], uncovered: [], question: 'keep the old parser or move to the new one?', detail: '' }),
+  })
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return, p.question]), [['b', 'needs_decision', 'keep the old parser or move to the new one?']])
+  assert.ok(sim.opens.includes('c') && !sim.opens.includes('b'))
+})
+
+test('a moved premise the planner answers without changing the leaf escalates instead of running it', async () => {
+  const sim = simulate([composite('.'), row('b', { rev: 5 })], {
+    preflight: () => ({ stale: staleOf([row('b', { rev: 5 })]) }),
+    compiled: () => [composite('.'), row('b', { rev: 5 })],
+  })
+  const { result } = await run(sim, { 'rule:stale': () => ({ rulings: [STALE_B] }), 'plan:': written(row('b').spec_path) }, {}, { workflow: probes([probeReturn()]) })
+  assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['b', 'replan_not_converging']])
+  assert.ok(!sim.opens.includes('b'))
 })
 
 test('contract drift no analyst could rule, twice, parks the consumer for the user', async () => {

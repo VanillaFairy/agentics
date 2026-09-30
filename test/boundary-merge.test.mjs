@@ -86,3 +86,20 @@ test('a merge-batch that died before recording its outcome is redone from where 
   assert.equal(out.head_sha, pre)
   assert.notEqual(readTree(r, 'e1').status.get('x').status, 'merged')
 })
+
+test('a merge under a contract a pending node consumes writes the ruler one brief: the consumer as planned, and the change', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(),
+    leaf('p', { rigor: 'trivial', locus: ['README.md'] }),
+    leaf('c', { rigor: 'trivial', locus: ['src/use.mjs'], consumes: [{ name: 'docs', paths: ['README.md'] }] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const p = B(r, 'leaf-open', { node: 'p', role: 'implementer', round: 1 })
+  const ps = commitIn(p.worktree, { 'README.md': 'hello world\n' }, 'Greet the world')
+
+  const out = B(r, 'merge-batch', { target: '.', children: [{ id: 'p', head_sha: ps }], cycles: [] })
+  assert.deepEqual(out.drift.map((d) => [d.node, d.contract, d.row.id, d.row.kind]), [['c', 'docs', 'c', 'leaf']])
+  const brief = readFileSync(out.drift_brief, 'utf8')
+  assert.match(brief, /^# c — do c$/m)
+  assert.ok(brief.includes('contract docs (README.md)') && brief.includes('- docs: README.md') && brief.includes('- c works'))
+  assert.match(brief, /^\+hello world$/m)
+})

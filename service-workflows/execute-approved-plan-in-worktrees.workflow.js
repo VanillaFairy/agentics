@@ -517,22 +517,20 @@ function integrationPrompt(item, said) {
     (said ? '\nBefore returning, write your findings and every claim verdict with its evidence, in full, to ' + said + ' (its first line says it in one sentence).' : '')
 }
 
-const RULING_CHARGE = 'For each node, rule `unaffected` when everything its spec entry assumes, and every criterion it must ' +
+const RULING_CHARGE = 'That file holds, per node, its plan entry and the change: it is everything you rule on. ' +
+  'For each node, rule `unaffected` when everything its plan entry assumes, and every criterion it must ' +
   'meet, still holds after the change, or `affected` when something it assumes no longer does. Give `why` in one sentence. ' +
   'For `affected`, `question` is the one question its owner must answer: what changed, what in the entry no longer holds, ' +
-  'and the choice to make. Read only what you are pointed at; if it cannot decide a node, rule it `affected` and ask.'
+  'and the choice to make. If the file cannot decide a node, rule it `affected` and ask.'
 
-function driftPrompt(target, entries, diff) {
-  return 'Merged work into ' + target + ' of effort ' + effort + ' touched files under contracts that nodes not yet merged consume.\n' +
-    'The merged change to those files: read ' + diff + '.\n' +
-    entries.map((d) => '- node ' + d.node + ' consumes contract ' + d.contract + ' (touched: ' + d.files.join(', ') +
-      '); its plan entry is in ' + d.spec_path).join('\n') + '\n' + RULING_CHARGE
+function driftPrompt(target, entries, brief) {
+  return 'Merged work into ' + target + ' of effort ' + effort + ' touched files under contracts that nodes not yet merged consume: ' +
+    [...new Set(entries.map((d) => d.node))].join(', ') + '. Read ' + brief + '.\n' + RULING_CHARGE
 }
 
 function stalePrompt(stale) {
-  return 'The base branch of effort ' + effort + ' moved under leaves not yet merged. Read the leaves, the files that moved ' +
-    'under each and where each plan entry is, in ' + stale.list + ', and the change to those files in ' + stale.diff + '.\n' +
-    RULING_CHARGE
+  return 'The base branch of effort ' + effort + ' moved under leaves not yet merged: ' + stale.nodes.join(', ') +
+    '. Read ' + stale.brief + '.\n' + RULING_CHARGE
 }
 
 /**
@@ -693,6 +691,24 @@ async function planNode(row, why, said) {
     return spec ? await reviewSpec(id, spec) : null
   } finally {
     planning.delete(id)
+  }
+}
+
+/**
+ * A ruler ruled that a change moved the node's premise. The planner answers first, as it does an
+ * executor's premise_mismatch; the user is reached only by what the planner cannot settle.
+ */
+async function replanAffected(row, r, ruled) {
+  const id = row.id
+  note(id + ': ruled affected — replanning it: ' + r.why)
+  try {
+    const after = await planNode(row, 'premise_mismatch: ' + (r.question || r.why) + (ruled ? ' (the ruling in full: ' + ruled + ')' : ''), ruled)
+    if (after && after.kind === 'leaf' && after.rev === row.rev) {
+      escalate(id, 'replan_not_converging', 'the planner answered a moved premise without changing the leaf: ' + (r.question || r.why), ruled,
+        'the planner answered a moved premise without changing the leaf')
+    }
+  } catch (err) {
+    if (!stoppedHere.has(id)) fault(id, 'dispatch', 'replanning its moved premise failed: ' + (err && err.message))
   }
 }
 
@@ -1184,21 +1200,31 @@ async function mergeInto(item) {
   }
   if (toRule.length) {
     for (const d of toRule) ruling.add(d.node)
-    const { rulings, files } = await rule('rule:drift:' + target, driftPrompt(target, toRule, out.drift_diff), 'Integrate', toRule.map((d) => d.node))
-      .finally(() => { for (const d of toRule) ruling.delete(d.node) })
-    for (const d of toRule) {
-      const r = rulings && rulings.get(d.node)
-      if (r && r.ruling === 'unaffected') {
-        note(d.node + ': merged work touched contract ' + d.contract + '; ruled unaffected — ' + r.why)
+    const nodes = [...new Set(toRule.map((d) => d.node))]
+    try {
+      const { rulings, files } = await rule('rule:drift:' + target, driftPrompt(target, toRule, out.drift_brief), 'Integrate', nodes)
+      for (const d of toRule) {
+        const r = rulings && rulings.get(d.node)
         const ruled = files.get(d.node)
-        records.push({ file: 'state', entry: { kind: 'drift-ruled', node: d.node, contract: d.contract, head_sha: out.head_sha || '', ruling: 'unaffected', why: onRecord(r.why, ruled), ...(ruled ? { said: ruled } : {}) } })
-      } else if (!stoppedHere.has(d.node)) {
-        if (r) park(d.node, 'contract_drift', r.question, files.get(d.node), 'merged work touched contract ' + d.contract + ', which ' + d.node + ' consumes')
-        else {
+        if (r) records.push({ file: 'state', entry: { kind: 'drift-ruled', node: d.node, contract: d.contract, head_sha: out.head_sha || '', ruling: r.ruling === 'unaffected' ? 'unaffected' : 'affected', why: onRecord(r.why, ruled), ...(ruled ? { said: ruled } : {}) } })
+        if (r && r.ruling === 'unaffected') note(d.node + ': merged work touched contract ' + d.contract + '; ruled unaffected — ' + r.why)
+        else if (!r && !stoppedHere.has(d.node)) {
           park(d.node, 'contract_drift', 'merged work touched ' + d.files.join(', ') + ' under contract ' + d.contract + ', which ' + d.node +
             ' consumes, and no analyst could rule on it: rule it unaffected, re-design it or re-slice it')
         }
       }
+      // A consumer stays unlaunched until the planner has answered its ruling. One whose chain is
+      // already running cannot be replanned under it: the user rules, and its approval waits.
+      await Promise.all(nodes.map((id) => {
+        const r = rulings && rulings.get(id)
+        if (!r || r.ruling === 'unaffected' || stoppedHere.has(id)) return null
+        const d = toRule.find((x) => x.node === id)
+        if (!running.has('leaf:' + id)) return replanAffected(d.row, r, files.get(id))
+        park(id, 'contract_drift', r.question, files.get(id), 'merged work touched contract ' + d.contract + ', which ' + id + ' consumes')
+        return null
+      }))
+    } finally {
+      for (const id of nodes) ruling.delete(id)
     }
   }
   if (out.unexamined_n) note(out.unexamined_n + ' undesigned node(s) not examined for drift')
@@ -1416,24 +1442,26 @@ if (pf.checkpoint) {
   return finish(pf.checkpoint)
 }
 
-// The base branch moved under leaves not yet merged: an analyst rules each before anything runs,
-// and only a leaf whose premise really moved waits for the user.
+// The base branch moved under leaves not yet merged: a ruler rules each before anything runs, the
+// planner replans a leaf whose premise really moved, and only what it cannot settle waits for the user.
 if (pf.stale) {
   const { rulings, files } = await rule('rule:stale', stalePrompt(pf.stale), 'Preflight', pf.stale.nodes)
-  for (const id of pf.stale.nodes) {
+  const replans = []
+  for (const row of pf.stale.rows) {
+    const id = row.id
     const r = rulings && rulings.get(id)
     const ruled = files.get(id)
-    if (r && r.ruling === 'unaffected') {
-      note(id + ': the base moved under it; ruled unaffected — ' + r.why)
-      records.push({ file: 'state', entry: { kind: 'stale-ruled', node: id, base_now: pf.stale.now, ruling: 'unaffected', why: onRecord(r.why, ruled), ...(ruled ? { said: ruled } : {}) } })
-    } else if (r) {
-      park(id, 'premise_mismatch', r.question, ruled, 'the base branch moved files ' + id + ' writes or reads')
-      records.push({ file: 'state', entry: { kind: 'stale-ruled', node: id, base_now: pf.stale.now, ruling: 'affected', why: onRecord(r.why, ruled), ...(ruled ? { said: ruled } : {}) } })
-    } else {
-      // No analyst could rule: the leaf is held, and the next invocation asks again.
+    if (!r) {
+      // No ruler could rule: the leaf is held, and the next invocation asks again.
       fault(id, 'dispatch', 'the base moved under it and no analyst ruled on it')
+      continue
     }
+    const affected = r.ruling !== 'unaffected'
+    records.push({ file: 'state', entry: { kind: 'stale-ruled', node: id, base_now: pf.stale.now, ruling: affected ? 'affected' : 'unaffected', why: onRecord(r.why, ruled), ...(ruled ? { said: ruled } : {}) } })
+    if (affected) replans.push(replanAffected(row, r, ruled))
+    else note(id + ': the base moved under it; ruled unaffected — ' + r.why)
   }
+  await Promise.all(replans)
 }
 
 log('execution ' + execution + ' of ' + rootId + ': ' + (counts.leaves || 0) + ' leaves planned, pool ' + pf.max_parallel +

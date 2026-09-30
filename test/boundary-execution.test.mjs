@@ -12,9 +12,9 @@ import { append, readLog } from '../lib/ledger.mjs'
 import { heldBy } from '../lib/locks.mjs'
 import { readTree } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
-import { envelope, posix, specPath } from '../lib/store.mjs'
+import { envelope, posix, specPath, worktreeOf } from '../lib/store.mjs'
 import { checkpointOf } from '../lib/status.mjs'
-import { A_TEST, B, COMMANDS, commitIn, leaf, repo, root, STAMP } from './harness/boundary-fixture.mjs'
+import { A_TEST, B, COMMANDS, commitIn, git, leaf, repo, root, STAMP } from './harness/boundary-fixture.mjs'
 
 test('preflight checkpoints: an overlapping open execution, a blocking gap, a parked plan', () => {
   const r = repo()
@@ -58,11 +58,48 @@ test('a base that moved under a leaf is handed on for a ruling, never a checkpoi
   assert.equal(again.checkpoint, null)
   assert.deepEqual(again.stale.nodes, ['a'])
   assert.equal(again.stale.now, now)
-  assert.deepEqual(JSON.parse(readFileSync(again.stale.list, 'utf8')).leaves.map((l) => [l.node, l.writes]), [['a', ['src/add.mjs']]])
-  assert.match(readFileSync(again.stale.diff, 'utf8'), /\+export const add = \(a, b\) => b \+ a/)
+  assert.deepEqual(again.stale.rows.map((row) => [row.id, row.kind]), [['a', 'leaf']])
+  const brief = readFileSync(again.stale.brief, 'utf8')
+  assert.match(brief, /^# a — do a$/m, 'the leaf as planned is in the brief itself: the ruler opens nothing else')
+  assert.ok(brief.includes('- a works — check: `node --test`') && brief.includes('- src/add.mjs'))
+  assert.match(brief, /\+export const add = \(a, b\) => b \+ a/)
+  assert.ok(!brief.includes('# b —'))
 
   append(r, 'e1', 'state:' + STAMP, { kind: 'stale-ruled', node: 'a', base_now: now, ruling: 'unaffected', why: 'same sum' })
   assert.equal(B(r, 'preflight', { root: '.', commands: COMMANDS }).stale, null, 'ruled once against this head, not asked again')
+})
+
+test('a leaf ruled against one base head is asked only about what moved after it', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/add.mjs'] }), leaf('b', { locus: ['README.md'] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const n1 = commitIn(r, { 'src/add.mjs': 'export const add = (a, b) => b + a\n' }, 'Swap the operands')
+  append(r, 'e1', 'state:' + STAMP, { kind: 'stale-ruled', node: 'a', base_now: n1, ruling: 'unaffected', why: 'same sum' })
+
+  commitIn(r, { 'README.md': 'hello again\n' }, 'Greet again')
+  assert.deepEqual(B(r, 'preflight', { root: '.', commands: COMMANDS }).stale.nodes, ['b'], 'a new head that leaves a\'s files alone does not reopen a')
+
+  commitIn(r, { 'src/add.mjs': 'export const add = (a, b) => b + a + 0\n' }, 'Add nothing')
+  const third = B(r, 'preflight', { root: '.', commands: COMMANDS })
+  assert.deepEqual(third.stale.nodes, ['a', 'b'])
+  const [ofA] = readFileSync(third.stale.brief, 'utf8').split('# b —')
+  assert.match(ofA, /\+export const add = \(a, b\) => b \+ a \+ 0/)
+  assert.ok(!ofA.includes('-export const add = (a, b) => a + b'), 'the change a was already ruled against is not shown again')
+})
+
+test('a base head the execution\'s own branch already merged is not a move under its leaves', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/add.mjs'] }), leaf('b', { locus: ['README.md'] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  B(r, 'leaf-open', { node: 'b', role: 'implementer', round: 1 })
+  const n1 = commitIn(r, { 'src/add.mjs': 'export const add = (a, b) => b + a\n' }, 'Swap the operands')
+  git(worktreeOf(r, 'e1', '.'), 'merge', '-q', n1)
+  assert.equal(B(r, 'preflight', { root: '.', commands: COMMANDS }).stale, null)
+
+  commitIn(r, { 'src/add.mjs': 'export const add = (a, b) => b + a + 0\n' }, 'Add nothing')
+  const later = B(r, 'preflight', { root: '.', commands: COMMANDS })
+  assert.deepEqual(later.stale.nodes, ['a'])
+  assert.ok(!readFileSync(later.stale.brief, 'utf8').includes('-export const add = (a, b) => a + b'), 'only what the branch does not hold yet')
 })
 
 test('the session\'s retry clears a stop, so a running execution relaunches the node', () => {

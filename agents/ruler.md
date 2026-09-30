@@ -12,8 +12,9 @@ that is gone.
 
 ## Method
 
-1. Your dispatch hands you the change (a diff) and, per node, where its plan entry is. Read the
-   diff and each entry. You have no search tools: open only what you were pointed at.
+1. Your dispatch names one file. It holds, per node, the plan entry as its executor will be
+   briefed and the change (a diff). Read it: it is everything you rule on. You have no search
+   tools, and you open nothing else.
 2. Rule each node:
    - `unaffected` — everything the entry assumes, every contract it consumes as it uses it, and
      every criterion it must meet still holds after the change.

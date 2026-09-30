@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url'
 import { approvalState } from '../lib/approval.mjs'
 import { append } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
+import { resumeLeaves } from '../lib/resume.mjs'
 import { hashSpec, parseSpec } from '../lib/spec.mjs'
 import { costOf, efforts, todoFor } from '../lib/status.mjs'
 import * as statusModule from '../lib/status.mjs'
@@ -27,7 +28,7 @@ import {
 } from '../lib/store.mjs'
 import { normalizeNode, readTree, renderTree } from '../lib/tree.mjs'
 
-const { snapshotOf } = statusModule
+const { nodeOf, renderNode, snapshotOf } = statusModule
 
 const CLI = fileURLToPath(new URL('../lib/status.mjs', import.meta.url))
 
@@ -210,9 +211,9 @@ function linkedWorktree(repo) {
   return wt
 }
 
-test('snapshot carries format 2', () => {
+test('snapshot carries format 3', () => {
   const { repo, effort } = effortFixture()
-  assert.equal(snapshotOf(repo, effort).format, 2)
+  assert.equal(snapshotOf(repo, effort).format, 3)
 })
 
 test("store names the main checkout's .agentics", () => {
@@ -472,4 +473,113 @@ test('CLI prints the tree for a person', () => {
   assert.equal(r.status, 0, r.stdout + r.stderr)
   const tree = readTree(repo, effort)
   assert.equal(r.stdout.trim(), renderTree(tree.nodes, tree.status).trim())
+})
+
+const cardsOf = (repo, effort) => Object.fromEntries(snapshotOf(repo, effort).nodes.map((n) => [n.id, n.card]))
+
+test("a leaf's next action is the resume ladder's", () => {
+  const { repo, effort, stamp } = effortFixture()
+  const tree = readTree(repo, effort)
+  const rows = Object.fromEntries(resumeLeaves(repo, effort, stamp, tree.nodes).map((r) => [r.id, r]))
+  const cards = cardsOf(repo, effort)
+  for (const id of ['a/impl', 'a/fix', 'a/wait', 'c']) {
+    assert.deepEqual(cards[id].next, { action: rows[id].next_action, why: rows[id].note }, id)
+  }
+  assert.notEqual(cards['a/impl'].next.action, cards['a/fix'].next.action, 'the fixture has a started leaf and an unstarted one')
+})
+
+test('only an unfinished leaf has a next action', () => {
+  const { repo, effort } = statusFixture()
+  const tree = readTree(repo, effort)
+  const cards = cardsOf(repo, effort)
+  for (const [id, n] of tree.nodes) {
+    const unfinished = n.kind === 'leaf' && tree.status.get(id).status !== 'merged'
+    assert.equal(cards[id].next !== null, unfinished, id)
+  }
+})
+
+test("behind counts the folder's commits a leaf's branch lacks", () => {
+  const { repo, effort } = effortFixture()
+  assert.equal(cardsOf(repo, effort)['a/impl'].behind, 0)
+
+  const mainBranch = git(repo, 'symbolic-ref', '--short', 'HEAD')
+  git(repo, 'checkout', '-q', branchOf(effort, 'a'))
+  writeFileSync(join(repo, 'later.txt'), 'later\n')
+  git(repo, 'add', '-A')
+  git(repo, 'commit', '-qm', 'a fix the folder took after the leaf was cut')
+  git(repo, 'checkout', '-q', mainBranch)
+
+  const cards = cardsOf(repo, effort)
+  assert.equal(cards['a/impl'].behind, Number(git(repo, 'rev-list', '--count', branchOf(effort, 'a/impl') + '..' + branchOf(effort, 'a'))))
+  assert.ok(cards['a/impl'].behind > 0)
+  assert.equal(cards['a/fix'].behind, null, 'a leaf with no branch is behind nothing')
+  assert.equal(cards.a.behind, null, 'a folder is not a leaf')
+})
+
+test("the card's report is the latest dispatch's, with its lead", () => {
+  const { repo, effort, stamp } = effortFixture()
+  append(repo, effort, 'events', { kind: 'dispatched', node: 'a/impl', execution: stamp, role: 'implementer', round: 2, model: 'sonnet', effort: 'medium' })
+  const second = reportPath(repo, effort, stamp, 'a/impl', 'implementer', 2)
+  const lead = ['The suite fails on two tests', 'outside this locus.']
+  writeFileSync(second, ['', '# Round 2', '', ...lead, '', 'More.', ''].join('\r\n'))
+
+  const cards = cardsOf(repo, effort)
+  assert.ok(samePath(repo, cards['a/impl'].report.path, second))
+  assert.equal(cards['a/impl'].report.lead, lead.join(' '))
+  assert.equal(cards['a/fix'].report, null)
+})
+
+test('notes are on the card newest first, and move no status', () => {
+  const { repo, effort, stamp } = effortFixture()
+  const before = readTree(repo, effort).status
+  const texts = ['the base lacks the timeout fix', 'rebased onto the folder branch']
+  for (const text of texts) append(repo, effort, 'events', { kind: 'noted', node: 'a/fix', execution: stamp, by: 'session', text })
+
+  const cards = cardsOf(repo, effort)
+  assert.deepEqual(cards['a/fix'].notes.map((n) => [n.by, n.text]), [...texts].reverse().map((t) => ['session', t]))
+  assert.deepEqual(cards['a/impl'].notes, [])
+  const after = readTree(repo, effort).status
+  for (const [id, s] of before) assert.equal(after.get(id).status, s.status, id)
+})
+
+test('relaunch names the open execution, and retries only the node that escalated itself', () => {
+  const { repo, effort, stamp } = effortFixture()
+  const cards = cardsOf(repo, effort)
+  assert.deepEqual(cards['a/fix'].relaunch, { execution: stamp, root: '.', retry_escalated: ['a/fix'] })
+  assert.deepEqual(cards['a/wait'].relaunch, { execution: stamp, root: '.', retry_escalated: [] })
+  assert.deepEqual(cards.a.relaunch.retry_escalated, [], 'a folder escalated only through a child retries nothing itself')
+
+  append(repo, effort, 'state:' + stamp, { kind: 'closed', status: 'done' })
+  assert.equal(cardsOf(repo, effort)['a/fix'].relaunch, null)
+})
+
+test('an execution rooted elsewhere does not hold the node', () => {
+  const { repo, effort, stamp } = effortFixture()
+  writeFileSync(join(executionDir(repo, effort, stamp), 'execution.json'), JSON.stringify({ root: 'a' }))
+  const cards = cardsOf(repo, effort)
+  assert.equal(cards['a/fix'].relaunch.root, 'a')
+  assert.equal(cards.a.relaunch.root, 'a')
+  assert.equal(cards.c.relaunch, null)
+})
+
+test('node prints one entry of the snapshot, for a person or as JSON', () => {
+  const { repo, effort, stamp } = effortFixture()
+  append(repo, effort, 'events', { kind: 'noted', node: 'a/fix', execution: stamp, by: 'session', text: 'a note' })
+  const entry = snapshotOf(repo, effort).nodes.find((n) => n.id === 'a/fix')
+  assert.deepEqual(nodeOf(repo, effort, 'a/fix'), entry)
+
+  const run = (...args) => spawnSync(process.execPath, [CLI, 'node', '--repo', repo, '--effort', effort, ...args], { encoding: 'utf8' })
+  const json = run('--node', 'a/fix', '--json')
+  assert.equal(json.status, 0, json.stdout + json.stderr)
+  assert.deepEqual(JSON.parse(json.stdout).payload, entry)
+
+  const text = run('--node', 'a/fix')
+  assert.equal(text.stdout.trim(), renderNode(entry))
+  for (const said of [FIX_REASON, FIX_DETAIL, entry.card.next.action, 'a note', stamp, JSON.stringify(['a/fix'])]) {
+    assert.ok(text.stdout.includes(said), 'the rendering leaves out ' + said)
+  }
+
+  const missing = run('--node', 'nope')
+  assert.equal(missing.status, 1)
+  assert.match(JSON.parse(missing.stdout).error, /no live node/)
 })

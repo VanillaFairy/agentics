@@ -1766,9 +1766,11 @@ one read-only call, under a digest — it writes no file, no lock and no `seq`. 
 `folders` is every folder that holds a spec, root first, each `{id, title, approval, blocking,
 spec: {path}}`: `title` and `blocking` (its open `blocking` questions) from `parseSpec`, `approval`
 from `approvalState`. `nodes` is every live node, the root’s subtree first and then any node the
-tree cannot reach, each `{id, label, parent, kind, title, intent, context, rigor, role, locus, deps,
+tree cannot reach, each `{id, label, parent, kind, author, title, intent, context, rigor, role, locus, deps,
 acceptance, status, event, stage, branch, worktree, commits, files, card}`: `label` is the node's own
-label, else the last segment of its id (the effort's name at the root); `status` from `deriveStatus`;
+label, else the last segment of its id (the effort's name at the root); `author` is who writes the
+node's spec, `you` or `planner`, so a reader can tell an open design node that waits on the user
+from one develop's planner writes; `status` from `deriveStatus`;
 `event` is the escalated or parked node’s own event (`{kind, seq, reason, detail, said}` or `{kind,
 seq, return, question, said}`, the text read through `saidOf`, `said` its author's file when that
 exists, else empty), null for every other status; `stage` is `todoFor`’s `activeForm` while its

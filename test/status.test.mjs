@@ -320,3 +320,10 @@ test('a question its author wrote to a file reaches the watch and the snapshot f
   const node = snapshotOf(repo, E).nodes.find((n) => n.id === 'a')
   assert.equal(node.event.question, 'Keep the cache?\nIt costs 2 GB.', 'the viewer gets the whole question')
 })
+
+test('the snapshot says who writes each node\'s spec', () => {
+  const repo = effortWith([...TREE, { id: 'f', title: 'shape f', kind: 'design', author: 'planner' }])
+  const authors = Object.fromEntries(snapshotOf(repo, E).nodes.map((n) => [n.id, n.author]))
+  assert.equal(authors.f, 'planner', 'the viewer queues a planner-written design instead of asking the user')
+  assert.equal(authors.a, 'you')
+})

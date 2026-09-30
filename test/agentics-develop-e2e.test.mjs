@@ -1,6 +1,6 @@
 // test/agentics-develop-e2e.test.mjs — execute-approved-plan-in-worktrees against the real boundaries.
 //
-// The scenario suite answers every boundary from an in-memory simulation; test/boundary.test.mjs
+// The scenario suite answers every boundary from an in-memory simulation; test/boundary-*.test.mjs
 // runs the boundaries without the workflow. This runs the two together: every courier dispatch the
 // workflow makes really executes `lib/boundary.mjs` in a real repository, and only the model
 // agents — the executors and the reviewer — are scripted, committing real files in the worktrees

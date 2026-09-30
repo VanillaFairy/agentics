@@ -8,7 +8,7 @@
 // Every answer is carried the way a real courier carries one: an envelope with a digest, inside a
 // CARRIED return, computed when the courier is dispatched and delivered a task later, so units
 // settle while a boundary is in flight as they do on a real host. `lib/boundary.mjs` itself is
-// tested against real git in test/boundary.test.mjs; the two meet at the payload shapes, which
+// tested against real git in test/boundary-*.test.mjs; the two meet at the payload shapes, which
 // live in docs/DESIGN.md#boundaries.
 
 import { recordsToAppend } from '../../lib/boundary.mjs'

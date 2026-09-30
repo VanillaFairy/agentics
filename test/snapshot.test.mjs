@@ -205,6 +205,10 @@ function effortFixture() {
   return { repo, effort: EFFORT, stamp: STAMP }
 }
 
+let shared = null
+/** One fixture for every test that only reads it. A test that writes to its repository builds its own. */
+const sharedFixture = () => (shared ??= effortFixture())
+
 function linkedWorktree(repo) {
   const wt = posix(join(mkdtempSync(join(tmpdir(), 'agentics-snapshot-wt-')), 'wt'))
   git(repo, 'worktree', 'add', '-q', '-b', 'side', wt)
@@ -212,12 +216,12 @@ function linkedWorktree(repo) {
 }
 
 test('snapshot carries format 3', () => {
-  const { repo, effort } = effortFixture()
+  const { repo, effort } = sharedFixture()
   assert.equal(snapshotOf(repo, effort).format, 3)
 })
 
 test("store names the main checkout's .agentics", () => {
-  const { repo, effort } = effortFixture()
+  const { repo, effort } = sharedFixture()
   assert.equal(snapshotOf(repo, effort).store, posix(agenticsRoot(repo)))
 })
 
@@ -243,7 +247,7 @@ test('list carries store with no store present', () => {
 })
 
 test('every live node appears once with its parent', () => {
-  const { repo, effort } = effortFixture()
+  const { repo, effort } = sharedFixture()
   const tree = readTree(repo, effort)
   const snap = snapshotOf(repo, effort)
   assert.equal(snap.nodes.length, tree.nodes.size)
@@ -257,14 +261,14 @@ test('every live node appears once with its parent', () => {
 })
 
 test('status passes through from deriveStatus', () => {
-  const { repo, effort } = effortFixture()
+  const { repo, effort } = sharedFixture()
   const tree = readTree(repo, effort)
   const byId = Object.fromEntries(snapshotOf(repo, effort).nodes.map((n) => [n.id, n]))
   for (const id of tree.nodes.keys()) assert.equal(byId[id].status, tree.status.get(id).status, id)
 })
 
 test("event carries its kind's payload fields", () => {
-  const { repo, effort } = effortFixture()
+  const { repo, effort } = sharedFixture()
   const byId = Object.fromEntries(snapshotOf(repo, effort).nodes.map((n) => [n.id, n]))
 
   const fix = byId['a/fix'].event
@@ -281,7 +285,7 @@ test("event carries its kind's payload fields", () => {
 })
 
 test("stage is todoFor's activeForm only while in progress", () => {
-  const { repo, effort } = effortFixture()
+  const { repo, effort } = sharedFixture()
   const tree = readTree(repo, effort)
   const byId = Object.fromEntries(snapshotOf(repo, effort).nodes.map((n) => [n.id, n]))
   for (const id of tree.nodes.keys()) {
@@ -348,7 +352,7 @@ test('every reachable status passes through unchanged', () => {
 })
 
 test('commits count from the parent integration branch', () => {
-  const { repo, effort } = effortFixture()
+  const { repo, effort } = sharedFixture()
   const impl = snapshotOf(repo, effort).nodes.find((n) => n.id === 'a/impl')
   const expectedCount = Number(git(repo, 'rev-list', '--count', branchOf(effort, 'a') + '..' + branchOf(effort, 'a/impl')))
   const expectedSubject = git(repo, 'log', '-1', '--format=%s', branchOf(effort, 'a/impl'))
@@ -359,7 +363,7 @@ test('commits count from the parent integration branch', () => {
 })
 
 test('commits only for active leaves', () => {
-  const { repo, effort } = effortFixture()
+  const { repo, effort } = sharedFixture()
   const snap = snapshotOf(repo, effort)
   for (const n of snap.nodes) if (n.id !== 'a/impl') assert.equal(n.commits, null, n.id)
 })
@@ -374,28 +378,28 @@ test('commits null when a branch is missing', () => {
 })
 
 test('worktree only when it exists', () => {
-  const { repo, effort } = effortFixture()
+  const { repo, effort } = sharedFixture()
   const byId = Object.fromEntries(snapshotOf(repo, effort).nodes.map((n) => [n.id, n]))
   assert.ok(samePath(repo, byId['a/impl'].worktree, worktreeOf(repo, effort, 'a/impl')))
   assert.equal(byId['a/fix'].worktree, null)
 })
 
 test('a folder links its own spec', () => {
-  const { repo, effort } = effortFixture()
+  const { repo, effort } = sharedFixture()
   const a = snapshotOf(repo, effort).nodes.find((n) => n.id === 'a')
   assert.equal(a.files.spec.line, null)
   assert.ok(samePath(repo, a.files.spec.path, specPath(repo, effort, 'a')))
 })
 
 test('a task links its parent spec at its entry line', () => {
-  const { repo, effort } = effortFixture()
+  const { repo, effort } = sharedFixture()
   const impl = snapshotOf(repo, effort).nodes.find((n) => n.id === 'a/impl')
   assert.ok(samePath(repo, impl.files.spec.path, specPath(repo, effort, 'a')))
   assert.equal(impl.files.spec.line, lineOf(A_SPEC, '- **impl**'))
 })
 
 test('briefs and reports list only files that exist', () => {
-  const { repo, effort, stamp } = effortFixture()
+  const { repo, effort, stamp } = sharedFixture()
   const byId = Object.fromEntries(snapshotOf(repo, effort).nodes.map((n) => [n.id, n]))
 
   const impl = byId['a/impl']
@@ -410,7 +414,7 @@ test('briefs and reports list only files that exist', () => {
 })
 
 test('folders carry approval and blocking counts', () => {
-  const { repo, effort } = effortFixture()
+  const { repo, effort } = sharedFixture()
   const byId = Object.fromEntries(snapshotOf(repo, effort).folders.map((f) => [f.id, f]))
   assert.deepEqual(Object.keys(byId).sort(), ['.', 'a'])
 
@@ -423,7 +427,7 @@ test('folders carry approval and blocking counts', () => {
 })
 
 test('cost matches costOf', () => {
-  const { repo, effort } = effortFixture()
+  const { repo, effort } = sharedFixture()
   const snap = snapshotOf(repo, effort)
   const c = costOf(repo, effort)
   assert.equal(snap.cost.dispatches, c.dispatches)
@@ -436,7 +440,7 @@ test('cost matches costOf', () => {
 })
 
 test('node fields pass through', () => {
-  const { repo, effort } = effortFixture()
+  const { repo, effort } = sharedFixture()
   const normalized = normalizeNode(RAW_NODES.find((n) => n.id === 'a/fix'))
   const n = snapshotOf(repo, effort).nodes.find((x) => x.id === 'a/fix')
   assert.deepEqual(n.deps, normalized.deps)
@@ -447,7 +451,7 @@ test('node fields pass through', () => {
 })
 
 test('snapshot writes nothing', () => {
-  const { repo, effort } = effortFixture()
+  const { repo, effort } = sharedFixture()
   const before = filesUnder(agenticsRoot(repo))
 
   snapshotOf(repo, effort)
@@ -459,7 +463,7 @@ test('snapshot writes nothing', () => {
 })
 
 test('CLI prints the envelope', () => {
-  const { repo, effort } = effortFixture()
+  const { repo, effort } = sharedFixture()
   const r = spawnSync(process.execPath, [CLI, 'snapshot', '--repo', repo, '--effort', effort, '--json'], { encoding: 'utf8' })
   assert.equal(r.status, 0, r.stdout + r.stderr)
   const out = JSON.parse(r.stdout)
@@ -468,7 +472,7 @@ test('CLI prints the envelope', () => {
 })
 
 test('CLI prints the tree for a person', () => {
-  const { repo, effort } = effortFixture()
+  const { repo, effort } = sharedFixture()
   const r = spawnSync(process.execPath, [CLI, 'snapshot', '--repo', repo, '--effort', effort], { encoding: 'utf8' })
   assert.equal(r.status, 0, r.stdout + r.stderr)
   const tree = readTree(repo, effort)
@@ -478,7 +482,7 @@ test('CLI prints the tree for a person', () => {
 const cardsOf = (repo, effort) => Object.fromEntries(snapshotOf(repo, effort).nodes.map((n) => [n.id, n.card]))
 
 test("a leaf's next action is the resume ladder's", () => {
-  const { repo, effort, stamp } = effortFixture()
+  const { repo, effort, stamp } = sharedFixture()
   const tree = readTree(repo, effort)
   const rows = Object.fromEntries(resumeLeaves(repo, effort, stamp, tree.nodes).map((r) => [r.id, r]))
   const cards = cardsOf(repo, effort)

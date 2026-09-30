@@ -338,6 +338,27 @@ test('a green cut from its red\'s branch is measured from the red\'s head, not t
   assert.deepEqual(after.commits, [{ sha: hg, subject: 'feat(g): implement the rule' }])
 })
 
+test('a green brought up to its moved parent at the cut is measured from the refresh merge', (t) => {
+  const dir = repository(t)
+  const wr = open(dir, 'r')
+  const hr = commit(wr, 'test/r.test.mjs', 'test(r): pin the rule')
+  const wl = open(dir, 'l')
+  const hl = commit(wl, 'src/l.mjs', 'feat(l): add l')
+  git(dir, 'branch', '-f', branchOf(EFFORT, '.'), hl)
+  const wg = open(dir, 'g', hr)
+  git(wg, 'merge', '--no-ff', '--no-edit', branchOf(EFFORT, '.'))
+  const refresh = git(wg, 'rev-parse', 'HEAD')
+  const hg = commit(wg, 'src/g.mjs', 'feat(g): implement the rule')
+
+  const nodes = [
+    leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'] }),
+    leaf('g', { rigor: 'tdd-pair', role: 'green', locus: ['src/g.mjs'], deps: ['r'] }),
+  ]
+  const g = rowOf(resumeLeaves(dir, EFFORT, EXECUTION, nodes), 'g')
+  assert.equal(g.base_sha, refresh)
+  assert.deepEqual(g.commits, [{ sha: hg, subject: 'feat(g): implement the rule' }], 'l\'s commit is the parent\'s, not g\'s')
+})
+
 test('uncommitted work in a leaf\'s worktree is reported, and adopted by nobody', (t) => {
   const dir = repository(t)
   const wa = open(dir, 'a')

@@ -521,7 +521,8 @@ const RULING_CHARGE = 'That file holds, per node, its plan entry and the change:
   'For each node, rule `unaffected` when everything its plan entry assumes, and every criterion it must ' +
   'meet, still holds after the change, or `affected` when something it assumes no longer does. Give `why` in one sentence. ' +
   'For `affected`, `question` is the one question its owner must answer: what changed, what in the entry no longer holds, ' +
-  'and the choice to make. If the file cannot decide a node, rule it `affected` and ask.'
+  'and the choice to make; the planner replans from it, and it reaches the user only if the planner cannot. ' +
+  'If the file cannot decide a node, rule it `affected` and ask.'
 
 function driftPrompt(target, entries, brief) {
   return 'Merged work into ' + target + ' of effort ' + effort + ' touched files under contracts that nodes not yet merged consume: ' +
@@ -694,13 +695,27 @@ async function planNode(row, why, said) {
   }
 }
 
+/** Whether a unit of this invocation is running on the node or under it. */
+const runningUnder = (id) => [...running.keys()].some((key) => {
+  const at = key.slice(key.indexOf(':') + 1)
+  return at === id || at.startsWith(id + '/')
+})
+
 /**
  * A ruler ruled that a change moved the node's premise. The planner answers first, as it does an
- * executor's premise_mismatch; the user is reached only by what the planner cannot settle.
+ * executor's premise_mismatch; the user is reached only by what the planner cannot settle. A node
+ * with work already standing on its plan is not replanned under that work: it parks as `why`.
+ * Returns whether the ruling is answered on disk — a replanned node or a recorded stop — as
+ * opposed to a plugin fault, which leaves the ruling to be made again.
  */
-async function replanAffected(row, r, ruled) {
+async function replanAffected(row, r, ruled, why, line) {
   const id = row.id
+  if (row.under_way || runningUnder(id)) {
+    park(id, why, r.question, ruled, line)
+    return true
+  }
   note(id + ': ruled affected — replanning it: ' + r.why)
+  const faultsBefore = faults.length
   try {
     const after = await planNode(row, 'premise_mismatch: ' + (r.question || r.why) + (ruled ? ' (the ruling in full: ' + ruled + ')' : ''), ruled)
     if (after && after.kind === 'leaf' && after.rev === row.rev) {
@@ -710,6 +725,7 @@ async function replanAffected(row, r, ruled) {
   } catch (err) {
     if (!stoppedHere.has(id)) fault(id, 'dispatch', 'replanning its moved premise failed: ' + (err && err.message))
   }
+  return !faults.slice(faultsBefore).some((f) => f.id === id)
 }
 
 /** The planner writes the node's spec; the path it wrote, or null once the node is parked or escalated. */
@@ -1213,15 +1229,14 @@ async function mergeInto(item) {
             ' consumes, and no analyst could rule on it: rule it unaffected, re-design it or re-slice it')
         }
       }
-      // A consumer stays unlaunched until the planner has answered its ruling. One whose chain is
-      // already running cannot be replanned under it: the user rules, and its approval waits.
-      await Promise.all(nodes.map((id) => {
+      // A consumer stays unlaunched until the planner has answered its ruling. A replan a plugin
+      // fault ended parks the consumer: drift is found only on the batch that landed it.
+      await Promise.all(nodes.map(async (id) => {
         const r = rulings && rulings.get(id)
-        if (!r || r.ruling === 'unaffected' || stoppedHere.has(id)) return null
+        if (!r || r.ruling === 'unaffected' || stoppedHere.has(id)) return
         const d = toRule.find((x) => x.node === id)
-        if (!running.has('leaf:' + id)) return replanAffected(d.row, r, files.get(id))
-        park(id, 'contract_drift', r.question, files.get(id), 'merged work touched contract ' + d.contract + ', which ' + id + ' consumes')
-        return null
+        const line = 'merged work touched contract ' + d.contract + ', which ' + id + ' consumes'
+        if (!(await replanAffected(d.row, r, files.get(id), 'contract_drift', line))) park(id, 'contract_drift', r.question, files.get(id), line)
       }))
     } finally {
       for (const id of nodes) ruling.delete(id)
@@ -1457,9 +1472,16 @@ if (pf.stale) {
       continue
     }
     const affected = r.ruling !== 'unaffected'
-    records.push({ file: 'state', entry: { kind: 'stale-ruled', node: id, base_now: pf.stale.now, ruling: affected ? 'affected' : 'unaffected', why: onRecord(r.why, ruled), ...(ruled ? { said: ruled } : {}) } })
-    if (affected) replans.push(replanAffected(row, r, ruled))
-    else note(id + ': the base moved under it; ruled unaffected — ' + r.why)
+    const ruledLine = () => records.push({ file: 'state', entry: { kind: 'stale-ruled', node: id, base_now: pf.stale.now, ruling: affected ? 'affected' : 'unaffected', why: onRecord(r.why, ruled), ...(ruled ? { said: ruled } : {}) } })
+    if (!affected) {
+      note(id + ': the base moved under it; ruled unaffected — ' + r.why)
+      ruledLine()
+      continue
+    }
+    // An affected ruling is on record only once it is answered: a replan a plugin fault ended
+    // leaves the leaf held, and the next invocation rules on it again.
+    replans.push(replanAffected(row, r, ruled, 'premise_mismatch', 'the base branch moved files ' + id + ' writes or reads')
+      .then((answered) => { if (answered) ruledLine() }))
   }
   await Promise.all(replans)
 }

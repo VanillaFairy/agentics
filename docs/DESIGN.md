@@ -540,13 +540,14 @@ independently correct.
 
 ### Replanning
 
-A leaf's executor or a planner returns one of these instead of finishing:
+A leaf's executor or a planner returns one of these instead of finishing; a ruler's `affected`
+([Landing and drift](#landing-and-drift)) is handled as a `premise_mismatch`:
 
 | return | meaning | who acts |
 |---|---|---|
 | `decompose` | the task violates atomicity | the planner promotes it: a spec of its own at `<folder>/<task>/DESIGN.md` that realises every decision the task realised; the spec holding the task's entry is not touched |
 | `unsplittable` | no permitted split exists | the planner promotes it with a widened locus, or it escalates |
-| `premise_mismatch` | the brief's premise does not match the code | the planner promotes it; a premise from a spec the user wrote goes to the user |
+| `premise_mismatch` | the brief's premise does not match the code | the planner promotes a task, whoever wrote the spec holding its entry; a folder the user wrote parks `needs_respec` |
 | `needs_decision` | condition 6 failed | the user |
 | `contract_changed` | a `provides` contract cannot hold as written | the user — a contract is a decision |
 
@@ -1300,14 +1301,17 @@ question its owner must answer; either ruling is a `drift-ruled` state line. A c
 launched while it is being ruled on or replanned.
 
 The same holds for a base branch that moved under a resumed execution. Preflight measures each
-unmerged, unstopped leaf from its own **anchor**: the base head the execution's root branch already
-holds (its merge-base with the base branch, never older than the envelope's base), or the head the
-leaf was last ruled against when that is newer. A base head merged into the execution's branch is
+unmerged, unstopped leaf from its own **anchor**: the base head the execution's branch already
+holds (the merge-base of the base branch with the root's integration branch, or with the nearest
+one above it while the root's is not cut yet; never older than the envelope's base), or the head
+the leaf was last ruled against when that is newer. A base head merged into the execution's branch is
 the ground its leaves are cut from, not a move under them, and a leaf ruled against one head is
 asked only about what moved after it. For the leaves whose files moved since their anchor,
 preflight writes the same kind of brief to `stale-<now>.md` beside the state log, each leaf with
-its own diff, and hands on their ids and rows; one ruler rules them before anything runs, and each
-ruling is a `stale-ruled` state line naming that base head. A leaf no ruler ruled on after a second
+its own diff, and hands on their ids and rows; one ruler rules them before anything runs. An unaffected
+ruling is a `stale-ruled` state line naming that base head at once; an affected one is recorded
+only when its replan has settled or stopped the leaf on disk, so a replan a plugin fault ended is
+ruled on again by the next invocation. A leaf no ruler ruled on after a second
 dispatch is held as a fault and ruled on by the next invocation; a leaf already stopped is left out
 until its stop clears. No checkpoint stops the run for it.
 
@@ -1316,11 +1320,13 @@ first**, with the ruler's question as the reason, exactly as an executor's `prem
 ([Replanning](#replanning)): a task is promoted and replanned; a folder the planner wrote is
 rewritten; a folder the user wrote parks `needs_respec`. The user is reached only by what the
 planner cannot settle (its own `needs_decision`, `contract_changed` or `premise_mismatch`), and
-a replan that leaves the leaf as it was escalates `replan_not_converging`. Two cases still park
-`contract_drift` with no replan: a consumer no ruler ruled on after a second dispatch, because
-drift is found only on the batch that landed it and a held consumer would lose it; and a consumer
-whose chain was already running when it was ruled affected, which cannot be replanned under its
-executor. Everything else keeps running. Undesigned nodes are reported as unexamined.
+a replan that leaves the leaf as it was escalates `replan_not_converging`. A node with work already
+standing on its plan (`under_way` on its row: a leaf approved and waiting to merge, a folder with
+children dispatched or merged; or a unit of this invocation running on it or under it) is never
+replanned under that work: it parks with the ruler's question, `premise_mismatch` for a moved base
+and `contract_drift` for drift. Two more cases park `contract_drift`: a consumer no ruler ruled on
+after a second dispatch, and one whose replan a plugin fault ended, because drift is found only on
+the batch that landed it and a held consumer would lose it. Everything else keeps running. Undesigned nodes are reported as unexamined.
 
 **Why the brief is written by the lib:** the ruler has no search tools, and a ruling made without
 the entry is a guess that lands on the user. The node record is what the executor will be handed,
@@ -1882,7 +1888,7 @@ Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}],
 
 - **preflight** — `invocation`, `checkpoint {reason, detail}`, `said_dir` (where the execution's
   agents write what a record only points at), `stale {nodes, rows, now, brief}`
-  (null unless the base moved under a leaf since its anchor; `rows` are those leaves' launch rows,
+  (null unless the base moved under a leaf since its anchor; `rows` are those leaves' launch rows plus `under_way`,
   `brief` the path of what the ruler reads), `counts {nodes, leaves, gaps, untraced}`,
   `dirty_worktrees`, `max_parallel`.
 - **schedule** — `launch[]`, `idle`, `max_parallel`, `records`. A launch is one of
@@ -1907,7 +1913,7 @@ Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}],
   parent's row and the resume facts for a single leaf, whose fix round launches from them and
   whose `fixes/` file merge-batch writes),
   `combination[]`, `drift[{node, contract, files, row?, stopped?}]` (a node not yet merged
-  whose consumed contract the merge touched, with its launch row; `stopped` names its escalation
+  whose consumed contract the merge touched, with its launch row plus `under_way`; `stopped` names its escalation
   or park, which the drift is reported beside and never parked over), `drift_brief` (the path of
   what the ruler reads about the unstopped consumers, or `''`), `unexamined_n` (undesigned nodes drift could not check).
 - **suite-gate** — `status` (`done | pending`), `target`, `head_sha`, `ran`, `passed`,

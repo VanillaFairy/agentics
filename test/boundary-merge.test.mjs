@@ -97,7 +97,7 @@ test('a merge under a contract a pending node consumes writes the ruler one brie
   const ps = commitIn(p.worktree, { 'README.md': 'hello world\n' }, 'Greet the world')
 
   const out = B(r, 'merge-batch', { target: '.', children: [{ id: 'p', head_sha: ps }], cycles: [] })
-  assert.deepEqual(out.drift.map((d) => [d.node, d.contract, d.row.id, d.row.kind]), [['c', 'docs', 'c', 'leaf']])
+  assert.deepEqual(out.drift.map((d) => [d.node, d.contract, d.row.id, d.row.under_way]), [['c', 'docs', 'c', false]])
   const brief = readFileSync(out.drift_brief, 'utf8')
   assert.match(brief, /^# c — do c$/m)
   assert.ok(brief.includes('contract docs (README.md)') && brief.includes('- docs: README.md') && brief.includes('- c works'))

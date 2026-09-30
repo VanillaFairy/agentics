@@ -467,6 +467,30 @@ test('a moved premise the planner answers without changing the leaf escalates in
   assert.ok(!sim.opens.includes('b'))
 })
 
+test('an affected ruling whose replan a plugin fault ended is not on record, so the next invocation rules again', async () => {
+  const sim = simulate([composite('.'), row('b'), row('c')], { preflight: () => ({ stale: staleOf([row('b')]) }) })
+  const { result } = await run(sim, { 'rule:stale': () => ({ rulings: [STALE_B] }), 'plan:': () => { throw new Error('planner died') } })
+  assert.deepEqual(result.faults.map((x) => x.id), ['b'])
+  assert.deepEqual(result.parked, [])
+  assert.deepEqual(recordsOf(sim, 'stale-ruled'), [], 'a recorded ruling would be the leaf\'s anchor, and it would run unreplanned')
+  assert.ok(sim.opens.includes('c') && !sim.opens.includes('b'))
+})
+
+test('a leaf with work already standing on its plan is never replanned under it: it parks with the ruler\'s question', async () => {
+  const sim = simulate([composite('.'), row('b'), row('c')], { preflight: () => ({ stale: staleOf([{ ...row('b'), under_way: true }]) }) })
+  const { result, prompts } = await run(sim, { 'rule:stale': () => ({ rulings: [STALE_B] }) })
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return, p.question]), [['b', 'premise_mismatch', STALE_B.question]])
+  assert.ok(!labels(prompts).some((l) => l.startsWith('plan:')))
+  assert.deepEqual(recordsOf(sim, 'stale-ruled').map((r) => [r.node, r.ruling]), [['b', 'affected']], 'the park is its answer on disk')
+})
+
+test('a drift replan a plugin fault ended parks the consumer: the drift would not be found again', async () => {
+  const sim = driftSim()
+  const { result } = await run(sim, { 'rule:drift:.': ruling('affected', 'does b still read one?'), 'plan:': () => { throw new Error('planner died') } })
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return, p.question]), [['b', 'contract_drift', 'does b still read one?']])
+  assert.ok(!sim.opens.includes('b'))
+})
+
 test('contract drift no analyst could rule, twice, parks the consumer for the user', async () => {
   const sim = driftSim()
   const { result, prompts } = await run(sim, { 'rule:drift:': () => { throw new Error('analyst died') } })

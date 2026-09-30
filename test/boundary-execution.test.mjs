@@ -58,7 +58,7 @@ test('a base that moved under a leaf is handed on for a ruling, never a checkpoi
   assert.equal(again.checkpoint, null)
   assert.deepEqual(again.stale.nodes, ['a'])
   assert.equal(again.stale.now, now)
-  assert.deepEqual(again.stale.rows.map((row) => [row.id, row.kind]), [['a', 'leaf']])
+  assert.deepEqual(again.stale.rows.map((row) => [row.id, row.kind, row.under_way]), [['a', 'leaf', false]])
   const brief = readFileSync(again.stale.brief, 'utf8')
   assert.match(brief, /^# a — do a$/m, 'the leaf as planned is in the brief itself: the ruler opens nothing else')
   assert.ok(brief.includes('- a works — check: `node --test`') && brief.includes('- src/add.mjs'))

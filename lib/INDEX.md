@@ -40,6 +40,10 @@ from the checkout that took the landing merge, and keeps dirty worktrees for the
 - Branches are `agentics/<effort>--<flat>`, with `store.mjs`'s `flat()` turning `/` into `.`, never
   `agentics/<effort>/<node>`. A ref is a file under `refs/heads/`, so `agentics/e` and `agentics/e/x`
   cannot coexist. `preflight` parses the name back the same way, so change both together.
+- `boundary.mjs`'s `rowOf().spec_path` is where a node's own spec is or would be written. For a
+  task it names a file that exists only after promotion; its entry lives in the folder above. Never
+  hand it to an agent as "the plan entry": `rulingBrief` renders the node record instead, because a
+  ruler sent to a missing file rules `affected` and the question lands on the user.
 - `spec.mjs`'s `normalise` and `approval.mjs`'s `hashSpec` strip a BOM and fold `\r\n` before hashing.
   Drop that and a CRLF checkout reads as an edited, unapproved spec.
 - `tree.mjs`, `spec.mjs` and `merge.mjs` refuse malformed input and never repair it. `merge.mjs`

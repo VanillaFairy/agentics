@@ -41,6 +41,10 @@ because dropping it earlier lets the scheduler launch beneath it or twice.
 - Never nest a template literal inside another, and never put a quote inside a regex literal,
   because `coverage-block` and `workflow-meta` blank strings without tracking nesting and then
   report nonsense against the code that follows.
+- In `execute-approved-plan-in-worktrees`, a `stale-ruled` state line is the leaf's anchor in
+  `lib/boundary.mjs` preflight: the next moved base is measured from it. Push an `affected` one only
+  after `replanAffected` returned true, because a line recorded before a replan that faulted lets
+  the leaf run on its old plan.
 
 ## DEPENDENCIES
 

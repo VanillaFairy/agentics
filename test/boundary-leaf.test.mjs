@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 
 import { land } from '../lib/boundary.mjs'
-import { readLog } from '../lib/ledger.mjs'
+import { append, readLog } from '../lib/ledger.mjs'
 import { heldBy } from '../lib/locks.mjs'
 import { addNodes, readTree } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
@@ -177,6 +177,27 @@ test('a leaf decomposed in place releases its claim: its children are not locked
   ], { by: 'planner', reason: 'decompose' })
   assert.equal(split.ok, true, JSON.stringify(split.problems))
   assert.equal(B(r, 'leaf-open', { node: 'a/x', role: 'implementer', round: 1, wait_ms: 2000 }).status, 'opened')
+})
+
+test('a dispatch lands whenever it is not the one the leaf already stands on', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(), leaf('a', { rigor: 'trivial', locus: ['src/a.mjs'] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const open = (round) => assert.equal(B(r, 'leaf-open', { node: 'a', role: 'implementer', round }).status, 'opened')
+  const rounds = () => readLog(r, 'e1', 'events').entries.filter((e) => e.kind === 'dispatched' && e.node === 'a').map((e) => e.round)
+
+  open(1)
+  open(1)
+  assert.deepEqual(rounds(), [1], 'the same open run again after a lost courier lands once')
+
+  open(2)
+  assert.deepEqual(rounds(), [1, 2], 'a fix round is a dispatch of its own')
+
+  assert.equal(append(r, 'e1', 'events', [{ kind: 'replanned', node: 'a', execution: STAMP, reason: 'retry_escalated', by: 'session' }]).ok, true)
+  assert.equal(readTree(r, 'e1').status.get('a').status, 'planned')
+  open(1)
+  assert.deepEqual(rounds(), [1, 2, 1])
+  assert.equal(readTree(r, 'e1').status.get('a').status, 'active', 'a leaf opened again after a replan is at work')
 })
 
 test('concurrent leaf-opens under one fresh composite all open', async () => {

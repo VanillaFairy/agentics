@@ -15,7 +15,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { closeDecision, measurementOk, ownFailing, profileOf, suiteFailed } from '../lib/verdict.mjs'
+import { closeDecision, fixNotConverging, integrationPark, measurementOk, ownFailing, profileOf, reviewExit, suiteFailed } from '../lib/verdict.mjs'
 import { normalizeNode } from '../lib/tree.mjs'
 
 const leaf = (over = {}) => normalizeNode({
@@ -307,4 +307,56 @@ test('a red leaf whose locus is a directory owns the failures under it, and only
   assert.deepEqual(measurementOk(m(red), dirRed).failures, [])
   const stray = m({ ...red, failing_tests: [...red.failing_tests, { file: 'tests-old/y.test.mjs', id: 'y' }] })
   assert.deepEqual(measurementOk(stray, dirRed).failures.map((f) => f.check), ['suite'])
+})
+
+// ---------------------------------------------------------------- fix rounds and review rounds
+
+test('a fix close that repeats the last one at a moved head does not converge; a re-measure of the same head is no second round', () => {
+  const failures = [{ check: 'suite', claim: 'test x fails' }]
+  const previous = { decision: { next: 'fix', failures }, head_sha: 'h1' }
+  assert.equal(fixNotConverging(previous, { failures }, 'h2'), true)
+  assert.equal(fixNotConverging(previous, { failures }, 'h1'), false)
+  assert.equal(fixNotConverging(previous, { failures: [{ check: 'suite', claim: 'test y fails' }] }, 'h2'), false)
+  assert.equal(fixNotConverging({ ...previous, decision: { next: 'review', failures: [] } }, { failures }, 'h2'), false)
+  assert.equal(fixNotConverging(null, { failures }, 'h2'), false)
+})
+
+const critical = (id) => ({ id, severity: 'critical', claim: 'wrong', evidence: 'x:1', failure_scenario: 'y' })
+
+test('a review round approves on an empty open set and blocks only on criticals, or a contract leaf\'s majors with a scenario', () => {
+  assert.equal(reviewExit({ findings: [] }).next, 'approve')
+  const major = { id: 'M', severity: 'major', claim: 'c', evidence: 'e', failure_scenario: 'breaks a consumer' }
+  assert.equal(reviewExit({ findings: [major] }).next, 'approve', 'a major is advisory on a leaf that provides nothing')
+  assert.equal(reviewExit({ findings: [major], provides: true }).next, 'fix')
+  assert.equal(reviewExit({ findings: [{ ...major, failure_scenario: ' ' }], provides: true }).next, 'approve')
+  const first = reviewExit({ findings: [critical('F1')] })
+  assert.deepEqual([first.next, first.open.map((f) => f.id), first.raise], ['fix', ['F1'], false])
+})
+
+test('a prior blocker left unruled, or ruled not fixed without being re-reported, stays open; the same one twice escalates', () => {
+  const one = reviewExit({ findings: [critical('F1')] })
+  const unruled = reviewExit({ findings: [], verdicts: [], prior: one })
+  assert.deepEqual([unruled.next, unruled.open.map((f) => f.id), unruled.raise], ['fix', ['F1'], true])
+  const again = reviewExit({ findings: [critical('F1')], verdicts: [{ id: 'F1', status: 'not_fixed' }], prior: unruled })
+  assert.deepEqual([again.next, again.reason], ['escalate', 'review_not_converging'])
+  assert.equal(reviewExit({ findings: [], verdicts: [{ id: 'F1', status: 'fixed' }], prior: one }).next, 'approve')
+})
+
+test('two rounds that each fix every prior blocker and still mint new ones escalate', () => {
+  const r1 = reviewExit({ findings: [critical('F1')] })
+  const r2 = reviewExit({ findings: [critical('F2')], verdicts: [{ id: 'F1', status: 'fixed' }], prior: r1 })
+  assert.deepEqual([r2.next, r2.clean_streak], ['fix', 1])
+  const r3 = reviewExit({ findings: [critical('F3')], verdicts: [{ id: 'F2', status: 'fixed' }], prior: r2 })
+  assert.deepEqual([r3.next, r3.reason], ['escalate', 'review_not_converging'])
+})
+
+test('an integration review parks once, by class: a spec defect, then criticals and drift, then what it could not tell', () => {
+  const claim = (verdict, text = 't') => ({ claim: text, verdict, evidence: 'a:1' })
+  assert.equal(integrationPark([], [claim('met')], 'S'), null)
+  for (const v of ['under', 'over', 'deviates']) assert.equal(integrationPark([], [claim(v)], 'S').why, 'integration_critical')
+  assert.equal(integrationPark([critical('F1')], [claim('cant_tell')], 'S').why, 'integration_critical')
+  assert.equal(integrationPark([], [claim('cant_tell')], 'S').why, 'cant_tell')
+  const defect = integrationPark([critical('F1')], [claim('cant_tell', 'a'), claim('spec_defect', 'b')], 'S')
+  assert.equal(defect.why, 'spec_defect')
+  assert.ok(defect.question.startsWith('the spec S: ') && ['F1: wrong', '[cant_tell] a', '[spec_defect] b'].every((s) => defect.question.includes(s)))
 })

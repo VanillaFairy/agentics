@@ -476,9 +476,10 @@ to escape and no apostrophe to close. A line only the observing agent can fill i
 series) goes by heredoc on stdin and carries no digest; the writer still refuses what does not
 parse. A digest makes corruption detectable; the encoding makes it unlikely.
 
-Evidence tokens — a survey's, probe's or solutions sweep's items, a re-judge's verdicts — are the
-exception: they are long, and base64 is both longer and the text a courier copies worst. They
-travel as JSON by file (`viaJsonFile` in each of those workflows): the courier writes one line of
+Evidence tokens — a survey's, probe's or solutions sweep's items, a re-judge's verdicts — and the
+records `schedule` and `postflight` carry are the exception: they are long, or grow with what the
+workflow decided, and base64 is both longer and the text a courier copies worst. They
+travel as JSON by file (`viaJsonFile` in each workflow that sends one): the courier writes one line of
 JSON to `.agentics/.state/token-<digest>.json` with single-quoted `printf '%s' '<chunk>'` calls of
 at most `COMMAND_BUDGET` characters (under cmd.exe's 8191-character line), and the lib reads it
 with `--json-file` under the token's digest and removes it. Single quotes leave `$` and backticks
@@ -571,7 +572,8 @@ any fails:
 1. **One concern.** Its change can be stated as one commit subject without a conjunction.
 2. **One rigor and one role.** A single [rigor](#rigor) applies to all of it, and it is authored
    by one agent role.
-3. **Closed locus.** Every file it writes is in `locus`, and no file in it is held by another leaf
+3. **Closed locus.** Every file it writes is in `locus` (an entry ending in `/` holds every file
+   under it), and no file in it is held by another leaf
    that is not yet merged (otherwise the two are ordered by a dependency, or the file goes to the
    [coupled lane](#coupled-work)).
 4. **Checkable alone.** Each acceptance criterion, except a `HUMAN:` one, names a check (a test, the
@@ -693,7 +695,7 @@ Every leaf carries a `rigor`, set by its author. Walk the table top-down; the fi
 | `verify` | writes nothing: confirms a premise, proves a criterion already holds, measures | no producer; the named checks run at leaf-close | the checks' results, recorded; a failure is a finding for the parent, not a fix round |
 | `trivial` | writes a change a test would only restate: literal values and user-visible text (a window title, a label, a message), config values, docs, assets, renames behind an unchanged interface, dependency versions, wiring of existing parts | one implementer leaf | the named check, when the leaf needs one to show it works (build, typecheck, the tests the change can reach, running it, a `HUMAN:` look); a test asserting the changed value is updated in the same leaf |
 | `tests-only` | only adds tests to code that is already correct | one test-author leaf | each new test passes now and fails under a mutation the test-author declared |
-| `tdd` | adds behaviour whose expected results the criteria state exactly | one implementer leaf, test first | at least one new test; each fails at base and passes now |
+| `tdd` | adds behaviour whose expected results the criteria state exactly | one implementer leaf, test first | at least one test file adds a test case, and each that does fails at base and passes now; one that adds none (upkeep: existing tests kept working) passes now |
 | `tdd-pair` | adds behaviour where a wrong reading of the criteria would pass its author's own tests: edge-case rules, parsers, state machines, concurrency, contracts other nodes consume | a `red` test-author leaf, then a `green` implementer leaf | red: its tests fail for want of the implementation; green: they pass, tests untouched |
 | `tdd-triad` | as `tdd-pair`, and a miss ships silently into durable state or is costly to find: persistence formats, migrations, data loss, security, money | red, green, then an `audit` leaf | as `tdd-pair`, plus the auditor's declared mutations are killed |
 
@@ -1450,7 +1452,7 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
 | verify | no | no | no | yes |
 | trivial | yes | no | no | when given |
 | tests-only | yes | passes-now half read | required (≥ 1 declared) | when given |
-| tdd | yes | full: fails at base, passes now | when declared | when given |
+| tdd | yes | full: fails at base, passes now; an upkeep file passes now | when declared | when given |
 | red | yes | red: fails now, fails at base | no | — |
 | green | yes | the red leaf's tests pass now | no | when given |
 | audit | no series expected | no | required | — |
@@ -1471,6 +1473,13 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
   back.
 - A test that could not be launched at base is `test_unrunnable`; a suite failure that cannot be
   placed against a test file raises `suite_failures_unnamed`.
+- **A changed test file either adds a test case or keeps existing ones working.** Each file of the
+  leaf's own diff is classified by its added lines: one declaring a test case (`TEST_CASE_PATTERNS`
+  in `lib/verify.mjs`, a closed set like the test-file patterns) that the diff does not also remove
+  adds one. A file adding none is upkeep — a call site given a new argument — and passes at base by
+  construction, so no commit could make it discriminate. The classification is on each
+  discriminator entry (`adds_test`) and in the notes, so the verdict and a resume read it off the
+  journal line. A caller's named tests are the cycle's and each counts as adding one.
 - **A leaf runs the tests it is told to, and no others.** Its own tests are the test files its
   diff changed, plus the cycle's test files for a green or an audit, each run through the
   `test_one` template (`suite_scope: scoped`; `none`, with `suite: not_run`, when there are none).
@@ -1500,7 +1509,8 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
 `lib/verdict.mjs` is the one home of the measurement verdict. `measurementOk(m, leaf)` derives pass
 or fail from the observations against the leaf's profile (every profile needs a completed
 measurement, no failed build or typecheck and no blocking series finding; then per profile: a tdd
-leaf's new tests fail at base and pass now; a tests-only leaf's tests pass and every declared
+leaf's test files that add a test case fail at base and pass now, and its upkeep files pass now —
+when none adds one, every file is held to the whole discriminator; a tests-only leaf's tests pass and every declared
 mutation bites; a red leaf's tests fail now and at base; a green leaf's cycle tests pass; an audit's
 mutations all bite over the cycle's tests; trivial, verify, tdd, tests-only and green need their
 named checks and their own tests not to have failed). A named check fails for the change when it
@@ -1738,7 +1748,7 @@ Two conventions hold throughout:
 - **A CLI whose output a courier carries back** prints `{payload, payload_digest}` and exits 0,
   even when the payload reports a typed error. `{error}` with exit 1 means the program itself
   failed. Arguments minted by the workflow arrive as `--b64 <token> --digest <d>`, or
-  `--json-file <path> --digest <d>` for an evidence token; a mismatch is
+  `--json-file <path> --digest <d>` for an evidence token or a boundary call that carries records; a mismatch is
   refused as `digest_mismatch`, and nothing is written.
 
 ### Node record and events
@@ -1975,7 +1985,8 @@ latest, and whether an escalation or park is newer than the replan that would cl
 `suite_scope` (`fast` or `full` on a merged head, `scoped` for a leaf's own tests, `none` when nothing ran);
 `suite_output_tail` (only when the suite failed);
 `failing_tests[{file, id}]`; `baseline_failing[{file, id}]` (failing tests that fail at the base too);
-`discriminator[{test_id, failed_on_base, passes_now}]`;
+`discriminator[{test_id, adds_test, failed_on_base, passes_now}]` (`adds_test` false for a file of
+the leaf's own diff that adds no test case; an entry without it is read as adding one);
 `mutations[{file, applied, unapplied_reason, expect_failing, observed_failing, bites}]`;
 `series_findings[{sha, check, message, blocking}]`; `checks[{command, status, failing_tests,
 baseline_failing}]` (`status` `passed | failed | unrunnable`); `notes`; `error`
@@ -2096,7 +2107,8 @@ merged, the root integrated, nothing escalated or parked — carried from an ear
 not — and no earned integration review or survey lost), `dropped[]`, `incomplete[]`,
 `failed_channels[]`, `unreached[]` (prose, loss first), `resumable {runId, remaining, args?,
 postflight?}`. `postflight` is `execute-approved-plan-in-worktrees`'s alone, present only when no
-courier could carry its postflight: the boundary's command, whole, for the session to run.
+courier could carry its postflight: the boundary's file writes and command, one per line, for the
+session to run in order.
 
 ### Evidence item store
 

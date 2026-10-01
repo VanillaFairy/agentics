@@ -353,8 +353,8 @@ changes. An explanation only in chat beside the dialog, or only in your thinking
 never sees, does not count, nor does a re-ask that refers to one ("given those uses", "as above").
 <!-- /agentics:verbatim -->
 
-**First, when `coverage.failed_channels` holds `postflight`:** run the command in
-`coverage.resumable.postflight` exactly as it stands. Until it has run, the stops the result lists
+**First, when `coverage.failed_channels` holds `postflight`:** run the lines in
+`coverage.resumable.postflight` in order, exactly as they stand. Until it has run, the stops the result lists
 are on no disk, and every status the store shows is older than the run.
 
 **a. Checkpoint.** Non-null means nothing new was dispatched; what it found is printed by

@@ -2,7 +2,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { append, readLog } from '../lib/ledger.mjs'
@@ -35,6 +35,47 @@ test('a failing merged head is bisected: the leaf that fails alone is named, the
   const again = B(r, 'leaf-open', { node: 'x', role: 'implementer', round: out.failed_alone[0].facts.rounds + 1 })
   assert.match(readFileSync(again.brief_path, 'utf8'), /## Fix round 2[\s\S]*\[integration\] the suite fails on the merged head[\s\S]*```text/,
     'the fix round the workflow opens reads the failure and its evidence merge-batch left for it')
+})
+
+test('a merged leaf loses its worktree and keeps its branch; a leaf failing alone keeps both', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(),
+    leaf('x', { rigor: 'trivial', locus: ['src/add.mjs'] }),
+    leaf('y', { rigor: 'trivial', locus: ['README.md'] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const x = B(r, 'leaf-open', { node: 'x', role: 'implementer', round: 1 })
+  const xs = commitIn(x.worktree, { 'src/add.mjs': 'export const add = (a, b) => a - b\n' }, 'Break add')
+  const y = B(r, 'leaf-open', { node: 'y', role: 'implementer', round: 1 })
+  const ys = commitIn(y.worktree, { 'README.md': 'hello world\n' }, 'Greet the world')
+
+  const out = B(r, 'merge-batch', { target: '.', children: [{ id: 'x', head_sha: xs }, { id: 'y', head_sha: ys }], cycles: [] })
+  assert.deepEqual(out.merged.map((m) => m.id), ['y'])
+  assert.equal(existsSync(y.worktree), false)
+  assert.equal(git(r, 'worktree', 'list').includes(y.worktree), false, 'git forgets it too')
+  assert.equal(git(r, 'rev-parse', 'agentics/e1--y'), ys)
+  assert.equal(git(x.worktree, 'rev-parse', 'HEAD'), xs, 'the fix round works where it worked')
+})
+
+test('preflight removes a merged leaf\'s clean worktree and reports a dirty one', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(),
+    leaf('x', { rigor: 'trivial', locus: ['src/add.mjs'] }),
+    leaf('y', { rigor: 'trivial', locus: ['README.md'] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const x = B(r, 'leaf-open', { node: 'x', role: 'implementer', round: 1 })
+  const xs = commitIn(x.worktree, { 'src/add.mjs': 'export const add = (a, b) => b + a\n' }, 'Add in the other order')
+  const y = B(r, 'leaf-open', { node: 'y', role: 'implementer', round: 1 })
+  const ys = commitIn(y.worktree, { 'README.md': 'hello world\n' }, 'Greet the world')
+  B(r, 'merge-batch', { target: '.', children: [{ id: 'x', head_sha: xs }, { id: 'y', head_sha: ys }], cycles: [] })
+  // Worktrees an earlier run left behind: one clean, one holding uncommitted work.
+  git(r, 'worktree', 'add', '-q', x.worktree, 'agentics/e1--x')
+  git(r, 'worktree', 'add', '-q', y.worktree, 'agentics/e1--y')
+  writeFileSync(join(y.worktree, 'README.md'), 'unsaved\n')
+
+  const pre = B(r, 'preflight', { root: '.', commands: COMMANDS })
+  assert.equal(existsSync(x.worktree), false)
+  assert.deepEqual(pre.dirty_worktrees, [y.worktree])
+  assert.equal(readFileSync(join(y.worktree, 'README.md'), 'utf8'), 'unsaved\n', 'never forced')
 })
 
 test('a reopened leaf follows its moved parent: the parent head is its base, and the merge is not its work', () => {

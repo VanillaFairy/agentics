@@ -38,7 +38,7 @@ Run the checks with:
   whose heading is gone.
 - **Data contracts are registered in `docs/DESIGN.md#data-contracts`** — the node record and
   events, the spec format, the ledger lines, the compile result, the state and journal lines,
-  `seq`, the verify payload, the gotcha file, slots and locks, the boundary payloads, the
+  `seq`, the verify payload, the progress file, the gotcha file, slots and locks, the boundary payloads, the
   replanning returns, the coverage block and the workflow returns — each
   with the code that owns it and every place it is restated. **Any change to one of those field
   lists updates its entry there and edits every copy the entry names, in the same commit series;

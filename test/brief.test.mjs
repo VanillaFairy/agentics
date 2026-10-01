@@ -10,7 +10,7 @@ import { assembleBrief, measuresFor } from '../lib/brief.mjs'
 import { recordItems, snapshotSpec } from '../lib/evidence.mjs'
 import { writeGotcha } from '../lib/gotchas.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
-import { briefPath, reportPath } from '../lib/store.mjs'
+import { briefPath, progressPath, reportPath } from '../lib/store.mjs'
 import { normalizeNode } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 
@@ -182,4 +182,14 @@ test('fetch prints the brief only when the digest matches', () => {
   const missing = run('--path', b.path + '.gone', '--digest', b.digest)
   assert.equal(missing.status, 1)
   assert.match(missing.stdout, /^REFUSED: .* could not be read/)
+})
+
+test('an implementer and a test author are given a progress path; an auditor is not', () => {
+  const repo = effort()
+  for (const role of ['implementer', 'test-author']) {
+    const t = assembleBrief(repo, E, X, 'api/parse', { role }).text
+    assert.ok(t.includes('Progress path: ' + progressPath(repo, E, X, 'api/parse', role, 1)), role)
+    assert.ok(t.indexOf('## Progress') < t.indexOf('## Report'), role + ': progress is set up before the report')
+  }
+  assert.ok(!assembleBrief(repo, E, X, 'api/parse', { role: 'auditor' }).text.includes('## Progress'))
 })

@@ -24,11 +24,11 @@ import { hashSpec, parseSpec } from '../lib/spec.mjs'
 import { costOf, efforts, todoFor } from '../lib/status.mjs'
 import * as statusModule from '../lib/status.mjs'
 import {
-  agenticsRoot, branchOf, briefPath, executionDir, parentOf, posix, reportPath, specPath, worktreeOf,
+  agenticsRoot, branchOf, briefPath, executionDir, parentOf, posix, progressPath, reportPath, specPath, worktreeOf,
 } from '../lib/store.mjs'
 import { normalizeNode, readTree, renderTree } from '../lib/tree.mjs'
 
-const { nodeOf, renderNode, snapshotOf } = statusModule
+const { nodeOf, parseProgress, renderNode, snapshotOf } = statusModule
 
 const CLI = fileURLToPath(new URL('../lib/status.mjs', import.meta.url))
 
@@ -586,4 +586,41 @@ test('node prints one entry of the snapshot, for a person or as JSON', () => {
   const missing = run('--node', 'nope')
   assert.equal(missing.status, 1)
   assert.match(JSON.parse(missing.stdout).error, /no live node/)
+})
+
+test("progress is the unfinished leaf's latest progress file, and null where there is none", () => {
+  const { repo, effort, stamp } = effortFixture()
+  const items = [{ name: 'Parser', state: 'done' }, { name: 'Lexer', state: 'working' }, { name: 'Errors', state: 'pending' }]
+  writeFileSync(progressPath(repo, effort, stamp, 'a/impl', 'implementer', 1), JSON.stringify({ items: items.slice(0, 1) }))
+  append(repo, effort, 'events', { kind: 'dispatched', node: 'a/impl', execution: stamp, role: 'implementer', round: 2, model: 'sonnet', effort: 'medium' })
+  const latest = progressPath(repo, effort, stamp, 'a/impl', 'implementer', 2)
+  writeFileSync(latest, JSON.stringify({ items }))
+
+  const byId = Object.fromEntries(snapshotOf(repo, effort).nodes.map((n) => [n.id, n]))
+  assert.ok(samePath(repo, byId['a/impl'].progress.path, latest))
+  assert.deepEqual(byId['a/impl'].progress.items, items)
+  assert.equal(byId['a/impl'].progress.error, null)
+  assert.equal(byId['a/fix'].progress, null, 'a leaf that wrote none')
+  assert.equal(byId.a.progress, null, 'a folder is not a leaf')
+  assert.match(renderNode(byId['a/impl']), /progress: \[x\] Parser, \[>\] Lexer, \[ \] Errors/)
+})
+
+test("a merged leaf's progress is dropped: its commits say what it did", () => {
+  const { repo, effort, stamp } = effortFixture()
+  writeFileSync(progressPath(repo, effort, stamp, 'a/impl', 'implementer', 1), JSON.stringify({ items: [{ name: 'Parser', state: 'done' }] }))
+  const head = git(repo, 'rev-parse', branchOf(effort, 'a/impl'))
+  append(repo, effort, 'events', { kind: 'merged', node: 'a/impl', execution: stamp, into: 'a', merged_sha: head, head_sha: head })
+  const impl = snapshotOf(repo, effort).nodes.find((n) => n.id === 'a/impl')
+  assert.ok(impl.status === 'merged', 'the fixture merged the leaf, not ' + impl.status)
+  assert.equal(impl.progress, null)
+})
+
+test('a progress file caught mid-rewrite reads as unreadable, never as fewer pieces', () => {
+  const whole = JSON.stringify({ items: [{ name: 'A', state: 'done' }, { name: 'B', state: 'pending' }] })
+  assert.deepEqual(parseProgress(whole).items.map((it) => it.name), ['A', 'B'])
+  for (const text of [whole.slice(0, whole.length - 5), '', '{}', '{"items":[{"name":"A","state":"started"}]}', '{"items":[{"name":" ","state":"done"}]}']) {
+    const p = parseProgress(text)
+    assert.equal(p.items, null, text)
+    assert.ok(p.error, text)
+  }
 })

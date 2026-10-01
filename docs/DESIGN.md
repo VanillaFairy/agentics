@@ -1293,7 +1293,9 @@ merge-batch. Coupled leaves run one at a time; everything else keeps running.
   writes its report to a file, and returns a short typed status: `done`, `done_with_concerns`,
   `blocked`, `needs_context`, or a [replanning](#replanning) return. The implementer journals
   `series-done` by heredoc when it has finished; for a shell-less author leaf-close commits its
-  files and journals it.
+  files and journals it. An implementer or test author also keeps a [progress
+  file](#progress-file): the pieces its work splits into, each `pending`, `working` or `done`,
+  written before its first edit and rewritten at every move.
 - **Verification failures** send a fresh producer a fix round carrying the failures. A fix round
   that returns no commits escalates (`fix_without_commits`); two consecutive measurements failing
   identically escalate (`verify_not_converging`). lib/verdict.mjs escalates what no commit inside
@@ -1591,6 +1593,15 @@ once, it is answered while other work goes on and the node rejoins the run.
 The agentics viewer (vanillafairy's `agentics-viewer/`) draws an effort live from
 `lib/status.mjs snapshot`. It reads, and never writes, the effort store.
 
+**Progress inside a leaf is the executor's own word, drawn live.** A leaf is one dispatch, and
+what the user sees between its boundaries would otherwise be nothing but a commit count. The
+executor writes its [progress file](#progress-file) into the store, the viewer's watch on the store
+re-reads the snapshot, and the node's entry carries the pieces with their states. It is a view in
+the same sense as the todo list: no status, resume step, verdict or review reads it, so an
+executor's `done` there certifies nothing, and a leaf's file is dropped from the snapshot once the
+leaf is merged, when its commits say what it did. A file read mid-rewrite is shown as unreadable,
+never as a shorter list; the write's own completion triggers the next read.
+
 ### The node card
 
 A session started on one node reads one thing first: `lib/status.mjs node --node <id>`, the node's
@@ -1767,7 +1778,7 @@ one read-only call, under a digest — it writes no file, no lock and no `seq`. 
 spec: {path}}`: `title` and `blocking` (its open `blocking` questions) from `parseSpec`, `approval`
 from `approvalState`. `nodes` is every live node, the root’s subtree first and then any node the
 tree cannot reach, each `{id, label, parent, kind, author, title, intent, context, rigor, role, locus, deps,
-acceptance, status, event, stage, branch, worktree, commits, files, card}`: `label` is the node's own
+acceptance, status, event, stage, branch, worktree, commits, progress, files, card}`: `label` is the node's own
 label, else the last segment of its id (the effort's name at the root); `author` is who writes the
 node's spec, `you` or `planner`, so a reader can tell an open design node that waits on the user
 from one develop's planner writes; `status` from `deriveStatus`;
@@ -1777,7 +1788,10 @@ exists, else empty), null for every other status; `stage` is `todoFor`’s `acti
 `status` is `in_progress`, null otherwise; `branch` is the node’s own branch name, always; `worktree`
 is its path only when checked out; `commits` is `{count, last_subject, last_at}` over the leaf’s
 own branch since its folder’s, null unless the leaf is `active` (an inactive leaf, or anything that
-is not a leaf, never earns the git call) or either branch is missing; `files.spec` is `{path, line}`
+is not a leaf, never earns the git call) or either branch is missing; `progress` is `{path, items,
+error}` from the latest dispatch that left a [progress file](#progress-file), for a leaf that is
+not merged, integrated or landed, null otherwise — `items` the file's `{name, state}` list and
+`error` null, or `items` null and `error` what is wrong with the file; `files.spec` is `{path, line}`
 — a leaf’s folder spec at its plan entry’s line, a group’s at its heading’s, a folder’s own spec
 at no particular line — and
 `files.briefs`/`files.reports` list only the paths that exist on disk. `card` is
@@ -1798,6 +1812,18 @@ the models that have one.
 
 `node lib/status.mjs list --repo <r> --json` also carries `store`, present whether or not the
 effort store exists.
+
+### Progress file
+
+- **Owner:** `parseProgress` in `lib/status.mjs` (the reader); `progressPath` in `lib/store.mjs`.
+- **Restated in:** the brief's progress contract (`PROGRESS_CONTRACT` in `lib/brief.mjs`, given
+  to the roles in `PROGRESS_ROLES`); `agentics-viewer/shared/snapshot.ts` in the vanillafairy
+  repository (a reader, through the snapshot).
+
+One JSON document per dispatch, beside its report:
+`.state/reports/<stamp>-<id>-<role>-r<round>.progress.json`, rewritten whole by the executor.
+`{items: [{name, state}]}`, `name` a non-empty string, `state` one of `pending`, `working`,
+`done`, in the order the executor does them. Anything else reads as unreadable, with the reason.
 
 ### Spec format
 

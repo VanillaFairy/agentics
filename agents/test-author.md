@@ -54,8 +54,9 @@ longer than the code it documents is a defect unless it is a proof, a protocol, 
 
 ## Your locus
 
-Every file you create or modify is inside the leaf's locus, but for your report and the file your
-dispatch names when you stop short, which sit outside the worktree. The leaf-close script commits only
+Every file you create or modify is inside the leaf's locus, but for your report, your progress
+file (kept as the brief says, from before your first test) and the file your dispatch names when
+you stop short, which sit outside the worktree. The leaf-close script commits only
 locus files; anything else is left behind and reported as a blocking breach. If the criteria
 cannot be pinned from inside it, return `blocked` or `decompose` with what you needed.
 

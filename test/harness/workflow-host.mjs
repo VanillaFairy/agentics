@@ -17,8 +17,6 @@
 
 import { readFileSync } from 'node:fs'
 
-import { parseLocations } from '../../lib/citations.mjs'
-
 import { canonical, fnv1a } from '../../lib/plan-digest.mjs'
 import { jsonFileText } from '../../lib/store.mjs'
 
@@ -225,37 +223,3 @@ export function courierProblems(prompts) {
 
 /** A context file path, as lib writes one, named after what it was written for. */
 export const contextPath = (name) => `C:/repo/.agentics/.state/context/${name}-1.md`
-
-/**
- * The locations a `lib/citations.mjs excerpts` dispatch carries, parsed by the library's own
- * parser from its `--locs` list.
- *
- * @param {string} prompt a courier prompt carrying `--locs "L" --digest D`
- * @returns {{ digest: string, list: string, locations: Array<{path: string, line: number}> }}
- */
-export function excerptLocations(prompt) {
-  const call = /--locs "([^"]*)" --digest (\S+)/.exec(prompt || '')
-  if (!call) throw new Error('this prompt carries no --locs/--digest location list')
-  return { digest: call[2], list: call[1], locations: parseLocations(call[1]) }
-}
-
-/**
- * `lib/citations.mjs excerpts`'s payload for the locations a prompt carries: one context file
- * named by the list's digest, so each batch's file path is distinct and traceable to it. Wrap it
- * in `carriedEnvelope` to answer the courier; damage it first to exercise the transport ladder.
- */
-export function contextPayload(prompt) {
-  const { digest, locations } = excerptLocations(prompt)
-  return {
-    repo: '.',
-    context: { digest, parts: [{ path: contextPathFor(digest), lines: 5 * locations.length, bytes: 100 }] },
-    counts: { locations: locations.length, files: 1, excerpts: locations.length, bytes: 100, unresolved: 0 },
-    notes: 'resolved ' + locations.length + ' window(s)',
-  }
-}
-
-/** The context file `contextPayload` names for a list with this digest. */
-export const contextPathFor = (digest) => `C:/repo/.agentics/.state/context/${digest}-1.md`
-
-/** A context courier that writes every location its prompt carries. */
-export const carriedContext = (prompt) => carriedEnvelope(contextPayload(prompt))

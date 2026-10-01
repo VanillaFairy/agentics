@@ -3,15 +3,16 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { itemsFor, liveItems, recordItems, recordJudgement, reviewScope } from '../lib/evidence.mjs'
+import { fnv1a } from '../lib/plan-digest.mjs'
 import { hashSpec } from '../lib/spec.mjs'
 import { evidenceItemsPath } from '../lib/store.mjs'
 import {
   cli, commit, gitRepo, itemOf, lines, linkedWorktree, logOf, record, RETURN, span, spanFixture, stateOf,
-  text, token, withLine, write,
+  returnFile, text, withLine, write,
 } from './harness/evidence-fixture.mjs'
 
 // ------------------------------------------------------------------ worktrees
@@ -109,40 +110,41 @@ test('reviewScope reads the root it is given, and maps a worktree path to the sa
 
 // ------------------------------------------------------------------ the CLI
 
-test('the items verb lists by ground, standing and suspect by default, and --states filters', () => {
+test('the items verb lists handles by ground, standing and suspect by default, and writes what they say to a file', () => {
   const { repo, id } = spanFixture()
   write(repo, 'src/a.js', text(withLine(lines(30), 12, 'line twelve')))
   const run = cli(repo)
   const listed = run('items', '--ground', 'src')
-  assert.deepEqual(listed.ground, ['src'])
-  assert.deepEqual(listed.items.map((i) => [i.id, i.state]), [[id, 'suspect']])
-  assert.deepEqual(run('items', '--ground', 'src', '--states', 'standing').items, [])
+  assert.deepEqual(listed.items.map((i) => [i.id, i.state, i.topic, i.ground]), [[id, 'suspect', 't', ['src']]])
+  const said = readFileSync(listed.context, 'utf8')
+  assert.match(said, /SUSPECT[\s\S]*src\/a\.js:10-14 says what it says[\s\S]*is now:\nline 10\nline 11\nline twelve/)
+  assert.deepEqual(run('items', '--ground', 'src', '--states', 'standing'), { items: [], context: '' })
   assert.deepEqual(run('items', '--ground', 'src', '--states', 'standing,suspect').items.map((i) => i.id), [id])
+  assert.deepEqual(run('items', '--ground', 'src', '--return-kind', 'probe').items, [], 'only the kind of return asked for')
 })
 
-test('the judge verb records each judgement, an unknown id as ok: false inside its payload', () => {
+test('the judge verb records a verdict for each id it is handed, from the file the analyst wrote', () => {
   const { repo, id } = spanFixture()
   write(repo, 'src/a.js', text(withLine(lines(30), 12, 'line twelve')))
-  const judged = cli(repo)('judge', ...token({ judgements: [{ id, verdict: 'holds' }, { id: 'I00000000', verdict: 'holds' }] }))
-  assert.deepEqual(judged.recorded.map((r) => [r.id, r.verdict, r.ok]), [[id, 'holds', true], ['I00000000', 'holds', false]])
-  assert.equal(judged.recorded[0].state, 'standing')
+  const from = returnFile(repo, { judgements: [{ id, verdict: 'holds', why: 'a comment' }, { id: 'I00000001', verdict: 'fails' }] })
+  const judged = cli(repo)('judge', '--from', from, '--id', id, '--id', 'I00000000')
+  assert.deepEqual(judged, { read: true, recorded_n: 1, standing_n: 1, failed_n: 1 }, 'an id it was not handed is not recorded; an unknown one fails')
   assert.equal(stateOf(repo, id).state, 'standing')
 })
 
-test('the judge verb refuses a token whose digest does not match, and records nothing', () => {
+test('the judge verb records unsure for every id when the analyst wrote no file', () => {
   const { repo, id } = spanFixture()
-  const [, , b64flag, b64] = token({ judgements: [{ id, verdict: 'fails' }] })
-  const damaged = cli(repo)('judge', '--digest', 'deadbeef', b64flag, b64)
-  assert.equal(damaged.error.kind, 'digest_mismatch')
-  assert.deepEqual(logOf(repo, 'judged'), [])
-  assert.equal(stateOf(repo, id).state, 'standing')
+  const judged = cli(repo)('judge', '--from', join(repo, 'nobody-wrote-this.json'), '--id', id)
+  assert.deepEqual([judged.read, judged.recorded_n], [false, 1])
+  assert.deepEqual(logOf(repo, 'judged').map((j) => j.verdict), ['unsure'])
+  assert.equal(stateOf(repo, id).state, 'stale')
 })
 
-test('the review-scope verb prints the reviewScope payload', () => {
+test('the review-scope verb prints the scope as handles', () => {
   const { repo } = spanFixture()
   const run = cli(repo)
   const scope = run('review-scope', '--file', 'src/a.js')
-  assert.deepEqual([scope.ok, scope.path, scope.full, scope.lines], [true, 'src/a.js', true, 30])
+  assert.deepEqual([scope.ok, scope.path, scope.full, scope.lines, scope.carried, scope.context], [true, 'src/a.js', true, 30, [], ''])
   assert.equal(run('review-scope', '--file', 'src/a.js', '--since', 'snapshot:deadbeef').since, 'snapshot:deadbeef')
 })
 
@@ -151,9 +153,13 @@ test('the record verb reads the checkout to record from out of --root', () => {
   const wt = linkedWorktree(repo)
   write(wt, 'src/a.js', text([...lines(30), ...lines(10, 'more')]))
   const head = commit(wt)
-  const out = cli(repo)('record', '--kind', 'survey', '--root', wt, ...token({ items: [itemOf(span('src/a.js', 35, 38))] }))
+  const plan = returnFile(repo, { question: 'q' })
+  const judge = returnFile(repo, { items: [{ ...span('src/a.js', 35, 38), topic: 't' }], risks: [] })
+  const out = cli(repo)('record', '--kind', 'survey', '--root', wt, '--plan', plan, '--question-digest', fnv1a('q'),
+    '--topic', 't', '--subtree', 'src', '--from', judge)
   assert.equal(out.ok, true, JSON.stringify(out))
-  assert.equal(liveItems(repo).get(out.ids[0]).spans[0].at, head)
+  const [item] = [...liveItems(repo).values()]
+  assert.deepEqual([item.from_return, item.spans[0].at], [out.return, head])
 })
 
 test('the items, judge and review-scope verbs read the checkout out of --root', () => {
@@ -166,8 +172,8 @@ test('the items, judge and review-scope verbs read the checkout out of --root', 
   assert.deepEqual(run('items', '--ground', 'src').items.map((i) => i.state), ['standing'])
   assert.deepEqual(run('items', '--ground', 'src', '--root', wt).items.map((i) => i.state), ['suspect'])
 
-  const judged = run('judge', '--root', wt, ...token({ judgements: [{ id, verdict: 'holds' }] }))
-  assert.deepEqual(judged.recorded.map((r) => [r.id, r.ok, r.state]), [[id, true, 'standing']])
+  const judged = run('judge', '--root', wt, '--from', returnFile(repo, { judgements: [{ id, verdict: 'holds' }] }), '--id', id)
+  assert.deepEqual([judged.recorded_n, judged.standing_n], [1, 1])
   assert.equal(liveItems(repo).get(id).spans[0].at, 'snapshot:' + hashSpec(text(edited)),
     'an uncommitted worktree edit re-anchors at a snapshot of the worktree\'s text')
 

@@ -320,7 +320,7 @@ never sees, does not count, nor does a re-ask that refers to one ("given those u
   write it verbatim to a file and record it as an `approach` raw return.
 
   ```bash
-  node "${CLAUDE_PLUGIN_ROOT}/lib/evidence.mjs" record --repo . --kind approach --b64 "$(node -e "process.stdout.write(require('fs').readFileSync(process.argv[1]).toString('base64'))" <path.json>)"
+  node "${CLAUDE_PLUGIN_ROOT}/lib/evidence.mjs" record --repo . --kind approach --from <path.json>
   ```
 
   Show the drafts with their trade-offs, your recommendation first; a draft that cites no

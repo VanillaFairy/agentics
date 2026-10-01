@@ -348,46 +348,24 @@ test('a refused return leaves no raw file behind', () => {
   assert.ok(!existsSync(dir) || readdirSync(dir).length === 0)
 })
 
-test('the CLI records a digest-checked token and prints an envelope, refusals included', () => {
+test('the CLI records an approach draft from the file its author wrote, and prints only handles', () => {
   const repo = gitRepo()
-  const payload = { items: [fresh()] }
-  const token = Buffer.from(JSON.stringify(payload)).toString('base64')
-  const run = (digest) => spawnSync(process.execPath,
-    [CLI, 'record', '--repo', repo, '--kind', 'survey', '--digest', digest, '--b64', token], { encoding: 'utf8' })
+  const draft = { approach: 'minimal-change', shape: "it's C:\\src\\x — \"quoted\"\n", contracts: [], cites: [], risks: [] }
+  const file = join(repo, 'draft.json')
+  writeFileSync(file, JSON.stringify(draft))
+  const run = (...args) => spawnSync(process.execPath, [CLI, 'record', '--repo', repo, '--kind', 'approach', ...args], { encoding: 'utf8' })
 
-  const good = run(fnv1a(canonical(payload)))
+  const good = run('--from', file)
   assert.equal(good.status, 0, good.stdout + good.stderr)
   const out = JSON.parse(good.stdout)
   assert.equal(out.payload_digest, fnv1a(canonical(out.payload)))
   assert.equal(out.payload.ok, true)
-  assert.deepEqual(out.payload.ids, [itemId(payload.items[0])])
+  assert.deepEqual(JSON.parse(readFileSync(join(evidenceReturnsDir(repo), out.payload.return + '.json'), 'utf8')), draft)
 
-  const linesBefore = storedLines(repo).length
-  const returnsBefore = readdirSync(evidenceReturnsDir(repo)).length
-  assert.equal(returnsBefore, 1)
-
-  const bad = run('deadbeef')
-  assert.equal(bad.status, 0, 'a damaged token is a typed refusal, not a failed program')
-  assert.equal(JSON.parse(bad.stdout).payload.error.kind, 'digest_mismatch')
-  assert.equal(storedLines(repo).length, linesBefore, 'the damaged token appended no item line')
-  assert.equal(readdirSync(evidenceReturnsDir(repo)).length, returnsBefore, 'the damaged token kept no raw return')
-})
-
-test('the CLI records JSON written to a file with ~, backslash and apostrophe encoded', () => {
-  const repo = gitRepo()
-  const payload = { items: [fresh({ claim: "it's C:\\src\\x ~b~t~q — \"quoted\"\n" })] }
-  const json = JSON.stringify(payload).replace(/~/g, '~t').replace(/\\/g, '~b').replace(/'/g, '~q')
-  assert.ok(!/[\\']/.test(json), 'nothing left for an escape-decoding layer or a single quote to touch')
-  const file = join(repo, 'token.json')
-  writeFileSync(file, json)
-
-  const run = (digest) => JSON.parse(spawnSync(process.execPath,
-    [CLI, 'record', '--repo', repo, '--kind', 'survey', '--digest', digest, '--json-file', file], { encoding: 'utf8' }).stdout)
-
-  assert.equal(run('deadbeef').payload.error.kind, 'digest_mismatch')
-  const out = run(fnv1a(canonical(payload)))
-  assert.equal(out.payload.ok, true, JSON.stringify(out))
-  assert.deepEqual(out.payload.ids, [itemId(payload.items[0])])
+  const missing = run('--from', join(repo, 'nothing.json'))
+  assert.equal(missing.status, 0, 'an unreadable file is a typed refusal, not a failed program')
+  assert.deepEqual(JSON.parse(missing.stdout).payload, { ok: false, error: { kind: 'return_unreadable' } })
+  assert.match(missing.stderr, /nothing\.json/, 'the reason goes to stderr; stdout carries handles only')
 })
 
 // ------------------------------------------------------------------ where the store lives

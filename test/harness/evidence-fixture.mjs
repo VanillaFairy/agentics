@@ -103,4 +103,9 @@ export const cli = (repo) => (...args) => {
   return out.payload
 }
 
-export const token = (value) => ['--digest', fnv1a(canonical(value)), '--b64', Buffer.from(JSON.stringify(value)).toString('base64')]
+/** A return file as an agent writes it with its Write tool: the JSON, under `dir`, named by its content. */
+export function returnFile(dir, value) {
+  const path = join(dir, 'return-' + fnv1a(canonical(value)) + '.json')
+  writeFileSync(path, JSON.stringify(value))
+  return path
+}

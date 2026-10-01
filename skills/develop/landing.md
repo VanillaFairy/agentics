@@ -52,7 +52,8 @@ Offer it after the merge; run it only when the user says so, from the checkout t
 node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" land --repo . --effort <e> --action cleanup
 ```
 
-It removes the worktrees of merged node branches and deletes those branches with `git branch -d`.
+It removes the worktrees still on merged node branches (a leaf's went with its merge) and deletes
+those branches with `git branch -d`.
 It keeps dirty worktrees and unmerged branches — the escalated and parked nodes' resumable state.
 Read the kept list out loud. Nothing under `.agentics/<effort>/` is removed: it is
 the only record of what was decided and done.

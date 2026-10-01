@@ -558,6 +558,12 @@ as a file under `refs/heads/`, so `agentics/e` and `agentics/e/auth` — or `aut
 `auth/session` — cannot both exist. Node-id segments carry no dot and effort names carry no `--`,
 so the spelling is reversible. Worktrees follow the same names under `.claude/worktrees/`.
 
+A leaf's worktree lives until the leaf merges. merge-batch removes it, clean, with the merge
+(`detach` in `lib/integration.mjs`); its branch stays until cleanup at
+[landing](#landing-and-drift). A merged leaf has nothing left to run in a worktree, and resume
+reads git refs, not the checkout. A dirty one is never forced: preflight reports it, and removes
+any clean one merge-batch did not reach.
+
 - **Concurrent executions** are allowed on any disjoint subtrees of the same effort. Preflight
   refuses only an execution whose root is an ancestor or a descendant of an open one (checkpoint
   `existing_execution`).
@@ -1146,12 +1152,12 @@ worktree already attached).
 
 | boundary | fused steps |
 |---|---|
-| **preflight** | refuse an execution overlapping an open one; adopt or write the envelope (base, dial, pace, and the commands the session wrote to `commands_file`); check whether the base moved under its leaves and write the ruler's brief and its record for those; traceability; free this execution's slots and its dead worktrees (clean ones only — a dirty one is reported, never forced). A checkpoint's lists (the overlapping executions, the gaps) go on its state line, for the session to read with `lib/status.mjs checkpoint`; the payload carries counts |
+| **preflight** | refuse an execution overlapping an open one; adopt or write the envelope (base, dial, pace, and the commands the session wrote to `commands_file`); check whether the base moved under its leaves and write the ruler's brief and its record for those; traceability; free this execution's slots, its dead worktrees and merged leaves' worktrees (clean ones only — a dirty one is reported, never forced). A checkpoint's lists (the overlapping executions, the gaps) go on its state line, for the session to read with `lib/status.mjs checkpoint`; the payload carries counts |
 | **schedule** | record the faults the workflow names; compute what to launch from the tree on disk (`lib/schedule.mjs`, see [Scheduling](#scheduling)); write each launch's card — a leaf's entry and parent, a plan's intent and why, a batch's children and cycles, a review's merged diff and children — and hand back its path with the handles the workflow branches on; park a folder the user writes that has nothing planned (`needs_design`); approve a leaf the resume ladder finds measured green, with no review loop of its own and no approval standing |
 | **leaf-open** | acquire a slot and the locus locks; ensure the parent's integration branch (lazily, refreshed from its own parent) and cut or attach the leaf's branch and worktree, brought up to that parent's head; assemble its brief, the round's fixes file included; append `dispatched` unless the leaf's status already stands on this same dispatch (execution, role and round), so an open sent again lands once and one after a replan, an approval or a round lands anew; a refusal escalates `open_refused` |
 | **leaf-close** | read the executor's status: a park, an escalation, a replan or a dispatch that returned nothing is recorded without measuring, and a fix round that moved nothing escalates `fix_without_commits`; otherwise commit a shell-less author's locus files (anything outside is reverted and reported as a breach); journal the series as `series-done`, from git, when the executor said it was done; build, typecheck, suite, discriminator, declared mutations and named checks by rigor; journal the observation; write and delete reported gotchas; compute the close decision and record it — the approval, the escalation, a verify leaf's finding (and the `needs_respec` park of a folder the user writes), `verify_not_converging` when a fix repeats the close before it at a moved head, `command_unknown` once an investigator ran |
 | **leaf-review** | read the review the reviewer wrote; compute the review loop's exit (`reviewExit`) against what the round before left open (`reviews/<node>-r<n>.json`); record the approval or the escalation, or write the open findings to the next round's fixes file |
-| **merge-batch** | under the branch lock, record `batch-started` with the head it starts from; merge every child the card names into one integration branch in dependency order; verify the merged head with the fast suite; bisect a red one; append `merged` and `merge-observed`; release locus locks; append a `batch` state line; record what stops — a conflict, a combination failure, a composite or a cycle failing alone, a batch that moved nothing, a batch that could not run; write the drift record and the ruler's brief. A batch that started and never recorded its outcome is reset to where it started and done again, so an unverified merge is never recorded as landed |
+| **merge-batch** | under the branch lock, record `batch-started` with the head it starts from; merge every child the card names into one integration branch in dependency order; verify the merged head with the fast suite; bisect a red one; append `merged` and `merge-observed`; release locus locks; remove each merged leaf's clean worktree, keeping its branch; append a `batch` state line; record what stops — a conflict, a combination failure, a composite or a cycle failing alone, a batch that moved nothing, a batch that could not run; write the drift record and the ruler's brief. A batch that started and never recorded its outcome is reset to where it started and done again, so an unverified merge is never recorded as landed |
 | **suite-gate** | on a composite whose children have all merged, under its branch lock: run the full suite on its integration head, against the head it was cut from; write the measurement; append a `gate` state line; escalate `fails_full_suite` or `suite_gate_failed`. It runs nothing where the repository does not split its tests, or where the full suite already passed at that head in this execution ([The suite gate](#the-suite-gate)). A gate that passes says whether the integration review is earned, and records one that is not as `claims` with `review: not_earned` |
 | **folder-review** | read the integration review its reviewer wrote; record its claim verdicts as `claims` at the head the card names; record the one park they earn |
 | **rule-close** | read the rulings a ruler wrote on drift or a moved base; write beside them, per node, the file its record points at; record `drift-ruled` or `stale-ruled`; park what the user must answer and hand back what the planner replans; park a drifted consumer no ruling reached, hold a moved leaf no ruling reached |
@@ -1530,8 +1536,9 @@ root's claim verdicts (`root_claims`) and the **landing view** (`landing`, from
 not hold first, a `cant_tell` counted apart from `met`). The session shows it, asks, and runs
 `--action merge`, which merges the effort branch into the user's checked-out branch and appends
 `landed`. It refuses over an open escalation, a parked node or a dirty tree; untracked state under
-`.claude/` and `.agentics/` is not dirt. Cleanup of merged branches and their clean worktrees
-(`--action cleanup`) follows on a go, and only from the checkout that took the merge.
+`.claude/` and `.agentics/` is not dirt. Cleanup of merged branches and the clean worktrees still
+on them — composites' integration worktrees; a leaf's went with its merge — (`--action cleanup`)
+follows on a go, and only from the checkout that took the merge.
 
 ---
 

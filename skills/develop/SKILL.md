@@ -79,7 +79,7 @@ IL3: nothing judges itself. IL4: the user owns decisions and their tree. And:
 ## Arguments
 
 `[max|normal|low] [--intelligence=<tier>] [--resume <stamp>] [--plan-only] [--pause]
-[--no-progress] [--pace frugal|balanced|fast] [--base <ref>] <a folder, or the request, in plain words>`
+[--pace frugal|balanced|fast] [--base <ref>] <a folder, or the request, in plain words>`
 
 <!-- agentics:verbatim intelligence-tier -->
 The dial follows the model this session is running, never how important the work feels:
@@ -101,7 +101,6 @@ say before launching that no strong reader remains anywhere in the loop.
 - `--resume <stamp>`: relaunch that execution: go to step 3 with its stamp.
 - `--plan-only`: plan the folder and stop at a `parked` checkpoint; nothing is implemented.
 - `--pause`: start no new task after the next merge-batch.
-- `--no-progress`: the couriers do not move todos; the session derives the list (step 5).
 - `--pace`: `fast` buys parallelism over shared context for speed; default `balanced`.
 - `--base`: the named ref the effort branch is cut from; default the current HEAD. A branch or
   tag, never a sha.
@@ -304,19 +303,20 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/compile.mjs" --repo . --effort <e> --folder <id>
 re-spec (step 4c). Then mint the stamp with `date -u +%Y%m%d-%H%M%S`; a resume reuses its stamp.
 
 ```
-Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/execute-approved-plan-in-worktrees.workflow.js', args: { repo: '.', effort, root: <folder id>, execution, plugin_root, intelligence, progress, pace, plan_only, pause, base_ref, commands, retry_escalated, confirmed_duplicate, confirmed_gaps } })
+Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/execute-approved-plan-in-worktrees.workflow.js', args: { repo: '.', effort, root: <folder id>, execution, plugin_root, intelligence, pace, plan_only, pause, base_ref, commands_file, retry_escalated, confirmed_duplicate, confirmed_gaps } })
 ```
 
 - `plugin_root` is this plugin's absolute root (`${CLAUDE_PLUGIN_ROOT}`) — required.
 - `root` is the node to run: `.` for the root folder, a folder id, a group (`<folder>/<group>`) or
   one task. Compile `--folder` takes the folder that holds it.
 - `intelligence` on a fresh execution only. A resume passes none: it adopts its envelope.
-- `commands` only when the user named them: `{build, typecheck, suite, suite_fast, test_one}`.
+- `commands_file` only when the user named commands: write `{build, typecheck, suite, suite_fast,
+  test_one}` as JSON to a file outside the repository and pass its path.
 - The confirmations and `retry_escalated` only as step 4 directs.
 
 **Record the `runId`.** The execution works on `agentics/<effort>` and branches and worktrees it
 owns; it never touches the user's branch or tree. Uncommitted edits in the user's tree are not in
-its base — say so when the tree is dirty. While it runs the todo list moves live; do not poll.
+its base — say so when the tree is dirty. Write the todo list now (step 5); do not poll.
 
 **Questions arrive while it runs.** Right after the launch, arm a watch (re-arm it on expiry while
 the workflow still runs):
@@ -325,8 +325,8 @@ the workflow still runs):
 Monitor({ command: 'node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" watch --repo . --effort <e> --execution <stamp>', description: 'agentics questions for <e>', timeout_ms: 3600000 })
 ```
 
-Each line is a parked or escalated node: ask the user at once (step 4b or 4c) until the answer
-settles it. A re-spec's approval and compile clears a park; an escalation whose cause is dealt with
+Each line is a parked or escalated node: refresh the todo list (step 5), then ask the user at once
+(step 4b or 4c) until the answer settles it. A re-spec's approval and compile clears a park; an escalation whose cause is dealt with
 is cleared with `node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e>
 --execution <stamp> --node <id>`. The running workflow relaunches the node on its next tick; if it
 has already returned, relaunch now with the same stamp.
@@ -353,9 +353,9 @@ changes. An explanation only in chat beside the dialog, or only in your thinking
 never sees, does not count, nor does a re-ask that refers to one ("given those uses", "as above").
 <!-- /agentics:verbatim -->
 
-**First, when `coverage.failed_channels` holds `postflight`:** run the lines in
-`coverage.resumable.postflight` in order, exactly as they stand. Until it has run, the stops the result lists
-are on no disk, and every status the store shows is older than the run.
+**First, when `coverage.failed_channels` holds `postflight`:** run the command in
+`coverage.resumable.postflight` exactly as it stands. Every stop is already on disk; until it has
+run, the faults only the run saw are not, and the invocation is not closed.
 
 **a. Checkpoint.** Non-null means nothing new was dispatched; what it found is printed by
 `lib/status.mjs checkpoint --repo . --effort <e> --execution <stamp>`.
@@ -367,9 +367,10 @@ are on no disk, and every status the store shows is older than the run.
 | `parked` | `plan_only`, or nodes await the user | show the plan (`lib/status.mjs show`) or answer them (c); relaunch |
 | anything else | the launch failed (`bad_input`, `preflight_failed`, `no_such_node`, a refusal) | fix what `detail` says; relaunch |
 
-**b. Escalations** — `{id, reason, detail}`, each to the user. They are decisions, not
-information; do not resolve them yourself. Once a cause is dealt with, relaunch with the same
-`execution` and `retry_escalated: [<ids>]`.
+**b. Escalations** — `{id, reason, said}`, each to the user: what it says is the file `said`
+names, or the node's card (step 0) when `said` is empty. They are decisions, not information; do
+not resolve them yourself. Once a cause is dealt with, relaunch with the same `execution` and
+`retry_escalated: [<ids>]`.
 
 **Leave a note on the node** whenever you establish why it stopped, the user rules on it, or you
 touch its branch by hand, before you relaunch. One paragraph, plain words; the next session
@@ -379,11 +380,12 @@ reads it on the card instead of finding it out again:
 node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" note --repo . --effort <e> --execution <stamp> --node <id> --text "<what stopped it, what was done or ruled>"
 ```
 
-**Faults** — `{id, channel, detail}`: a plugin fault, never a question. Relaunch the same
+**Faults** — `{id, channel}`: a plugin fault, never a question. Relaunch the same
 `execution` at once, asking nothing; a fault on the same node again is reported to the user as a
 plugin defect, with the node and what it left undone.
 
-**c. Parked nodes** — `{id, return, question}`. Ask the user each question, one topic at a time,
+**c. Parked nodes** — `{id, return, said}`, the question in the file `said` names or on the
+node's card. Ask the user each question, one topic at a time,
 with your recommendation marked `(Recommended)`. Never answer for them. **Every answer is a
 re-spec**: edit the spec that owns the fault, have the change ruled (below), relaunch.
 
@@ -425,10 +427,10 @@ A park no re-spec cleared (a `contract_drift` ruled unaffected) is cleared by re
 depend on, or whose files they share, did not land. Name that node as the root cause; do not
 relaunch for them while it is still escalated.
 
-**e. Integration.** `integration.branch` and `head_sha`, then `reviews` per folder: criticals,
-and claims that did not hold, were parked (c); majors are the user's decision queue, reported as
-returned. A review that ran with
-planned children missing carries that caveat on every finding — say so.
+**e. Integration.** `integration.branch` and `head_sha`, then `reviews` per folder: read each
+`review_file`. Criticals, and claims that did not hold, were parked (c); majors are the user's
+decision queue, reported as written. A review that ran with planned children missing carries that
+caveat on every finding — say so.
 
 **f. `HUMAN:` criteria.** `node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" land --repo . --effort <e>
 --action check` is read-only; put every entry of its `human` in front of the user, verbatim, prefix
@@ -444,10 +446,9 @@ fail), rounds, `salvaged` — adopted from an earlier invocation, not done now; 
 - Verdicts are reported as computed: never softened, recomputed or paraphrased.
 - Cost is `result.cost`, measured. A `null` token count is unreported, never zero.
 
-## Step 5 — Progress without the couriers
+## Step 5 — Progress
 
-With `--no-progress`, or when the result's notes say the couriers had no task tools, derive the
-list on launch, on wake and on return:
+The todo list is a view of the event logs: write it on launch, on every watch line and on return:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" todos --repo . --effort <e> --execution <stamp>

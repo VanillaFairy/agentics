@@ -18,6 +18,7 @@
 import { readFileSync } from 'node:fs'
 
 import { parseLocations } from '../../lib/citations.mjs'
+
 import { canonical, fnv1a } from '../../lib/plan-digest.mjs'
 import { jsonFileText } from '../../lib/store.mjs'
 
@@ -183,6 +184,47 @@ export function recordedLine(prompt) {
 export function jsonChunks(prompt) {
   return [...prompt.matchAll(/printf '%s' '([^'\n]*)' >>? /g)].map((m) => m[1])
 }
+
+// ------------------------------------------------------------------ handles (docs/DESIGN.md#gp6--couriers-carry-handles-data-stays-where-its-author-wrote-it)
+
+/** The one command a courier prompt hands its courier: the line after the instruction to run it. */
+export function courierCommand(prompt) {
+  const at = String(prompt).indexOf('Run exactly this one command')
+  if (at === -1) throw new Error('this prompt hands its courier no command')
+  return String(prompt).slice(at).split('\n').map((l) => l.trim()).filter(Boolean)[1]
+}
+
+/** Every value a command carries under `--<name>`, quoted or bare, in order. */
+export function flagValues(command, name) {
+  return [...String(command).matchAll(new RegExp('--' + name + ' (?:"([^"]*)"|(\\S+))', 'g'))].map((m) => m[1] ?? m[2])
+}
+
+/** The return file a dispatch names for its agent, or ''. */
+export function returnFileOf(prompt) {
+  const m = /RETURN FILE — write your full return to (.+?) as one JSON object/.exec(String(prompt))
+  return m ? m[1] : ''
+}
+
+/**
+ * What makes a courier dispatch carry data rather than handles: a payload transport on its
+ * command, or a line no model should be retyping. [] when every courier prompt carries handles only.
+ */
+export function courierProblems(prompts) {
+  const out = []
+  for (const { prompt, opts } of prompts) {
+    if (opts.agentType !== 'agentics:courier') continue
+    const text = String(prompt)
+    for (const [what, re] of [['printf', /printf/], ['--b64', /--b64/], ['--json-file', /--json-file/], ['a heredoc', /<</],
+      ['--stdin', /--stdin/], ['a pipe', / \| /]]) {
+      if (re.test(text)) out.push(`${opts.label}: carries ${what}`)
+    }
+    if (text.split('\n').some((l) => l.length > 1000)) out.push(`${opts.label}: a line longer than 1000 characters`)
+  }
+  return out
+}
+
+/** A context file path, as lib writes one, named after what it was written for. */
+export const contextPath = (name) => `C:/repo/.agentics/.state/context/${name}-1.md`
 
 /**
  * The locations a `lib/citations.mjs excerpts` dispatch carries, parsed by the library's own

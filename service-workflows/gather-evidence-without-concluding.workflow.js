@@ -9,15 +9,18 @@ export const meta = {
     { title: 'Scout' },
     { title: 'History' },
     { title: 'Docs' },
-    { title: 'Assemble context for analysis', detail: 'per judge, one script reads its locations once and writes them to files it Reads' },
+    { title: 'Assemble context for analysis', detail: 'per judge, one script reads its scouts\' reports and their locations once into a file it Reads' },
     { title: 'Judge', detail: 'one analyst without search tools, unless volume or pace earns more' },
-    { title: 'Record', detail: 'the judges\' items into the project-wide store; a refused item goes back to its judge' },
+    { title: 'Record', detail: 'the judges\' files into the project-wide store; a refused item goes back to its judge' },
+    { title: 'Context', detail: 'one file holding every item the survey returns, for its reader' },
   ],
 }
 
-// Design: docs/DESIGN.md#execution. Every deterministic step is a `lib/boundary.mjs` entry point
-// run by a courier and re-digested here; this script holds only what a script can hold without a
-// filesystem: which leaves are ready, in what order, and what each typed return means next.
+// Design: docs/DESIGN.md#survey. Every agent whose output lib/ reads writes it to the return file
+// its dispatch names and hands back only handles; every courier carries handles both ways
+// (docs/DESIGN.md#gp6--couriers-carry-handles-data-stays-where-its-author-wrote-it). This script
+// holds only what a script can hold without a filesystem: what to dispatch next, and what each
+// typed return means.
 //
 // ---------------------------------------------------------------- schemas
 //
@@ -32,126 +35,74 @@ export const meta = {
 
 // The coverage contract every evidence-gathering agent answers to: the scouts, the historian
 // and the doc-researcher alike. Completeness is DERIVED in JS from stop_reason, and a resume
-// is driven by not_reached, so both have to arrive filled in.
+// is driven by not_reached, so both come back in the structured return; what was searched and
+// what was proven absent go to the return file, where the judge reads them.
 //
-// no_match and not_reached stay separate on purpose. "I looked and it is not there" is a
-// FINDING — often the one that decides the question. "I never looked" is a HOLE. Merging them
-// is exactly how a truncated search gets read as a clean result, and it also poisons the
-// resume loop: the next round is handed things already established as absent and pays to
-// re-search them.
 // Every coverage field is ALWAYS present — an empty string is the correct value for "nothing
 // to carry", and each description says so outright. Conditional wording ("must be non-empty
 // whenever stop_reason is not exhausted") reads to an exhausted agent as "must be non-empty",
 // so it omits the field it has nothing for, trips required-field validation, re-submits the
 // same shape until the platform kills it, and a finished search is dropped whole.
-const coverageFields = (searchedDescription) => ({
-  searched: {
-    type: 'array',
-    items: { type: 'string' },
-    description: searchedDescription +
-      ' Always include this field. It is the evidence trail behind stop_reason: without it ' +
-      'your completeness claim is an unverifiable self-report, and nobody can resume where ' +
-      'you stopped.',
-  },
+const coverageFields = () => ({
   stop_reason: {
     type: 'string',
     enum: ['exhausted', 'unfinished', 'stuck'],
     description:
-      'Always include this field. "exhausted" — every candidate your searches turned up has ' +
-      'been triaged and you can name the surface that covers the request. "unfinished" — ' +
-      'one pass could not cover the surface; you are handing back an honest partial and the ' +
-      'caller will resume you until the search is done. "stuck" — you could not find a way ' +
-      'forward. Cost, effort already spent, and the size of your report are never reasons ' +
-      'to stop: never stop because the work feels large. Only "exhausted" counts as a ' +
-      'complete result, so claim it only when it is true. The other two are not failures: ' +
-      'the caller will resume you.',
-  },
-  no_match: {
-    type: 'string',
-    description:
-      'What you searched for and genuinely did not find. This is a finding, not a gap — it ' +
-      'tells the caller the thing is absent. Send an empty string — never omit the field — ' +
-      'when everything you looked for was there.',
+      'Always include this field, the same value as in your return file. "exhausted" — every ' +
+      'candidate your searches turned up has been triaged and you can name the surface that ' +
+      'covers the request. "unfinished" — one pass could not cover the surface; you are handing ' +
+      'back an honest partial and the caller will resume you until the search is done. "stuck" — ' +
+      'you could not find a way forward. Cost, effort already spent, and the size of your report ' +
+      'are never reasons to stop. Only "exhausted" counts as a complete result, so claim it only ' +
+      'when it is true.',
   },
   not_reached: {
     type: 'string',
     description:
-      'What you never searched at all, named specifically enough for someone else to pick it ' +
-      'up without redoing your work. Send an empty string when stop_reason is "exhausted"; ' +
-      'otherwise it must name what remains — a search you do not describe cannot be resumed ' +
-      'and will be recorded as a dead end instead. Never merge this with no_match.',
+      'What you never searched at all, the same text as in your return file, named specifically ' +
+      'enough for someone else to pick it up. Send an empty string when stop_reason is ' +
+      '"exhausted"; otherwise it must name what remains — a search you do not describe cannot ' +
+      'be resumed and is recorded as a dead end. Never put what you searched and did not find here.',
   },
 })
 
 // Only the payload field goes in `required`. The coverage fields are demanded by their
 // descriptions and normalized in JS after the call — never by the validator: a required
-// field whose semantics are conditional is a deadlock. An agent with nothing to put in it
-// omits it, validation rejects the whole report, the agent re-submits the same shape until
-// the platform kills it, and evidence already gathered is dropped. Absence is normalized in
-// the safe direction: a missing stop_reason never reads as "exhausted", so sloppiness
-// degrades toward incomplete, never toward false completeness.
+// field whose semantics are conditional is a deadlock. Absence is normalized in the safe
+// direction: a missing stop_reason never reads as "exhausted", so sloppiness degrades toward
+// incomplete, never toward false completeness.
 
 const PLAN = {
   type: 'object',
   additionalProperties: false,
-  required: [
-    'topics', 'common_ground',
-    'docs_needed', 'docs_question', 'history_needed', 'history_question',
-  ],
+  required: ['topics', 'common_ground', 'docs_needed', 'history_needed'],
   properties: {
     topics: {
       type: 'array',
-      description: 'The independent search topics this question decomposes into.',
+      description: 'The topics of your plan file, each by key and subtree only.',
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['key', 'find', 'subtree'],
+        required: ['key', 'subtree'],
         properties: {
-          key: { type: 'string', description: 'Short kebab-case identifier, unique within the plan.' },
-          find: {
-            type: 'string',
-            description: 'A precise instruction for a read-only search agent: what to find and where to look.',
-          },
+          key: { type: 'string', description: 'The topic\'s key, as in the plan file: short kebab-case, unique within the plan.' },
           subtree: {
             type: 'string',
-            description:
-              'The one subtree this topic is about, as a repo-relative POSIX path — a directory ' +
-              'or a single file. It becomes the ground of every item this topic\'s judge returns, ' +
-              'which is what lets a later survey over overlapping ground find those items and ' +
-              'reuse them. Send an empty string — never omit the field — when the topic is ' +
-              'genuinely repository-wide.',
+            description: 'The topic\'s subtree, as in the plan file: a repo-relative POSIX path, or an empty string for a repository-wide topic.',
           },
         },
       },
     },
-    common_ground: {
-      type: 'string',
-      description:
-        'A precise search instruction, in the same form as a topic\'s, for ground several ' +
-        'topics would each need to read — a shared configuration object, a subsystem they all ' +
-        'touch. It is scouted ONCE and what it finds is handed to every judge alongside the ' +
-        'topics, so naming it here replaces the same files being searched once per topic. ' +
-        'Send an empty string — never omit the field — when the topics genuinely share no ' +
-        'ground.',
-    },
-    docs_needed: {
-      type: 'boolean',
-      description: 'True only if answering the question needs vendor or standards documentation that is not in these repositories.',
-    },
-    docs_question: {
-      type: 'string',
-      description: 'The documentation question. Required and non-empty whenever docs_needed is true — a true flag with no question means the track is skipped entirely.',
-    },
-    history_needed: {
-      type: 'boolean',
-      description: 'True only if answering the question needs git history rather than the current tree.',
-    },
-    history_question: {
-      type: 'string',
-      description: 'The history question. Required and non-empty whenever history_needed is true — a true flag with no question means the track is skipped entirely.',
-    },
+    common_ground: { type: 'boolean', description: 'True when the plan file\'s common_ground is non-empty.' },
+    docs_needed: { type: 'boolean', description: 'True when the plan file\'s docs_question is non-empty.' },
+    history_needed: { type: 'boolean', description: 'True when the plan file\'s history_question is non-empty.' },
   },
 }
+
+const PLAN_FILE = '{"question": "<the QUESTION above, copied exactly>", "topics": [{"key": "<kebab-case>", ' +
+  '"find": "<a precise instruction for a read-only search agent: what to find and where to look>", ' +
+  '"subtree": "<repo-relative path, or empty for repository-wide>"}], "common_ground": "<an instruction, or empty>", ' +
+  '"history_question": "<or empty>", "docs_question": "<or empty>"}'
 
 const HITS = {
   type: 'object',
@@ -160,47 +111,49 @@ const HITS = {
   properties: {
     hits: {
       type: 'array',
-      description: 'One entry per location found. Locations only — no analysis, no recommendations.',
+      description: 'Every location in your return file, by path and line only.',
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['path', 'line', 'note'],
+        required: ['path', 'line'],
         properties: {
           path: { type: 'string', description: 'Path to the file containing the hit, relative to the repository it is in.' },
           line: { type: 'integer', description: 'Line number of the hit.' },
-          note: { type: 'string', description: 'What is at that line, in one line.' },
         },
       },
     },
-    ...coverageFields('Every grep pattern, glob, and path you actually searched.'),
+    ...coverageFields(),
   },
 }
 
-// History and docs return narrative evidence, so `findings` stays prose. They answer the same
-// coverage contract as the scouts anyway: without it, a channel that stalled halfway is
+const HITS_FILE = '{"hits": [{"path": "<repo-relative>", "line": <n>, "note": "<what is at that line, in one line>"}], ' +
+  '"searched": ["<every pattern, glob and path you actually searched>"], ' +
+  '"no_match": "<what you searched for and genuinely did not find — a finding; empty when none>", ' +
+  '"not_reached": "<what you never searched; empty when exhausted>", "stop_reason": "exhausted|unfinished|stuck"}'
+
+// History and docs report narrative evidence, so their file holds `findings` as prose. They answer
+// the same coverage contract as the scouts anyway: without it, a channel that stalled halfway is
 // indistinguishable from one that finished, because both arrive as a confident essay.
-const evidenceSchema = (findingsDescription, searchedDescription) => ({
+const CHANNEL = {
   type: 'object',
   additionalProperties: false,
-  required: ['findings'],
-  properties: {
-    findings: { type: 'string', description: findingsDescription },
-    ...coverageFields(searchedDescription),
-  },
-})
+  required: ['stop_reason'],
+  properties: coverageFields(),
+}
 
-const HISTORY = evidenceSchema(
-  'The commits that matter, in the format your agent instructions specify: sha, date, author, ' +
-  'subject, and the path:line of what changed. Include ruled-out candidates where they save ' +
-  'the reader work. Never guess a commit.',
-  'Every ref, path, and date range you actually searched, plus the git commands behind them.',
-)
+const channelFile = (findings, searched) => '{"findings": "' + findings + '", "searched": ["' + searched + '"], ' +
+  '"no_match": "<what you looked for and did not find; empty when none>", ' +
+  '"not_reached": "<what you never searched; empty when exhausted>", "stop_reason": "exhausted|unfinished|stuck"}'
 
-const DOCS = evidenceSchema(
-  'The facts you established, each with the URL that owns it on the same line. Mark a claim ' +
-  '"unconfirmed" when only a secondary source carries it.',
-  'Every search query and URL you actually read.',
-)
+const HISTORY_FILE = channelFile(
+  '<the commits that matter, as your agent instructions format them: sha, date, author, subject, and the path:line of ' +
+  'what changed; ruled-out candidates where they save the reader work; never a guessed commit>',
+  '<every ref, path and date range you searched, with the git commands behind them>')
+
+const DOCS_FILE = channelFile(
+  '<the facts you established, each with the URL that owns it on the same line; a claim only a secondary source ' +
+  'carries is marked unconfirmed>',
+  '<every search query and URL you actually read>')
 
 // What a courier hands back: one command's stdout, byte-exact, in one string. The shape of
 // `execute-approved-plan-in-worktrees`'s CARRIED, copied rather than shared because a workflow script cannot
@@ -223,85 +176,38 @@ const CARRIED = {
 // scenario suite pins the two equal. The kind decides which anchor the recorder demands.
 const ITEM_KINDS = ['behaviour', 'absence', 'enumeration', 'relation', 'external', 'derived']
 
-// One judge may hold several topics, so its items come back as one list whose `topic` is a
-// closed enum built per dispatch: a key it was not given cannot be where an item lands. `at`, a
-// query's result and a source's retrieval date are observations the recorder makes, so the judge
-// is never asked for them.
-function itemsSchema(keys) {
-  const topic = { type: 'string', enum: keys, description: 'The topic key, copied exactly.' }
+const ITEMS_FILE = '{"items": [{"topic": "<the topic key>", "kind": "' + ITEM_KINDS.join('|') + '", ' +
+  '"claim": "<the one sentence this item asserts>", "spans": [{"path": "<repo-relative>", "start": <first line>, "end": <last line>}], ' +
+  '"queries": [{"pattern": "<an extended regex, as git grep -E takes it>", "scope": ["<repo-relative paths; empty for the whole repository>"]}], ' +
+  '"sources": [{"url": "<the URL or package you read>", "version": "<its version; empty when unversioned>"}], ' +
+  '"rests_on": ["<for a derived item: the exact claims of the items here it is drawn from, or ids of ESTABLISHED items>"]}], ' +
+  '"risks": [{"topic": "<the topic key>", "text": "<why a topic cannot be anchored, or an inadequate search surface>"}]}'
+
+// One judge may hold several topics, so its handles come back per topic, under a closed enum built
+// per dispatch: a key it was not given cannot be where a count lands.
+function rulingsSchema(keys) {
   return {
-    type: 'object', additionalProperties: false, required: ['items', 'risks'],
+    type: 'object', additionalProperties: false, required: ['topics'],
     properties: {
-      items: {
+      topics: {
         type: 'array',
-        description: 'Evidence items: one claim each, with the anchor its kind needs.',
+        description: 'One entry per topic your return file rules on: how many items and risks you wrote for it.',
         items: {
-          type: 'object', additionalProperties: false,
-          required: ['topic', 'kind', 'claim', 'spans', 'queries', 'sources', 'rests_on'],
+          type: 'object', additionalProperties: false, required: ['topic', 'items_n', 'risks_n'],
           properties: {
-            topic,
-            kind: { type: 'string', enum: ITEM_KINDS, description: 'What sort of claim this is; it decides which anchor is required.' },
-            claim: { type: 'string', description: 'The one sentence this item asserts.' },
-            spans: {
-              type: 'array', description: 'Each file and line range the claim was read at. Empty when the kind needs none.',
-              items: {
-                type: 'object', additionalProperties: false, required: ['path', 'start', 'end'],
-                properties: {
-                  path: { type: 'string', description: 'Repository-relative path.' },
-                  start: { type: 'integer', description: 'First line, from 1.' },
-                  end: { type: 'integer', description: 'Last line, at or after start.' },
-                },
-              },
-            },
-            queries: {
-              type: 'array', description: 'Each search a script can re-run to show the claim: an extended regex and the paths it searches. The recorder runs it and keeps the result.',
-              items: {
-                type: 'object', additionalProperties: false, required: ['pattern', 'scope'],
-                properties: {
-                  pattern: { type: 'string', description: 'An extended regular expression, as git grep -E takes it.' },
-                  scope: { type: 'array', items: { type: 'string' }, description: 'Repository-relative paths; empty for the whole repository.' },
-                },
-              },
-            },
-            sources: {
-              type: 'array', description: 'Each outside source the claim rests on.',
-              items: {
-                type: 'object', additionalProperties: false, required: ['url', 'version'],
-                properties: {
-                  url: { type: 'string', description: 'The URL or package you read.' },
-                  version: { type: 'string', description: 'Its version; an empty string when unversioned.' },
-                },
-              },
-            },
-            rests_on: { type: 'array', items: { type: 'string' }, description: 'For a derived item: the exact claims of the items here it is drawn from, or ids of ESTABLISHED items.' },
+            topic: { type: 'string', enum: keys, description: 'The topic key, copied exactly.' },
+            items_n: { type: 'integer', description: 'How many items your return file holds for this topic.' },
+            risks_n: { type: 'integer', description: 'How many risks your return file holds for this topic.' },
           },
         },
-      },
-      risks: {
-        type: 'array', description: 'Why a topic cannot be anchored, or an inadequate search surface. Only where it changes a decision.',
-        items: { type: 'object', additionalProperties: false, required: ['topic', 'text'], properties: { topic, text: { type: 'string' } } },
       },
     },
   }
 }
 
-// The re-judge's return. It rules on whether a change MATTERS to a claim; whether text changed was
-// decided by git before it was dispatched.
-const JUDGEMENTS = {
-  type: 'object', additionalProperties: false, required: ['judgements'],
-  properties: {
-    judgements: {
-      type: 'array', description: 'One judgement per item you were given, every one of them.',
-      items: {
-        type: 'object', additionalProperties: false, required: ['id', 'verdict', 'why'],
-        properties: {
-          id: { type: 'string', description: 'The item id, copied exactly.' },
-          verdict: { type: 'string', enum: ['holds', 'fails', 'unsure'] },
-          why: { type: 'string', description: 'One line.' },
-        },
-      },
-    },
-  },
+const WRITTEN = {
+  type: 'object', additionalProperties: false, required: ['written_n'],
+  properties: { written_n: { type: 'integer', description: 'How many entries your return file holds.' } },
 }
 
 // ---------------------------------------------------------------- inputs
@@ -317,8 +223,7 @@ const maxTopics = input.max_topics || 8
 // What an earlier phase of the same effort found, read out of the effort's evidence by the
 // session that invoked this survey. It is DURABLE SCRATCH and it reaches exactly one place: the
 // planner's prompt, where it can only change how the ground is decomposed. It reaches no scout,
-// no judge and no gate — prior context has no anchor and nothing checked it, so admitted near a
-// gate it would be an unverified note laundered into a skipped phase. What CAN stand in for
+// no judge and no gate — prior context has no anchor and nothing checked it. What CAN stand in for
 // searching a claim again is a pool item git says is still standing, and that is computed below.
 const prior = typeof input.prior === 'string' ? input.prior.trim() : ''
 
@@ -353,7 +258,7 @@ const groundPath = (p) => {
 }
 
 // The ground the caller wants this survey's evidence anchored to. It is what the pool is read
-// by (Reuse), and what every item this survey records carries as its own ground afterwards.
+// by (Reuse), and what the result's one context file lists the reused items from.
 const callerGround = [...new Set((Array.isArray(input.ground) ? input.ground
   : typeof input.ground === 'string' && input.ground.trim() ? input.ground.split(/[,;\n]/) : [])
   .map(groundPath))]
@@ -378,19 +283,28 @@ function resolvePluginRoot() {
 const pluginRoot = resolvePluginRoot()
 
 // Excerpts and efforts are per repository, so a question spanning several roots resolves against
-// the first — the repository it is anchored in. A location in another root is not excerpted; the
-// judge is handed it as a location to read. This is also the working root every pool read, judge
-// and record passes to lib/evidence.mjs: a survey run from a linked worktree derives its pool's
-// states, re-anchors a holds and anchors what its judges read there.
+// the first — the repository it is anchored in. This is also the working root every pool read,
+// judge and record passes to lib/evidence.mjs: a survey run from a linked worktree derives its
+// pool's states, re-anchors a holds and anchors what its judges read there.
 const repo = String(roots).split(/[,;\n]/)[0].trim() || '.'
+
+// ---------------------------------------------------------------- handles
+//
+// A handle goes into a courier's command inside double quotes, so a value holding a quote, a
+// shell metacharacter or a line break is never sent: what it names is searched or read some other
+// way, and the log says so.
+const QUOTABLE = new RegExp('^[^"`$\\\\\\r\\n]*$')
+const quotable = (value) => QUOTABLE.test(String(value))
+
+// Topic keys are the planner's words and become labels, enum values and argv handles, so each is
+// spelled as a slug; the plan file keeps the planner's own spelling, which a prompt names.
+const slug = (text) => String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'topic'
 
 // ---------------------------------------------------------------- the transport
 //
 // A payload computed on disk arrives through a model, so it is re-digested here before a field of
-// it is believed; a location list this script mints travels as plain text on one argv slot with
-// its digest beside it. The functions are copies of `lib/plan-digest.mjs`'s and
-// `execute-approved-plan-in-worktrees`'s: scripts cannot import, and the suite pins them together. Tokens the
-// script mints itself (a judgement batch, a record) travel as JSON by file, under their digest.
+// it is believed. canonical and fnv1a are copies of `lib/plan-digest.mjs`'s: scripts cannot import,
+// and the suite pins them together.
 function canonical(value) {
   if (value === undefined) return 'null'
   if (value === null || typeof value !== 'object') return JSON.stringify(value)
@@ -410,37 +324,6 @@ function fnv1a(text) {
   }
 
   return (hash >>> 0).toString(16).padStart(8, '0')
-}
-
-// cmd.exe caps a whole command line at 8191 characters, so nothing this script hands a courier to
-// type puts more than this many on one line.
-const COMMAND_BUDGET = 6000
-
-/**
- * A token this script mints, as the courier carries it: one line of JSON written to a file under
- * `root` by single-quoted `printf` calls of at most COMMAND_BUDGET characters each, then read by
- * `cli` with `--json-file` under the token's digest and removed. `~` goes as `~t`, `\` as `~b`
- * and `'` as `~q`, so no backslash reaches the layer that decodes escapes in a Bash call and no
- * quote ends the argument (lib/store.mjs jsonFileText). Every write is a single line: the harness
- * indents each line of a computed prompt, and that indent must land before a command, never
- * inside the token. Returns the courier's writes and its one command.
- */
-function viaJsonFile(cli, token, root) {
-  const json = JSON.stringify(token).replace(/~/g, '~t').replace(/\\/g, '~b').replace(/'/g, '~q')
-  const digest = fnv1a(canonical(token))
-  const dir = `${root}/.agentics/.state`
-  const file = `${dir}/token-${digest}.json`
-
-  const writes = []
-  for (let i = 0; i < json.length;) {
-    let end = Math.min(i + COMMAND_BUDGET, json.length)
-    const last = json.charCodeAt(end - 1)
-    if (end < json.length && last >= 0xd800 && last <= 0xdbff) end--
-    const chunk = `printf '%s' '${json.slice(i, end)}'`
-    writes.push(i === 0 ? `mkdir -p "${dir}" && ${chunk} > "${file}"` : `${chunk} >> "${file}"`)
-    i = end
-  }
-  return { writes, command: `${cli} --digest ${digest} --json-file "${file}"; rm -f "${file}"` }
 }
 
 /** What a courier carried back: the payload, or why it cannot be believed and how to retry. */
@@ -479,17 +362,12 @@ function carriedRead(held) {
 
 const COURIER = { model: 'haiku', effort: 'low' }
 const COURIER_UP = { model: 'sonnet', effort: 'low' }
-// The refusals that mean the token was damaged on its way in, not that the program failed.
-const DAMAGED_IN = ['digest_mismatch', 'args_unreadable']
+// The refusal that means a handle was damaged on its way in, not that the program failed.
+const DAMAGED_IN = ['args_unreadable']
 
-function courierPrompt(command, writes) {
-  const steps = writes.length === 0
-    ? 'Run exactly this one command, unchanged, and put its entire stdout in payload_raw:\n\n' + command
-    : 'Run these commands in order, each unchanged and in its own Bash call; stop at the first that ' +
-      'fails. The ones before the last only write a file. Put the last one\'s entire stdout in ' +
-      'payload_raw:\n\n' + [...writes, command].join('\n\n')
-  return steps + '\n\n' +
-    'Move no todos.' +
+function courierPrompt(command) {
+  return 'Run exactly this one command, unchanged, and put its entire stdout in payload_raw:\n\n' + command +
+    '\n\nMove no todos.' +
     (pluginRoot === SHELL_ROOT
       ? '\nIf ' + SHELL_ROOT + ' is empty in your shell, do not guess a path: set stop_reason ' +
         '"failed" and say so.'
@@ -499,23 +377,19 @@ function courierPrompt(command, writes) {
 /**
  * Carry one command's payload, believed only after its digest.
  *
- * Retries are sized to what was observed, as `execute-approved-plan-in-worktrees`'s boundaries size them: a courier
- * that returned nothing or could not run the command is run again once; a payload damaged in
- * transit buys one refetch on a stronger model; a token the program refused as damaged on its way
- * IN is copied again by the stronger model; a program failure is not retried. What stays unbelievable comes back as
- * `{payload: null, why}` — every carry in this workflow is a side channel with a fallback, so
- * none of them may throw. `writes` are the file writes a token too long for one argv slot
- * travels by, run by the same courier before `command`.
+ * Retries are sized to what was observed, as `execute-approved-plan-in-worktrees`'s boundaries
+ * size them: a courier that returned nothing or could not run the command is run again once; a
+ * payload damaged in transit buys one refetch on a stronger model, and so does a handle the
+ * program refused as damaged on its way in; a program failure is not retried. What stays
+ * unbelievable comes back as `{payload: null, why}` — every carry in this workflow is a side
+ * channel with a fallback, so none of them may throw.
  */
-async function carry(command, label, phaseName, writes = []) {
+async function carry(command, label, phaseName) {
   const ladder = [COURIER]
-  // A token written by file is copied by the courier, and a copy that failed once is retyped by
-  // the stronger model rather than by the same one again.
-  const again = writes.length > 0 ? COURIER_UP : COURIER
   let why = ''
 
   for (let i = 0; i < ladder.length; i++) {
-    const held = await agent(courierPrompt(command, writes), {
+    const held = await agent(courierPrompt(command), {
       agentType: 'agentics:courier', schema: CARRIED, phase: phaseName,
       label: label + (i ? '#' + (i + 1) : ''), ...ladder[i],
     }).catch((e) => {
@@ -526,50 +400,44 @@ async function carry(command, label, phaseName, writes = []) {
     const c = carriedRead(held)
     if (c.payload) {
       const refused = c.payload.ok === false && c.payload.error
-      // A model that miscopies a token miscopies it the same way again: the copy goes to the
-      // stronger one.
       if (refused && DAMAGED_IN.includes(c.payload.error.kind) && !ladder.includes(COURIER_UP)) {
-        why = c.payload.error.message || 'the argument token was damaged on its way in'
+        why = 'a handle was damaged on its way in (' + c.payload.error.kind + ')'
         ladder.push(COURIER_UP)
         continue
       }
-      if (refused) return { payload: null, why: 'the program refused: ' + (c.payload.error.message || c.payload.error.kind) }
+      if (refused) return { payload: null, why: 'the program refused: ' + c.payload.error.kind }
       return { payload: c.payload, why: '' }
     }
 
     why = c.why || why
-    if (c.retry === 'again' && ladder.length < 2) ladder.push(again)
+    if (c.retry === 'again' && ladder.length < 2) ladder.push(COURIER)
     else if (c.retry === 'stronger' && !ladder.includes(COURIER_UP)) ladder.push(COURIER_UP)
   }
 
   return { payload: null, why }
 }
 
+const lib = (cli, verb) => `node "${pluginRoot}/lib/${cli}.mjs" ${verb} --repo "${repo}"`
+const flags = (name, values) => values.map((v) => `--${name} "${v}"`).join(' ')
+
+// ---------------------------------------------------------------- return files
+//
+// An agent whose output lib/ reads writes it to a return file under the working root, named by its
+// dispatch label and the digest of what it was handed, so a retried dispatch rewrites the same file.
+// A workflow has no clock and no randomness, so nothing else could name it.
+const INBOX = `${repo}/.agentics/.state/evidence/inbox`
+
+const returnFile = (label, body) => `${INBOX}/${label.replace(/[^A-Za-z0-9._-]+/g, '-')}-${fnv1a(body)}.json`
+
+/** A dispatch body with its return file named, and the shape that file takes. */
+const toFile = (body, file, shape) => body +
+  `\n\nRETURN FILE — write your full return to ${file} as one JSON object of exactly this shape:\n${shape}\n` +
+  'Then return only what your schema asks for.'
+
 // The re-judge is the stated exception to the intelligence dial: it is always the cheapest tier,
 // however the caller dialled the judging analysts.
 const REJUDGE = { model: 'haiku', effort: 'low' }
 const REJUDGE_BATCH = 20
-const VERDICTS = ['holds', 'fails', 'unsure']
-
-// A ground path travels inside a shell command, so only characters a courier can carry unquoted
-// may reach it.
-const CARRIABLE_GROUND = /^[A-Za-z0-9_.\/@+-]+$/
-
-/** Pure. An item's identity: its question, topic and claim — the same formula lib/evidence.mjs
- * mints ids with; the scenario suite pins the two equal. Where it is anchored is not identity. */
-const itemIdOf = (item) => 'I' + fnv1a(canonical({ question: item.question, topic: item.topic, claim: item.claim }))
-const ITEM_ID = /^I[0-9a-f]{8}$/
-
-/** One item as a reader reads it: id, topic, kind, claim, and what it rests on. */
-function itemLine(it) {
-  const anchors = [
-    ...(it.spans || []).map((s) => `${s.path}:${s.start}-${s.end}`),
-    ...(it.queries || []).map((q) => `search /${q.pattern}/ in ${(q.scope || []).join(', ') || 'the repository'}`),
-    ...(it.sources || []).map((s) => s.url + (s.version ? '@' + s.version : '')),
-    ...(it.rests_on || []).map((id) => 'rests on ' + id),
-  ]
-  return `- [${it.id}] (${it.topic}, ${it.kind}) ${it.claim}` + (anchors.length ? ` — ${anchors.join('; ')}` : '')
-}
 
 // ---------------------------------------------------------------- coverage
 //
@@ -585,9 +453,8 @@ const RUN_ID = 'unknown-to-script: pair `remaining` with the runId from the Work
 
 // The launch arguments, echoed into every coverage block. A resume re-executes this script
 // and reads nothing from the prior run, so a caller who resumes without re-passing them gets
-// a survey with no question: a coverage-honest empty result in milliseconds, and the
-// interrupted run's cached agents unreachable. They travel with the block a caller actually
-// reads when deciding how to resume.
+// a survey with no question. They travel with the block a caller actually reads when deciding
+// how to resume.
 const LAUNCH_ARGS = {
   question, roots, notes, prior, max_topics: maxTopics, intelligence, pace, plugin_root: pluginRoot,
   ground: callerGround,
@@ -615,12 +482,15 @@ function coverageOf(dropped, incomplete, failedChannels, unreached) {
 // Every exit path below returns this shape. A caller that receives `undefined` cannot tell
 // "nothing found" from "nothing ran", and that is the failure this plugin exists to prevent.
 //
-// `items` are the reused standing items first, then this survey's new ones in plan order. Each
-// carries its own ground, which is what a later survey reuses them by. `ground` is the subtrees
-// the topics searched, `.` for a repository-wide topic — not the ground of a reused item, which
-// is not ground this survey searched.
-function surveyResult({ topics = [], ground = [], items = [], reused = [], unrecorded = [], risks = [], history = null, docs = null, coverageBlock }) {
-  return { question, topics, ground, items, reused, unrecorded, risks, history, docs, coverage: coverageBlock }
+// `items` are handles; `context` is the one file holding every one of them in full, the judges'
+// risks and the history and docs channels, for whoever reads the evidence next. `ground` is the
+// subtrees the topics searched, `.` for a repository-wide topic — not the ground of a reused item,
+// which is not ground this survey searched.
+function surveyResult({
+  topics = [], ground = [], items = [], reused = [], unrecorded = [], context = '', risks = [], history = null,
+  docs = null, coverageBlock,
+}) {
+  return { question, topics, ground, items, reused, unrecorded, context, risks, history, docs, coverage: coverageBlock }
 }
 
 if (!question) {
@@ -632,18 +502,19 @@ log(`Question: ${question}`)
 // -------------------------------------------------------- 0. reuse and re-judge
 //
 // Before planning, the survey reads the project's pool for items whose ground overlaps the
-// caller's. Standing ones are known ground the planner and the judges are handed so they do not
+// caller's. Standing ones are known ground the planner and the judges read so they do not
 // re-buy it; suspect ones get the cheapest re-judge there is, on whether the change matters to
 // the claim; stale ones — never re-checked, or still suspect after the re-judge — send their
 // topic to a narrowed re-survey. Whether text changed is never a model's call: that arithmetic is
 // lib/evidence.mjs's, deterministic and free of judgment (D20).
 
-/** The project's items over the caller's ground, filtered to this survey's own pool: a challenge
- * finding or an existing-solution candidate answers a different question and shares the pool. */
+/** The survey items over the caller's ground, as handles, and the file holding what they say. */
 async function readPool(label) {
-  const held = await carry(`node "${pluginRoot}/lib/evidence.mjs" items --repo "${repo}" --root "${repo}" --ground "${callerGround.join(',')}" --states standing,suspect,stale`, label, 'Reuse')
+  const held = await carry(
+    `${lib('evidence', 'items')} --root "${repo}" --ground "${callerGround.join(',')}" --states standing,suspect,stale --return-kind survey`,
+    label, 'Reuse')
   if (!held.payload || !Array.isArray(held.payload.items)) return null
-  return held.payload.items.filter((it) => it && /-survey$/.test(String(it.from_return || '')))
+  return { items: held.payload.items.filter(Boolean), context: held.payload.context || '' }
 }
 
 /** A stale item a newer standing item of its topic, on ground it shares, has already replaced. */
@@ -653,126 +524,141 @@ const supersededBy = (known) => (it) => known.some((k) =>
 /** Drop every stale item a newer standing item of its topic has already replaced (spec §4.9): a
  * narrowed re-survey's items take new ids, so the stale item they replaced stays in the pool, and
  * without this every later survey would search its topic again. */
-function finishReuse(known, stale) {
+function finishReuse(known, stale, context) {
   const kept = stale.filter((it) => !supersededBy(known)(it))
   if (kept.length < stale.length) {
     log(`Reuse: ${stale.length - kept.length} stale item(s) already replaced by a newer standing item; not re-surveyed.`)
   }
-  return { known, stale: kept }
+  return { known, stale: kept, context }
 }
 
 async function reusePool() {
-  if (callerGround.length === 0) return { known: [], stale: [] }
-  if (callerGround.some((g) => !CARRIABLE_GROUND.test(g))) {
+  if (callerGround.length === 0) return { known: [], stale: [], context: '' }
+  if (callerGround.some((g) => !quotable(g) || g.includes(','))) {
     log('Reuse: the caller\'s ground cannot be carried to the pool as a command argument; surveying in full.')
-    return { known: [], stale: [] }
+    return { known: [], stale: [], context: '' }
   }
 
   phase('Reuse')
   const pool = await readPool('reuse')
   if (!pool) {
     log('Reuse: the project pool could not be read; surveying in full.')
-    return { known: [], stale: [] }
+    return { known: [], stale: [], context: '' }
   }
 
-  const standing = pool.filter((it) => it.state === 'standing')
-  const suspect = pool.filter((it) => it.state === 'suspect')
-  const stale = pool.filter((it) => it.state === 'stale')
+  const standing = pool.items.filter((it) => it.state === 'standing')
+  const suspect = pool.items.filter((it) => it.state === 'suspect')
+  const stale = pool.items.filter((it) => it.state === 'stale')
 
-  if (suspect.length === 0) return finishReuse(standing, stale)
+  if (suspect.length === 0) return finishReuse(standing, stale, pool.context)
 
-  await rejudge(suspect)
+  await rejudge(suspect, pool.context)
   const after = await readPool('reuse-after')
 
+  if (!after) return finishReuse(standing, stale.concat(suspect), pool.context)
+  const byId = new Map(after.items.map((it) => [it.id, it]))
   let known = standing
   let allStale = stale
-  if (!after) {
-    allStale = allStale.concat(suspect)
-  } else {
-    const byId = new Map(after.map((it) => [it.id, it]))
-    for (const it of suspect) {
-      const second = byId.get(it.id)
-      if (second && second.state === 'standing') known = known.concat([second])
-      else allStale = allStale.concat([it])
-    }
+  for (const it of suspect) {
+    const second = byId.get(it.id)
+    if (second && second.state === 'standing') known = known.concat([second])
+    else allStale = allStale.concat([it])
   }
-
-  return finishReuse(known, allStale)
+  return finishReuse(known, allStale, after.context)
 }
 
-/** The prompt for one re-judge batch: each item, and for each anchor a second read changed, the
- * old text and the new. Everything the analyst needs is here, so it opens no file. */
-function rejudgePrompt(batch) {
-  return `Some evidence items already recorded rest on text that has since changed. Whether the ` +
+/** One re-judge batch: the analyst writes its verdicts to a file, and a courier hands lib that
+ * file and the batch's ids. lib records an id with no verdict, or a file never written, as unsure. */
+async function rejudgeBatch(batch, n, context) {
+  const label = 'rejudge:' + n
+  const body = `Some evidence items already recorded rest on text that has since changed. Whether the ` +
     `text changed is already decided — you judge only whether the change MATTERS to the claim. ` +
     `"unsure" is never a pass: it sends the claim to be searched again, so use it only when you ` +
-    `truly cannot tell. Judge every item below from what is here; open no file.\n\n` +
-    batch.map((it) => {
-      const changes = (it.changed || []).map((c) =>
-        `  ${c.anchor} ${c.index} was:\n${c.old}\nis now:\n${c.now}`).join('\n')
-      return `[${it.id}] ${it.claim}` + (changes ? '\n' + changes : '')
-    }).join('\n\n')
-}
-
-/** One re-judge batch: dispatch the analyst, then carry its judgements into the store. Every
- * item gets a verdict — one it was not given, or a dispatch that died outright, is 'unsure'. */
-async function rejudgeBatch(batch, n) {
-  const out = await agent(rejudgePrompt(batch), {
-    agentType: 'agentics:analyst', schema: JUDGEMENTS, phase: 'Re-judge', label: 'rejudge:' + n, ...REJUDGE,
+    `truly cannot tell.\n\n` +
+    `Read ${context}: under SUSPECT it lists each item with its claim and, for each anchor that ` +
+    `changed, the old text and the new. Judge exactly these items, every one of them, from what ` +
+    `is there; open no other file:\n${batch.map((it) => it.id).join(', ')}`
+  const file = returnFile(label, body)
+  await agent(toFile(body, file,
+    '{"judgements": [{"id": "<the item id, copied exactly>", "verdict": "holds|fails|unsure", "why": "<one line>"}]}'), {
+    agentType: 'agentics:analyst', schema: WRITTEN, phase: 'Re-judge', label, ...REJUDGE,
   }).catch((e) => {
-    log(`rejudge:${n}: the analyst failed (${e && e.message}); its items are unsure.`)
+    log(`${label}: the analyst failed (${e && e.message}); lib records its items as unsure.`)
     return null
   })
 
-  const judgements = out && Array.isArray(out.judgements) ? out.judgements : []
-  const byId = new Map(judgements.map((j) => [j && j.id, j && j.verdict]))
-  const verdicts = batch.map((it) => {
-    const v = byId.get(it.id)
-    return { id: it.id, verdict: VERDICTS.includes(v) ? v : 'unsure' }
-  })
-
-  const { command, writes } = viaJsonFile(
-    `node "${pluginRoot}/lib/evidence.mjs" judge --repo "${repo}" --root "${repo}"`, { judgements: verdicts }, repo)
-  const held = await carry(command, 'record-judgements:' + n, 'Re-judge', writes)
-  if (!held.payload) {
-    log(`record-judgements:${n}: could not be recorded (${held.why}); those items stay suspect.`)
-  }
+  const held = await carry(
+    `${lib('evidence', 'judge')} --root "${repo}" --from "${file}" ${batch.map((it) => '--id ' + it.id).join(' ')}`,
+    'record-judgements:' + n, 'Re-judge')
+  if (!held.payload) log(`record-judgements:${n}: could not be recorded (${held.why}); those items stay suspect.`)
 }
 
 /** Suspect items, re-judged in batches of REJUDGE_BATCH, in parallel, on the cheapest tier. */
-async function rejudge(items) {
+async function rejudge(items, context) {
   phase('Re-judge')
   const batches = []
   for (let i = 0; i < items.length; i += REJUDGE_BATCH) batches.push(items.slice(i, i + REJUDGE_BATCH))
-  await parallel(batches.map((batch, i) => () => rejudgeBatch(batch, i + 1)))
+  await parallel(batches.map((batch, i) => () => rejudgeBatch(batch, i + 1, context)))
 }
 
-/** The topics a narrowed re-survey searches again: one per stale topic, with what it used to say. */
+/** The topics a narrowed re-survey searches again: one per stale topic, at its first item's ground. */
 function staleTopics(stale) {
   const byKey = new Map()
   for (const it of stale) {
-    const t = byKey.get(it.topic) || { key: it.topic, claims: [], subtree: groundPath((it.ground || [])[0] || '') }
-    t.claims.push(it.claim)
-    byKey.set(it.topic, t)
+    if (!byKey.has(it.topic)) byKey.set(it.topic, { key: it.topic, subtree: groundPath((it.ground || [])[0] || ''), forced: true })
   }
-  return [...byKey.values()].map((t) => ({
-    key: t.key,
-    subtree: t.subtree === '.' ? '' : t.subtree,
-    find: `Re-establish from the current code what these recorded claims said about ` +
-      `${t.subtree === '.' ? 'the repository' : t.subtree}. None of them holds as recorded any more, so find what is true now: ` +
-      t.claims.join('; '),
-  }))
+  return [...byKey.values()].map((t) => ({ ...t, subtree: t.subtree === '.' ? '' : t.subtree }))
 }
 
 const reuse = await reusePool()
 const known = reuse.known
+const pool = reuse.context
 const forced = staleTopics(reuse.stale)
+
+// ---------------------------------------------------------------- the one file a reader opens
+
+/**
+ * Every item this survey returns, in one file lib writes for whoever reads the evidence next: the
+ * standing items over the caller's ground, every item a record of this survey stored, the judges'
+ * risks and the history and docs channels' reports. Null when it could not be carried.
+ */
+async function writeContext({ returns = [], judgeFiles = [], history = [], docs = [] }) {
+  if (known.length === 0 && returns.length + judgeFiles.length + history.length + docs.length === 0) {
+    return { items: [], context: '' }
+  }
+  phase('Context')
+  const ground = known.length > 0 ? ` --ground "${callerGround.join(',')}" --return-kind survey` : ''
+  const held = await carry(
+    `${lib('evidence', 'context')} --root "${repo}"${ground} ${returns.map((r) => '--return ' + r).join(' ')} ` +
+      `${flags('from', judgeFiles)} ${flags('history', history)} ${flags('docs', docs)}`.replace(/\s+$/, ''),
+    'context', 'Context')
+  if (!held.payload || !Array.isArray(held.payload.items)) {
+    log(`WARNING: the survey's context file could not be written (${held.why}).`)
+    return null
+  }
+  return { items: held.payload.items, context: held.payload.context || '' }
+}
+
+const CONTEXT_LOST = 'the one file holding every item this survey returns could not be written, so its reader ' +
+  'holds the item ids and nothing they say'
+
+/** An early exit's result: the reused items only, in their file. */
+async function reusedOnly(coverageArgs) {
+  const ctx = known.length > 0 ? await writeContext({}) : { items: [], context: '' }
+  const [dropped, incomplete, failed, unreached] = coverageArgs
+  return surveyResult({
+    items: ctx ? ctx.items.map(({ id, topic, kind, state }) => ({ id, topic, kind, state })) : known.map(({ id, topic, kind, state }) => ({ id, topic, kind, state })),
+    reused: known.map((i) => i.id),
+    context: ctx ? ctx.context : '',
+    coverageBlock: coverageOf(dropped, incomplete, ctx ? failed : failed.concat(['context']), ctx ? unreached : unreached.concat([CONTEXT_LOST])),
+  })
+}
 
 // ---------------------------------------------------------------- 1. plan
 
 phase('Plan')
 
-const plan = await agent(
+const planBody =
   `Break this investigation into at most ${maxTopics} independent search topics.\n\n` +
   `QUESTION: ${question}\n` +
   `REPOSITORIES: ${roots}\n` +
@@ -787,9 +673,9 @@ const plan = await agent(
     : '') +
   (known.length
     ? `\nESTABLISHED — evidence items already in the project's pool for this ground, each ` +
-      `anchored and still standing. Plan no topic these already answer; plan only what they ` +
-      `leave open. When they answer the question, return no topics.\n` +
-      known.map(itemLine).join('\n') + '\n'
+      `anchored and still standing: the ones listed under STANDING in ${pool}. Plan no topic ` +
+      `these already answer; plan only what they leave open. When they answer the question, ` +
+      `plan no topics.\n`
     : '') +
   (forced.length
     ? `\nRE-SURVEYED — these topics are searched again whatever you plan, because what was ` +
@@ -810,63 +696,81 @@ const plan = await agent(
   `When several topics would each need to read the same files, do NOT fold that surface ` +
   `into each of them. Name it once in common_ground, as a precise instruction for a single ` +
   `search agent: it is searched once, and every judge receives what it finds alongside the ` +
-  `topics. Then confine each topic's instruction to what is unique to that topic. Send an ` +
-  `empty string when the topics genuinely share no ground.\n\n` +
-  `Set history_needed if answering the question requires git history rather than the ` +
+  `topics. Then confine each topic's instruction to what is unique to that topic. Leave it ` +
+  `empty when the topics genuinely share no ground.\n\n` +
+  `Write history_question if answering the question requires git history rather than the ` +
   `current tree: when a behaviour changed, which commit introduced or removed something, ` +
-  `why code is the way it is, or any regression. Put that question in history_question. ` +
-  `A search of the current tree cannot answer these, so getting this flag wrong produces ` +
-  `a confident wrong answer.\n\n` +
-  `Set docs_needed only if answering the question requires vendor or standards ` +
-  `documentation that is not in these repositories. Put that question in docs_question.\n\n` +
-  `Leave a question field as an empty string when its flag is false. When a flag is true ` +
-  `the matching question must be non-empty — a true flag with no question skips the track ` +
-  `entirely and the answer silently loses that evidence.\n` +
-  `Do not search anything yourself. Plan only.`,
-  { agentType: 'agentics:analyst', schema: PLAN, phase: 'Plan', label: 'plan', ...tiered(judge, 'medium') },
-).catch((e) => {
+  `why code is the way it is, or any regression. A search of the current tree cannot answer ` +
+  `these, so leaving it empty when it is needed produces a confident wrong answer.\n\n` +
+  `Write docs_question only if answering the question requires vendor or standards ` +
+  `documentation that is not in these repositories.\n\n` +
+  `Copy the QUESTION into the file exactly as it is written above: the store records every item ` +
+  `under it and checks your copy against it.\n` +
+  `Do not search anything yourself. Plan only.`
+
+const planFile = returnFile('plan', planBody)
+
+const plan = await agent(toFile(planBody, planFile, PLAN_FILE), {
+  agentType: 'agentics:analyst', schema: PLAN, phase: 'Plan', label: 'plan', ...tiered(judge, 'medium'),
+}).catch((e) => {
   log(`WARNING: planning failed: ${e && e.message}`)
   return null
 })
 
 if (!plan) {
-  return surveyResult({
-    items: known, reused: known.map((i) => i.id),
-    coverageBlock: coverageOf(forced.map((t) => t.key), [], [], ['planning failed, so nothing was searched']),
-  })
+  return reusedOnly([forced.map((t) => t.key), [], [], ['planning failed, so nothing was searched']])
 }
+
+const plannedRaw = Array.isArray(plan.topics) ? plan.topics.filter((t) => t && t.key) : []
 
 // The cap in the prompt is sizing guidance to the planner, never a licence to drop work:
 // every topic the planner decided the question needs gets searched. Slicing the overflow off
 // produced runs whose plans rested on evidence nobody gathered. Cost is controlled by method —
 // cheap scouts, tight schemas — not by cutting work (§8).
-if (plan.topics.length > maxTopics) {
-  log(`Planner returned ${plan.topics.length} topics (asked for at most ${maxTopics}); searching all of them.`)
+if (plannedRaw.length > maxTopics) {
+  log(`Planner returned ${plannedRaw.length} topics (asked for at most ${maxTopics}); searching all of them.`)
 }
 
 const forcedKeys = new Set(forced.map((t) => t.key))
-const planned = plan.topics.filter((t) => {
-  if (!forcedKeys.has(t.key)) return true
-  log(`Plan: topic "${t.key}" is already forced by a stale item; the planner's copy is dropped.`)
-  return false
-})
+const taken = new Set(forcedKeys)
+const planned = []
+for (const t of plannedRaw) {
+  let key = slug(t.key)
+  if (forcedKeys.has(key)) {
+    log(`Plan: topic "${key}" is already forced by a stale item; the planner's copy is dropped.`)
+    continue
+  }
+  for (let n = 2; taken.has(key); n++) key = slug(t.key) + '-' + n
+  taken.add(key)
+  planned.push({ key, planKey: String(t.key), subtree: typeof t.subtree === 'string' ? t.subtree : '', forced: false })
+}
 const topics = forced.concat(planned)
-// Read defensively: a plan that omits the field is a plan with no shared ground.
-const commonFind = (plan.common_ground || '').trim()
+const commonPlanned = plan.common_ground === true
 
 log(`Plan: ${topics.length} topic(s)` +
-    `${commonFind ? ' + common ground' : ''}` +
+    `${commonPlanned ? ' + common ground' : ''}` +
     `${plan.history_needed ? ' + git history' : ''}` +
     `${plan.docs_needed ? ' + documentation' : ''}`)
 
 if (topics.length === 0 && known.length > 0) {
   log('The pool\'s standing items answer the question: nothing left to search.')
-  return surveyResult({ items: known, reused: known.map((i) => i.id), coverageBlock: coverageOf([], [], [], []) })
+  return reusedOnly([[], [], [], []])
 }
 
 if (topics.length === 0) {
   return surveyResult({ coverageBlock: coverageOf([], [], [], ['planning produced no topics, so nothing was searched']) })
 }
+
+/** What a topic's scout is charged with, as its prompt names it: its plan entry, or the stale claims it re-establishes. */
+const chargeOf = (topic) => topic.forced
+  ? `Re-establish from the current code what the recorded claims of topic "${topic.key}" said about ` +
+    `${topic.subtree ? topic.subtree : 'the repository'}. They are listed under that topic in ${pool} ` +
+    `(under STALE or SUSPECT); none of them holds as recorded any more, so find what is true now.`
+  : topic.key === 'common-ground' && topic.common
+    ? `Your charge is the common_ground instruction in the plan file ${planFile}. Read it, and ` +
+      `search exactly what it says.`
+    : `Your charge is the topic keyed "${topic.planKey}" in the plan file ${planFile}. Read it, and ` +
+      `search exactly what that topic's find says.`
 
 // ---------------------------------------------------------- 2. the resume engine
 //
@@ -874,9 +778,7 @@ if (topics.length === 0) {
 // doc-researcher all go through here. Every stop condition is about the GOAL, and none is a
 // counter or a budget (§1): the loop ends when the agent exhausts the surface, when it
 // dead-ends without naming what is left, when a round errors out, or when a round covers no
-// new ground — the observable form of "stuck". Cost never ends it: a search still finding
-// new ground keeps going, however many rounds that takes, because every later stage is built
-// on what this one returns and is far more expensive to mislead than to wait for.
+// new ground — the observable form of "stuck". Cost never ends it.
 //
 // `absorb(found)` folds one round into the caller's accumulators and returns true when the
 // round gained new ground. Progress is judged on evidence actually gained, never on the
@@ -886,52 +788,60 @@ if (topics.length === 0) {
 // descriptions of the same unreached surface are the same surface.
 const remainderKey = (text) => String(text || '').replace(/\s+/g, ' ').trim().toLowerCase()
 
-async function resumeToExhaustion({ key, prompt, launch, absorb }) {
+/**
+ * One evidence agent, round by round. Each round writes its own return file; a continuation names
+ * every earlier round's file, for what was searched and found, and the remainder the last one named.
+ */
+async function resumeToExhaustion({ key, label, charge, shape, launch, absorb }) {
+  const files = []
   let round = 0
-  let prev = null
   let prevRemainder = null
-  while (true) {
+  for (;;) {
     round++
+    const body = round === 1
+      ? charge
+      : `Continue an unfinished search — do not start over.\n\nORIGINAL REQUEST:\n${charge}\n\n` +
+        `YOUR EARLIER ROUNDS' REPORTS — read them first: do not repeat what they searched, and do ` +
+        `not report again what they found:\n${files.join('\n')}\n\n` +
+        `STILL NOT REACHED — this is your job now:\n${prevRemainder}`
+    const roundLabel = label + (round > 1 ? `#${round}` : '')
+    const file = returnFile(roundLabel, body)
     let found
     try {
-      found = await launch(prompt(round, prev), round)
+      found = await launch(toFile(body, file, shape), roundLabel)
     } catch (e) {
       log(`${key}: round ${round} threw (${e && e.message}); keeping what was found.`)
-      return { exhausted: false, notReached: `round ${round} failed before completion: ${e && e.message}` }
+      return { files, exhausted: false, notReached: `round ${round} failed before completion: ${e && e.message}` }
     }
     if (!found) {
       log(`${key}: round ${round} returned nothing; keeping what was found.`)
-      return { exhausted: false, notReached: `round ${round} produced no result` }
+      return { files, exhausted: false, notReached: `round ${round} produced no result` }
     }
-
+    files.push(file)
     const progressed = absorb(found)
-    prev = found
 
-    if (found.stop_reason === 'exhausted') {
-      return { exhausted: true, notReached: '' }
-    }
+    if (found.stop_reason === 'exhausted') return { files, exhausted: true, notReached: '' }
 
     // Not exhausted but nothing named as unreached: another round would be handed an empty
     // task and would return "exhausted" having done nothing. Treat it as the dead end it is
     // rather than paying for a round that launders it into completeness.
-    if (!(found.not_reached || '').trim()) {
+    const remainder = String(found.not_reached || '').trim()
+    if (!remainder) {
       const reason = found.stop_reason || 'unstated'
       log(`${key}: stop_reason "${reason}" with nothing named as unreached — treating as a dead end.`)
-      return { exhausted: false, notReached: `search stopped as "${reason}" without naming what was missed` }
+      return { files, exhausted: false, notReached: `search stopped as "${reason}" without naming what was missed` }
     }
 
     // Two independent ways a round can advance: it brought back evidence nobody had, or it
     // narrowed the surface still to cover. An agent told not to repeat itself rewords its
-    // account of the same ground every round — new lines, no new knowledge, the same remainder
-    // — and left alone that runs until something outside the workflow kills it.
-    const remainder = remainderKey(found.not_reached)
-    const narrowed = prevRemainder === null || remainder !== prevRemainder
+    // account of the same ground every round — and left alone that runs until something
+    // outside the workflow kills it.
+    const narrowed = prevRemainder === null || remainderKey(remainder) !== remainderKey(prevRemainder)
     prevRemainder = remainder
-
     if (!progressed && !narrowed) {
       log(`${key}: round ${round} brought back nothing new and left the same ground unreached — ` +
         `stopping as stuck rather than looping.`)
-      return { exhausted: false, notReached: found.not_reached }
+      return { files, exhausted: false, notReached: remainder }
     }
 
     log(`${key}: unfinished after round ${round} (${found.stop_reason || 'unstated'}), resuming.`)
@@ -942,22 +852,11 @@ async function resumeToExhaustion({ key, prompt, launch, absorb }) {
 //
 // Both run alongside the scouts, through the same resume engine. IRON LAW §5: a side-channel
 // failure must not discard the scout and judge work already paid for, so nothing here rejects.
-// Every outcome is recorded, including a track the planner marked necessary and then gave no
-// question for — that one otherwise reports as neither researched nor failed.
+// Their reports are prose, so a round's progress is the remainder it narrowed.
 
-function sideChannel(name, needed, ask, launch) {
-  if (!needed) {
-    return Promise.resolve({ requested: false, result: null, error: '' })
-  }
-  if (!(ask || '').trim()) {
-    log(`WARNING: ${name} was marked necessary but the planner produced no question for it.`)
-    return Promise.resolve({
-      requested: true,
-      result: null,
-      error: 'the planner marked it necessary and then produced no question, so nothing was searched',
-    })
-  }
-  return launch(ask).then(
+function sideChannel(name, needed, launch) {
+  if (!needed) return Promise.resolve({ requested: false, result: null, error: '' })
+  return launch().then(
     (result) => result
       ? { requested: true, result, error: '' }
       : { requested: true, result: null, error: 'the agent returned no result' },
@@ -968,146 +867,82 @@ function sideChannel(name, needed, ask, launch) {
   )
 }
 
-// A channel's rounds accumulate prose findings rather than hit lists, so the engine's progress
-// measure is new findings text, and the merged rounds keep the shape every consumer already
-// reads: findings plus the coverage fields. Returns null when no round ever produced a result,
-// which sideChannel records as the failed channel it is.
-async function channelToExhaustion({ key, first, launch }) {
-  const findings = []
-  const searched = []
-  const noMatch = []
-  const seen = new Set()
-  const seenFindings = new Set()
-  let sawResult = false
-
-  const absorb = (found) => {
-    sawResult = true
-    let gained = false
-
-    const text = (found.findings || '').trim()
-    if (text && !seenFindings.has(text)) { seenFindings.add(text); findings.push(text); gained = true }
-
-    for (const s of found.searched || []) {
-      const k = String(s).trim()
-      if (k && !seen.has(k)) { seen.add(k); searched.push(s) }
-    }
-    if ((found.no_match || '').trim()) noMatch.push(found.no_match.trim())
-    return gained
-  }
-
-  const prompt = (round, prev) => round === 1
-    ? first
-    : `Continue an unfinished search — do not start over.\n\n` +
-      `ORIGINAL REQUEST:\n${first}\n\n` +
-      `ALREADY SEARCHED (do not repeat these):\n${searched.join('\n')}\n\n` +
-      `ALREADY ESTABLISHED (do not re-derive these):\n${findings.join('\n\n')}\n\n` +
-      `STILL NOT REACHED — this is your job now:\n${prev.not_reached}`
-
-  const end = await resumeToExhaustion({ key, prompt, launch, absorb })
-  if (!sawResult) return null
-  return {
-    findings: findings.join('\n\n'),
-    searched,
-    stop_reason: end.exhausted ? 'exhausted' : 'unfinished',
-    no_match: noMatch.join('\n'),
-    not_reached: end.notReached,
-  }
+async function channelToExhaustion({ key, charge, shape, agentType, phaseName }) {
+  const end = await resumeToExhaustion({
+    key, label: key, charge, shape,
+    launch: (prompt, label) => agent(prompt, { agentType, effort: 'low', schema: CHANNEL, phase: phaseName, label }),
+    absorb: () => false,
+  })
+  return end.files.length === 0 ? null : end
 }
 
-const historyChannel = sideChannel(
-  'git history search', plan.history_needed, plan.history_question,
-  (ask) => channelToExhaustion({
-    key: 'history',
-    first: `${ask}\n\nRepositories: ${roots}\nContext: ${question}`,
-    launch: (p, round) => agent(p, {
-      agentType: 'agentics:historian', effort: 'low', schema: HISTORY,
-      phase: 'History', label: `history${round > 1 ? `#${round}` : ''}` }),
-  }),
-)
+const historyChannel = sideChannel('git history search', plan.history_needed === true, () => channelToExhaustion({
+  key: 'history', agentType: 'agentics:historian', phaseName: 'History', shape: HISTORY_FILE,
+  charge: `Your question is the history_question in the plan file ${planFile}. Read it.\n\n` +
+    `Repositories: ${roots}\nContext: ${question}\n\n` +
+    `If the plan file's history_question is empty, search nothing: set stop_reason "stuck" and say so.`,
+}))
 
-const docsChannel = sideChannel(
-  'documentation research', plan.docs_needed, plan.docs_question,
-  (ask) => channelToExhaustion({
-    key: 'docs',
-    first: `Research this against primary sources and report the facts with URLs.\n\n` +
-      `${ask}\n\nContext: ${question}`,
-    launch: (p, round) => agent(p, {
-      agentType: 'agentics:doc-researcher', effort: 'low', schema: DOCS,
-      phase: 'Docs', label: `docs${round > 1 ? `#${round}` : ''}` }),
-  }),
-)
+const docsChannel = sideChannel('documentation research', plan.docs_needed === true, () => channelToExhaustion({
+  key: 'docs', agentType: 'agentics:doc-researcher', phaseName: 'Docs', shape: DOCS_FILE,
+  charge: `Research the docs_question in the plan file ${planFile} against primary sources and ` +
+    `report the facts with URLs. Read it first.\n\nContext: ${question}\n\n` +
+    `If the plan file's docs_question is empty, search nothing: set stop_reason "stuck" and say so.`,
+}))
 
 // -------------------------------------------------------------- 4. scout
 
 phase('Scout')
 
 const partial = []
+const locKey = (h) => String(h.path).split('\\').join('/') + ':' + (Number.isInteger(h.line) ? h.line : 0)
 
 // Search to exhaustion. IRON LAW §3: an incomplete scout is RESUMED, never reported as a
 // result. The engine owns the stop conditions; this wrapper owns what a scout accumulates —
-// deduplicated hits and searched surface, which double as the engine's progress measure.
+// its distinct locations, which double as the engine's progress measure.
 async function scoutUntilComplete(topic) {
   const hits = []
-  const searched = []
-  const noMatch = []
   const seen = new Set()
 
   // Progress is HITS, not lines of self-report: a scout told not to repeat itself keeps
   // producing fresh descriptions of ground it has already covered.
   const absorb = (found) => {
-    let gained = false
-
-    for (const h of found.hits || []) {
-      const k = `hit:${h.path}:${h.line}`
-      if (!seen.has(k)) { seen.add(k); hits.push(h); gained = true }
+    const fresh = (Array.isArray(found.hits) ? found.hits : []).filter((h) => h && !seen.has(locKey(h)))
+    for (const h of fresh) {
+      seen.add(locKey(h))
+      hits.push(h)
     }
-    for (const s of found.searched || []) {
-      const k = `searched:${String(s).trim()}`
-      if (String(s).trim() && !seen.has(k)) { seen.add(k); searched.push(s) }
-    }
-    if ((found.no_match || '').trim()) noMatch.push(found.no_match.trim())
-    return gained
+    return fresh.length > 0
   }
 
   // The shared ground is searched once, by its own scout, so every other scout is told to
   // leave it alone. The common scout itself is never handed the exclusion.
-  const exclude = commonFind && topic.key !== 'common-ground'
-    ? `\n\nA separate scout covers this shared ground — do not search it:\n${commonFind}`
+  const exclude = commonPlanned && !topic.common
+    ? `\n\nA separate scout covers the common_ground instruction in the plan file ${planFile} — do not search that.`
     : ''
 
-  const prompt = (round, prev) => round === 1
-    ? `${topic.find}${exclude}\n\nRepositories: ${roots}\n\n` +
-      `Report every location you find, and search to exhaustion: you stop when the surface ` +
-      `is covered or you are genuinely stuck, never because the list is getting long or ` +
-      `the work feels large. If one pass truly cannot cover the request, report what you ` +
-      `have, set stop_reason to "unfinished", and name exactly what remains in ` +
-      `not_reached — you will be resumed until the search is done.`
-    : `Continue an unfinished search — do not start over.\n\n` +
-      `ORIGINAL REQUEST: ${topic.find}${exclude}\n` +
-      `Repositories: ${roots}\n\n` +
-      `ALREADY SEARCHED (do not repeat these):\n${searched.join('\n')}\n\n` +
-      `ALREADY FOUND (do not report these again):\n` +
-      hits.map((h) => `${h.path}:${h.line}`).join('\n') +
-      `\n\nSTILL NOT REACHED — this is your job now:\n${prev.not_reached}`
+  const charge = `${chargeOf(topic)}${exclude}\n\nRepositories: ${roots}\n\n` +
+    `Report every location you find, and search to exhaustion: you stop when the surface ` +
+    `is covered or you are genuinely stuck, never because the list is getting long or ` +
+    `the work feels large. If one pass truly cannot cover the request, report what you ` +
+    `have, set stop_reason to "unfinished", and name exactly what remains in ` +
+    `not_reached — you will be resumed until the search is done.`
 
-  const launch = (p, round) => agent(p, {
-    agentType: 'agentics:scout', effort: 'low', schema: HITS,
-    phase: 'Scout', label: `scout:${topic.key}${round > 1 ? `#${round}` : ''}`,
+  const end = await resumeToExhaustion({
+    key: topic.key, label: `scout:${topic.key}`, charge, shape: HITS_FILE,
+    launch: (prompt, label) => agent(prompt, { agentType: 'agentics:scout', effort: 'low', schema: HITS, phase: 'Scout', label }),
+    absorb,
   })
-
-  const end = await resumeToExhaustion({ key: topic.key, prompt, launch, absorb })
   if (!end.exhausted) partial.push(topic.key)
 
-  return {
-    hits, searched, complete: end.exhausted, noMatch: noMatch.join('\n'), notReached: end.notReached,
-  }
+  return { hits, files: end.files, complete: end.exhausted, notReached: end.notReached }
 }
 
 // The shared scout runs alongside the topic scouts. It is an ordinary scout in every other
 // respect — same labels, same phase, same resume to exhaustion, and the same entry in `partial`
 // when it does not get there.
-const commonGround = commonFind
-  ? scoutUntilComplete({ key: 'common-ground', find: commonFind }).catch((e) => {
+const commonGround = commonPlanned
+  ? scoutUntilComplete({ key: 'common-ground', common: true }).catch((e) => {
     log(`WARNING: the shared-ground scout failed: ${e && e.message}`)
     partial.push('common-ground')
     return null
@@ -1126,25 +961,12 @@ const common = await commonGround
 
 const LOCATIONS_PER_JUDGE = 60
 
-const normPath = (path) => String(path).split('\\').join('/')
-const locKey = (path, line) => normPath(path) + ':' + String(line)
-
-function locationsOf(hits) {
-  const seen = new Set()
-  const out = []
-  for (const h of hits) {
-    const loc = { path: normPath(h.path), line: Number.isInteger(h.line) ? h.line : 0 }
-    const k = locKey(loc.path, loc.line)
-    if (!seen.has(k)) { seen.add(k); out.push(loc) }
-  }
-  return out
-}
-
+const distinct = (hits) => new Set(hits.map(locKey)).size
 const scoutOf = (topic) => scouted[topics.indexOf(topic)]
 const commonHits = common ? common.hits : []
 const judged = topics.filter((t) => scoutOf(t))
 const hitsOf = (group) => group.flatMap((t) => scoutOf(t).hits).concat(commonHits)
-const total = locationsOf(hitsOf(judged)).length
+const total = distinct(hitsOf(judged))
 
 let groups
 if (judged.length === 0) {
@@ -1158,7 +980,7 @@ if (judged.length === 0) {
 
   // Heaviest topic first onto the lightest reader, then each reader's topics back in plan order.
   const loads = Array.from({ length: readers }, () => ({ weight: 0, topics: [] }))
-  const weighed = judged.map((t) => ({ t, n: locationsOf(scoutOf(t).hits).length })).sort((a, b) => b.n - a.n)
+  const weighed = judged.map((t) => ({ t, n: distinct(scoutOf(t).hits) })).sort((a, b) => b.n - a.n)
   for (const { t, n } of weighed) {
     const lightest = loads.reduce((a, b) => (b.weight < a.weight ? b : a))
     lightest.weight += n
@@ -1173,151 +995,63 @@ if (judged.length === 0) {
 }
 
 const groupName = (group) => (groups.length === 1 ? '' : group.map((t) => t.key).join('+'))
+const named = (base, group) => [base, groupName(group)].filter(Boolean).join(':')
 
 // ------------------------------------------------ 6. assemble context for analysis
 //
-// Each judge's locations — its topics' and the shared ground's — read ONCE by a script, overlapping
-// windows merged, and written to context files the judge Reads whole. The courier carries only
-// their paths back, so no model ever retypes an excerpt. A judge handed the lines spends its
-// turns judging; one handed paths spends them opening files one by one. Two judges that share a
-// file each get their own window of it: a second read by a script costs nothing.
+// Each judge's scout reports — its topics' and the shared ground's — read ONCE by a script: every
+// hit with its note, what each scout covered and proved absent, and the lines they point at, the
+// overlapping windows merged, in one file the judge Reads. The courier carries only the reports'
+// paths in and the file's path back. Two judges that share a report each get their own file: a
+// second read by a script costs nothing.
 //
-// A side channel with IRON LAW §5 treatment: a batch that could not be carried reaches the judge
-// as locations to read itself, which its constitution permits. That costs turns, not evidence.
+// A side channel with IRON LAW §5 treatment: a context that could not be carried reaches the judge
+// as the report files themselves, which it reads and follows. That costs turns, not evidence.
 
-// A location list travels as plain text on one argv slot — `path:line:line,path:line` — because
-// paths and numbers are what a courier copies reliably, and its digest is taken over the exact
-// string. A path carrying anything outside these characters would need quoting, so it is not
-// sent: its locations reach the reader to open itself.
-const CARRIABLE = /^[A-Za-z0-9_.\/@+:-]+$/
-const carriable = (loc) => CARRIABLE.test(loc.path)
+/** The report files a judge's evidence is in: its topics' rounds, then the shared ground's. */
+const reportsOf = (group) => group.flatMap((t) => scoutOf(t).files).concat(common ? common.files : [])
 
-function locationList(locations) {
-  const byPath = new Map()
-  for (const loc of locations) {
-    if (!byPath.has(loc.path)) byPath.set(loc.path, [])
-    byPath.get(loc.path).push(loc.line)
-  }
-  return [...byPath].map(([path, lines]) => path + ':' + lines.join(':')).join(',')
-}
-
-// A list travels in batches of at most COMMAND_BUDGET characters. Every location of one file goes
-// in the same batch, so no two batches ever hold overlapping windows.
-
-function batchesOf(locations) {
-  const byPath = new Map()
-  for (const loc of locations) {
-    if (!byPath.has(loc.path)) byPath.set(loc.path, [])
-    byPath.get(loc.path).push(loc)
-  }
-
-  const batches = []
-  let current = []
-  for (const group of byPath.values()) {
-    const grown = current.concat(group)
-    if (current.length > 0 && locationList(grown).length > COMMAND_BUDGET) {
-      batches.push(current)
-      current = group
-    } else {
-      current = grown
-    }
-  }
-  if (current.length > 0) batches.push(current)
-  return batches
-}
-
-function locationsCommand(repoPath, batch) {
-  const list = locationList(batch)
-  return `node "${pluginRoot}/lib/citations.mjs" excerpts --repo "${repoPath}" --locs "${list}" --digest ${fnv1a(list)}`
-}
-
-/** One judge's context files, and the locations that reached none of them. */
 async function assembleContext(group) {
-  const locations = locationsOf(hitsOf(group))
-  if (locations.length === 0) {
+  const files = reportsOf(group)
+  if (files.length === 0 || hitsOf(group).length === 0) {
     log(`No context to assemble${groupName(group) ? ' for ' + groupName(group) : ''}: no scout reported a location.`)
-    return { parts: [], unread: new Set() }
+    return { path: '', files }
   }
-
-  const parts = []
-  const unread = new Set()
-  const failures = []
-
-  const unsent = locations.filter((loc) => !carriable(loc))
-  for (const loc of unsent) unread.add(locKey(loc.path, loc.line))
-  if (unsent.length > 0) failures.push(`${unsent.length} location(s): a path the list cannot carry unquoted`)
-
-  const batches = batchesOf(locations.filter(carriable))
-  const base = ['assemble', groupName(group)].filter(Boolean).join(':')
-  const carried = await Promise.all(batches.map((batch, i) =>
-    carry(locationsCommand(repo, batch), batches.length === 1 ? base : `${base}:${i + 1}`,
-      'Assemble context for analysis')))
-
-  carried.forEach((held, i) => {
-    const context = held.payload && held.payload.context
-    if (context && Array.isArray(context.parts)) {
-      parts.push(...context.parts)
-    } else {
-      for (const loc of batches[i]) unread.add(locKey(loc.path, loc.line))
-      failures.push(`${batches[i].length} location(s): ${held.why || 'no context files came back'}`)
-    }
-  })
-
-  if (failures.length > 0) {
-    log(`WARNING: some locations were not assembled (${failures.join('; ')}); the judge reads ` +
-      `those itself. More turns, not less evidence.`)
-  }
-  return { parts, unread }
+  const held = await carry(`${lib('citations', 'excerpts')} ${flags('hits', files)}`, named('assemble', group),
+    'Assemble context for analysis')
+  if (held.payload && held.payload.context) return { path: held.payload.context, files }
+  log(`WARNING: the scouts' reports were not assembled (${held.why || 'no context file came back'}); the judge ` +
+    `reads them itself. More turns, not less evidence.`)
+  return { path: '', files }
 }
 
 // ------------------------------------------------------------ 7. judge
 
-const hitLine = (h) => `  ${h.path}:${h.line} — ${h.note || ''}`
+const baseName = (file) => String(file).split('/').pop()
 
-function topicSection(topic) {
+function topicLine(topic) {
   const f = scoutOf(topic)
-  return `[${topic.key}] ${topic.find}\n` +
-    `LOCATIONS FOUND:\n${f.hits.length ? f.hits.map(hitLine).join('\n') : '  (none)'}\n` +
-    `SEARCH SURFACE ACTUALLY COVERED:\n${f.searched.join('\n') || '(none reported)'}` +
-    (f.noMatch ? `\nSEARCHED AND NOT FOUND (this is evidence of absence):\n${f.noMatch}` : '') +
-    (f.notReached ? `\nNEVER SEARCHED: ${f.notReached}` : '') +
+  return `- ${topic.key}: ${topic.forced
+    ? `re-establish the stale claims of topic "${topic.key}" listed in ${pool}`
+    : `the topic keyed "${topic.planKey}" in the plan file ${planFile}`}. ` +
+    `Its scouts' reports: ${f.files.map(baseName).join(', ') || '(none came back)'}. ` +
     (f.complete
-      ? `\nThe search was exhausted. Judge the surface above for yourself: if it does not ` +
-        `actually cover the topic, say so in risks rather than accepting it.`
-      : `\nWARNING: this search did NOT finish and is not exhaustive. Your conclusion inherits ` +
-        `that limit — state what it rests on and what would change it.`)
-}
-
-// The shared ground, and the load-bearing warning when it did not finish: a judge reasoning over
-// a shared surface nobody finished searching must be able to say what its conclusion rests on.
-function sharedGroundSection() {
-  if (!common) return ''
-  return `\n\nSHARED GROUND (scouted once for every topic — treat it as part of your evidence):\n` +
-    (common.hits.length ? common.hits.map(hitLine).join('\n') : '  (no locations)') +
-    `\nSHARED GROUND SEARCH SURFACE COVERED:\n${common.searched.join('\n')}` +
-    (common.noMatch
-      ? `\nSHARED GROUND SEARCHED AND NOT FOUND (this is evidence of absence):\n${common.noMatch}`
-      : '') +
-    (common.complete
-      ? ''
-      : `\nWARNING: the shared-ground search did NOT finish. It never reached: ` +
-        `${common.notReached}. Anything you conclude from the shared ground inherits that ` +
-        `limit — state what your conclusion rests on.`)
+      ? 'The search was exhausted; judge its surface for yourself, and if it does not actually cover ' +
+        'the topic, say so in risks rather than accepting it.'
+      : `WARNING: the search did NOT finish (never reached: ${f.notReached}). Your conclusion ` +
+        'inherits that limit — state what it rests on and what would change it.')
 }
 
 function judgePrompt(group, context, continued) {
-  const unread = hitsOf(group)
-    .filter((h) => context.unread.has(locKey(h.path, Number.isInteger(h.line) ? h.line : 0)))
   const many = group.length > 1
-
   return `Judge ${many ? `these ${group.length} topics` : 'this topic'} of a larger question from ` +
-    `the evidence below.\n\n` +
+    `the evidence named below.\n\n` +
     (continued
       ? `A CONTINUATION: an earlier pass did not rule on ${many ? 'these topics' : 'this topic'}. ` +
         `Judge ${many ? 'them' : 'it'} now.\n\n`
       : '') +
     `OVERALL QUESTION: ${question}\n\n` +
-    `TOPICS — return evidence items for each, one claim per item; set every item's and risk's ` +
+    `TOPICS — write evidence items for each, one claim per item; set every item's and risk's ` +
     `topic to the topic's key, whatever else it names. A claim that needs anchors in two ` +
     `unrelated places is two claims. Each kind needs its anchor, one line per kind:\n` +
     `  behaviour: spans;\n` +
@@ -1328,24 +1062,30 @@ function judgePrompt(group, context, continued) {
     `  derived: rests_on, the exact claims of sibling items or the ids of ESTABLISHED items.\n` +
     `An item without its anchor is refused and comes back to you. Every topic gets at least one ` +
     `item, or a risk saying why nothing in its evidence can be anchored.\n\n` +
-    group.map(topicSection).join('\n\n') +
-    sharedGroundSection() +
+    group.map(topicLine).join('\n') +
+    (common
+      ? `\n\nSHARED GROUND — scouted once for every topic; treat it as part of your evidence. Its ` +
+        `scout's reports: ${common.files.map(baseName).join(', ') || '(none came back)'}.` +
+        (common.complete
+          ? ''
+          : ` WARNING: the shared-ground search did NOT finish. It never reached: ${common.notReached}. ` +
+            `Anything you conclude from the shared ground inherits that limit — state what your ` +
+            `conclusion rests on.`)
+      : '') +
     (known.length
-      ? `\n\nESTABLISHED — known ground, already anchored; do not restate these:\n` +
-        known.map(itemLine).join('\n')
+      ? `\n\nESTABLISHED — known ground, already anchored: the items under STANDING in ${pool}. ` +
+        `Do not restate these.`
       : '') +
-    (context.parts.length > 0
-      ? `\n\nCONTEXT FILES — every location above, read once for you by a script, overlapping ` +
-        `windows merged. Read each file below whole before judging, and do not open the source ` +
-        `files again to find these lines; a file's closing section names any location the ` +
-        `script could not read:\n` +
-        context.parts.map((p) => `  ${p.path} (${p.lines} line(s))`).join('\n')
-      : '') +
-    (unread.length > 0
-      ? `\n\nLOCATIONS NOT EXCERPTED — the script could not read these for you (a lost ` +
-        `transport, or a path it could not carry). Read each one yourself, in a line range around it, and nothing else; a ` +
-        `location that does not exist is itself worth a line in risks:\n` + unread.map(hitLine).join('\n')
-      : '') +
+    (context.path
+      ? `\n\nCONTEXT FILE — read it whole before judging: every scout report named above, with its ` +
+        `locations and what it searched and proved absent, then the lines those locations point ` +
+        `at, read once for you by a script. Do not open the source files again to find these ` +
+        `lines; its closing section names any location the script could not read:\n  ${context.path}`
+      : context.files.length > 0
+        ? `\n\nSCOUT REPORTS — the script could not assemble them for you. Read each of these files ` +
+          `whole, then each location they report in a line range around it, and nothing else; a ` +
+          `location that does not exist is itself worth a line in risks:\n` + context.files.map((f) => '  ' + f).join('\n')
+        : '') +
     `\n\nYou have no search tools. Judge what these show; where they are not enough to decide ` +
     `a topic, say what is missing in risks rather than guessing.` +
     (many ? ` Every topic gets its own items — items for one topic do not answer another.` : '')
@@ -1353,46 +1093,44 @@ function judgePrompt(group, context, continued) {
 
 /**
  * One judge's whole charge: its context assembled, a first pass, then a continuation on exactly
- * the topics it returned no item or risk for, for as long as each pass rules on at least one more.
- * No counter ends it (IRON LAW §1); a pass that adds nothing ends it, and what it left is dropped,
- * loudly.
+ * the topics it ruled on nothing for, for as long as each pass rules on at least one more. No
+ * counter ends it (IRON LAW §1); a pass that adds nothing ends it, and what it left is dropped,
+ * loudly. Returns the judge's files and, per topic it ruled on, how many items and risks.
  */
 async function judgeGroup(group) {
   const context = await assembleContext(group)
-  const label = ['judge', groupName(group)].filter(Boolean).join(':')
+  const label = named('judge', group)
   const ruled = new Map()
+  const files = []
   let remaining = group
   let pass = 0
 
   while (remaining.length > 0) {
     pass++
     const keys = remaining.map((t) => t.key)
-    const out = await agent(judgePrompt(remaining, context, pass > 1), {
-      agentType: 'agentics:analyst', schema: itemsSchema(keys),
-      phase: 'Judge', label: label + (pass > 1 ? `#${pass}` : ''), ...tiered(judge, 'high'),
+    const body = judgePrompt(remaining, context, pass > 1)
+    const passLabel = label + (pass > 1 ? `#${pass}` : '')
+    const file = returnFile(passLabel, body)
+    const out = await agent(toFile(body, file, ITEMS_FILE), {
+      agentType: 'agentics:analyst', schema: rulingsSchema(keys),
+      phase: 'Judge', label: passLabel, ...tiered(judge, 'high'),
     }).catch((e) => {
       log(`${label}: the judge failed (${e && e.message}); its unruled topics are dropped.`)
       return null
     })
     if (!out) break
+    files.push(file)
 
-    const gotItems = Array.isArray(out.items) ? out.items.filter(Boolean) : []
-    const gotRisks = Array.isArray(out.risks) ? out.risks.filter(Boolean) : []
-
-    // A judge holding one topic has one topic to give: everything it returns is that topic's,
-    // whatever key the model typed, so a mistyped echo cannot turn a ruled topic into a dropped one.
-    if (remaining.length === 1) {
-      for (const it of gotItems) it.topic = keys[0]
-      for (const r of gotRisks) r.topic = keys[0]
-    }
-
+    // A judge holding one topic has one topic to give: everything it wrote is that topic's.
+    const counts = (Array.isArray(out.topics) ? out.topics : []).filter((t) => t && keys.includes(t.topic))
     let gained = 0
-    const gain = (topicKey) => {
-      if (!ruled.has(topicKey)) { ruled.set(topicKey, { items: [], risks: [] }); gained++ }
-      return ruled.get(topicKey)
+    for (const t of counts) {
+      const n = (Number(t.items_n) || 0) + (Number(t.risks_n) || 0)
+      if (n === 0) continue
+      const prev = ruled.get(t.topic)
+      if (!prev) gained++
+      ruled.set(t.topic, { items_n: (prev ? prev.items_n : 0) + (Number(t.items_n) || 0), risks_n: (prev ? prev.risks_n : 0) + (Number(t.risks_n) || 0) })
     }
-    for (const it of gotItems) if (keys.includes(it.topic)) gain(it.topic).items.push(it)
-    for (const r of gotRisks) if (keys.includes(r.topic)) gain(r.topic).risks.push(r)
 
     if (gained === 0) {
       log(`${label}: pass ${pass} ruled on none of ${keys.join(', ')} — stopping rather than looping.`)
@@ -1404,194 +1142,102 @@ async function judgeGroup(group) {
     }
   }
 
-  return ruled
+  return { ruled, files }
 }
 
 phase('Assemble context for analysis')
 const rulings = await Promise.all(groups.map((group) => judgeGroup(group)))
 const ruledBy = new Map()
-for (const r of rulings) for (const [k, v] of r) ruledBy.set(k, v)
+for (const r of rulings) for (const [k, v] of r.ruled) ruledBy.set(k, v)
 
 // ---------------------------------------------------------------- 8. record
 
-/** A judged item made whole: the survey's question, its topic's ground, and its id. */
-function toItem(raw) {
-  const t = topics.find((x) => x.key === raw.topic)
-  const item = {
-    question, topic: raw.topic, ground: [groundPath(t ? t.subtree : '')], kind: raw.kind,
-    claim: String(raw.claim || '').trim(),
-    spans: (raw.spans || []).map((s) => ({ path: normPath(s.path), start: s.start, end: s.end, at: '' })),
-    queries: (raw.queries || []).map((q) => ({ pattern: q.pattern, scope: (q.scope || []).map(normPath) })),
-    sources: (raw.sources || []).map((s) => ({ url: s.url, version: typeof s.version === 'string' ? s.version : '', retrieved: '' })),
-    rests_on: Array.isArray(raw.rests_on) ? raw.rests_on : [],
-  }
-  return { ...item, id: itemIdOf(item) }
-}
-
-/** A derived item names its siblings by claim; the recorder takes ids. Unresolved names travel as-is and are refused there. */
-function resolveRests(items, siblings) {
-  const byClaim = new Map(siblings.map((i) => [i.claim, i.id]))
-  return items.map((i) => ({ ...i, rests_on: i.rests_on.map((r) => (ITEM_ID.test(r) ? r : byClaim.get(String(r).trim()) || r)) }))
-}
-
-/** An item as the store re-derives it: everything but the id, which it re-mints from the rest. */
-const withoutId = (it) => { const { id, ...rest } = it; return rest }
-
-/** Carry one record of `items` under `label`, and sort what came back: recorded, refused (with the
- * other items unwritten, since a refusal refuses the whole record), or — no payload at all —
- * unrecorded, with why the account can show. */
-async function recordBatch(items, label) {
-  const recorded = []
-  const unrecorded = []
-  const refused = []
-  const unwritten = []
-  let why = ''
-
-  const { command, writes } = viaJsonFile(
-    `node "${pluginRoot}/lib/evidence.mjs" record --repo "${repo}" --root "${repo}" --kind survey`,
-    { items: items.map(withoutId) }, repo)
-  const held = await carry(command, label, 'Record', writes)
-
-  if (held.payload && held.payload.ok) {
-    recorded.push(...items)
-  } else if (held.payload && Array.isArray(held.payload.refused)) {
-    const problemsOf = new Map(held.payload.refused.map((r) => [r.index, r.problems]))
-    items.forEach((item, index) => {
-      if (problemsOf.has(index)) refused.push({ item, problems: problemsOf.get(index) })
-      else unwritten.push(item)
-    })
-  } else {
-    unrecorded.push(...items)
-    why = held.why
-  }
-
-  return { recorded, unrecorded, refused, unwritten, why }
-}
-
-/** The re-ask prompt: each refused item, its problems, and a request for corrected versions of
- * exactly those items — nothing else. */
-function anchorReaskPrompt(refused) {
-  return `The store refused these items for their anchors. Return corrected versions of exactly ` +
-    `these items, fixing what is wrong; nothing else.\n\n` +
-    refused.map(({ item, problems }) =>
-      `[${item.topic}] (${item.kind}) ${item.claim}\nProblem(s): ${problems.join('; ')}`).join('\n\n')
-}
-
 /**
- * One judge group's whole record charge: pass 0 records everything it ruled; a refused item goes
- * back to the judge that wrote it, on exactly the topics still refused, for as long as a pass
- * refuses fewer than the one before it. No counter ends it — a pass that refuses as many as the
- * last one does.
+ * One judge group's whole record charge, one courier per pass: lib reads the judge's files, the
+ * plan's question checked against this survey's, and records the group's items as one batch. A
+ * refused item goes back to the judge that wrote it — it reads the refusals file lib wrote and
+ * writes its corrections to a file of its own — for as long as a pass refuses fewer than the one
+ * before it. No counter ends it — a pass that refuses as many as the last one does.
  */
-async function recordGroup(group, items) {
-  const label = ['record', groupName(group)].filter(Boolean).join(':')
-  const judgeLabel = ['judge', groupName(group)].filter(Boolean).join(':')
-
-  let pending = items
-  let recorded = []
-  let unrecorded = []
-  let refused = []
-  let why = ''
-  let prevCount = Infinity
-  let pass = 0
-
-  while (true) {
-    const base = pass === 0 ? label : label + ':anchors:' + pass
-    const out = await recordBatch(pending, base)
-    recorded = recorded.concat(out.recorded)
-    unrecorded = unrecorded.concat(out.unrecorded)
-    if (out.why) why = out.why
-    refused = out.refused
-
-    if (refused.length === 0 || !(refused.length < prevCount)) {
-      // The batch-mates of a refused item are never wrong themselves, only stuck in a refused
-      // batch; without this they'd vanish from every channel while their topic reports complete.
-      if (out.unwritten.length) {
-        unrecorded = unrecorded.concat(out.unwritten)
-        if (!why) why = 'a batch-mate of a refused item, never itself re-asked, once the re-ask loop stopped shrinking'
-      }
-      break
-    }
-    prevCount = refused.length
-    pass++
-
-    const reaskTopics = [...new Set(refused.map((r) => r.item.topic))]
-    const answer = await agent(anchorReaskPrompt(refused), {
-      agentType: 'agentics:analyst', schema: itemsSchema(reaskTopics),
-      phase: 'Judge', label: judgeLabel + ':anchors:' + pass, ...tiered(judge, 'high'),
-    }).catch(() => null)
-
-    if (!answer) {
-      if (out.unwritten.length) {
-        unrecorded = unrecorded.concat(out.unwritten)
-        if (!why) why = 'a batch-mate of a refused item, never itself re-asked, once the re-ask dispatch failed'
-      }
-      break
-    }
-
-    const raw = Array.isArray(answer.items) ? answer.items : []
-    const corrected = resolveRests(raw.map(toItem), items)
-    pending = out.unwritten.concat(corrected)
+async function recordGroup(group, judgeFiles) {
+  const label = named('record', group)
+  const judgeLabel = named('judge', group)
+  const topicFlags = group.map((t) => `--topic ${t.key} --subtree "${t.subtree === '.' ? '' : t.subtree}"`).join(' ')
+  const unquotable = group.filter((t) => !quotable(t.subtree))
+  if (unquotable.length > 0 || judgeFiles.some((f) => !quotable(f))) {
+    return { ok: false, return: '', refused: [], refusals: '', why: 'a topic\'s subtree or a return file cannot be carried as a command argument' }
   }
 
-  return { recorded, unrecorded, refused, why }
+  const fixes = []
+  let prevCount = Infinity
+  for (let pass = 0; ; pass++) {
+    const held = await carry(
+      `${lib('evidence', 'record')} --root "${repo}" --kind survey --plan "${planFile}" --question-digest ${fnv1a(question)} ` +
+        `${topicFlags} ${flags('from', judgeFiles)}${fixes.length ? ' ' + flags('fix', fixes) : ''}`,
+      pass === 0 ? label : label + ':anchors:' + pass, 'Record')
+    const out = held.payload
+    if (!out) return { ok: false, return: '', refused: [], refusals: '', why: held.why }
+    if (out.ok) return { ok: true, return: out.return || '', refused: [], refusals: '', why: '' }
+
+    const refusedN = Number(out.refused_n) || 0
+    if (!(refusedN < prevCount) || !out.refusals_file) {
+      return { ok: false, return: '', refused: out.refused || [], refusals: out.refusals_file || '', why: '' }
+    }
+    prevCount = refusedN
+
+    const body = `The evidence store refused ${refusedN} of your items for their anchors. Read ${out.refusals_file}: ` +
+      `each refused item as it was written, with what is wrong with it. Write corrected versions of ` +
+      `exactly those items, fixing what each problem names, and nothing else.\n\nOVERALL QUESTION: ${question}`
+    const fixLabel = judgeLabel + ':anchors:' + (pass + 1)
+    const file = returnFile(fixLabel, body)
+    const answer = await agent(toFile(body, file, ITEMS_FILE), {
+      agentType: 'agentics:analyst', schema: WRITTEN, phase: 'Judge', label: fixLabel, ...tiered(judge, 'high'),
+    }).catch(() => null)
+    if (!answer) return { ok: false, return: '', refused: out.refused || [], refusals: out.refusals_file, why: 'the re-ask dispatch failed' }
+    fixes.push(file)
+  }
 }
 
 phase('Record')
-const recordOutcomes = await Promise.all(groups.map(async (group) => {
-  const raw = group.flatMap((t) => (ruledBy.get(t.key) || { items: [] }).items)
-  if (raw.length === 0) return { recorded: [], unrecorded: [], refused: [], why: '' }
-  const converted = raw.map(toItem)
-  const resolved = resolveRests(converted, converted)
-  return recordGroup(group, resolved)
+const recordOutcomes = await Promise.all(groups.map(async (group, i) => {
+  const withItems = group.filter((t) => (ruledBy.get(t.key) || { items_n: 0 }).items_n > 0)
+  if (withItems.length === 0) return { group, ok: true, return: '', refused: [], refusals: '', why: '' }
+  return { group, ...(await recordGroup(group, rulings[i].files)) }
 }))
 
 // ---------------------------------------------------------------- 9. account
 
-const recorded = []
-const unrecorded = []
-const refusedByTopic = new Map()
-const unrecordedByTopic = new Map()
-
-for (const outcome of recordOutcomes) {
-  recorded.push(...outcome.recorded)
-  unrecorded.push(...outcome.unrecorded)
-  for (const { item, problems } of outcome.refused) {
-    const list = refusedByTopic.get(item.topic) || []
-    list.push(problems.join('; '))
-    refusedByTopic.set(item.topic, list)
-  }
-  for (const item of outcome.unrecorded) {
-    const entry = unrecordedByTopic.get(item.topic) || { count: 0, why: outcome.why }
-    entry.count++
-    unrecordedByTopic.set(item.topic, entry)
-  }
-}
-
+const returns = recordOutcomes.filter((o) => o.ok && o.return).map((o) => o.return)
 const recordIncomplete = []
 const recordUnreached = []
-for (const [topicKey, problemsList] of refusedByTopic) {
-  recordIncomplete.push(topicKey)
-  recordUnreached.push(`${topicKey}: ${problemsList.length} item(s) refused for their anchors and dropped: ${problemsList.join('; ')}`)
-}
-for (const [topicKey, entry] of unrecordedByTopic) {
-  recordIncomplete.push(topicKey)
-  recordUnreached.push(`${topicKey}: ${entry.count} item(s) not recorded (${entry.why}), so their anchors were never checked`)
+const unrecorded = []
+
+for (const outcome of recordOutcomes) {
+  if (outcome.ok) continue
+  const refusedOf = new Map((outcome.refused || []).map((r) => [r.topic, Number(r.n) || 0]))
+  for (const t of outcome.group) {
+    const n = (ruledBy.get(t.key) || { items_n: 0 }).items_n
+    if (n === 0) continue
+    unrecorded.push(t.key)
+    recordIncomplete.push(t.key)
+    recordUnreached.push(refusedOf.has(t.key)
+      ? `${t.key}: ${refusedOf.get(t.key)} item(s) refused for their anchors and dropped, and its judge's other ` +
+        `items with them — what is wrong with each is in ${outcome.refusals}`
+      : refusedOf.size > 0
+        ? `${t.key}: ${n} item(s) not recorded: a batch-mate of an item refused for its anchors, never itself re-asked`
+        : `${t.key}: ${n} item(s) not recorded (${outcome.why}), so their anchors were never checked`)
+  }
 }
 
 const dropped = topics.filter((t) => !ruledBy.has(t.key)).map((t) => t.key)
 if (dropped.length > 0) log(`WARNING: no verdict for topic(s): ${dropped.join(', ')}`)
 if (partial.length > 0) log(`WARNING: could not search to exhaustion: ${partial.join(', ')}`)
 
-const risks = []
-for (const [, v] of ruledBy) risks.push(...v.risks)
-
 const history = await historyChannel
 const docs = await docsChannel
 
-// A requested channel that produced nothing — it threw, it returned nothing, or the planner
-// asked for it and then gave it no question. All three mean the evidence is not there, and any
-// claim resting on it is unsupported.
+// A requested channel that produced nothing — it threw, or it returned nothing. Both mean the
+// evidence is not there, and any claim resting on it is unsupported.
 const failedChannels = []
 if (history.requested && !history.result) failedChannels.push('history')
 if (docs.requested && !docs.result) failedChannels.push('docs')
@@ -1600,27 +1246,19 @@ if (docs.requested && !docs.result) failedChannels.push('docs')
 // It belongs with the partially-searched topics: real evidence, known to be incomplete, and
 // resumable.
 const truncatedChannels = []
-if (history.result && history.result.stop_reason !== 'exhausted') truncatedChannels.push('history')
-if (docs.result && docs.result.stop_reason !== 'exhausted') truncatedChannels.push('docs')
+if (history.result && !history.result.exhausted) truncatedChannels.push('history')
+if (docs.result && !docs.result.exhausted) truncatedChannels.push('docs')
 
 if (truncatedChannels.length > 0) {
   log(`WARNING: evidence channel(s) returned without exhausting the search: ${truncatedChannels.join(', ')}`)
 }
 
-// Compose what the channel established WITH the limits of how it established it, so the
-// evidence and its coverage travel as one string. Consumers interpolate this into a synthesis
-// prompt under their own heading, which is why no heading appears here.
-function channelEvidence(channel) {
-  if (!channel.requested || !channel.result) return null
-  const r = channel.result
-  return r.findings +
-    (r.no_match ? `\n\nLooked for and did not find: ${r.no_match}` : '') +
-    (r.stop_reason === 'exhausted'
-      ? ''
-      : `\n\nCOVERAGE LIMIT (${r.stop_reason}) — never reached: ${r.not_reached}. Any claim ` +
-        `depending on the unreached part is provisional. Say so rather than presenting it ` +
-        `as settled.`)
-}
+const historyFiles = history.result ? history.result.files : []
+const docsFiles = docs.result ? docs.result.files : []
+const ctx = await writeContext({
+  returns, judgeFiles: rulings.flatMap((r) => r.files), history: historyFiles, docs: docsFiles,
+})
+if (!ctx) failedChannels.push('context')
 
 // A topic that produced items but never exhausted its search is still incomplete. One that
 // produced nothing at all is already in `dropped`, so it is not counted twice.
@@ -1628,17 +1266,21 @@ const droppedKeys = new Set(dropped)
 const incomplete = [...new Set([...partial, ...recordIncomplete])]
   .filter((k) => !droppedKeys.has(k)).concat(truncatedChannels)
 
-const searchedItems = recorded.concat(unrecorded)
-  .sort((a, b) => topics.findIndex((t) => t.key === a.topic) - topics.findIndex((t) => t.key === b.topic))
+// Reused standing items first, then this survey's new ones in plan order.
+const order = (it) => (returns.includes(it.return) ? topics.findIndex((t) => t.key === it.topic) : -1)
+const items = ctx
+  ? [...ctx.items].sort((a, b) => order(a) - order(b)).map(({ id, topic, kind, state }) => ({ id, topic, kind, state }))
+  : []
 
 return surveyResult({
   topics: topics.map((t) => t.key),
   ground: [...new Set(topics.map((t) => groundPath(t.subtree)))],
-  items: known.concat(searchedItems),
-  reused: known.map((i) => i.id),
-  unrecorded: unrecorded.map((i) => i.id),
-  risks,
-  history: channelEvidence(history),
-  docs: channelEvidence(docs),
-  coverageBlock: coverageOf(dropped, incomplete, failedChannels, recordUnreached),
+  items,
+  reused: ctx ? ctx.items.filter((it) => !returns.includes(it.return)).map((it) => it.id) : known.map((i) => i.id),
+  unrecorded,
+  context: ctx ? ctx.context : '',
+  risks: [...ruledBy].filter(([, v]) => v.risks_n > 0).map(([topic, v]) => ({ topic, n: v.risks_n })),
+  history: history.result ? historyFiles : null,
+  docs: docs.result ? docsFiles : null,
+  coverageBlock: coverageOf(dropped, incomplete, failedChannels, recordUnreached.concat(ctx ? [] : [CONTEXT_LOST])),
 })

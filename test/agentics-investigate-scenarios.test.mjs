@@ -12,7 +12,7 @@ const wf = (name) => fileURLToPath(new URL('../service-workflows/' + name, impor
 const WF = wf('answer-codebase-question-from-evidence.workflow.js')
 
 const surveyResult = (over = {}) => ({
-  question: 'q', topics: [], ground: [], items: [], reused: [], unrecorded: [], risks: [], history: null, docs: null,
+  question: 'q', topics: [], ground: [], items: [], reused: [], unrecorded: [], context: '', risks: [], history: null, docs: null,
   coverage: {
     complete: true, dropped: [], incomplete: [], failed_channels: [], unreached: [],
     resumable: { runId: 'r', remaining: [] },
@@ -95,11 +95,9 @@ test('the survey is handed the pace and the plugin root, and the synthesis is to
   assert.equal(result.coverage.resumable.args.pace, 'fast', 'a resume re-passes what the survey was given')
 })
 
-const ITEMS = [{
-  id: 'I12345678', topic: 'a', kind: 'behaviour', claim: 'the loader reads config.json',
-  spans: [{ path: 'src/load.js', start: 3, end: 9, at: 'a'.repeat(40) }], queries: [], sources: [], rests_on: [],
-}]
-const RISKS = [{ topic: 'a', text: 'tests were not searched' }]
+const CONTEXT = 'C:/repo/.agentics/.state/context/0badc0de-1.md'
+const ITEMS = [{ id: 'I12345678', topic: 'a', kind: 'behaviour', state: 'standing' }]
+const RISKS = [{ topic: 'a', n: 1 }]
 
 test("the survey's coverage passes through untouched", async () => {
   const coverage = { ...surveyResult().coverage, complete: false, incomplete: ['a'] }
@@ -113,29 +111,34 @@ test("the survey's coverage passes through untouched", async () => {
   assert.ok(!('from_kb' in result.coverage))
 })
 
-test("the synthesis is handed the survey's items with their anchors, and its risks", async () => {
+test("the synthesis is pointed at the survey's one evidence file, and nothing it says is inlined", async () => {
   const { prompts } = await runWorkflow(WF, {
     args: { question: 'how does X work' },
     agent: scriptedAgents({ synthesize: 'the answer' }),
-    workflow: () => surveyResult({ items: ITEMS, risks: RISKS }),
+    workflow: () => surveyResult({ items: ITEMS, risks: RISKS, context: CONTEXT }),
   })
   const synth = prompts.find((p) => p.opts.label === 'synthesize').prompt
-  assert.match(synth, /the loader reads config\.json/)
-  assert.match(synth, /src\/load\.js:3-9/)
-  assert.match(synth, /tests were not searched/)
+  assert.ok(synth.includes('read this file whole before you write anything: ' + CONTEXT))
+  assert.doesNotMatch(synth, /I12345678/, 'the items are in the file, not the prompt')
 })
 
-test('a synthesis that dies hands back the items, risks, history and docs the survey established', async () => {
-  const history = 'the loader moved to src/load.js in the last release'
-  const docs = 'the vendor documents config.json as optional'
+test('a survey that wrote no evidence file leaves the synthesis nothing to rest on, and it is told so', async () => {
+  const { prompts } = await runWorkflow(WF, {
+    args: { question: 'how does X work' },
+    agent: scriptedAgents({ synthesize: 'the answer' }),
+    workflow: () => surveyResult(),
+  })
+  assert.match(prompts.find((p) => p.opts.label === 'synthesize').prompt, /wrote no evidence file/)
+})
+
+test('a synthesis that dies hands back the item handles and the files the survey established', async () => {
+  const history = ['C:/repo/.agentics/.state/evidence/inbox/history-1.json']
+  const docs = ['C:/repo/.agentics/.state/evidence/inbox/docs-1.json']
   const { result } = await runWorkflow(WF, {
     args: { question: 'how does X work' },
     agent: scriptedAgents({ synthesize: () => { throw new Error('overloaded') } }),
-    workflow: () => surveyResult({ items: ITEMS, risks: RISKS, history, docs }),
+    workflow: () => surveyResult({ items: ITEMS, risks: RISKS, context: CONTEXT, history, docs }),
   })
-  assert.deepEqual(result.evidence.items, ITEMS)
-  assert.deepEqual(result.evidence.risks, RISKS)
-  assert.equal(result.evidence.history, history)
-  assert.equal(result.evidence.docs, docs)
+  assert.deepEqual(result.evidence, { items: ITEMS, context: CONTEXT, risks: RISKS, history, docs })
   assert.ok(!('verdicts' in result.evidence))
 })

@@ -228,41 +228,33 @@ const caveats =
   (c.unreached.length > 0
     ? `NOTE: not reached at all: ${c.unreached.join('; ')}.\n\n` : '')
 
-/** One item as a reader reads it: id, topic, kind, claim, and what it rests on. */
-function itemLine(it) {
-  const anchors = [
-    ...(it.spans || []).map((s) => `${s.path}:${s.start}-${s.end}`),
-    ...(it.queries || []).map((q) => `search /${q.pattern}/ in ${(q.scope || []).join(', ') || 'the repository'}`),
-    ...(it.sources || []).map((s) => s.url + (s.version ? '@' + s.version : '')),
-    ...(it.rests_on || []).map((id) => 'rests on ' + id),
-  ]
-  return `- [${it.id}] (${it.topic}, ${it.kind}) ${it.claim}` + (anchors.length ? ` — ${anchors.join('; ')}` : '')
-}
-
 // The synthesizing analyst carries `Read` and nothing that searches, so everything it rules on is
-// in this block: the survey's items already carry their anchors.
+// in the one file the survey's lib wrote: every item with its anchors, the judges' risks, and the
+// history and documentation channels with the limits of how they searched.
 const evidence =
-  `EVIDENCE ITEMS — one claim each, with what it rests on:\n` +
-  `${(survey.items || []).map(itemLine).join('\n') || '(none)'}\n\n` +
-  (survey.risks && survey.risks.length
-    ? `RISKS THE JUDGES NAMED:\n${survey.risks.map((r) => `- [${r.topic}] ${r.text}`).join('\n')}\n\n` : '') +
-  (survey.history ? `GIT HISTORY:\n${survey.history}\n\n` : '') +
-  (survey.docs ? `EXTERNAL DOCUMENTATION:\n${survey.docs}\n\n` : '') +
+  (survey.context
+    ? `EVIDENCE — read this file whole before you write anything: ${survey.context}\n` +
+      `It holds every evidence item the survey returns (one claim each, with its state and what it ` +
+      `rests on), the risks its judges named, and what the history and documentation channels ` +
+      `established.\n\n`
+    : `EVIDENCE: the survey wrote no evidence file, so there is nothing to work from. Say so, and ` +
+      `name what would have to be gathered.\n\n`) +
   caveats +
-  `You have no search tools: work from the evidence above. What it cannot settle is a gap, ` +
-  `never something to go and look up.\n\n`
+  `You have no search tools: work from that file. What it cannot settle is a gap, never something ` +
+  `to go and look up.\n\n`
 
 // What the survey established, handed back when synthesis dies.
 //
 // Synthesis is one agent at the end of a phase that may have cost several hundred thousand
-// tokens, and its death used to return coverage arrays and nothing else — the items, risks,
-// history and docs died inside the script. The session can hand-synthesize from these,
-// or retry synthesis alone; either beats re-buying the survey to recover work already done.
+// tokens, and its death used to return coverage arrays and nothing else. The session can
+// hand-synthesize from these, or retry synthesis alone; either beats re-buying the survey to
+// recover work already done.
 const gathered = () => ({
   items: survey.items || [],
+  context: survey.context || '',
   risks: survey.risks || [],
-  history: survey.history || '',
-  docs: survey.docs || '',
+  history: survey.history || null,
+  docs: survey.docs || null,
 })
 
 if (asTasks) {

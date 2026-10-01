@@ -28,8 +28,9 @@ judgment.
 | `test/` | The `node --test` suite, including the scenario harness. |
 
 **A workflow script runs in a sandbox with no module loader and no filesystem.** It cannot import,
-read a file or run git. So anything on disk is a `lib/` CLI run by a courier, whose output the
-courier pastes back under a digest the script re-checks (GP4).
+read a file or run git. So anything on disk is a `lib/` CLI run by a courier, which carries only
+handles both ways — paths, ids, shas, enums, counts — under a digest the script re-checks (GP4,
+GP6).
 
 ### What it writes in a target repository
 
@@ -118,7 +119,7 @@ replan that changes a contract or drops a realised decision (see [Replanning](#r
 
 ## Guiding Principles
 
-Five principles. When two seem to conflict, GP1's order decides.
+Six principles. When two seem to conflict, GP1's order decides.
 
 ### GP1 — Fidelity first, then cost, then wall-clock
 
@@ -173,11 +174,9 @@ between two layers has nowhere to go. One recursive node makes depth a property 
 Anything computable is computed in `lib/`: partitions, digests, schedules, verdicts, merges,
 statuses, briefs, excerpts, whether recorded evidence still stands. A workflow script has no
 filesystem, so disk crosses into it through a **courier**: an agent that runs one command and
-pastes its stdout.
+pastes its one line of handles back (GP6).
 
-- **Bytes that cross a model carry a digest the receiver re-checks.** Lines the workflow mints
-  whole travel encoded on one argv slot, or as a file the courier writes (see
-  [the ledger transport](#the-ledger)).
+- **Bytes that cross a model carry a digest the receiver re-checks**, and only handles cross one.
 - **One courier per boundary**, running every deterministic step of that boundary in one command.
 - **Briefs are assembled by script** from the node, its referenced evidence and the
   [gotchas](#gotchas) its role and locus call for. Shared evidence is resolved once into excerpts
@@ -208,6 +207,30 @@ it as a `noted` event, and no status is derived from it.
 
 **Why:** a record written after the fact leaves a window where work exists and nothing says so; a
 status written down outlives what it described; a clock an agent can read is a clock it can invent.
+
+### GP6 — Couriers carry handles; data stays where its author wrote it
+
+No model ever copies data from one place to another. A courier's command carries on argv only
+**handles** — paths, node ids, shas, digests, enums and counts — and never a payload: no base64
+token, no JSON, no `printf` or heredoc body, no `--stdin`, no pipe. What it pastes back is one
+line of handles, bounded by the slot pool and never by the size of the tree, the evidence or the
+output of a check.
+
+- **Data is written by its author.** An agent whose output a `lib/` CLI consumes writes that
+  output itself, with its Write tool, to the file its dispatch names, and the workflow hands the
+  CLI that path. Its structured return to the workflow holds only the handles the workflow
+  branches on.
+- **Decisions are recorded where the data is.** A workflow mints no records. The boundary that
+  closes a dispatch reads the agent's file, computes what it decides (IL3) and records it; the
+  workflow tells it only which dispatch, at which tier, by handle.
+- **What an agent reads, `lib/` writes to a file.** A prompt names the launch card, the brief, the
+  context file; it never inlines a title, an intent, a claim or an excerpt the workflow was
+  carried.
+- Enforced by `tools/rules/courier-handles.mjs`.
+
+**Why:** a model that retypes bytes is slow, costly and lossy in proportion to their length — a
+small model asked to write a few kilobytes through chunked shell calls spends minutes failing at
+it, and a digest only detects the damage. A path costs the same whatever it points at.
 
 ---
 

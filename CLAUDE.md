@@ -30,6 +30,11 @@ Run the checks with:
   the design so the limit stops mattering. Never add a mechanism whose only job is to squeeze
   past it: paging, chunking, size-tuned retries, a second path for the big case. If the clean,
   efficient fix means reshaping workflows, the lib or the contracts, reshape them.
+- **Couriers carry handles, never data** (`docs/DESIGN.md#gp6--couriers-carry-handles-data-stays-where-its-author-wrote-it`).
+  A courier's command holds only paths, ids, shas, digests, enums and counts — no base64, no
+  JSON, no `printf`/heredoc body, no `--stdin`, no pipe — and it pastes back one bounded line of
+  the same. Data a lib CLI needs is a file its author wrote with its own Write tool; what an agent
+  needs to read is a file lib wrote. Never design a path where a model retypes a payload.
 - **Docs land with the code, in the same commit series.** `docs/DESIGN.md` is the single design
   document: the whole system **as it is right now**. A behaviour-changing change is not done until
   DESIGN.md says what the code now does. Agent definitions and skill texts count as code here. It
@@ -120,6 +125,7 @@ The laws themselves are in `docs/DESIGN.md#iron-laws`.
 | IL3 — nothing judges itself | `tools/rules/no-self-verdict.mjs`; `lib/verdict.mjs`; the computed review-loop exit in `execute-approved-plan-in-worktrees` |
 | IL4 — the user owns decisions and their tree | `lib/boundary.mjs land` behind the session's gate; `lib/verify.mjs`'s linked-worktree refusal; `decisionProblems` in `lib/tree.mjs`, which admits a decision only from compile, against the approved copy on the ledger (`lib/approval.mjs`), and refuses a replan that changes a contract or drops a realised decision; `lib/respec.mjs`, which approves a changed spec without the user only on rulings that are all `unaffected`, each recorded on the ledger |
 | GP2 — nothing outlives its consumer | `test/liveness.test.mjs`; `tools/rules/size-budget.mjs` |
+| GP6 — couriers carry handles, never data | `tools/rules/courier-handles.mjs` |
 
 ## Build
 

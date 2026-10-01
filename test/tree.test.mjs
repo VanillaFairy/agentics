@@ -111,7 +111,11 @@ test('status is derived: a replan clears an escalation, a merge is final', () =>
   assert.equal(s.get('.').status, 'escalated')
 
   const all = deriveStatus(nodes, [...events, ev(20, 'merged', 'b'), ev(21, 'merged', 'c')])
-  assert.equal(all.get('.').status, 'integrated')
+  assert.equal(all.get('.').status, 'reviewing')
+  assert.equal(all.get('.').review, 'pending')
+  const reviewed = deriveStatus(nodes, [...events, ev(20, 'merged', 'b'), ev(21, 'merged', 'c'), ev(22, 'claims', '.', { review: 'not_earned', claims: [] })])
+  assert.equal(reviewed.get('.').status, 'integrated')
+  assert.equal(reviewed.get('.').review, 'not_earned')
   assert.equal(deriveStatus(nodes, [ev(30, 'landed', '.')]).get('.').status, 'landed')
 })
 
@@ -445,7 +449,8 @@ test('a group is merged once every task in it is, since it has no branch of its 
   assert.equal(deriveStatus(nodes, [merged('g/a', 10)]).get('g').status, 'active')
   const both = deriveStatus(nodes, [merged('g/a', 10), merged('g/b', 11)])
   assert.equal(both.get('g').status, 'merged')
-  assert.equal(both.get('.').status, 'integrated')
+  assert.equal(both.get('g').review, null, 'a group has no integration review')
+  assert.equal(both.get('.').status, 'reviewing')
 })
 
 test('atomicity: waiting for a group, or sitting in a group that waits, orders a leaf against every task in it', () => {

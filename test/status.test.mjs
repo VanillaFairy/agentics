@@ -131,9 +131,16 @@ test('the header reads DONE when the execution\'s root is integrated, and the ro
     dispatched(repo, id, 'implementer')
     ev(repo, 'merged', id, { into: 'agentics/eff--a', merged_sha: 'm', head_sha: 'h' })
   }
+  const due = todosOf(repo, E, X1)
+  assert.deepEqual(due.todos.map((t) => t.key), ['a', 'a/x', 'a/y', 'a/@review'], 'only the execution\'s subtree, its review last')
+  assert.equal(due.header, 'ONGOING', 'children merged is not integrated: the review is still due')
+  assert.deepEqual([byKey(due).a.activeForm, byKey(due)['a/@review'].status, byKey(due)['a/@review'].activeForm],
+    ['awaiting review', 'in_progress', 'in review'])
+
+  ev(repo, 'claims', 'a', { head_sha: 'h', review: 'done', claims: [] })
   const list = todosOf(repo, E, X1)
   assert.equal(list.root, 'a', 'the root comes from execution.json')
-  assert.deepEqual(list.todos.map((t) => t.key), ['a', 'a/x', 'a/y'], 'only the execution\'s subtree')
+  assert.equal(byKey(list)['a/@review'].status, 'completed')
   assert.equal(list.header, 'DONE')
   assert.equal(byKey(list).a.status, 'completed')
   assert.match(renderTodos(list), /^DONE — eff \/ 20260904-100000 \(root a\)\n\[x\] a — make a/)

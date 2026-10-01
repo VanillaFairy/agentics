@@ -31,7 +31,8 @@ Root statuses, as derived:
 | `active` | work is dispatched or under way |
 | `parked` | waits on the user: a question, a decision, a design |
 | `escalated` | stopped with a cause the user must deal with |
-| `integrated` | every child merged; at the root, ready to land |
+| `reviewing` | every child merged; its integration review is due |
+| `integrated` | every child merged and its review stands; at the root, ready to land |
 | `merged` / `landed` | in its parent's branch / the effort branch is in the user's branch |
 
 An execution reads `open` whether it is running, paused or was killed: the logs cannot tell those

@@ -319,8 +319,18 @@ last replan and last revision (a replan or the user's answer clears it); `approv
 its last dispatch (a held cycle member is approved and not merged); `active` while a dispatch has
 nothing terminal after it; `planned`. A composite is `merged` on its own event, the root `landed`
 on its, `escalated` or `parked` on its own open event (cleared like a leaf's), and otherwise
-summarizes its children (`integrated` once all have merged). A group summarizes its children the
-same way, except that it is `merged` once all of them are: it has no branch of its own to merge.
+summarizes its children: once all have merged it is `reviewing` until its integration review
+stands, then `integrated`. A review stands when the composite's latest `claims` event is newer
+than its last clearing (a replan or a revision) and than every `merged` event beneath it, since
+each merge moves the head the review judged (`standingReview` in `lib/tree.mjs`). The derived
+status also carries the composite's `review` — `pending` while `reviewing`, then the standing
+event's `done` or `not_earned` — so the review is a step of its own wherever status is read: a
+todo and a snapshot entry after the composite's children. Merged children alone never read as
+integrated, so nothing lands, merges up or reports a folder finished before its review. A
+`reviewing` folder's own work is done all the same: re-approval parks it no more than an
+integrated one, and contract drift passes it over. A group summarizes its children the same way,
+except that it is `merged` once all of them are: it has no branch of its own to merge and no
+integration review.
 
 A group sits in a composite and holds only leaves and promoted tasks. It has no spec, author,
 decisions, contracts, branch or integration review. Its `deps` bind every task in it, and a
@@ -1237,10 +1247,9 @@ once per park: again only when this execution has no `plan:<id>` dispatch newer 
 
 A merge-batch runs whenever approved children wait on an integration branch nobody is merging into,
 at the heads their approvals named; a leaf still running (a fix round after it failed on the
-integration head) is not among them. Cycles are held and land as a unit. A composite whose
-children have all merged is reviewed at its integration head; it is ripe to merge up when its
-latest `claims` event is newer than its last clearing (a replan, a revision, an answer), names its
-current head and says `review: done` or `not_earned`. So a folder whose park was answered is
+integration head) is not among them. Cycles are held and land as a unit. A `reviewing` composite
+is reviewed at its integration head, and an `integrated` one — its review standing — is ripe to
+merge up. So a folder whose park was answered, or under which something merged again, is
 reviewed again before it moves.
 
 **Parallelism lives at the leaves and is controlled from outside the execution.** A slot is the
@@ -1566,7 +1575,11 @@ The user follows work through the todo list of the session that launched the exe
 couriers that run the boundaries move it live while the workflow runs.
 
 - **One todo per node**, subject `<node-id> — <title>`; composites get one too, completed by the
-  merge-batch that merges them.
+  merge-batch that merges them. A composite whose children have all merged gets a second todo,
+  its integration review, keyed `<node-id>/@review` (`@review` at the root; `reviewIdOf` in
+  `lib/tree.mjs`) and listed after its children: `in review` while the composite is `reviewing`,
+  pending while the composite is stopped before its review, completed once a review stands. The
+  composite's own todo reads `awaiting review` meanwhile.
 - **The stage is the `activeForm`**, set to what happens next: `implementing`, `writing tests`,
   `auditing` or `checking` (leaf-open); `in review`, `awaiting merge` or `fix round N`
   (leaf-close, from the decision); `held` for a cycle member awaiting its tip; `waiting on user`
@@ -1811,7 +1824,13 @@ commits of its folder's branch the leaf's branch lacks, null unless the leaf is 
 branches exist; `report` is `{path, lead}` for the latest dispatch that left a report, else null;
 `notes` is the node's `noted` events, newest first, each `{seq, by, text}`; `relaunch` is
 `{execution, root, retry_escalated}` for the latest open execution whose root is the node or above
-it, `retry_escalated` holding the node's id when it escalated itself, else null. `cost` is `costOf`’s totals,
+it, `retry_escalated` holding the node's id when it escalated itself, else null. A composite whose
+`review` is set is followed, after its subtree, by its integration review as an entry of its own:
+`id` from `reviewIdOf`, `kind` `review`, `parent` the composite, `label` `integration review`,
+`status` the composite's `review` (`pending`, `done` or `not_earned`), `stage` its todo's
+`activeForm` while in progress, `branch`, `worktree` and `files.spec` the composite's,
+`files.reports` and `card.report` the file its latest reviewer wrote, every other field empty or
+null. `cost` is `costOf`’s totals,
 `{dispatches, tokens, usd, tokens_unreported, usage}`, and `per_leaf`, the same five fields per leaf.
 `usage` is `{<model id>: {input, cache_write, cache_read, output, usd}}`, the models that were
 billed; a model `lib/usage.mjs` has no price for carries `usd: null`, and the `usd` total is over

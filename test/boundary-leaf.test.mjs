@@ -62,7 +62,7 @@ test('a leaf from preflight to landing: open, measure, merge, close, land, clean
   assert.equal(merged.conflict, null)
   assert.equal(merged.verified, true)
   assert.equal(readTree(r, 'e1').status.get('a').status, 'merged')
-  assert.equal(readTree(r, 'e1').status.get('.').status, 'integrated')
+  assert.equal(readTree(r, 'e1').status.get('.').status, 'reviewing', 'merged children leave the root to its review')
   assert.deepEqual(heldBy(r).locus, [], 'the merge released the locus locks')
 
   const again = B(r, 'merge-batch', { target: '.', children: [{ id: 'a', head_sha: close.head_sha }], cycles: [] })
@@ -74,6 +74,7 @@ test('a leaf from preflight to landing: open, measure, merge, close, land, clean
     records: [{ file: 'events', entry: { kind: 'claims', node: '.', head_sha: review.launch[0].where.head, review: 'done', claims: [] } }],
   })
   assert.equal(post.closed, true)
+  assert.equal(readTree(r, 'e1').status.get('.').status, 'integrated')
   assert.ok(readLog(r, 'e1', 'state:' + STAMP).entries.some((e) => e.kind === 'ended'), 'a watching session stops at postflight')
   assert.equal(post.summary.done, true)
   assert.equal(post.cleanup_n, 1)

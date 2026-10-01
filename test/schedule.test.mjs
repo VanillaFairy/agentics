@@ -108,7 +108,7 @@ test('a cycle merges only whole', () => {
   assert.deepEqual(launched(effort(nodes, both), 'merge')[0].cycles, [['r', 'g']])
 })
 
-test('an integrated folder is reviewed at its head, merges up once reviewed, and again after its park is answered', () => {
+test('a folder whose children merged is reviewed, merges up once its review stands, and is reviewed again after a later merge or an answered park', () => {
   const nodes = [folder('.'), folder('x'), leaf('x/a'), leaf('x/b')]
   const where = { branch: 'agentics/e--x', worktree: '/wt/x', head: 'h2', base: 'h0' }
   const merged = [{ kind: 'merged', node: 'x/a' }, { kind: 'merged', node: 'x/b' }]
@@ -120,8 +120,9 @@ test('an integrated folder is reviewed at its head, merges up once reviewed, and
   assert.deepEqual(launched(effort(nodes, done, extra), 'review'), [])
   assert.deepEqual(launched(effort(nodes, done, extra), 'merge')[0].children, [{ id: 'x', head_sha: 'h2' }])
 
-  const moved = [...merged, { kind: 'claims', node: 'x', head_sha: 'h1', review: 'done', claims: [] }]
-  assert.equal(launched(effort(nodes, moved, extra), 'review').length, 1)
+  const mergedSince = [...done, { kind: 'merged', node: 'x/b' }]
+  assert.equal(launched(effort(nodes, mergedSince, extra), 'review').length, 1)
+  assert.deepEqual(launched(effort(nodes, mergedSince, extra), 'merge'), [])
 
   const answered = [...done, { kind: 'parked', node: 'x', return: 'integration_critical' }, { kind: 'replanned', node: 'x' }]
   assert.equal(launched(effort(nodes, answered, extra), 'review').length, 1)

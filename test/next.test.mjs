@@ -258,11 +258,13 @@ test('a sub-effort parked for design is designed (rule 2)', () => {
   assert.deepEqual([n.rule, n.command], [2, '/agentics:design entities'])
 })
 
-test('the root integrated: land it (rule 7); landed: nothing left (rule 0)', () => {
+test('the root integrated: land it (rule 7), never while its review is due; landed: nothing left (rule 0)', () => {
   const r = repo()
   built(r)
   event(r, 'e1', { kind: 'dispatched', node: 'x', role: 'implementer', round: 1, model: 'sonnet', effort: 'medium' })
   event(r, 'e1', { kind: 'merged', node: 'x', into: 'agentics/e1', merged_sha: 'm1', head_sha: 'h1' })
+  assert.notEqual(nextAction(r, 'e1').rule, 7, 'a root whose review is due is not landed')
+  event(r, 'e1', { kind: 'claims', node: '.', head_sha: 'h1', review: 'done', claims: [] })
   const ready = nextAction(r, 'e1')
   assert.deepEqual([ready.rule, ready.folder, ready.command], [7, '.', '/agentics:develop e1'])
 

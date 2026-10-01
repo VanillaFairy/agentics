@@ -307,6 +307,8 @@ function statusFixture() {
     composite('merged-folder'),
     leaf('merged-folder/x'),
     leaf('merged-folder/y'),
+    composite('reviewed-folder'),
+    leaf('reviewed-folder/z'),
     leaf('parked-leaf'),
     leaf('escalated-leaf'),
     design('design-node'),
@@ -319,6 +321,8 @@ function statusFixture() {
   ev('merged', 'merged-leaf', { into: 'agentics/st', merged_sha: 'm', head_sha: 'h' })
   ev('merged', 'merged-folder/x', { into: 'agentics/st--merged-folder', merged_sha: 'm', head_sha: 'h' })
   ev('merged', 'merged-folder/y', { into: 'agentics/st--merged-folder', merged_sha: 'm', head_sha: 'h' })
+  ev('merged', 'reviewed-folder/z', { into: 'agentics/st--reviewed-folder', merged_sha: 'm', head_sha: 'h' })
+  ev('claims', 'reviewed-folder', { head_sha: 'h', review: 'not_earned', claims: [] })
   ev('parked', 'parked-leaf', { return: 'needs_decision', question: 'q' })
   ev('escalated', 'escalated-leaf', { reason: 'r', detail: 'd' })
   return { repo, effort }
@@ -344,11 +348,25 @@ test('every reachable status passes through unchanged', () => {
   const tree = readTree(repo, effort)
   const ids = [...tree.nodes.keys()]
   const reached = new Set(ids.map((id) => tree.status.get(id).status))
-  for (const s of ['planned', 'active', 'approved', 'merged', 'integrated', 'parked', 'escalated', 'open']) {
+  for (const s of ['planned', 'active', 'approved', 'merged', 'reviewing', 'integrated', 'parked', 'escalated', 'open']) {
     assert.ok(reached.has(s), 'the fixture never reaches status ' + s)
   }
   const byId = Object.fromEntries(snapshotOf(repo, effort).nodes.map((n) => [n.id, n]))
   for (const id of ids) assert.equal(byId[id].status, tree.status.get(id).status, id)
+})
+
+test('a folder whose children merged has its integration review as an entry of its own, after its children', () => {
+  const { repo, effort } = statusFixture()
+  const nodes = snapshotOf(repo, effort).nodes
+  const at = (id) => nodes.findIndex((n) => n.id === id)
+  const due = nodes[at('merged-folder/@review')]
+  assert.deepEqual([due.parent, due.kind, due.status, due.stage], ['merged-folder', 'review', 'pending', 'in review'])
+  assert.ok(at('merged-folder/@review') > at('merged-folder/y'), 'the review comes after the children it reviews')
+  assert.equal(nodes[at('merged-folder')].status, 'reviewing')
+  const done = nodes[at('reviewed-folder/@review')]
+  assert.deepEqual([done.status, done.stage], ['not_earned', null])
+  assert.equal(nodes[at('reviewed-folder')].status, 'integrated')
+  assert.equal(at('@review'), -1, 'a root whose children have not all merged has no review entry')
 })
 
 test('commits count from the parent integration branch', () => {

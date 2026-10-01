@@ -145,7 +145,8 @@ they live nowhere else.
 <!-- /agentics:verbatim -->
 
 Lead with `ambiguities` — they block. Then gaps, then notes. For each: the axis, the section,
-the claim, and the evidence. Never soften a finding and never merge two into one.
+the claim, and the evidence, read by its id from `result.findings_file`, which holds every
+finding in full. Never soften a finding and never merge two into one.
 
 `result.ratifiable` is the computed gate. Report it as computed; it is a count, not an
 opinion, and it is false whenever an axis went unexamined as well as when an ambiguity is

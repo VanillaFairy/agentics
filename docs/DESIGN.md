@@ -509,8 +509,9 @@ to escape and no apostrophe to close. A line only the observing agent can fill i
 series) goes by heredoc on stdin and carries no digest; the writer still refuses what does not
 parse. A digest makes corruption detectable; the encoding makes it unlikely.
 
-Evidence tokens — a survey's, probe's or solutions sweep's items, a re-judge's verdicts — and the
-records `schedule` and `postflight` carry are the exception: they are long, or grow with what the
+The evidence workflows carry no token: what their agents establish is in the return files those
+agents wrote, and a courier hands lib only those files' paths ([Return files](#return-files)).
+The records `schedule` and `postflight` carry are the exception: they are long, or grow with what the
 workflow decided, and base64 is both longer and the text a courier copies worst. They
 travel as JSON by file (`viaJsonFile` in each workflow that sends one): the courier writes one line of
 JSON to `.agentics/.state/token-<digest>.json` with single-quoted `printf '%s' '<chunk>'` calls of
@@ -525,19 +526,17 @@ dispatch, not its bytes, so a long token buys more Bash calls on one courier, ne
 Copying is where such a carry fails, so its one retry — after a courier that could not finish, or
 a token the lib refused as unreadable or not matching its digest — goes to the stronger model.
 
-A location list is the exception: it is only paths and line numbers, so it travels as plain text
-(`path:line:line,path:line`) with a digest over the exact string, because a courier copies paths
-reliably and base64 badly. The workflow sends no path outside `[A-Za-z0-9_./@+:-]`, so the list
-needs no quoting; such a location goes to its reader to open.
-
 ### Context files
 
-What a courier would otherwise carry back — excerpts for a survey judge, a probe's guidance, its
-located ground and the document's own citations — `lib/citations.mjs` writes to
-`.agentics/.state/context/<digest>-<n>.md` instead. It prints only the files' paths under a
-digest, and the reader Reads them. No model retypes an excerpt. Each part is small enough for one
-Read (40 KB, 800 lines). Files are named by the digest of their text, so a retried courier
-rewrites the same files, and files a week old are pruned on each write.
+What an agent must read that lib computed — excerpts for a survey judge, a probe's guidance, its
+located ground and the document's own citations, the pool's items over a ground, the findings a
+narrowed review carries, the items a store refused, a survey's or a probe's whole result, a
+solutions sweep's summary — lib writes to `.agentics/.state/context/<digest>-<n>.md`
+(`writeContext` in `lib/citations.mjs`) and prints one path under the payload's digest; the prompt
+names that path and the reader Reads it. No model retypes an excerpt or a claim. Each part is
+small enough for one Read (40 KB, 800 lines); text longer than one part is named by an index file
+(`<digest>-index.md`) listing its parts in order. Files are named by the digest of their text, so a
+retried courier rewrites the same files, and files a week old are pruned on each write.
 
 ### Integration branches
 
@@ -854,15 +853,26 @@ lines changed since, and carries forward every earlier finding whose lines no hu
 same anchor check as all other evidence, with no mechanism of its own. An artefact unchanged since
 `since` buys no analyst. The gate is unchanged: a carried ambiguity is an open ambiguity.
 
+Each prober writes its findings — axis, severity, section, claim, evidence, artefact lines — to its
+return file and hands back only whether it finished. One courier closes the round
+(`evidence.mjs record --kind probe`): lib reads every prober's file, lists the carried findings
+first and the new ones after, numbers them `P1…`, credits a finding whose axis its prober did not
+hold to that prober's bundle, anchors a range outside the snapshot to the whole document, records
+the new ones, and writes every finding in full to one file. The workflow gets each finding's
+handle — `{id, item, severity, axis, section}`, the section as a slug — and that file's path. A
+round that cannot be closed holds no findings and fails coverage (`record`), so it is never
+ratifiable.
+
 Every round records a raw `probe` return, a clean one included: a round with no new finding
 records an empty return (`items: []`), so the result's `review` always names the return the round
 recorded, and a `prepared` ledger line names a real review. `review` is empty only when the scope
-failed (nothing is recorded without a snapshot) or the store took no batch; develop then names the
-preparation by the result's `snapshot`, else the spec hash. The result's `snapshot` is the one to
-pass back as `since`, and it is empty when the scope failed or any new finding went unrecorded: an
-unrecorded finding is in no pool, so a round narrowed past it would never attack its lines again,
-and an empty `since` buys a full probe instead. The scope and the recorder run with `--root` set to
-the probe's first root, so a probe in a linked worktree reads and anchors the worktree's text.
+failed (nothing is recorded without a snapshot; lib still reads and writes the findings) or the
+store took no batch; develop then names the preparation by the result's `snapshot`, else the spec
+hash. The result's `snapshot` is the one to pass back as `since`, and it is empty when the scope
+failed or any new finding went unrecorded: an unrecorded finding is in no pool, so a round narrowed
+past it would never attack its lines again, and an empty `since` buys a full probe instead. The
+scope and the recorder run with `--root` set to the probe's first root, so a probe in a linked
+worktree reads and anchors the worktree's text.
 
 One analyst holds every axis as a checklist; more are bought only when the document is long
 enough to earn them. A second round is earned only by a resolution that reshaped the design.
@@ -875,10 +885,11 @@ and sixteen analysts each independently located the same lines. So the probe res
 document's cited evidence once (`lib/citations.mjs`) and hands every analyst the excerpts, and the
 head count is earned by length rather than by axis count.
 
-The Ground phase writes three sets of [context files](#context-files): the document's own
-citations and the located repository ground, which every prober Reads, and the located guidance,
-which only the axes analyst Reads. Each set comes from one script run, so the probers share one
-read of the ground.
+The Ground phase writes three [context files](#context-files): the document's own citations
+(`citations.mjs cited`) and the located repository ground, which every prober Reads, and the
+located guidance, which only the axes analyst Reads. The last two are read by `citations.mjs
+excerpts` from the locating scout's own report files, filtered by the kind of hit. Each comes from
+one script run, so the probers share one read of the ground.
 
 ### Autonomous review
 
@@ -929,6 +940,32 @@ it rests on, and each item's drift is detected on its own, so an edit re-buys on
 broke. The pool is `.agentics/.state/evidence/`, because a fact about the code belongs to no
 single effort; `lib/evidence.mjs` owns it.
 
+### Return files
+
+Every agent whose output lib reads — a survey's planner, scouts, historian, doc-researcher and
+judges; a probe's locating scout and probers; a solutions sweep's framer, researchers, repository
+scout and assessor; a re-judge — writes its full return as JSON, with its own `Write` tool, to the
+**return file** its dispatch names, in the shape the dispatch states (the `return-file` block in
+each agent's definition). Its structured return to the workflow carries only what the workflow
+branches on: a stop reason and what is not reached, counts, keys, hit locations. A courier then
+hands lib the files' paths (`record --from`, `judge --from`, `excerpts --hits`), and lib maps what
+was written to items, deterministically: a judge's topic to its subtree, a derived item's sibling
+claims to ids, a probe finding's lines into the snapshot, a candidate to an `external` item.
+
+A return file lives under the working root's `.agentics/.state/evidence/inbox/`, named by the
+dispatch's label and the digest of what it was handed, so a retried dispatch rewrites the same
+file; a workflow has no clock and no randomness to name it otherwise. Files a week old are pruned
+when lib records. A file that is missing or not JSON is a typed refusal (`return_unreadable`) where
+the record cannot stand without it (a survey's judges, a draft); where it is one agent's share among
+several (a prober, a researcher, the repository scan) it is a gap the result names; a re-judge's
+is every verdict `unsure`.
+
+Free text the caller supplied — a survey's question, a sweep's capability — reaches lib through
+the first agent that writes a file: the survey's planner copies the question into its plan file,
+the sweep's framer the capability into its frame file, and the courier carries the digest of the
+caller's text (`--question-digest`). lib checks the copy against it and refuses a mismatch
+(`question_mismatch`), so the one copy a model makes is checked, never trusted.
+
 ### Items and anchors
 
 An item's **kind** decides the anchor it must carry, and `checkItem` refuses an item without it:
@@ -966,8 +1003,11 @@ stored:
    what it rests on is stale and suspect when it is suspect. Untouched anchors are **standing**; a
    changed one is **suspect**. A line that only gains or loses its final newline is no hunk under
    `--ignore-cr-at-eol`, so it changes nothing.
-2. **Re-judge.** Suspect items go, up to twenty per call, to `agentics:analyst` on `haiku`, with
-   the claim and each changed anchor's old and new text. `holds` re-anchors the item where the text
+2. **Re-judge.** Suspect items go, up to twenty per call, to `agentics:analyst` on `haiku`, by id,
+   pointed at the file `evidence.mjs items` wrote with each claim and each changed anchor's old and
+   new text. It writes its verdicts to its return file, and `evidence.mjs judge --from <file> --id
+   …` records one per id it was handed: an id with no verdict, or a file never written, is
+   `unsure`. `holds` re-anchors the item where the text
    now is; `fails` and `unsure` make it **stale**, because an unsure check is never a pass. This is
    the stated exception to the intelligence tier: the question is narrow, and any doubt routes to
    the full-tier survey, so being too cheap can cost money but never correctness. Whether text
@@ -993,36 +1033,52 @@ itself is always the main checkout's `.agentics/.state/evidence/`.
 The survey (`gather-evidence-without-concluding`) gathers evidence for one question and never concludes.
 
 1. **Reuse.** When the caller names its `ground`, one courier runs `evidence.mjs items` for the
-   items of earlier surveys whose ground overlaps it. Standing items become known ground; suspect
-   ones are re-judged; stale ones, and any still suspect after the re-judge, send their topic to be
-   searched again.
+   items of earlier surveys whose ground overlaps it: their handles, and one file with what they
+   say. Standing items become known ground; suspect ones are re-judged; stale ones, and any still
+   suspect after the re-judge, send their topic to be searched again, its scout pointed at that
+   file for what the topic used to claim.
 2. **Plan.** One analyst decomposes the question into topics, names each topic's subtree and the
    common ground, and is told what the pool already establishes and which topics are searched
-   again regardless; it plans only what the pool leaves open. A pool that answers the question buys
-   no search.
-3. **Scout.** One scout per topic, the common ground scouted once. Scouts return locations and a
-   `stop_reason`, with `no_match` and `not_reached` kept apart, and are continued on exactly what
-   remains until exhausted. History and docs channels run alongside when the plan asks, each with
-   its own `.catch`.
+   again regardless; it plans only what the pool leaves open. It writes the plan to its return
+   file — the question copied in, each topic's instruction — and hands back each topic's key and
+   subtree. A pool that answers the question buys no search.
+3. **Scout.** One scout per topic, the common ground scouted once, each pointed at its entry in the
+   plan file. Scouts write their locations with a note each, what they searched, `no_match` and
+   `not_reached` to their return files, and hand back the locations and a `stop_reason`. A scout is
+   continued on exactly what remains until exhausted, each round naming the earlier rounds' files.
+   History and docs channels run alongside when the plan asks, each with its own `.catch`.
 4. **Assemble context for analysis.** Judges are dealt first: one analyst for every topic, unless
    `pace` or more than 60 distinct locations earns more. Then, per judge, `lib/citations.mjs
-   excerpts` reads that judge's locations and the shared ground's once into
-   [context files](#context-files).
-5. **Judge.** Each analyst **without search tools** returns items — one claim each, with the
-   anchor its kind needs — and risks. A topic with neither is dropped.
-6. **Record.** One courier per judge group runs `evidence.mjs record --kind survey` over all its
-   items, the token as JSON by file. A refused item goes
-   back to its judge until a pass anchors no more; what never anchors is dropped and leaves its
-   topic incomplete, and so do items the recorder could not be reached to check.
+   excerpts` reads its topics' and the shared ground's scout reports once into one
+   [context file](#context-files): every location with its note, what each scout covered and
+   proved absent, and the lines they point at.
+5. **Judge.** Each analyst **without search tools** writes items — one claim each, with the anchor
+   its kind needs — and risks to its return file, and hands back a count of each per topic. A topic
+   with neither is dropped.
+6. **Record.** One courier per judge group runs `evidence.mjs record --kind survey` over the
+   group's judge files, with the plan file and each topic's subtree. A refused item goes back to
+   its judge, which reads the refusals file lib wrote and writes its corrections to a file of its
+   own, recorded as `--fix`, until a pass refuses no fewer; what never anchors is dropped and
+   leaves its topic incomplete, and so do items the recorder could not be reached to check.
+7. **Context.** One courier runs `evidence.mjs context`, which writes the survey's one file:
+   every item it returns — the standing items over the caller's ground, then every item its
+   records stored — with the judges' risks and the history and docs channels' reports, and hands
+   back the items' handles. A file that cannot be written fails coverage (`context`).
 
 Coverage is complete when every topic reported complete coverage and all its items stand.
 
 ### Existing solutions
 
-`search-for-existing-solutions-before-building` records what it establishes too: each assessed candidate as an
-`external` item anchored at the source it was read from, each hit the repository already carries as
-a `behaviour` item anchored at that line. Recording is a side channel: a candidate that can't be
-anchored or recorded is named in the result and costs no coverage. A sweep answers its capability
+`search-for-existing-solutions-before-building` hands every file its agents wrote — the frame, the
+researchers' candidates, the repository scan, the assessment — to one courier
+(`evidence.mjs record --kind solutions`), and lib decides what they mean. A candidate is viable when
+it hit none of the frame's disqualifiers; a ground the frame never declared rules nothing out and
+is named; a candidate a researcher reported and the assessment dropped is named as lost; without a
+readable assessment the researchers' candidates are carried unmeasured, neither viable nor ruled
+out. lib records each candidate with a source as an `external` item anchored at it and each hit the
+repository already carries as a `behaviour` item anchored at that line, and writes all of it to
+one summary file the session reads. A record the store refuses costs no coverage; a sweep that
+cannot be read back at all does (`record`). A sweep answers its capability
 whole, so once a later sweep records items for a question and topic, `itemsFor` leaves out every
 item an earlier sweep recorded for them. A sweep is dated by the `seq` its return first recorded
 at, and an item the later sweep repeats is the same item and stands. The log keeps every line.
@@ -2156,10 +2212,12 @@ session to run in order.
 
 ### Evidence item store
 
-- **Owner:** `lib/evidence.mjs` (`checkItem`, `recordItems`, `recordJudgement`); written through
+- **Owner:** `lib/evidence.mjs` (`checkItem`, `recordItems`, `recordJudgement`, and the mappers from
+  return files `recordSurvey`, `recordProbe`, `recordSolutions`); written through
   `lib/ledger.mjs appendProject`, which mints a project-wide `seq` under `.agentics/.state/.lock`.
-- **Restated in:** the item builders of `gather-evidence-without-concluding`, `attack-document-with-independent-reviewers` and
-  `search-for-existing-solutions-before-building`, and the survey's copy of `ITEM_KINDS`.
+- **Restated in:** the return-file shapes the evidence workflows state in their dispatches
+  (`ITEMS_FILE` and the survey's copy of `ITEM_KINDS`, `probeFile`, `CANDIDATES_FILE`,
+  `ASSESSMENT_FILE`, `PRESENT_FILE`, `FRAME_FILE`, `PLAN_FILE`).
 
 `items.jsonl` holds `{kind: 'item', item, seq}` and `{kind: 'judged', id, verdict: holds|fails|unsure,
 at, seq}` (a `holds` that could not be re-anchored is stored as `unsure` with `requested` and
@@ -2167,10 +2225,38 @@ at, seq}` (a `holds` that could not be re-anchored is stored as `unsure` with `r
 queries[{pattern, scope[], result[{path, text}]}], sources[{url, version, retrieved}], rests_on[],
 detail?, from_return}`; `at` is a commit sha or `snapshot:<hash>`. Raw returns sit in
 `returns/<stamp>[-<n>]-<kind>.json` (`survey`, `probe`, `solutions`, `approach`; an `approach`
-draft or a clean `probe` round carries no items), spec snapshots in `snapshots/<hash>.txt`. The
-CLI (`record`, `items`, `judge`, `review-scope`, `cite`) prints an envelope; `record`, `items`,
-`judge` and `review-scope` take `--root <checkout>`, the checkout whose tree they read, the main
+draft or a clean `probe` round carries no items), spec snapshots in `snapshots/<hash>.txt`, agents'
+return files in the working root's `inbox/`.
+
+The CLI takes handles only (`handleArgs`) and prints a handle envelope (`handleEnvelope`); a
+refusal is `{ok: false, error: {kind}}`, its reason on stderr. `record`, `items`, `judge`,
+`context` and `review-scope` take `--root <checkout>`, the checkout whose tree they read, the main
 checkout by default.
+
+- `record --kind survey --plan <file> --question-digest <d> (--topic <key> --subtree <path>)… --from
+  <judge file>… [--fix <correction file>…]` → `{ok: true, return, recorded_n, dropped_n}` or
+  `{ok: false, refused[{topic, n}], refused_n, refusals_file}`.
+- `record --kind probe --file <artefact> [--snapshot <id>] [--since <id>] (--from <file> --bundle
+  <axis+axis>)…` → `{recorded, return, findings[{id, item, severity, axis, section, carried}],
+  findings_file, refused_n, refusals_file, unread[<--from index>]}`.
+- `record --kind solutions --frame <file> --question-digest <d> [--assessed <file>] [--present
+  <file>] [--from <researcher file>…]` → `{recorded, return, items[{id, topic, kind}], refused_n,
+  refusals_file, summary_file, measured, counts{present, candidates, viable, ruled_out, invented,
+  lost, unanchored, unread, unsettled, present_read}}`.
+- `record --kind approach --from <draft file>` → `{ok, return}`.
+- `items --ground <a,b> [--states <s,s>] [--return-kind <kind>]` → `{items[{id, state, topic,
+  kind, seq, ground[]}], context}` (`context` '' when there are none).
+- `judge --from <file> --id <id>…` → `{read, recorded_n, standing_n, failed_n}`.
+- `context [--ground <a,b> --return-kind <kind>] [--return <name>…] [--from <judge file>…]
+  [--history <file>…] [--docs <file>…]` → `{items[{id, topic, kind, state, return}], context,
+  counts{items, risks, history, docs}}`.
+- `review-scope --file <artefact> [--since <id>]` → `{ok, path, snapshot, lines, since, full,
+  changed[{start, end}], carried[{item, severity, axis, section}], context}`.
+- `cite --effort <e> --folder <id> --items <id,id> [--gap <text>]…` → `{ok, seq}`.
+
+`lib/citations.mjs excerpts --repo <repo> --hits <scout file>… [--hit-kind <kind>] [--context <n>]`
+→ `{context, counts}`; `cited --repo <repo> --file <artefact> [--context <n>]` → `{readable,
+context, counts{cited, files, excerpts, unresolved}, artifact_lines}`.
 
 ### Cites
 
@@ -2194,20 +2280,33 @@ with `renamed_from`.
   stopped node and counts the rest; `coverage.resumable.remaining` names the execution's root,
   because a relaunch with the same stamp re-derives everything below it.
 - **`gather-evidence-without-concluding`** — takes `question, roots, notes, prior, max_topics, intelligence, pace,
-  plugin_root, ground`. Returns `{question, topics, ground, items, reused, unrecorded,
-  risks[{topic, text}], history, docs, coverage}`: reused standing items first, then new ones in
-  plan order, each with its `id`.
+  plugin_root, ground`. Returns `{question, topics, ground, items[{id, topic, kind, state}], reused,
+  unrecorded, context, risks[{topic, n}], history, docs, coverage}`: `items` are handles, reused
+  standing items first, then new ones in plan order; `context` is the path of one file holding every
+  item it returns in full, the judges' risks and the history and docs channels, rendered for a
+  planner or a synthesis to Read ('' when it could not be written, which fails coverage with
+  `context`); `reused` the reused items' ids; `unrecorded` the topic keys whose items were not
+  recorded; `history` and `docs` the channels' return files, null when the channel did not run.
 - **`attack-document-with-independent-reviewers`** — takes `artifact, roots, context, plugin_root, max_derived_axes, per_axis,
-  since`. Returns `{artifact, axes, axes_dropped, analysts, shared_ground, guidance_read,
-  repo_ground, findings[{axis, severity, section, claim, evidence, start, end, id, item, carried}],
-  ambiguities, ratifiable, snapshot, scope{full, changed}, unrecorded, review, coverage}`.
+  since`. Returns `{artifact, axes, axes_dropped, analysts, shared_ground{resolved, cited, files,
+  excerpts, unresolved, context} | {resolved: false, why}, guidance_read, repo_ground{located,
+  complete, unresolved}, findings[{id, item, severity, axis, section, carried}], findings_file,
+  ambiguities, ratifiable, snapshot, scope{full, changed}, unrecorded, review, coverage}`. `findings`
+  are handles — `id` is `P<n>`, carried findings first; `item` the evidence item, '' when
+  unrecorded; `section` the artefact's section name as a slug — and `findings_file` is the path of
+  one file holding every finding in full (claim, evidence, start, end) under its id; `ambiguities`
+  are the handles of severity `ambiguity`; `unrecorded` the ids of new findings the store did not
+  take.
 - **`search-for-existing-solutions-before-building`** — takes `capability, roots, constraints, notes,
-  max_angles, intelligence, plugin_root`. Returns `{capability, constraints, frame,
-  already_present, candidates, viable, ruled_out, items, unrecorded, unanchored, coverage}`.
+  max_angles, intelligence, plugin_root`. Returns `{capability, constraints, frame, summary,
+  counts{present, candidates, viable, ruled_out, invented, lost, unanchored, unread, unsettled,
+  present_read}, measured, items[{id, topic, kind}], recorded, coverage}`: `frame` is the framer's
+  return file, `summary` lib's file of what the repository carries and every candidate with its
+  facts and verdict.
 - **`answer-codebase-question-from-evidence`** — takes `question, roots, notes, as_tasks, intelligence, pace,
   plugin_root`. Returns `{question, mode, tasks, report, evidence, coverage}`; `evidence` is
-  `{items, risks, history, docs}` when synthesis failed and the survey's work is handed back, null
-  otherwise.
+  `{items, context, risks, history, docs}`, the survey's, when synthesis failed and the survey's work
+  is handed back, null otherwise.
 
 ### Review returns
 

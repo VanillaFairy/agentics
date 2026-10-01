@@ -210,8 +210,8 @@ Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/gather-evidence-
 
 `ground` is the paths this layer's work touches, as far as they are known: it is what lets the
 survey reuse standing items from any effort instead of buying them again, and re-judge or
-re-survey only what drifted. The survey returns `items` (each with an `id`), `reused`, `risks`
-and `coverage`; the outward search below returns `items` too.
+re-survey only what drifted. It and the outward search below return `items` (ids) and `coverage`;
+read the survey's `context` file (every item in full, risks, history, docs) and the search's `summary`.
 
 When the layer would **build a capability** (a parser, a scheduler, a cache, a protocol client),
 launch the outward search in the same message, concurrently:
@@ -220,7 +220,7 @@ launch the outward search in the same message, concurrently:
 Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/search-for-existing-solutions-before-building.workflow.js', args: { capability, roots, constraints, notes, intelligence } })
 ```
 
-Skip it for wiring or reshaping what exists, and read `already_present` first. Incomplete coverage
+Skip it for wiring or reshaping what exists, and read what the repo already carries first. Incomplete coverage
 on ground the design would build from scratch is a `blocking` question. Whatever the repository,
 its history or vendor documentation can answer is answered by evidence; the user is asked only
 what only the user knows: intent, priorities, taste, real-world limits.

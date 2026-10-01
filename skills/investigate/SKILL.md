@@ -137,9 +137,9 @@ after it, and never as a footnote:
 - `incomplete` — searched and resumed, still not exhausted. Names topics, and also `history`
   or `docs` when an evidence channel returned without finishing its search
 - `failed_channels` — a requested channel produced nothing at all, so any claim resting on it
-  is unsupported. `history`, `docs`, `survey` or `synthesis`. It covers three causes that mean
-  the same thing downstream: the agent threw, it returned nothing, or the planner marked the
-  track necessary and never wrote its question
+  is unsupported. `history`, `docs`, `survey`, `context` or `synthesis`. The agent threw or
+  returned nothing; `context` means the survey's one evidence file was never written, so the
+  synthesis had nothing to read
 - `unreached` — surface nobody covered
 
 In task mode, also read `result.tasks.gaps` and state it. That is where the synthesis records

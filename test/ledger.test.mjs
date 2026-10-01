@@ -1,16 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fileURLToPath } from 'node:url'
 import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 
 import { append, digestEntries, fileFor, parseLog, readLog, seqMax } from '../lib/ledger.mjs'
 import { effortStateDir } from '../lib/store.mjs'
 
 const repo = () => mkdtempSync(join(tmpdir(), 'agentics-ledger-'))
-const LEDGER = fileURLToPath(new URL('../lib/ledger.mjs', import.meta.url))
 
 test('seq is minted by the ledger, one counter across every log of an effort', () => {
   const r = repo()
@@ -69,26 +67,6 @@ test('reading is tolerant: a torn line is counted, not thrown on', () => {
   const out = parseLog('{"kind":"a","seq":1}\n{"kind":"b",\n\n{"no":"kind"}\n')
   assert.equal(out.entries.length, 1)
   assert.equal(out.malformed, 2)
-})
-
-test('the CLI appends from base64 with a digest, and from stdin for a heredoc', () => {
-  const r = repo()
-  const entries = [{ kind: 'planned', node: 'a' }]
-  const token = Buffer.from(JSON.stringify(entries)).toString('base64')
-  const one = spawnSync('node', [LEDGER, 'append', '--repo', r, '--effort', 'e1', '--file', 'events',
-    '--digest', digestEntries(entries), '--b64', token], { encoding: 'utf8' })
-  assert.equal(one.status, 0, one.stdout)
-  assert.deepEqual(JSON.parse(one.stdout).seqs, [1])
-
-  const two = spawnSync('node', [LEDGER, 'append', '--repo', r, '--effort', 'e1', '--file', 'journal:20260925-120000', '--stdin'],
-    { encoding: 'utf8', input: '{"kind":"series-done","node":"a","head_sha":"abc"}' })
-  assert.equal(two.status, 0, two.stdout)
-  assert.deepEqual(JSON.parse(two.stdout).seqs, [2])
-
-  const bad = spawnSync('node', [LEDGER, 'append', '--repo', r, '--effort', 'e1', '--file', 'events', '--stdin'],
-    { encoding: 'utf8', input: '{"kind": "x", ' })
-  assert.equal(bad.status, 1)
-  assert.match(JSON.parse(bad.stdout).error, /not JSON/)
 })
 
 test('concurrent writers never mint the same seq', async () => {

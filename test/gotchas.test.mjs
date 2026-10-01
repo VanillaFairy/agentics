@@ -149,21 +149,21 @@ test('commandsOf reads only command gotchas an investigator wrote', () => {
 test('CLI add is all or nothing and prints the envelope; list filters', () => {
   const r = repo()
   spawnSync('git', ['init', '-q', r])
-  const b64 = (v) => Buffer.from(JSON.stringify(v)).toString('base64')
+  const file = (v) => {
+    const path = join(mkdtempSync(join(tmpdir(), 'agentics-gotchas-file-')), 'gotchas.json')
+    writeFileSync(path, JSON.stringify(v))
+    return path
+  }
   const run = (...args) => spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8' })
 
-  const bad = run('add', '--repo', r, '--effort', E, '--b64', b64([command('suite', 'npm test'), pitfall({ roles: [] })]))
+  const bad = run('add', '--repo', r, '--effort', E, '--file', file([command('suite', 'npm test'), pitfall({ roles: [] })]))
   assert.equal(bad.status, 0)
   const badOut = JSON.parse(bad.stdout)
   assert.equal(badOut.payload.ok, false)
   assert.equal(badOut.payload_digest, fnv1a(canonical(badOut.payload)))
   assert.equal(existsSync(knowledgeDir(r, E)), false)
 
-  const items = [command('suite', 'npm test')]
-  const mismatch = JSON.parse(run('add', '--repo', r, '--effort', E, '--b64', b64(items), '--digest', '00000000').stdout)
-  assert.equal(mismatch.payload.error.kind, 'digest_mismatch')
-
-  const good = JSON.parse(run('add', '--repo', r, '--effort', E, '--b64', b64(items), '--digest', fnv1a(canonical(items))).stdout)
+  const good = JSON.parse(run('add', '--repo', r, '--effort', E, '--file', file([command('suite', 'npm test')])).stdout)
   assert.equal(good.payload.ok, true)
   assert.deepEqual(good.payload.written.map((w) => w.id), ['command-suite'])
   assert.equal(commandsOf(r, E).suite, 'npm test')

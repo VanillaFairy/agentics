@@ -2400,7 +2400,8 @@ add --file`, and returns `{established[], unresolved[]}`, command names.
 - **Lint** (`tools/lint.mjs`, one module per rule under `tools/rules/`) checks form: no
   counter-based termination, a coverage block on every exit, no verdict fields in agent schemas, no
   schema bounds, no imports in workflows, namespaced agent types, valid workflow `meta`, agent
-  frontmatter, gate clauses in gated skills, a stated task-tool fallback, and size budgets.
+  frontmatter, gate clauses in gated skills, a stated task-tool fallback, no data in a command a
+  model is handed (GP6), and size budgets.
 - **The scenario harness** (`test/harness/workflow-host.mjs`) runs the real workflows with scripted
   agents; `test/harness/develop-sim.mjs` answers `execute-approved-plan-in-worktrees`'s boundaries from an in-memory
   tree, parsing every courier command with the lib's own `handleArgs` over `ARGS`, printing every

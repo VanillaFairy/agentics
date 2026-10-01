@@ -39,18 +39,19 @@ const ALLOWLISTS = {
   analyst: ['Read'],
   // Writes only its report file; it declares mutations and a script applies them.
   auditor: ['Glob', 'Grep', 'Read', 'Write'],
-  // Runs one lib command and pastes stdout; the task tools move the launching session's todo
-  // list. No Read: a courier that could open files would be tempted to tidy what it carries.
-  courier: ['Bash', 'TaskCreate', 'TaskList', 'TaskUpdate'],
+  // Runs one lib command, all handles, and pastes its one line. No Read: a courier that could
+  // open files would be tempted to tidy what it carries.
+  courier: ['Bash'],
   'doc-researcher': ['Glob', 'Grep', 'Read', 'WebFetch', 'WebSearch'],
   historian: ['Bash', 'Grep', 'Read'],
   implementer: ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write'],
-  investigator: ['Bash', 'Glob', 'Grep', 'Read'],
+  // Write only for the commands file its dispatch names, which it records with the gotchas CLI.
+  investigator: ['Bash', 'Glob', 'Grep', 'Read', 'Write'],
   planner: ['Bash', 'Glob', 'Grep', 'Read', 'Write'],
-  // Write only for its own review file, where its findings and claim evidence go in full.
+  // Write only for its own review file, the JSON the boundary that closes its round reads.
   reviewer: ['Bash', 'Glob', 'Grep', 'Read', 'Write'],
-  // Judges what it is handed, like the analyst; Write only for the ruling files its dispatch
-  // names, where each ruling goes in full so no courier retypes it.
+  // Judges what it is handed, like the analyst; Write only for the rulings file its dispatch
+  // names, which the boundary that records the rulings reads.
   ruler: ['Read', 'Write'],
   scout: ['Glob', 'Grep', 'Read'],
   'test-author': ['Edit', 'Glob', 'Grep', 'Read', 'Write'],

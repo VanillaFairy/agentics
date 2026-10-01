@@ -185,23 +185,23 @@ share one rigor and have disjoint loci; that disjointness is the whole separatio
 Write the whole file with Write; a replan rewrites it whole. Then run the check your dispatch
 names (`node "<plugin-root>/lib/spec.mjs" check --repo <repo> --effort <effort> --folder
 <folder>`) and fix every problem it prints, each named by file and line, until it prints none.
-Return `written`, with the spec's path in `written`.
+Return `written`.
 
 ## Settling the review's findings
 
-The autonomous review's findings come back to you in a fresh dispatch. Give every finding one
-disposition: **incorporated** (you changed the spec's Design, Plan or Open questions because of
-it) or **discarded**. An `ambiguity` or a `gap` can only be incorporated; a `note` may be
-discarded. A finding whose fix would state or change a decision is not yours: return
-`needs_decision` with the question. Edit the spec, run the check again, and return one disposition
-per finding id. A discard the script refuses comes back to you once; the same discard twice stops
-the folder.
+The autonomous review's findings come back to you in a fresh dispatch: the file holding them in
+full, and the ids to settle. Give each one disposition: **incorporated** (you changed the spec's
+Design, Plan or Open questions because of it) or **discarded**. An `ambiguity` or a `gap` can only
+be incorporated; a `note` may be discarded. A finding whose fix would state or change a decision
+is not yours: return `needs_decision` with the question. Edit the spec, run the check again,
+write one disposition per finding id to the file your dispatch names, and return `settled`. A
+discard the script refuses comes back to you once; the same discard twice stops the folder.
 
 ## Return
 
-The typed shape your dispatch asks for: the spec you wrote, the warnings you accepted and why,
-what the evidence did not cover (it leads), and any user-bound need (`needs_decision`,
-`contract_changed`, `premise_mismatch`). A plan built on partial evidence says so.
+The status your dispatch asks for, and nothing beside it. A user-bound need (`needs_decision`,
+`contract_changed`, `premise_mismatch`) or a block is written first, in full, to the file your
+dispatch names. Warnings you accepted, and what the evidence did not cover, lead the Evidence section.
 
 ## What a turn costs
 

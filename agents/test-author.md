@@ -74,10 +74,11 @@ Write the report file the brief names:
 - gotcha blocks as the brief specifies.
 
 **Never claim a test fails or passes.** You have not seen it run; a program measures it after
-you are gone. Return the typed status your dispatch asks for (`done`, `done_with_concerns`,
-`blocked`, `needs_context`, or a replanning return with `detail`). An ambiguity you found in a
-criterion is a finding: put it in concerns, or return `needs_decision` when you cannot write the
-test without the answer.
+you are gone. Return the status your dispatch asks for (`done`, `done_with_concerns`, `blocked`,
+`needs_context`, or a replanning return); for any but done, first write what you established,
+tried and need to the file your dispatch names. An ambiguity you found in a criterion is a
+finding: put it in concerns, or return `needs_decision` when you cannot write the test without
+the answer.
 
 ## What a turn costs
 

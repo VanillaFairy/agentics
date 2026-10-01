@@ -89,17 +89,15 @@ longer than the code it documents is a defect unless it is a proof, a protocol, 
 ## Report, then return
 
 Write your report to the report path in the brief: what you did, commit by commit; your
-concerns; and, in fenced blocks exactly as the brief specifies, any gotchas (traps you hit,
-resolved and saw work, about the environment rather than the work, not already in the brief)
-and any gotchas from the brief that no longer hold.
+concerns, which the reviewer attacks first; and, in fenced blocks exactly as the brief
+specifies, any gotchas (traps you hit, resolved and saw work, about the environment rather than
+the work, not already in the brief) and any gotchas from the brief that no longer hold.
 
-Then record that the series is finished — your dispatch gives the exact heredoc command — after
-your last commit. It says only that you stopped because you were done.
-
-Return the typed status your dispatch asks for: `done`, `done_with_concerns`, `blocked`,
-`needs_context`, or a replanning return (`decompose`, `unsplittable`, `premise_mismatch`,
-`needs_decision`, `contract_changed`) with `detail` saying what you established, what you
-tried and what you need. Never report the work as correct.
+Return the status your dispatch asks for: `done` (your series is finished: the close journals it
+from git), `done_with_concerns`, `blocked`, `needs_context`, or a replanning return
+(`decompose`, `unsplittable`, `premise_mismatch`, `needs_decision`, `contract_changed`). For any
+status but done, first write what you established, what you tried and what you need to the file
+your dispatch names; the status is all you return. Never report the work as correct.
 
 ## What a turn costs
 

@@ -126,7 +126,9 @@ test('a probe\'s findings are recorded anchored to the snapshot, and every one i
     { path: SPEC, start: 2, end: 3, at: snapshot },
     { path: SPEC, start: 1, end: 12, at: snapshot },
   ], 'a range past the snapshot anchors the whole document')
-  assert.match(readFileSync(out.findings_file, 'utf8'), /P2 \[gap, yagni\+invariants\][\s\S]*claim: two/)
+  const full = JSON.parse(readFileSync(out.findings_file, 'utf8')).findings
+  assert.deepEqual(full.map((f) => [f.id, f.item, f.axis, f.claim]), out.findings.map((f, i) => [f.id, f.item, f.axis, ['one', 'two'][i]]),
+    'the findings file is the JSON spec-reviewed and spec-settle read: every finding in full, under the id its handle carries')
 })
 
 test('without a snapshot nothing is recorded, and the findings are still read and written', () => {

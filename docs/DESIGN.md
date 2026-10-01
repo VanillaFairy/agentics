@@ -2341,7 +2341,8 @@ with `renamed_from`.
   ambiguities, ratifiable, snapshot, scope{full, changed}, unrecorded, review, coverage}`. `findings`
   are handles — `id` is `P<n>`, carried findings first; `item` the evidence item, '' when
   unrecorded; `section` the artefact's section name as a slug — and `findings_file` is the path of
-  one file holding every finding in full (claim, evidence, start, end) under its id; `ambiguities`
+  one JSON file, `{findings[]}`, holding every finding in full (claim, evidence, start, end) under
+  its id, which spec-reviewed and spec-settle read and the settling planner Reads; `ambiguities`
   are the handles of severity `ambiguity`; `unrecorded` the ids of new findings the store did not
   take.
 - **`search-for-existing-solutions-before-building`** — takes `capability, roots, constraints, notes,

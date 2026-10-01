@@ -73,12 +73,13 @@ test('a plan whose question is not the survey\'s refuses the record, writing not
 test('a refused item refuses the record, and is written back with its problems for its judge', () => {
   const repo = gitRepo({ 'src/a.js': text(lines(30)) })
   const good = { ...span('src/a.js', 2, 4), topic: 'loader' }
-  const out = survey(repo, [returnFile(repo, judged([good, { ...span('src/a.js', 40, 41), topic: 'cache' }, { ...good, topic: 'nowhere', claim: 'x' }]))])
+  const out = survey(repo, [returnFile(repo, judged([good, { ...span('src/a.js', 40, 41), topic: 'cache' }, { ...good, topic: 'no where', claim: 'x' }]))])
   assert.deepEqual([out.ok, out.refused_n], [false, 2])
-  assert.deepEqual(out.refused.sort((a, b) => (a.topic < b.topic ? -1 : 1)), [{ topic: 'cache', n: 1 }, { topic: 'nowhere', n: 1 }])
+  assert.deepEqual(out.refused.sort((a, b) => (a.topic < b.topic ? -1 : 1)), [{ topic: 'cache', n: 1 }, { topic: 'unknown-topic', n: 1 }],
+    'a topic the judge invented is counted under one handle')
   const said = readFileSync(out.refusals_file, 'utf8')
   assert.match(said, /src\/a\.js has 30 line\(s\), so it has no line 41/)
-  assert.match(said, /topic "nowhere" is not one of the topics you were given: loader, cache/)
+  assert.match(said, /topic "no where" is not one of the topics you were given: loader, cache/)
   assert.equal(liveItems(repo).size, 0, 'a refusal writes nothing')
 })
 

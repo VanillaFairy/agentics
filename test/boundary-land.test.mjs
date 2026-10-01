@@ -5,10 +5,10 @@ import assert from 'node:assert/strict'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { land, recordsToAppend } from '../lib/boundary.mjs'
+import { freshRecords, land } from '../lib/boundary.mjs'
 import { append } from '../lib/ledger.mjs'
 import { renderLanding } from '../lib/render.mjs'
-import { readTree } from '../lib/tree.mjs'
+import { deriveStatus, normalizeNode, readTree } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 import { git, leaf, repo, root, STAMP } from './harness/boundary-fixture.mjs'
 
@@ -75,11 +75,16 @@ test('landing never counts .agentics/ as dirt, and still refuses any other untra
   assert.match(dirty.error, /dirty/)
 })
 
-test('a record lands once however often it is sent, and the same decision taken again lands again', () => {
-  const approved = (rid) => ({ rid, file: 'events', entry: { kind: 'approved', node: 'a', head_sha: 'h1' } })
-  const first = recordsToAppend([approved('1.4'), approved('1.4')], { execution: 'x' })
-  assert.equal(first.events.length, 1)
-  const onDisk = first.events.map((e, i) => ({ ...e, seq: i + 1 }))
-  assert.equal(recordsToAppend([approved('1.4')], { events: onDisk, execution: 'x' }).events.length, 0, 'sent again after a lost courier')
-  assert.equal(recordsToAppend([approved('2.1')], { events: onDisk, execution: 'x' }).events.length, 1, 'approved again at the same head after a retry')
+test('a decision lands once while it is the node\'s word, and again once something has cleared it', () => {
+  const nodes = new Map([['a', normalizeNode({ id: 'a', kind: 'leaf', rigor: 'tdd' })]])
+  const disk = (events) => ({ nodes, events, status: deriveStatus(nodes, events), state: [], journal: [] })
+  const approve = { file: 'events', entry: { kind: 'approved', node: 'a', head_sha: 'h1' } }
+  const block = { file: 'events', entry: { kind: 'escalated', node: 'a', reason: 'blocked', detail: '' } }
+  assert.equal(freshRecords([approve, approve], disk([{ kind: 'dispatched', node: 'a', seq: 1 }])).length, 1, 'one call deciding it twice lands it once')
+  const approvedOnDisk = [{ kind: 'dispatched', node: 'a', seq: 1 }, { ...approve.entry, seq: 2 }]
+  assert.deepEqual(freshRecords([approve], disk(approvedOnDisk)), [], 'decided again after a lost courier')
+  assert.equal(freshRecords([approve], disk([...approvedOnDisk, { kind: 'dispatched', node: 'a', seq: 3 }])).length, 1, 'approved again after a new round')
+  const blocked = [{ kind: 'dispatched', node: 'a', seq: 1 }, { ...block.entry, seq: 2 }]
+  assert.deepEqual(freshRecords([block, approve], disk(blocked)), [], 'a stopped node is neither stopped twice nor approved under its stop')
+  assert.equal(freshRecords([block], disk([...blocked, { kind: 'replanned', node: 'a', seq: 3 }])).length, 1, 'escalated again after a retry')
 })

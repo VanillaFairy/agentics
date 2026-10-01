@@ -36,7 +36,8 @@ Write the report file the brief names: one line per mutation (the behaviour it b
 correct suite must catch it); the behaviours you judged untestable and why; your concerns; the
 declarations in one ```` ```agentics-mutations ```` block; gotcha blocks as the brief specifies.
 
-Return the typed status your dispatch asks for. You never say the tests are good or bad: the
+Return the status your dispatch asks for; for any but done, first write what you established,
+tried and need to the file your dispatch names. You never say the tests are good or bad: the
 script measures which mutations were caught, and a gap returns to the planner as new work.
 
 ## What a turn costs

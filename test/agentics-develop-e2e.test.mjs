@@ -64,17 +64,13 @@ function agents(calls, jobs) {
     const type = String(opts.agentType || '').replace('agentics:', '')
     calls.push(opts.label)
     if (type === 'courier') {
-      // The file writes a token travels by, in order, then the command that reads it.
-      const steps = [...prompt.matchAll(/^((?:mkdir -p "|printf '%s' |node ")[^\n]+)$/gm)].map((m) => m[1])
-      let run = null
-      for (const step of steps) {
-        run = spawnSync('sh', ['-c', step], { encoding: 'utf8', env: { ...process.env, AGENTICS_INLINE_JOBS: jobs === 'inline' ? '1' : '' } })
-        if (run.status !== 0) break
-      }
-      return { stop_reason: run.status === 0 ? 'carried' : 'failed', payload_raw: run.stdout.trim(), task_tools: 'skipped', notes: run.stderr }
+      // One command, all handles: nothing to write first.
+      const command = prompt.split('\n\n')[1]
+      const run = spawnSync('sh', ['-c', command], { encoding: 'utf8', env: { ...process.env, AGENTICS_INLINE_JOBS: jobs === 'inline' ? '1' : '' } })
+      return { stop_reason: run.status === 0 ? 'carried' : 'failed', payload_raw: run.stdout.trim() }
     }
     if (type === 'implementer' || type === 'test-author') {
-      const id = /for leaf (\S+) /.exec(prompt)[1]
+      const id = /for leaf (\S+), /.exec(prompt)[1]
       const worktree = /Worktree: (\S+) /.exec(prompt)[1]
       for (const [path, text] of Object.entries(WORK[id])) {
         mkdirSync(join(worktree, path, '..'), { recursive: true })
@@ -82,9 +78,14 @@ function agents(calls, jobs) {
       }
       git(worktree, 'add', '-A')
       git(worktree, 'commit', '-q', '-m', 'Do ' + id)
-      return { status: 'done', detail: '', concerns: [], commits: [{ sha: git(worktree, 'rev-parse', 'HEAD'), subject: 'Do ' + id }] }
+      return { status: 'done' }
     }
-    if (type === 'reviewer') return { findings: [], fix_verdicts: [], notes: '' }
+    if (type === 'reviewer') {
+      // The review goes to the file the dispatch names, the prompt's last line.
+      const file = prompt.split('\n').pop()
+      writeFileSync(file, JSON.stringify({ findings: [], fix_verdicts: [], claims: [{ claim: 'a() is 1', verdict: 'met', evidence: 'src/a.mjs:1' }], notes: '' }))
+      return { status: 'written' }
+    }
     throw new Error('unscripted ' + type)
   }
 }
@@ -99,9 +100,12 @@ for (const jobs of ['inline', 'detached']) test('an effort executes end to end t
   ])
   assert.equal(added.ok, true, JSON.stringify(added.problems))
 
+  // The session writes the commands the user named, and hands the workflow the file.
+  const commandsFile = join(r, '.git', 'agentics-commands.json')
+  writeFileSync(commandsFile, JSON.stringify(COMMANDS))
   const calls = []
   const { result, logs } = await runWorkflow(WF, {
-    args: { repo: r, effort: 'e1', execution: '20260925-120000', plugin_root: PLUGIN, commands: COMMANDS, progress: false },
+    args: { repo: r, effort: 'e1', execution: '20260925-120000', plugin_root: PLUGIN, commands_file: commandsFile },
     agent: agents(calls, jobs),
   })
   assert.deepEqual(result.escalations, [], logs.join('\n'))

@@ -7,7 +7,8 @@
 // The properties that matter most:
 //   every failing conjunct names itself — a leaf never fails with an empty failure list;
 //   `unrunnable` is not a pass, and `absent` is not a failure;
-//   the discriminator's base half is waived for tests-only and green and for nothing else;
+//   the discriminator's base half is waived for tests-only and green, and for a tdd leaf's upkeep
+//   files beside one that adds a test case, and for nothing else;
 //   a lone discriminator on a tdd leaf escalates on round one rather than buying a fix round;
 //   fix rounds cycling between a lone locus breach and a broken build escalate.
 
@@ -48,6 +49,8 @@ const m = (over = {}) => ({
 })
 
 const disc = (failed_on_base, passes_now, test_id = 'test/x.test.mjs') => ({ test_id, failed_on_base, passes_now })
+// A changed test file that adds no test case: it passes at base by construction.
+const upkeep = (passes_now) => ({ test_id: 'test/y.test.mjs', adds_test: false, failed_on_base: false, passes_now })
 const bites = { file: 'src/x.mjs', applied: true, unapplied_reason: '', expect_failing: ['test/x.test.mjs'], observed_failing: ['test/x.test.mjs'], bites: true }
 const survives = { ...bites, observed_failing: [], bites: false }
 const stale = { ...bites, applied: false, unapplied_reason: 'stale', observed_failing: [], bites: false }
@@ -130,6 +133,15 @@ const ROWS = [
   }],
   ['a test that does not pass now', m({ discriminator: [disc(true, false)], mutations: [bites] }), {
     tdd: ['discriminator'], 'tests-only': ['discriminator'], green: ['discriminator'],
+  }],
+  ['an upkeep file passing at base beside a discriminating one', m({ discriminator: [disc(true, true), upkeep(true)] }), {
+    tdd: true,
+  }],
+  ['an upkeep file that does not pass now', m({ discriminator: [disc(true, true), upkeep(false)] }), {
+    tdd: ['discriminator'],
+  }],
+  ['only upkeep files: nothing discriminates, so each is held to the whole question', m({ discriminator: [upkeep(true)] }), {
+    tdd: ['discriminator'],
   }],
   ['a broken measurement', m({ stop_reason: 'environment_broken', error: { kind: 'suite_failures_unnamed', message: 'm' },
     discriminator: [disc(true, true)] }), { tdd: ['environment'], verify: ['environment'] }],

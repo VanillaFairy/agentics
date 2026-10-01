@@ -3,8 +3,12 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
-import { verify, parseArgs, checksFor } from '../lib/verify.mjs'
+import { normalizeNode } from '../lib/tree.mjs'
+import { measurementOk } from '../lib/verdict.mjs'
+import { addsTestCase, verify, parseArgs, checksFor } from '../lib/verify.mjs'
 import {
   BUILD, cycle, EXECUTION, git, mutations, options, order, rev, SUITE, TEST_ONE,
 } from './harness/verify-fixture.mjs'
@@ -104,7 +108,7 @@ test('a red leaf runs no mutation and no named check, and says what it was given
 
   assert.equal(payload.stop_reason, 'completed')
   assert.deepEqual(payload.discriminator, [
-    { test_id: 'test/widget.test.mjs', failed_on_base: true, passes_now: false },
+    { test_id: 'test/widget.test.mjs', adds_test: true, failed_on_base: true, passes_now: false },
   ])
   assert.deepEqual(payload.mutations, [])
   assert.deepEqual(payload.checks, [])
@@ -125,7 +129,7 @@ test('a green leaf is discriminated over its cycle\'s tests, which its own diff 
   assert.equal(payload.stop_reason, 'completed')
   assert.deepEqual(payload.series_findings, [], 'the green series touches only its own locus')
   assert.deepEqual(payload.discriminator, [
-    { test_id: 'test/widget.test.mjs', failed_on_base: true, passes_now: true },
+    { test_id: 'test/widget.test.mjs', adds_test: true, failed_on_base: true, passes_now: true },
   ], 'the red test fails at the red head and passes now')
   assert.equal(git(worktree, 'status', '--porcelain').stdout.trim(), '')
   assert.equal(rev(worktree, 'HEAD'), head)
@@ -178,6 +182,52 @@ test('a tests-only leaf runs the discriminator and its declared mutations', (t) 
   assert.equal(payload.discriminator.length, 1)
   assert.equal(payload.discriminator[0].passes_now, true)
   assert.equal(payload.mutations[0].bites, true)
+})
+
+test('a tdd leaf that only keeps another test file up to date records it as upkeep, and passes', (t) => {
+  // The field case: a constructor gains an argument, and the leaf passes it at every existing
+  // call site in a test file that adds no test of its own. That file passes at base as well, by
+  // construction, and no commit could make it fail there.
+  const { worktree, base } = order(t)
+  writeFileSync(join(worktree, 'test', 'base.test.mjs'),
+    "import { test } from 'node:test'\nconst options = { id: 'base' }\ntest('the base suite passes', () => {})\n")
+  git(worktree, 'commit', '-qam', 'test: pass the new argument at the base call site')
+  const head = rev(worktree, 'HEAD')
+
+  const payload = verify(options({ worktree, base, head, extra: ['--rigor', 'tdd', '--locus', 'test/base.test.mjs'] }))
+
+  assert.equal(payload.stop_reason, 'completed', payload.notes)
+  const byFile = Object.fromEntries(payload.discriminator.map((d) => [d.test_id, d]))
+  assert.deepEqual(byFile['test/widget.test.mjs'], { test_id: 'test/widget.test.mjs', adds_test: true, failed_on_base: true, passes_now: true })
+  assert.deepEqual(byFile['test/base.test.mjs'], { test_id: 'test/base.test.mjs', adds_test: false, failed_on_base: false, passes_now: true })
+  assert.match(payload.notes, /1 of 2 test file\(s\) add a test case; upkeep, adding none: test\/base\.test\.mjs/)
+  assert.deepEqual(measurementOk(payload, normalizeNode({ id: 'w1', kind: 'leaf', rigor: 'tdd', locus: ['src/'] })).failures, [])
+})
+
+test('addsTestCase: an added declaration adds a test case; a call site, a moved test or a regex does not', () => {
+  const diff = (...lines) => ['diff --git a/t b/t', '--- a/t', '+++ b/t', '@@ -1 +1 @@', ...lines].join('\n')
+  const adds = [
+    ["+test('a new case', () => {})"],
+    ["+  it('a new case', async () => {"],
+    ['+it.each([1, 2])(\'case %i\', (n) => {})'],
+    ['+test.each`a | b`(\'table\', () => {})'],
+    ['+def test_new_case():'],
+    ['+func TestNewCase(t *testing.T) {'],
+    ['+#[test]'],
+    ['+    @Test'],
+    ['+    [Fact]'],
+  ]
+  const none = [
+    ['-  new DeckSource(cards)', '+  new DeckSource(cards, id)'],
+    ["-test('moved', () => {})", "+test('moved', () => {})"],
+    ['+const ok = /x/.test(name)'],
+    ['+  // call it (once)'],
+    ["+it.skip('later', () => {})"],
+    [],
+  ]
+  for (const lines of adds) assert.equal(addsTestCase(diff(...lines)), true, lines.join(' | '))
+  for (const lines of none) assert.equal(addsTestCase(diff(...lines)), false, lines.join(' | '))
+  assert.equal(addsTestCase("+++ b/test('header', () => {})\n"), false, 'nothing before the first hunk is a line of the file')
 })
 
 test('named checks travel only as base64, and every option parses', () => {

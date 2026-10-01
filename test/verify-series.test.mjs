@@ -87,7 +87,7 @@ test('a green series: build passes, suite passes, and the new test discriminates
   assert.deepEqual(payload.failing_tests, [])
   assert.deepEqual(payload.series_findings, [], 'both changed files are inside the declared locus')
   assert.deepEqual(payload.discriminator, [
-    { test_id: 'test/widget.test.mjs', failed_on_base: true, passes_now: true },
+    { test_id: 'test/widget.test.mjs', adds_test: true, failed_on_base: true, passes_now: true },
   ])
   assert.ok(payload.notes.includes(BUILD), 'the commands actually run are named')
 })
@@ -159,7 +159,7 @@ test('a red order: its test fails now and at base, and the failure is placed in 
   assert.equal(payload.build, 'passed')
   assert.equal(payload.suite, 'failed')
   assert.deepEqual(payload.discriminator, [
-    { test_id: 'test/widget.test.mjs', failed_on_base: true, passes_now: false },
+    { test_id: 'test/widget.test.mjs', adds_test: true, failed_on_base: true, passes_now: false },
   ])
 
   const files = payload.failing_tests.map((f) => f.file)

@@ -5,11 +5,11 @@ import assert from 'node:assert/strict'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { append } from '../lib/ledger.mjs'
+import { append, readLog } from '../lib/ledger.mjs'
 import { readTree } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 import { worktreeOf } from '../lib/store.mjs'
-import { B, COMMANDS, commitIn, git, leaf, repo, root, STAMP } from './harness/boundary-fixture.mjs'
+import { B, COMMANDS, commitIn, git, leaf, repo, root, STAMP, wrote } from './harness/boundary-fixture.mjs'
 
 test('a failing merged head is bisected: the leaf that fails alone is named, the rest merge', () => {
   const r = repo()
@@ -25,13 +25,13 @@ test('a failing merged head is bisected: the leaf that fails alone is named, the
 
   const out = B(r, 'merge-batch', { target: '.', children: [{ id: 'x', head_sha: xs }, { id: 'y', head_sha: ys }], cycles: [] })
   assert.deepEqual(out.failed_alone.map((f) => f.id), ['x'])
-  assert.equal(out.failed_alone[0].failures[0].check, 'suite')
-  assert.equal(out.failed_alone[0].row.id, 'x', 'a leaf failing alone comes back with its row for its fix round')
-  assert.equal(out.failed_alone[0].facts.id, 'x')
+  assert.equal(JSON.parse(readFileSync(out.record, 'utf8')).failed_alone[0].failures[0].check, 'suite', 'what failed, and how, stays on disk')
+  assert.equal(out.failed_alone[0].row.kind, 'leaf', 'a leaf failing alone comes back with its row and card for its fix round')
+  assert.equal(JSON.parse(readFileSync(out.failed_alone[0].card, 'utf8')).id, 'x')
+  assert.equal(out.failed_alone[0].facts.rounds, 1)
   assert.deepEqual(out.merged.map((m) => m.id), ['y'])
-  assert.deepEqual(out.combination, [])
+  assert.deepEqual(out.stops, [], 'a leaf failing alone is no stop: it gets a fix round')
   assert.equal(readTree(r, 'e1').status.get('x').status, 'active')
-  assert.equal(out.failed_alone[0].failures[0].evidence, undefined, 'no suite output crosses the courier')
   const again = B(r, 'leaf-open', { node: 'x', role: 'implementer', round: out.failed_alone[0].facts.rounds + 1 })
   assert.match(readFileSync(again.brief_path, 'utf8'), /## Fix round 2[\s\S]*\[integration\] the suite fails on the merged head[\s\S]*```text/,
     'the fix round the workflow opens reads the failure and its evidence merge-batch left for it')
@@ -56,7 +56,7 @@ test('a reopened leaf follows its moved parent: the parent head is its base, and
   assert.equal(git(r, 'log', '--format=%H', again.base_sha + '..' + again.head_sha).split('\n').includes(xs), true,
     'its own commit stays in its series')
 
-  const close = B(r, 'leaf-close', { node: 'x', role: 'implementer', round: 2, executor_status: 'done', base_sha: again.base_sha })
+  const close = B(r, 'leaf-close', { node: 'x', role: 'implementer', round: 2, status: 'done', base_sha: again.base_sha })
   const measurement = JSON.parse(readFileSync(close.record, 'utf8')).measurement
   assert.deepEqual(measurement.series_findings, [], 'the refresh merge is neither empty work nor a locus breach')
 })
@@ -73,7 +73,8 @@ test('children that pass alone and fail together are a combination failure, and 
   const q = B(r, 'leaf-open', { node: 'q', role: 'implementer', round: 1 })
   const qs = commitIn(q.worktree, { 'q.txt': 'q\n' }, 'Add q')
   const out = B(r, 'merge-batch', { target: '.', children: [{ id: 'p', head_sha: ps }, { id: 'q', head_sha: qs }], cycles: [] })
-  assert.deepEqual(out.combination.sort(), ['p', 'q'])
+  assert.deepEqual(out.stops.map((s) => [s.id, s.reason]).sort(), [['p', 'combination_failure'], ['q', 'combination_failure']])
+  assert.deepEqual(['p', 'q'].map((id) => readTree(r, 'e1').status.get(id).status), ['escalated', 'escalated'], 'recorded by the batch that saw it')
   assert.deepEqual(out.merged, [])
   assert.equal(git(worktreeOf(r, 'e1', '.'), 'rev-parse', 'HEAD'), out.head_sha)
 })
@@ -89,8 +90,16 @@ test('a conflict stops the batch and names the paths; what merged before it stay
   const ns = commitIn(n.worktree, { 'README.md': 'from n\n' }, 'Say n')
   const out = B(r, 'merge-batch', { target: '.', children: [{ id: 'm', head_sha: ms }, { id: 'n', head_sha: ns }], cycles: [] })
   assert.deepEqual(out.merged.map((x) => x.id), ['m'])
-  assert.equal(out.conflict.node, 'n')
-  assert.deepEqual(out.conflict.paths, ['README.md'])
+  assert.deepEqual(out.stops.map((s) => [s.id, s.reason]), [['n', 'merge_conflict']])
+  assert.match(readTree(r, 'e1').status.get('n').last.detail, /conflicting paths: README\.md/, 'the record names the paths')
+})
+
+test('a merge-batch that merged nothing and saw nothing fail stops its target', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(), leaf('x', { rigor: 'trivial', locus: ['src/add.mjs'] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const out = B(r, 'merge-batch', { target: '.', children: [], cycles: [] })
+  assert.deepEqual(out.stops.map((s) => [s.id, s.reason]), [['.', 'merge_no_progress']])
 })
 
 test('a merge-batch that died before recording its outcome is redone from where it started', () => {
@@ -105,7 +114,7 @@ test('a merge-batch that died before recording its outcome is redone from where 
   append(r, 'e1', 'state:' + STAMP, { kind: 'batch-started', target: '.', pre, children: ['x'] })
   git(wt, 'merge', '--no-ff', '--no-edit', 'agentics/e1--x')
   const out = B(r, 'merge-batch', { target: '.', children: [{ id: 'x', head_sha: xs }], cycles: [] })
-  assert.deepEqual(out.merged, [], 'the red merge is not recorded as landed: ' + JSON.stringify(out.notes) + ' ' + out.verified)
+  assert.deepEqual(out.merged, [], 'the red merge is not recorded as landed: ' + JSON.stringify(JSON.parse(readFileSync(out.record, 'utf8')).notes) + ' ' + out.verified)
   assert.deepEqual(out.failed_alone.map((f) => f.id), ['x'])
   assert.equal(out.head_sha, pre)
   assert.notEqual(readTree(r, 'e1').status.get('x').status, 'merged')
@@ -121,9 +130,18 @@ test('a merge under a contract a pending node consumes writes the ruler one brie
   const ps = commitIn(p.worktree, { 'README.md': 'hello world\n' }, 'Greet the world')
 
   const out = B(r, 'merge-batch', { target: '.', children: [{ id: 'p', head_sha: ps }], cycles: [] })
-  assert.deepEqual(out.drift.map((d) => [d.node, d.contract, d.row.id, d.row.under_way]), [['c', 'docs', 'c', false]])
+  assert.deepEqual(out.drift, [{ node: 'c', contract: 'docs', stopped: '' }])
   const brief = readFileSync(out.drift_brief, 'utf8')
   assert.match(brief, /^# c — do c$/m)
   assert.ok(brief.includes('contract docs (README.md)') && brief.includes('- docs: README.md') && brief.includes('- c works'))
   assert.match(brief, /^\+hello world$/m)
+
+  // The ruler writes its rulings to one file; rule-close reads it back over the merge's record.
+  const ruled = B(r, 'rule-close', { kind: 'drift', record: out.record, rulings_file: wrote({ rulings: [{ node: 'c', ruling: 'affected', why: 'the docs moved', question: 'does c still read them?' }] }) })
+  assert.deepEqual(ruled.replan.map((x) => x.id), ['c'], 'an affected consumer no work stands on goes to the planner')
+  const lines = readLog(r, 'e1', 'state:' + STAMP).entries.filter((e) => e.kind === 'drift-ruled')
+  assert.deepEqual(lines.map((e) => [e.node, e.contract, e.ruling, e.head_sha]), [['c', 'docs', 'affected', out.head_sha]])
+  assert.match(readFileSync(lines[0].said, 'utf8'), /^does c still read them\?/)
+  B(r, 'rule-close', { kind: 'drift', record: out.record, rulings_file: wrote({ rulings: [] }), running: ['leaf:c'] })
+  assert.deepEqual(readTree(r, 'e1').status.get('c').status, 'parked', 'no ruling reached it: drift is found once, so it parks')
 })

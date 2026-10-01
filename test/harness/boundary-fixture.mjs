@@ -7,7 +7,8 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-import { runBoundary } from '../../lib/boundary.mjs'
+import { ARGS, runBoundary } from '../../lib/boundary.mjs'
+import { handleArgs, handleEnvelope } from '../../lib/store.mjs'
 
 // The fixtures' own suites run `node --test`; a grandchild that sees this runner's marker runs
 // nothing and exits 0, which would make every measurement a pass. It is cleared here so that every
@@ -51,7 +52,48 @@ export const leaf = (id, extra = {}) => ({
 })
 export const root = (extra = {}) => ({ id: '.', kind: 'composite', title: 'the change', defines: [{ id: 'D1', text: 'do it' }], ...extra })
 
-export const B = (r, name, args, stamp = STAMP) => runBoundary(name, r, 'e1', stamp, args)
+/** A file an agent wrote, as JSON: a review, a rulings file, a settlement. Its path. */
+export function wrote(value, name = 'agent.json') {
+  const path = join(mkdtempSync(join(tmpdir(), 'agentics-wrote-')), name)
+  writeFileSync(path, JSON.stringify(value))
+  return path
+}
+
+/** A review with no finding and no claim, as a reviewer writes it. */
+export const CLEAN_REVIEW = { findings: [], fix_verdicts: [], claims: [], notes: '' }
+
+/**
+ * A boundary called the way a courier calls it: the arguments as argv flags parsed by
+ * `handleArgs` over the boundary's own `ARGS`, the payload printed through `handleEnvelope`, which
+ * throws on anything that is not a handle. What a test would hand over as data the session or an
+ * agent writes to a file first: the commands the user named, a merge's children (its card).
+ */
+export function B(r, name, args, stamp = STAMP) {
+  const given = { ...args }
+  if (given.commands && typeof given.commands === 'object') {
+    given.commands_file = join(mkdtempSync(join(tmpdir(), 'agentics-commands-')), 'commands.json')
+    writeFileSync(given.commands_file, JSON.stringify(given.commands))
+  }
+  if (given.children) {
+    given.card = join(mkdtempSync(join(tmpdir(), 'agentics-card-')), 'card.json')
+    writeFileSync(given.card, JSON.stringify({ unit: 'merge', id: given.target, children: given.children, cycles: given.cycles || [] }))
+  }
+  const { value, problem } = handleArgs(argvFor(name, given), ARGS[name])
+  if (problem) throw new Error(name + ': ' + problem.kind + ' — ' + problem.message)
+  return handleEnvelope(runBoundary(name, r, 'e1', stamp, value)).payload
+}
+
+/** The flags a boundary's arguments travel as, one per value. */
+export function argvFor(name, args) {
+  const argv = []
+  for (const [key, kind] of Object.entries(ARGS[name])) {
+    const v = args[key]
+    if (kind === 'many') for (const x of v || []) argv.push('--' + key, String(x))
+    else if (kind === 'bool') argv.push('--' + key, v === true ? '1' : '0')
+    else if (v !== undefined && v !== '') argv.push('--' + key, String(v))
+  }
+  return argv
+}
 
 export function commitIn(wt, files, subject) {
   for (const [path, text] of Object.entries(files)) {

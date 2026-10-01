@@ -13,7 +13,7 @@ import { addNodes, readTree } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 import { branchExists, executionDir, worktreeOf } from '../lib/store.mjs'
 import {
-  A_TEST, B, BOUNDARY, COMMANDS, commitIn, git, leaf, repo, root, STAMP,
+  A_TEST, B, BOUNDARY, CLEAN_REVIEW, COMMANDS, commitIn, git, leaf, repo, root, STAMP, wrote,
 } from './harness/boundary-fixture.mjs'
 
 test('a leaf from preflight to landing: open, measure, merge, close, land, clean up', () => {
@@ -26,40 +26,45 @@ test('a leaf from preflight to landing: open, measure, merge, close, land, clean
   assert.ok(statSync(pre.said_dir).isDirectory(), 'the agents of the execution have somewhere to write what they say')
   assert.equal(JSON.parse(readFileSync(join(executionDir(r, 'e1', STAMP), 'execution.json'), 'utf8')).base_branch, 'main')
   assert.deepEqual(pre.counts, { nodes: 2, leaves: 1, gaps: 0, untraced: 0 })
-  assert.deepEqual(pre.todos.map((t) => t.key), ['.'])
   assert.ok(existsSync(join(executionDir(r, 'e1', STAMP), 'execution.json')))
 
   const tick = B(r, 'schedule', { running: [], planning: [] })
   assert.deepEqual(tick.launch.map((l) => [l.unit, l.id, l.facts && l.facts.next_action]), [['leaf', 'a', 'code']])
-  assert.equal(tick.launch[0].row.title, 'do a')
-  assert.equal(tick.launch[0].parent.id, '.')
-  assert.deepEqual(tick.todos.map((t) => t.key), ['a'])
+  const card = JSON.parse(readFileSync(tick.launch[0].card, 'utf8'))
+  assert.deepEqual([card.title, card.parent.id], ['do a', '.'], 'what is not a handle is on the card')
 
-  const open = B(r, 'leaf-open', { node: 'a', role: 'implementer', round: 1, dispatch: { model: 'sonnet', effort: 'high' } })
+  const open = B(r, 'leaf-open', { node: 'a', role: 'implementer', round: 1, tier: 'sonnet/high' })
   assert.equal(open.status, 'opened', JSON.stringify(open))
   assert.equal(open.branch, 'agentics/e1--a')
   assert.equal(open.worktree, worktreeOf(r, 'e1', 'a'))
   assert.ok(branchExists(r, 'agentics/e1'), 'the effort branch was cut lazily')
   assert.match(readFileSync(open.brief_path, 'utf8'), /a works/)
-  assert.deepEqual(open.todos, [{ key: 'a', subject: 'a — do a', activeForm: 'implementing', status: 'in_progress' }])
+  const dispatched = readLog(r, 'e1', 'events').entries.find((e) => e.kind === 'dispatched')
+  assert.deepEqual([dispatched.model, dispatched.effort], ['sonnet', 'high'])
   assert.equal(heldBy(r).slots.length, 1)
 
   commitIn(open.worktree, { 'test/a.test.mjs': A_TEST, 'src/a.mjs': 'export const a = () => 1\n' }, 'Add a')
-  const close = B(r, 'leaf-close', { node: 'a', role: 'implementer', round: 1, executor_status: 'done', base_sha: open.base_sha })
+  const close = B(r, 'leaf-close', {
+    node: 'a', role: 'implementer', round: 1, status: 'done', base_sha: open.base_sha, dispatch: ['implementer:a#1=implementer/sonnet/high'],
+  })
   const closed = JSON.parse(readFileSync(close.record, 'utf8'))
   assert.equal(close.decision.next, 'approve', JSON.stringify(close.decision) + '\n' + closed.measurement.notes)
   assert.equal(closed.measurement.suite, 'passed')
   assert.equal(closed.measurement.discriminator[0].failed_on_base, true)
   assert.equal(close.measurement, undefined, 'the measurement stays on disk; the courier carries the decision')
   assert.ok(readLog(r, 'e1', 'journal:' + STAMP).entries.some((e) => e.kind === 'verify-observed' && e.node === 'a'))
+  const series = readLog(r, 'e1', 'journal:' + STAMP).entries.filter((e) => e.kind === 'series-done')
+  assert.deepEqual(series.map((e) => [e.node, e.commits.map((c) => c.subject)]), [['a', ['Add a']]], 'the executor said done: its series, from git')
+  assert.equal(readTree(r, 'e1').status.get('a').status, 'approved', 'the close recorded what it decided')
+  assert.deepEqual(readLog(r, 'e1', 'state:' + STAMP).entries.filter((e) => e.kind === 'dispatch').map((e) => [e.label, e.node, e.role]),
+    [['implementer:a#1', 'a', 'implementer']], 'and the cost line of the dispatch it closed')
 
-  const ripe = B(r, 'schedule', {
-    running: [], records: [{ file: 'events', entry: { kind: 'approved', node: 'a', head_sha: close.head_sha, review_rounds: 0, at_integration: true } }],
-  })
-  assert.deepEqual(ripe.launch, [{ unit: 'merge', target: '.', children: [{ id: 'a', head_sha: close.head_sha }], cycles: [] }])
-  const merged = B(r, 'merge-batch', { target: '.', children: ripe.launch[0].children, cycles: [] })
+  const ripe = B(r, 'schedule', { running: [] })
+  assert.deepEqual(ripe.launch.map((l) => [l.unit, l.target]), [['merge', '.']])
+  assert.deepEqual(JSON.parse(readFileSync(ripe.launch[0].card, 'utf8')).children, [{ id: 'a', head_sha: close.head_sha }])
+  const merged = B(r, 'merge-batch', { target: '.', card: ripe.launch[0].card })
   assert.deepEqual(merged.merged.map((m) => m.id), ['a'])
-  assert.equal(merged.conflict, null)
+  assert.deepEqual(merged.stops, [])
   assert.equal(merged.verified, true)
   assert.equal(readTree(r, 'e1').status.get('a').status, 'merged')
   assert.equal(readTree(r, 'e1').status.get('.').status, 'reviewing', 'merged children leave the root to its review')
@@ -69,10 +74,11 @@ test('a leaf from preflight to landing: open, measure, merge, close, land, clean
   assert.equal(again.head_sha, merged.head_sha, 'a re-run converges: nothing merged twice')
 
   const review = B(r, 'schedule', { running: [] })
-  assert.deepEqual(review.launch.map((l) => [l.unit, l.id, l.earned]), [['review', '.', true]])
-  const post = B(r, 'postflight', {
-    records: [{ file: 'events', entry: { kind: 'claims', node: '.', head_sha: review.launch[0].where.head, review: 'done', claims: [] } }],
-  })
+  assert.deepEqual(review.launch.map((l) => [l.unit, l.id]), [['review', '.']])
+  assert.equal(B(r, 'suite-gate', { target: '.' }).review, 'earned', 'the root\'s review is earned once something merged there')
+  const folder = B(r, 'folder-review', { target: '.', card: review.launch[0].card, review_file: wrote(CLEAN_REVIEW) })
+  assert.equal(folder.status, 'recorded')
+  const post = B(r, 'postflight', {})
   assert.equal(post.closed, true)
   assert.equal(readTree(r, 'e1').status.get('.').status, 'integrated')
   assert.ok(readLog(r, 'e1', 'state:' + STAMP).entries.some((e) => e.kind === 'ended'), 'a watching session stops at postflight')
@@ -104,15 +110,15 @@ test('a shell-less author: its locus files are committed, a stray file is revert
     '```agentics-commit', 'Test add with negatives', '```',
     '```agentics-mutations', JSON.stringify([{ file: 'src/add.mjs', find: 'a + b', replace: 'a - b', expect_failing: ['test/more.test.mjs'] }]), '```',
   ].join('\n'))
-  const close = B(r, 'leaf-close', { node: 't', role: 'test-author', round: 1, base_sha: open.base_sha })
-  assert.equal(close.committed, true)
+  const close = B(r, 'leaf-close', { node: 't', role: 'test-author', round: 1, status: 'done', base_sha: open.base_sha })
   assert.equal(git(open.worktree, 'log', '-1', '--format=%s'), 'Test add with negatives')
   assert.equal(existsSync(join(open.worktree, 'stray.txt')), false)
-  const { measurement } = JSON.parse(readFileSync(close.record, 'utf8'))
+  const { measurement, committed } = JSON.parse(readFileSync(close.record, 'utf8'))
+  assert.equal(committed, true)
   assert.ok(measurement.series_findings.some((f) => f.check === 'locus-breach' && /stray\.txt/.test(f.message)))
   assert.equal(measurement.mutations[0].bites, true)
   assert.equal(close.decision.next, 'fix', 'the breach blocks, so the author gets a fix round')
-  assert.ok(close.decision.failures.every((f) => !('evidence' in f)), 'no evidence crosses the courier')
+  assert.ok(close.decision.failures_n > 0 && !('failures' in close.decision), 'only a count crosses the courier')
   const round2 = B(r, 'leaf-open', { node: 't', role: 'test-author', round: 2 })
   assert.match(readFileSync(round2.brief_path, 'utf8'), /## Fix round 2[\s\S]*\[verification\][\s\S]*stray\.txt/, 'the next round\'s brief carries the failure and its evidence from disk')
 })
@@ -127,9 +133,9 @@ test('a shell-less author whose locus is a directory commits the files under it,
     '```agentics-commit', 'Test add with negatives', '```',
     '```agentics-mutations', JSON.stringify([{ file: 'src/add.mjs', find: 'a + b', replace: 'a - b', expect_failing: ['test/more.test.mjs'] }]), '```',
   ].join('\n'))
-  const close = B(r, 'leaf-close', { node: 't', role: 'test-author', round: 1, base_sha: open.base_sha })
-  assert.equal(close.committed, true)
-  const { measurement } = JSON.parse(readFileSync(close.record, 'utf8'))
+  const close = B(r, 'leaf-close', { node: 't', role: 'test-author', round: 1, status: 'done', base_sha: open.base_sha })
+  const { measurement, committed } = JSON.parse(readFileSync(close.record, 'utf8'))
+  assert.equal(committed, true)
   assert.deepEqual(measurement.series_findings, [])
   assert.equal(close.decision.next, 'approve', JSON.stringify(close.decision))
 })
@@ -144,26 +150,78 @@ test('a red/green cycle: green is cut from red, measured on red\'s tests, and th
   const red = B(r, 'leaf-open', { node: 'r', role: 'test-author', round: 1 })
   writeFileSync(join(red.worktree, 'test', 'r.test.mjs'), "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\ntest('r is 2', async () => { const { r } = await import('../src/r.mjs'); assert.equal(r(), 2) })\n")
   writeFileSync(red.report_path, '```agentics-commit\nPin r\n```\n')
-  const redClose = B(r, 'leaf-close', { node: 'r', role: 'test-author', round: 1, base_sha: red.base_sha })
+  const redClose = B(r, 'leaf-close', { node: 'r', role: 'test-author', round: 1, status: 'done', base_sha: red.base_sha })
   assert.equal(redClose.decision.next, 'review', JSON.stringify(redClose.decision))
+  assert.equal(B(r, 'leaf-review', { node: 'r', round: 1, review_round: 1, review_file: wrote(CLEAN_REVIEW) }).decision.next, 'approve')
 
-  const ready = B(r, 'schedule', {
-    running: [], records: [{ file: 'events', entry: { kind: 'approved', node: 'r', head_sha: redClose.head_sha, review_rounds: 1, at_integration: false } }],
-  })
+  const ready = B(r, 'schedule', { running: [] })
   assert.deepEqual(ready.launch.map((l) => [l.unit, l.id]), [['leaf', 'g']], 'green launches once red is approved; red waits for its cycle')
   const green = B(r, 'leaf-open', { node: 'g', role: 'implementer', round: 1 })
   assert.equal(green.base_sha, redClose.head_sha, 'green is cut from red\'s head')
   commitIn(green.worktree, { 'src/r.mjs': 'export const r = () => 2\n' }, 'Implement r')
-  const greenClose = B(r, 'leaf-close', { node: 'g', role: 'implementer', round: 1, base_sha: green.base_sha })
+  const greenClose = B(r, 'leaf-close', { node: 'g', role: 'implementer', round: 1, status: 'done', base_sha: green.base_sha })
   assert.equal(greenClose.decision.next, 'review', JSON.stringify(greenClose.decision) + readFileSync(greenClose.record, 'utf8'))
+  assert.equal(B(r, 'leaf-review', { node: 'g', round: 1, review_round: 1, review_file: wrote(CLEAN_REVIEW) }).decision.next, 'approve')
 
-  const whole = B(r, 'schedule', {
-    running: [], records: [{ file: 'events', entry: { kind: 'approved', node: 'g', head_sha: greenClose.head_sha, review_rounds: 1, at_integration: false } }],
-  })
-  assert.deepEqual(whole.launch, [{ unit: 'merge', target: '.', children: [{ id: 'r', head_sha: redClose.head_sha }, { id: 'g', head_sha: greenClose.head_sha }], cycles: [['r', 'g']] }])
-  const merged = B(r, 'merge-batch', { target: '.', children: whole.launch[0].children, cycles: whole.launch[0].cycles })
+  const whole = B(r, 'schedule', { running: [] })
+  assert.deepEqual(whole.launch.map((l) => [l.unit, l.target]), [['merge', '.']])
+  const batch = JSON.parse(readFileSync(whole.launch[0].card, 'utf8'))
+  assert.deepEqual([batch.children, batch.cycles], [[{ id: 'r', head_sha: redClose.head_sha }, { id: 'g', head_sha: greenClose.head_sha }], [['r', 'g']]])
+  const merged = B(r, 'merge-batch', { target: '.', card: whole.launch[0].card })
   assert.deepEqual(merged.merged.map((m) => m.id), ['r', 'g'])
   assert.equal(merged.verified, true)
+})
+
+test('a leaf review round: open findings reach the next brief, the next reviewer rules on them, and the approval lands once', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'], provides: [{ name: 'api', paths: ['src/a.mjs'] }] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const open = B(r, 'leaf-open', { node: 'a', role: 'implementer', round: 1 })
+  commitIn(open.worktree, { 'test/a.test.mjs': A_TEST, 'src/a.mjs': 'export const a = () => 1\n' }, 'Add a')
+  const close = B(r, 'leaf-close', { node: 'a', role: 'implementer', round: 1, status: 'done', base_sha: open.base_sha })
+  assert.equal(close.decision.next, 'review', 'a contract leaf buys a review loop of its own')
+
+  const critical = { id: 'F1', severity: 'critical', claim: 'a ignores its input', evidence: 'src/a.mjs:1', failure_scenario: 'a(2) is 1' }
+  const first = B(r, 'leaf-review', { node: 'a', round: 1, review_round: 1, review_file: wrote({ ...CLEAN_REVIEW, findings: [critical] }) })
+  assert.deepEqual([first.decision.next, first.raise], ['fix', false])
+  assert.deepEqual(JSON.parse(readFileSync(first.record, 'utf8')).open.map((f) => f.id), ['F1'], 'what the next reviewer rules on')
+  const round2 = B(r, 'leaf-open', { node: 'a', role: 'implementer', round: 2 })
+  assert.match(readFileSync(round2.brief_path, 'utf8'), /## Fix round 2[\s\S]*\[review critical F1\] a ignores its input[\s\S]*a\(2\) is 1/,
+    'the finding reaches the fix round through its brief, never a prompt')
+
+  const nothing = B(r, 'leaf-close', { node: 'a', role: 'implementer', round: 2, mode: 'fix', status: 'done', head_before: close.head_sha, base_sha: open.base_sha })
+  assert.deepEqual(nothing.stops, [{ id: 'a', status: 'escalated', reason: 'fix_without_commits', said: '' }], 'a fix round that moved nothing returned no commits')
+})
+
+test('a leaf review that clears its blockers approves the leaf once, however often it is sent', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'], provides: [{ name: 'api', paths: ['src/a.mjs'] }] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const open = B(r, 'leaf-open', { node: 'a', role: 'implementer', round: 1 })
+  commitIn(open.worktree, { 'test/a.test.mjs': A_TEST, 'src/a.mjs': 'export const a = () => 1\n' }, 'Add a')
+  B(r, 'leaf-close', { node: 'a', role: 'implementer', round: 1, status: 'done', base_sha: open.base_sha })
+  const critical = { id: 'F1', severity: 'critical', claim: 'a ignores its input', evidence: 'src/a.mjs:1', failure_scenario: 'a(2) is 1' }
+  B(r, 'leaf-review', { node: 'a', round: 1, review_round: 1, review_file: wrote({ ...CLEAN_REVIEW, findings: [critical] }) })
+  const fixed = wrote({ ...CLEAN_REVIEW, fix_verdicts: [{ id: 'F1', status: 'fixed', evidence: 'src/a.mjs:1' }] })
+  for (const _ of [1, 2]) assert.equal(B(r, 'leaf-review', { node: 'a', round: 2, review_round: 2, review_file: fixed }).decision.next, 'approve')
+  const approvals = readLog(r, 'e1', 'events').entries.filter((e) => e.kind === 'approved')
+  assert.deepEqual(approvals.map((e) => [e.node, e.review_rounds, e.at_integration]), [['a', 2, false]])
+})
+
+test('an executor\'s own return is recorded by the close that reads it: a park, an escalation, a dispatch that returned nothing', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs'] }), leaf('b', { locus: ['src/b.mjs'] }), leaf('c', { locus: ['src/c.mjs'] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  for (const id of ['a', 'b', 'c']) B(r, 'leaf-open', { node: id, role: 'implementer', round: 1 })
+  const said = wrote('which format?', 'said.md')
+  const a = B(r, 'leaf-close', { node: 'a', role: 'implementer', round: 1, status: 'needs_decision', said })
+  assert.deepEqual(a.stops, [{ id: 'a', status: 'parked', reason: 'needs_decision', said }])
+  assert.equal(B(r, 'leaf-close', { node: 'b', role: 'implementer', round: 1, status: 'decompose', said }).decision.next, 'replan')
+  const c = B(r, 'leaf-close', { node: 'c', role: 'implementer', round: 1, status: '' })
+  assert.deepEqual(c.stops, [{ id: 'c', status: 'held', reason: 'dispatch', said: '' }])
+  const tree = readTree(r, 'e1')
+  assert.deepEqual(['a', 'b', 'c'].map((id) => tree.status.get(id).status), ['parked', 'active', 'active'], 'a fault and a replan are no stop')
+  assert.equal(heldBy(r).slots.some((s) => s.node === 'c'), false, 'a fault gives its slot back')
 })
 
 test('a green is cut from its red and brought up to the parent head, so its other dependencies are there', () => {
@@ -203,7 +261,7 @@ test('a green opened again after its refresh names the same base, and the parent
   assert.equal(replay.base_sha, first.base_sha, 'the open run again after a lost courier names the same base')
 
   commitIn(replay.worktree, { 'src/r.mjs': 'export const r = () => 2\n' }, 'Implement r')
-  const close = B(r, 'leaf-close', { node: 'g', role: 'implementer', round: 1, base_sha: replay.base_sha })
+  const close = B(r, 'leaf-close', { node: 'g', role: 'implementer', round: 1, status: 'done', base_sha: replay.base_sha })
   const measurement = JSON.parse(readFileSync(close.record, 'utf8')).measurement
   assert.deepEqual(measurement.series_findings, [], 'l\'s commit and the merges are not g\'s work')
   const round2 = B(r, 'leaf-open', { node: 'g', role: 'implementer', round: 2 })
@@ -251,7 +309,7 @@ test('concurrent leaf-opens under one fresh composite all open', async () => {
   B(r, 'preflight', { root: '.', commands: COMMANDS })
   const opens = await Promise.all(['p', 'q', 's', 't'].map((id) => new Promise((resolve) => {
     const child = spawn('node', [BOUNDARY, 'leaf-open', '--repo', r, '--effort', 'e1', '--execution', STAMP,
-      '--b64', Buffer.from(JSON.stringify({ node: 'c/' + id, role: 'implementer', round: 1 })).toString('base64')])
+      '--node', 'c/' + id, '--role', 'implementer', '--round', '1'])
     let out = ''
     child.stdout.on('data', (d) => { out += d })
     child.on('close', () => resolve(JSON.parse(out).payload.status))
@@ -268,6 +326,6 @@ test('leaf-close never commits outside a linked worktree', () => {
   writeFileSync(join(r, 'staged.txt'), 'the user\'s staged work\n')
   git(r, 'add', 'staged.txt')
   const head = git(r, 'rev-parse', 'HEAD')
-  B(r, 'leaf-close', { node: 't', role: 'test-author', round: 1, base_sha: head })
+  B(r, 'leaf-close', { node: 't', role: 'test-author', round: 1, status: 'done', base_sha: head })
   assert.equal(git(r, 'rev-parse', 'HEAD'), head, 'the user\'s branch did not move')
 })

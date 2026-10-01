@@ -6,18 +6,17 @@ export const meta = {
     { title: 'Plan', detail: 'planner per unplanned composite; a survey first where the ground is unknown' },
     { title: 'Execute', detail: 'per leaf: leaf-open, executor by rigor, leaf-close, fix rounds, review loop' },
     { title: 'Integrate', detail: 'merge-batch per composite, integration review, merge up' },
-    { title: 'Postflight', detail: 'records, cleanup report' },
+    { title: 'Postflight', detail: 'faults, summary, cleanup report' },
   ],
 }
 
 // Design: docs/DESIGN.md#execution. Every deterministic step is a `lib/boundary.mjs` entry point
-// run by a courier and re-digested here, scheduling included: the `schedule` boundary says what to
-// launch next from the tree on disk. This script holds only what a script can hold without a
-// filesystem: the units in flight and what each typed return means next.
+// run by a courier, scheduling and every decision record included: the boundary that closes a
+// dispatch reads what its agent wrote and records what it decides. This script holds only what a
+// script can hold without a filesystem — the units in flight — and hands each courier handles
+// (docs/DESIGN.md#gp6--couriers-carry-handles-data-stays-where-its-author-wrote-it).
 //
 // Schemas carry no bounds and no verdict booleans (lint: no-schema-bounds, no-self-verdict).
-// Every verdict below is computed: a measurement's by lib/verdict.mjs on disk, a review round's
-// here from the findings, a merge's from the merge-result contract.
 
 const input = args && typeof args === 'object' ? args : {}
 
@@ -26,15 +25,15 @@ const repo = posix(String(input.repo || input.roots || '.').split(/[,;\n]/)[0].t
 const effort = String(input.effort || '').trim()
 const rootId = String(input.root || '.').trim() || '.'
 const execution = String(input.execution || '').trim()
-const progress = input.progress !== false
 const pace = ['frugal', 'balanced', 'fast'].includes(input.pace) ? input.pace : 'balanced'
 const pluginRoot = posix(String(input.plugin_root || '$CLAUDE_PLUGIN_ROOT').trim())
 
-// ---------------------------------------------------------------- digests and transport
+// ---------------------------------------------------------------- digests and arguments
 //
-// Written out here because a workflow script has no imports: these must stay identical to
-// `canonical` and `fnv1a` in lib/plan-digest.mjs — the scenario harness mints every envelope with
-// the lib copies, so a drift fails every scenario in test/agentics-develop-scenarios.test.mjs.
+// Written out here because a workflow script has no imports: `canonical` and `fnv1a` must stay
+// identical to lib/plan-digest.mjs, and ARGS to `ARGS` in lib/boundary.mjs. The scenario harness
+// parses every courier's command with the lib's own `handleArgs` over the lib's own table, so a
+// drift in any of them fails every scenario in test/agentics-develop-scenarios.test.mjs.
 
 function canonical(value) {
   if (value === undefined) return 'null'
@@ -53,53 +52,44 @@ function fnv1a(text) {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
-function utf8Bytes(text) {
-  const out = []
-  for (let i = 0; i < text.length; i++) {
-    let c = text.charCodeAt(i)
-    if (c >= 0xd800 && c <= 0xdbff && i + 1 < text.length) {
-      const low = text.charCodeAt(i + 1)
-      if (low >= 0xdc00 && low <= 0xdfff) {
-        c = 0x10000 + ((c - 0xd800) << 10) + (low - 0xdc00)
-        i++
-      }
-    }
-    if (c < 0x80) out.push(c)
-    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63))
-    else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
-    else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
-  }
-  return out
-}
-
-const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-
-/** Standard padded base64: one opaque argv slot, nothing in it for a shell to interpret. */
-function base64(text) {
-  const bytes = utf8Bytes(text)
-  let out = ''
-  for (let i = 0; i < bytes.length; i += 3) {
-    const b0 = bytes[i]
-    const b1 = i + 1 < bytes.length ? bytes[i + 1] : -1
-    const b2 = i + 2 < bytes.length ? bytes[i + 2] : -1
-    out += B64[b0 >> 2]
-    out += B64[((b0 & 3) << 4) | (b1 < 0 ? 0 : b1 >> 4)]
-    out += b1 < 0 ? '=' : B64[((b1 & 15) << 2) | (b2 < 0 ? 0 : b2 >> 6)]
-    out += b2 < 0 ? '=' : B64[b2 & 63]
-  }
-  return out
+const ARGS = {
+  preflight: {
+    root: 'one', retry: 'many', confirmed_duplicate: 'bool', confirmed_gaps: 'bool', plan_only: 'bool',
+    dial: 'one', pace: 'one', base_ref: 'one', commands_file: 'one', dispatch: 'many',
+  },
+  schedule: { running: 'many', planning: 'many', stopping: 'bool', fault: 'many', dispatch: 'many' },
+  'leaf-open': { node: 'one', role: 'one', round: 'int', tier: 'one', wait_ms: 'int', dispatch: 'many' },
+  'leaf-close': {
+    node: 'one', role: 'one', round: 'int', mode: 'one', status: 'one', said: 'one', head_before: 'one',
+    base_sha: 'one', dispatch: 'many',
+  },
+  'leaf-review': { node: 'one', round: 'int', review_round: 'int', review_file: 'one', dispatch: 'many' },
+  'merge-batch': { target: 'one', card: 'one', dispatch: 'many' },
+  'suite-gate': { target: 'one', dispatch: 'many' },
+  'folder-review': { target: 'one', card: 'one', review_file: 'one', dispatch: 'many' },
+  'rule-close': { kind: 'one', record: 'one', rulings_file: 'one', running: 'many', dispatch: 'many' },
+  postflight: { fault: 'many', dispatch: 'many' },
+  'spec-check': { node: 'one', status: 'one', said: 'one', dispatch: 'many' },
+  'spec-reviewed': {
+    node: 'one', hash: 'one', findings_file: 'one', previous_file: 'one', previous_hash: 'one', complete: 'bool',
+    remaining: 'many', dispatch: 'many',
+  },
+  'spec-settle': {
+    node: 'one', hash: 'one', findings_file: 'one', return_file: 'one', status: 'one', said: 'one', finding: 'many',
+    refused: 'many', dispatch: 'many',
+  },
+  'spec-gate': { node: 'one', edited: 'bool', dispatch: 'many' },
+  'spec-prepare': { node: 'one', review: 'one', leaf_rev: 'one', dispatch: 'many' },
 }
 
 // ---------------------------------------------------------------- schemas
 
 const CARRIED = {
   type: 'object', additionalProperties: false,
-  required: ['stop_reason', 'payload_raw', 'task_tools', 'notes'],
+  required: ['stop_reason', 'payload_raw'],
   properties: {
     stop_reason: { type: 'string', enum: ['carried', 'failed'] },
     payload_raw: { type: 'string' },
-    task_tools: { type: 'string', enum: ['used', 'unavailable', 'skipped'] },
-    notes: { type: 'string' },
   },
 }
 
@@ -114,121 +104,37 @@ const EXECUTOR_TYPE = {
 
 const EXECUTOR = {
   type: 'object', additionalProperties: false,
-  required: ['status', 'detail', 'concerns', 'commits'],
-  properties: {
-    status: { type: 'string', enum: EXECUTOR_STATUSES },
-    detail: { type: 'string' },
-    concerns: { type: 'array', items: { type: 'string' } },
-    commits: {
-      type: 'array',
-      items: { type: 'object', additionalProperties: false, required: ['sha', 'subject'], properties: { sha: { type: 'string' }, subject: { type: 'string' } } },
-    },
-  },
+  required: ['status'],
+  properties: { status: { type: 'string', enum: EXECUTOR_STATUSES } },
 }
 
-const RULINGS = {
+/** An agent whose output is the file its dispatch named: the return says only whether it wrote it. */
+const WROTE = {
   type: 'object', additionalProperties: false,
-  required: ['rulings'],
-  properties: {
-    rulings: {
-      type: 'array',
-      items: {
-        type: 'object', additionalProperties: false,
-        required: ['node', 'ruling', 'why', 'question'],
-        properties: {
-          node: { type: 'string' },
-          ruling: { type: 'string', enum: ['unaffected', 'affected'] },
-          why: { type: 'string' },
-          question: { type: 'string' },
-        },
-      },
-    },
-  },
-}
-
-const FINDINGS = {
-  type: 'object', additionalProperties: false,
-  required: ['findings', 'fix_verdicts', 'claims', 'notes'],
-  properties: {
-    findings: {
-      type: 'array',
-      items: {
-        type: 'object', additionalProperties: false,
-        required: ['id', 'severity', 'claim', 'evidence', 'failure_scenario'],
-        properties: {
-          id: { type: 'string' },
-          severity: { type: 'string', enum: ['critical', 'major', 'minor'] },
-          claim: { type: 'string' },
-          evidence: { type: 'string' },
-          failure_scenario: { type: 'string' },
-        },
-      },
-    },
-    fix_verdicts: {
-      type: 'array',
-      items: {
-        type: 'object', additionalProperties: false, required: ['id', 'status', 'evidence'],
-        properties: { id: { type: 'string' }, status: { type: 'string', enum: ['fixed', 'not_fixed', 'regressed'] }, evidence: { type: 'string' } },
-      },
-    },
-    claims: {
-      type: 'array',
-      items: {
-        type: 'object', additionalProperties: false, required: ['claim', 'verdict', 'evidence'],
-        properties: {
-          claim: { type: 'string' },
-          verdict: { type: 'string', enum: ['met', 'under', 'over', 'deviates', 'spec_defect', 'cant_tell'] },
-          evidence: { type: 'string' },
-        },
-      },
-    },
-    notes: { type: 'string' },
-  },
+  required: ['status'],
+  properties: { status: { type: 'string', enum: ['written', 'not_written'] } },
 }
 
 const PLANNED = {
   type: 'object', additionalProperties: false,
-  required: ['status', 'written', 'accepted_warnings', 'uncovered', 'question', 'detail'],
-  properties: {
-    status: { type: 'string', enum: ['written', 'needs_decision', 'contract_changed', 'premise_mismatch', 'unsplittable', 'blocked'] },
-    written: { type: 'array', items: { type: 'string' } },
-    accepted_warnings: { type: 'array', items: { type: 'string' } },
-    uncovered: { type: 'array', items: { type: 'string' } },
-    question: { type: 'string' },
-    detail: { type: 'string' },
-  },
+  required: ['status'],
+  properties: { status: { type: 'string', enum: ['written', 'needs_decision', 'contract_changed', 'premise_mismatch', 'unsplittable', 'blocked'] } },
 }
 
 const SETTLED = {
   type: 'object', additionalProperties: false,
-  required: ['status', 'dispositions', 'question', 'detail'],
-  properties: {
-    status: { type: 'string', enum: ['settled', 'needs_decision', 'blocked'] },
-    dispositions: {
-      type: 'array',
-      items: {
-        type: 'object', additionalProperties: false, required: ['finding', 'outcome'],
-        properties: { finding: { type: 'string' }, outcome: { type: 'string', enum: ['incorporated', 'discarded'] } },
-      },
-    },
-    question: { type: 'string' },
-    detail: { type: 'string' },
-  },
+  required: ['status'],
+  properties: { status: { type: 'string', enum: ['settled', 'needs_decision', 'blocked'] } },
 }
+
+const COMMAND_NAMES = ['build', 'typecheck', 'suite', 'suite_fast', 'test_one']
 
 const ESTABLISHED = {
   type: 'object', additionalProperties: false,
-  required: ['commands', 'unresolved', 'notes'],
+  required: ['established', 'unresolved'],
   properties: {
-    commands: {
-      type: 'array',
-      items: {
-        type: 'object', additionalProperties: false, required: ['name', 'value', 'absent', 'exit_status'],
-        properties: { name: { type: 'string' }, value: { type: 'string' }, absent: { type: 'boolean' }, exit_status: { type: 'integer' } },
-      },
-    },
-    unresolved: { type: 'array', items: { type: 'string' } },
-    notes: { type: 'string' },
+    established: { type: 'array', items: { type: 'string', enum: COMMAND_NAMES } },
+    unresolved: { type: 'array', items: { type: 'string', enum: COMMAND_NAMES } },
   },
 }
 
@@ -258,13 +164,10 @@ const isYardstick = (row) => row.role === 'red' || row.role === 'audit' || row.p
  */
 function producerTier(row, raised) {
   const set = (row.dispatch && row.dispatch.producer) || {}
-  let model = set.model || lowerOf(isYardstick(row) ? 'opus' : 'sonnet', JUDGE)
-  let tier = set.effort ? { model, effort: set.effort } : tierFor(model, 'medium')
-  if (raised) {
-    tier = model === 'sonnet' ? tierFor('opus', 'medium') : { model, effort: EFFORT_UP[tier.effort] || 'high' }
-    model = tier.model
-  }
-  return tier
+  const model = set.model || lowerOf(isYardstick(row) ? 'opus' : 'sonnet', JUDGE)
+  const tier = set.effort ? { model, effort: set.effort } : tierFor(model, 'medium')
+  if (!raised) return tier
+  return model === 'sonnet' ? tierFor('opus', 'medium') : { model, effort: EFFORT_UP[tier.effort] || 'high' }
 }
 
 const reviewerTier = (row) => {
@@ -274,30 +177,29 @@ const reviewerTier = (row) => {
 
 const COURIER = { model: 'haiku', effort: 'low' }
 const COURIER_UP = { model: 'sonnet', effort: 'low' }
-// The refusals that mean the token was damaged on its way in, not that the program failed.
+// The refusals that mean the arguments were damaged on their way in, not that the program failed.
 const DAMAGED_IN = ['digest_mismatch', 'args_unreadable']
 
 // ---------------------------------------------------------------- state
 //
-// No copy of the tree lives here: status is derived on disk, and every unit is launched by the
-// `schedule` boundary with the one row it needs. What this script holds is what only it can: the
-// units in flight, the decisions it took and has not yet handed to a boundary, and what it saw.
+// No copy of the tree lives here, and no record: status is derived on disk, every decision is
+// recorded by the boundary that closes its dispatch, and every unit is launched by the `schedule`
+// boundary with its card. What this script holds is what only it can: the units in flight, the
+// plugin faults only it saw, and what it was told back.
 
-const records = []              // decisions waiting for the next schedule or postflight
-const stoppedHere = new Set()   // nodes this invocation escalated, parked or held on a fault
+const stoppedHere = new Set()   // nodes stopped or held while this invocation ran
 const planning = new Set()      // folders a running unit is replanning inline
-const ruling = new Set()        // drift consumers an analyst is ruling on: not launched meanwhile
-const running = new Map()       // unit key -> its promise, until a tick has carried what it decided
+const ruling = new Set()        // drift consumers a ruler is ruling on: not launched meanwhile
+const running = new Map()       // unit key -> its promise, until a tick has been built after it ended
 const finished = new Set()      // units that ended since the last tick was built
-let invocation = 0              // minted by preflight: what makes this invocation's record ids its own
+let invocation = 0              // minted by preflight: what makes this invocation's file names its own
 let saidDir = ''                // minted by preflight: where authors write what a record only points at
-const minted = new Map()        // record content key -> how many times this invocation decided it
 const failedChannels = []
 const notes = []
 const implemented = []
 const escalations = []
 const parked = []
-const faults = []               // units a plugin fault ended: never the user's, retried by the next invocation
+const faults = []               // plugin faults: never the user's, retried by the next invocation
 const reviews = []
 const drift = []
 let dispatches = 0
@@ -305,25 +207,77 @@ const byModel = {}
 let leavesFinished = 0
 let stopping = ''
 let ticks = 0
-let taskToolsMissing = false
 
 const note = (text) => {
   notes.push(text)
   log(text)
 }
 
-// ---------------------------------------------------------------- dispatch with a cost line
-
-/** Every agent dispatch goes through here, so the cost report is measured, not projected. */
-async function dispatch(prompt, opts, node) {
+/** Every agent dispatch goes through here, so the result's count is measured, not projected. */
+async function dispatch(prompt, opts) {
   dispatches++
   byModel[opts.model || 'inherit'] = (byModel[opts.model || 'inherit'] || 0) + 1
-  records.push({
-    file: 'state',
-    entry: { kind: 'dispatch', label: opts.label || '', node: node || '', role: (opts.agentType || '').replace('agentics:', ''), model: opts.model || '', effort: opts.effort || '' },
-  })
   return agent(prompt, opts)
 }
+
+/** A dispatch as the boundary that closes it records its cost line: `<label>=<role>/<model>/<effort>`. */
+const tokenOf = (opts) => opts.label + '=' + String(opts.agentType || '').replace('agentics:', '') + '/' + (opts.model || '') + '/' + (opts.effort || '')
+
+/** What a boundary told back about the stops it recorded: escalations, parks, and nodes held on a plugin fault. */
+function noteStops(out) {
+  for (const s of (out && out.stops) || []) {
+    stoppedHere.add(s.id)
+    if (s.status === 'held') {
+      if (!faults.some((f) => f.id === s.id && f.channel === s.reason)) {
+        faults.push({ id: s.id, channel: s.reason })
+        note('plugin fault on ' + s.id + ' (' + s.reason + ') — held for the next invocation')
+      }
+    } else if (s.status === 'escalated' && !escalations.some((e) => e.id === s.id && e.reason === s.reason)) {
+      escalations.push({ id: s.id, reason: s.reason, said: s.said })
+      note('escalated ' + s.id + ': ' + s.reason)
+      leavesFinished++
+    } else if (s.status === 'parked' && !parked.some((p) => p.id === s.id && p.return === s.reason)) {
+      parked.push({ id: s.id, return: s.reason, said: s.said })
+      note('parked ' + s.id + ' (' + s.reason + '): waiting on the user')
+    }
+  }
+}
+
+/**
+ * A plugin fault only this script saw — a boundary that stayed unbelievable, a throw here — is not
+ * a decision for the user: the node is held for the rest of this invocation, the next schedule or
+ * postflight records it, and the next invocation takes the node up where its records say it stands.
+ */
+function hold(id, channel) {
+  stoppedHere.add(id)
+  if (faults.some((f) => f.id === id && f.channel === channel)) return
+  faults.push({ id, channel })
+  note('plugin fault on ' + id + ' (' + channel + ') — held for the next invocation')
+}
+
+const faultTokens = () => faults.map((f) => f.id + ':' + f.channel)
+
+/** The user answered a node this invocation stopped, and disk says it is ready again: it runs on. */
+function answered(id) {
+  stoppedHere.delete(id)
+  for (const list of [escalations, parked]) {
+    for (let at = list.findIndex((x) => x.id === id); at !== -1; at = list.findIndex((x) => x.id === id)) {
+      if (list === escalations) leavesFinished--
+      list.splice(at, 1)
+    }
+  }
+  note(id + ': answered while the run went on — relaunched')
+}
+
+/**
+ * Where the agent behind `label` writes what a record points at: a question for the user, a
+ * review, a rulings file. One file per dispatch — the invocation, a count within it and the label,
+ * a node id's `/` written `.` — so no later dispatch overwrites what an open stop points at.
+ */
+let saidN = 0
+const saidPath = (label, ext) => (saidDir
+  ? saidDir + '/' + invocation + '-' + (++saidN) + '-' + label.split('/').join('.').replace(/[^A-Za-z0-9._-]+/g, '-') + '.' + ext
+  : '')
 
 // ---------------------------------------------------------------- boundaries
 
@@ -345,7 +299,7 @@ function carried(held) {
   } catch (e) {
     return notRun || { payload: null, why: 'the payload did not survive transcription: ' + (e && e.message), retry: 'stronger' }
   }
-  if (parsed && parsed.error) return { payload: null, why: 'the program failed: ' + parsed.error, retry: '' }
+  if (parsed && typeof parsed.error === 'string') return { payload: null, why: 'the program failed: ' + parsed.error, retry: '' }
   if (!parsed || !parsed.payload || typeof parsed.payload_digest !== 'string') {
     return notRun || { payload: null, why: 'what came back is not a digest-covered envelope', retry: 'stronger' }
   }
@@ -356,186 +310,127 @@ function carried(held) {
   return { payload: parsed.payload, why: '', retry: '' }
 }
 
-function courierPrompt(command, writes) {
-  return (writes.length === 0
-    ? 'Run exactly this one command, unchanged (Bash timeout 600000), and put its entire stdout in payload_raw:\n\n' + command
-    : 'Run these commands in order, each unchanged and in its own Bash call (Bash timeout 600000); stop at the ' +
-      'first that fails. The ones before the last only write a file. Put the last one\'s entire stdout in ' +
-      'payload_raw:\n\n' + [...writes, command].join('\n\n')) + '\n\n' +
-    (progress
-      ? 'Then apply the todo moves listed in the printed payload.todos: call TaskList once; for each move, the task ' +
-        'whose subject equals the move\'s subject is its task — TaskUpdate it with the move\'s activeForm and status; ' +
-        'with none, TaskCreate it with the move\'s subject, activeForm and status. Without task tools, set task_tools to "unavailable".'
-      : 'Progress is off: move no todos and set task_tools to "skipped".') +
-    (pluginRoot === '$CLAUDE_PLUGIN_ROOT'
-      ? '\nIf $CLAUDE_PLUGIN_ROOT is empty in your shell, do not guess a path: set stop_reason "failed" and say so.'
-      : '')
-}
+const courierPrompt = (command) =>
+  'Run exactly this one command, unchanged (Bash timeout 600000), and put its entire stdout in payload_raw:\n\n' + command +
+  (pluginRoot === '$CLAUDE_PLUGIN_ROOT'
+    ? '\n\nIf $CLAUDE_PLUGIN_ROOT is empty in your shell, do not guess a path: set stop_reason "failed".'
+    : '')
+
+const quoted = (s) => '"' + s + '"'
 
 /**
- * The boundaries the main loop calls one at a time: only they carry the pending decisions. Each
- * record goes with an id: this invocation's number and the record's own content, counted when the
- * invocation decides the same thing twice. A record sent again after a lost courier lands once; the
- * same decision taken in a later invocation (an approval after a retry) lands again; and a run a
- * host resumes, which replays the dead run's preflight and so its number, re-derives the same id
- * for the same decision whatever order its units finish in.
+ * The one command a courier runs for a boundary over these arguments: every value a handle on its
+ * own flag, built from ARGS, and the digest over the object `handleArgs` will parse back.
  */
-const CARRIES_RECORDS = new Set(['schedule', 'postflight'])
-function withId(r) {
-  if (r.rid) return r
-  const key = invocation + ':' + fnv1a(canonical({ file: r.file, entry: r.entry }))
-  const n = (minted.get(key) || 0) + 1
-  minted.set(key, n)
-  return { ...r, rid: n === 1 ? key : key + '#' + n }
-}
-
-// cmd.exe caps a whole command line at 8191 characters, so nothing this script hands a courier to
-// type puts more than this many on one line.
-const COMMAND_BUDGET = 6000
-
-/**
- * A token this script mints, as the courier carries it: one line of JSON written to a file under
- * `root` by single-quoted `printf` calls of at most COMMAND_BUDGET characters each, then read by
- * `cli` with `--json-file` under the token's digest and removed. `~` goes as `~t`, `\` as `~b`
- * and `'` as `~q`, so no backslash reaches the layer that decodes escapes in a Bash call and no
- * quote ends the argument (lib/store.mjs jsonFileText). Every write is a single line: the harness
- * indents each line of a computed prompt, and that indent must land before a command, never
- * inside the token. Returns the courier's writes and its one command.
- */
-function viaJsonFile(cli, token, root) {
-  const json = JSON.stringify(token).replace(/~/g, '~t').replace(/\\/g, '~b').replace(/'/g, '~q')
-  const digest = fnv1a(canonical(token))
-  const dir = `${root}/.agentics/.state`
-  const file = `${dir}/token-${digest}.json`
-
-  const writes = []
-  for (let i = 0; i < json.length;) {
-    let end = Math.min(i + COMMAND_BUDGET, json.length)
-    const last = json.charCodeAt(end - 1)
-    if (end < json.length && last >= 0xd800 && last <= 0xdbff) end--
-    const chunk = `printf '%s' '${json.slice(i, end)}'`
-    writes.push(i === 0 ? `mkdir -p "${dir}" && ${chunk} > "${file}"` : `${chunk} >> "${file}"`)
-    i = end
+function tripOf(name, a) {
+  const value = {}
+  const flags = []
+  for (const [key, kind] of Object.entries(ARGS[name])) {
+    const v = a[key]
+    if (kind === 'many') {
+      value[key] = (Array.isArray(v) ? v : []).map(String)
+      for (const x of value[key]) flags.push('--' + key + ' ' + quoted(x))
+    } else if (kind === 'int') {
+      value[key] = Number(v) || 0
+      flags.push('--' + key + ' ' + value[key])
+    } else if (kind === 'bool') {
+      value[key] = v === true
+      flags.push('--' + key + ' ' + (v === true ? 1 : 0))
+    } else {
+      value[key] = v == null ? '' : String(v)
+      if (value[key]) flags.push('--' + key + ' ' + quoted(value[key]))
+    }
   }
-  return { writes, command: `${cli} --digest ${digest} --json-file "${file}"; rm -f "${file}"` }
-}
-
-/**
- * What a courier runs for one boundary entry point over these arguments, under their digest: its
- * file writes, then its command. A boundary that carries records travels by file, because what it
- * carries grows with what the workflow decided; every other one is a fixed-shape token on one line.
- */
-function tripOf(name, argsObject) {
-  const cli = 'node "' + pluginRoot + '/lib/boundary.mjs" ' + name + ' --repo "' + repo +
-    '" --effort "' + effort + '" --execution "' + execution + '"'
-  if (CARRIES_RECORDS.has(name)) return viaJsonFile(cli, argsObject, repo)
-  return { writes: [], command: cli + ' --digest ' + fnv1a(canonical(argsObject)) + ' --b64 ' + base64(JSON.stringify(argsObject)) }
+  return 'node ' + quoted(pluginRoot + '/lib/boundary.mjs') + ' ' + name + ' --repo ' + quoted(repo) + ' --effort ' + quoted(effort) +
+    ' --execution ' + quoted(execution) + ' ' + flags.join(' ') + ' --digest ' + fnv1a(canonical(value))
 }
 
 /**
  * Run one boundary entry point through a courier and believe its payload only after the digest.
+ * Every attempt's courier rides in `dispatch`, beside the agent dispatches the call closes, so the
+ * boundary records each cost line once by its label.
  *
  * Retries are sized to what was observed: a courier that returned nothing or could not run the
- * command is re-run (every entry point is idempotent); a payload damaged in transit, or an
- * argument token the program refused as damaged on its way in, buys one more trip on a stronger
- * model; a program failure is not retried. What stays unbelievable is a transport failure,
- * thrown: the unit ends as a plugin fault, never a question for the user.
+ * command is re-run (every entry point is idempotent); a payload damaged in transit, or arguments
+ * the program refused as damaged on their way in, buy one more trip on a stronger model; a program
+ * failure is not retried. What stays unbelievable is a transport failure, thrown: the unit ends as
+ * a plugin fault, never a question for the user.
  */
 async function boundary(name, a, ctx) {
-  const pending = CARRIES_RECORDS.has(name) ? records.splice(0, records.length).map(withId) : []
-  const argsObject = { ...a, ...(CARRIES_RECORDS.has(name) ? { records: pending } : {}), progress }
-  const { command, writes } = tripOf(name, argsObject)
-  // A token written by file is copied by the courier, and a copy that failed once is retyped by
-  // the stronger model rather than by the same one again.
-  const again = writes.length > 0 ? COURIER_UP : COURIER
-
   const plan = [COURIER]
+  const couriers = []
   let why = ''
   for (let i = 0; i < plan.length; i++) {
+    const opts = { agentType: 'agentics:courier', schema: CARRIED, phase: ctx.phase, label: ctx.label + (i ? '#' + (i + 1) : ''), ...plan[i] }
+    couriers.push(tokenOf(opts))
     let held = null
     try {
-      held = await dispatch(courierPrompt(command, writes), {
-        agentType: 'agentics:courier', schema: CARRIED, phase: ctx.phase,
-        label: ctx.label + (i ? '#' + (i + 1) : ''), ...plan[i],
-      }, a.node || a.target || '')
+      held = await dispatch(courierPrompt(tripOf(name, { ...a, dispatch: [...(a.dispatch || []), ...couriers] })), opts)
     } catch (err) {
       held = null
       why = 'the courier threw: ' + (err && err.message)
     }
     const c = carried(held)
     if (c.payload) {
-      if (progress && held.task_tools === 'unavailable' && !taskToolsMissing) {
-        taskToolsMissing = true
-        note('the couriers had no task tools: the todo list did not move — derive it with lib/status.mjs todos')
-      }
       if (c.payload.error && DAMAGED_IN.includes(c.payload.error.kind)) {
-        // The program wrote nothing. A model that miscopies a token miscopies it the same way
+        // The program wrote nothing. A model that miscopies an argument miscopies it the same way
         // again, so the copy goes to the stronger one; damaged there too, it is a transport fault.
-        why = c.payload.error.message
+        why = 'the arguments arrived damaged (' + c.payload.error.kind + ')'
         if (!plan.includes(COURIER_UP)) plan.push(COURIER_UP)
         continue
       }
-      // A refusal may have written nothing. A record lands once by its id, so it goes again.
-      if (c.payload.error) records.unshift(...pending)
       return c.payload
     }
     why = c.why || why
-    if (c.retry === 'again' && plan.length < 2) plan.push(again)
+    if (c.retry === 'again' && plan.length < 2) plan.push(COURIER)
     else if (c.retry === 'stronger' && !plan.includes(COURIER_UP)) plan.push(COURIER_UP)
   }
-  records.unshift(...pending)
   throw new TransportError(name + ': ' + why)
 }
 
-/** A boundary whose long checks run detached: re-dispatch while it reports them pending. */
+/** A boundary whose long checks run detached: re-dispatch while it reports them pending, each poll a courier of its own. */
 async function settled(name, a, ctx) {
   let payload = await boundary(name, a, ctx)
-  while (payload && payload.status === 'pending') {
+  for (let poll = 2; payload && payload.status === 'pending'; poll++) {
     log(ctx.label + ': checks still running detached — re-dispatching to collect them')
-    payload = await boundary(name, a, ctx)
+    payload = await boundary(name, a, { ...ctx, label: ctx.label + '@' + poll })
   }
   return payload
 }
 
 // ---------------------------------------------------------------- prompts
 
-const listOf = (items) => (items && items.length ? items.map((x) => '- ' + x).join('\n') : '(none)')
+const EXECUTOR_SAID = (said) => said
+  ? ' For any status but done, first write what you established, what you tried and what you need, in full, to ' + said +
+    ' (its first line says it in one sentence): it is what the user reads.'
+  : ''
 
-function executorPrompt(row, role, round, opened, mode, findings, said) {
-  const id = row.id
-  const fetch = role === 'implementer'
+function executorPrompt(item, st, opened, mode) {
+  const { id, row } = item
+  const fetch = st.role === 'implementer'
     ? 'Fetch it: node "' + pluginRoot + '/lib/brief.mjs" fetch --path "' + opened.brief_path + '" --digest ' + opened.brief_digest
     : 'Read it with your Read tool (the leaf-close script re-checks its digest, ' + opened.brief_digest + ').'
-  const finish = role === 'implementer'
-    ? '\n\nAfter your last commit, record that the series is finished:\n' +
-      'node "' + pluginRoot + '/lib/ledger.mjs" append --repo "' + repo + '" --effort "' + effort +
-      '" --file journal:' + execution + " --stdin <<'AGENTICS_EOF'\n" +
-      JSON.stringify({ kind: 'series-done', node: id, branch: opened.branch, head_sha: '<git rev-parse HEAD>', commits: [{ sha: '<sha>', subject: '<subject>' }] }) +
-      '\nAGENTICS_EOF\n(fill in the head and every commit of your series; run it once).'
-    : ''
   const modeText = mode === 'continue'
     ? 'The branch already carries commits of this leaf from an interrupted dispatch: continue the series, do not rebuild it.\n'
     : mode === 'fix'
-      ? 'This is fix round ' + round + ': clear, as new commits, the failures the brief lists' +
-        (findings.length
-          ? ' and these review findings:\n' + findings.map((f) => '- [' + f.severity + ' ' + f.id + '] ' + f.claim + ' — ' + f.evidence +
-            (f.failure_scenario ? ' — ' + f.failure_scenario : '')).join('\n') + '\n'
-          : '.\n')
+      ? 'This is fix round ' + st.round + ': clear, as new commits, every failure and finding the brief\'s Fix round section lists.\n'
       : ''
-  return 'You are the ' + role + ' for leaf ' + id + ' ("' + row.title + '"), round ' + round + ', rigor ' + row.rigor +
+  return 'You are the ' + st.role + ' for leaf ' + id + ', round ' + st.round + ', rigor ' + row.rigor +
     (row.role !== 'none' ? ', role ' + row.role : '') + '.\n' + modeText +
     'Worktree: ' + opened.worktree + ' (branch ' + opened.branch + ', base ' + opened.base_sha + ').\n' +
     'Brief: ' + opened.brief_path + '. ' + fetch + '\n' +
-    'Report file: ' + opened.report_path + '.' + finish +
-    '\n\nReturn status, detail (what you established, tried and need, for any status but done), concerns and commits.' +
-    (said ? ' For any status but done, first write that detail in full to ' + said + ' (its first line says it in one sentence): it is what the user reads.' : '')
+    'Report file: ' + opened.report_path + '.\n\nReturn your status.' + EXECUTOR_SAID(st.said)
 }
 
-function reviewerPrompt(row, st, round, prior, said) {
-  const id = row.id
+const reviewFileShape = (claims) => 'Write your review, as JSON, to the file below: {"findings": [{"id", "severity", "claim", ' +
+  '"evidence", "failure_scenario"}], "fix_verdicts": [{"id", "status", "evidence"}], "claims": ' +
+  (claims ? '[{"claim", "verdict", "evidence"}]' : '[]') + ', "notes"}. Then return status written.'
+
+function reviewerPrompt(item, st, round, file) {
+  const { id, row } = item
   const span = round === 1 ? st.base + '..' + st.head : st.deltaBase + '..' + st.head
-  return 'Adversarially review leaf ' + id + ' ("' + row.title + '"), round ' + round + '. You are fresh: nothing ' +
-    'from earlier rounds reaches you but the artifacts below.\n' +
+  return 'Adversarially review leaf ' + id + ', round ' + round + '. You are fresh: nothing from earlier rounds reaches you ' +
+    'but the files named below.\n' +
     'Worktree: ' + st.worktree + ' (branch ' + st.branch + '). Span under review: ' + span +
     (round === 1 ? ' — the whole series.' : ' — the fix commits since the last round only; a critical you see outside it is still reported.') + '\n' +
     (st.brief
@@ -544,29 +439,25 @@ function reviewerPrompt(row, st, round, prior, said) {
         '" --effort "' + effort + '" --root "' + id + '" --json\n') +
     (row.provides_n > 0 ? 'This leaf PROVIDES a contract: its majors with a failure scenario block like criticals.\n' : '') +
     (row.role === 'green' ? 'The tests were written by another agent before this code and sit outside this locus.\n' : '') +
-    'The executor\'s concerns — attack these first:\n' + listOf(st.concerns) + '\n' +
-    (prior.length
-      ? 'Prior blockers — rule on each in fix_verdicts, and re-report under its id any you rule not_fixed or regressed:\n' +
-        prior.map((f) => '- ' + f.id + ' [' + f.severity + '] ' + f.claim).join('\n') + '\n'
+    (st.report ? 'The executor\'s report, whose concerns you attack first: ' + st.report + '.\n' : '') +
+    (st.lastReview
+      ? 'Prior blockers are the `open` list in ' + st.lastReview + ': rule on each in fix_verdicts, and re-report under its id any you rule not_fixed or regressed.\n'
       : '') +
-    'Return claims: [] — claim verdicts belong to integration reviews.\n' +
-    (said ? 'Before returning, write your findings in full to ' + said + ' (its first line says it in one sentence).\n' : '')
+    'Claim verdicts belong to integration reviews: claims is [].\n' + reviewFileShape(false) + '\n' + file
 }
 
-function integrationPrompt(item, said) {
-  const { id, row, where } = item
-  return 'Integration review of composite ' + id + ' ("' + row.title + '").\n' +
-    'Worktree: ' + where.worktree + '. Merged diff: ' + where.base + '..' + where.head + '.\n' +
-    'Yardstick: the folder\'s spec, ' + row.spec_path + '. Judge every claim it makes (each success criterion in its ' +
-    'Intent, each statement of its Design, each criterion of its plan) and return one entry per claim in claims: ' +
-    '{claim, verdict: met | under | over | deviates | spec_defect | cant_tell, evidence}. A HUMAN: criterion is the user\'s: leave it out.\n' +
+function integrationPrompt(item, file) {
+  const { id } = item
+  return 'Integration review of composite ' + id + '. Its card, ' + item.card + ', names the worktree, the merged diff ' +
+    '(where.base..where.head), the folder\'s spec (spec_path, your yardstick), the children merged here, and those that had ' +
+    'no review loop of their own (unreviewed): review those against their own criteria too.\n' +
+    'Judge every claim the spec makes (each success criterion in its Intent, each statement of its Design, each criterion of ' +
+    'its plan): one entry per claim in claims, {claim, verdict: met | under | over | deviates | spec_defect | cant_tell, evidence}. ' +
+    'A HUMAN: criterion is the user\'s: leave it out.\n' +
     'Its decisions, and the criteria of every child, are in: node "' + pluginRoot + '/lib/tree.mjs" show --repo "' + repo +
     '" --effort "' + effort + '" --root "' + id + '" --json\n' +
-    'Children merged here: ' + item.children.join(', ') + '.\n' +
-    'Review these against their own criteria too — they had no review loop of their own:\n' +
-    listOf(item.unreviewed) + '\n' +
-    'Look for defects that exist only with the children together, and for any decision no child realised.' +
-    (said ? '\nBefore returning, write your findings and every claim verdict with its evidence, in full, to ' + said + ' (its first line says it in one sentence).' : '')
+    'Look for defects that exist only with the children together, and for any decision no child realised.\n' +
+    reviewFileShape(true) + '\n' + file
 }
 
 const RULING_CHARGE = 'That file holds, per node, its plan entry and the change: it is everything you rule on. ' +
@@ -576,218 +467,107 @@ const RULING_CHARGE = 'That file holds, per node, its plan entry and the change:
   'and the choice to make; the planner replans from it, and it reaches the user only if the planner cannot. ' +
   'If the file cannot decide a node, rule it `affected` and ask.'
 
-function driftPrompt(target, entries, brief) {
-  return 'Merged work into ' + target + ' of effort ' + effort + ' touched files under contracts that nodes not yet merged consume: ' +
-    [...new Set(entries.map((d) => d.node))].join(', ') + '. Read ' + brief + '.\n' + RULING_CHARGE
-}
+const driftPrompt = (target, nodes, brief) =>
+  'Merged work into ' + target + ' of effort ' + effort + ' touched files under contracts that nodes not yet merged consume: ' +
+  nodes.join(', ') + '. Read ' + brief + '.\n' + RULING_CHARGE
 
-function stalePrompt(stale) {
-  return 'The base branch of effort ' + effort + ' moved under leaves not yet merged: ' + stale.nodes.join(', ') +
-    '. Read ' + stale.brief + '.\n' + RULING_CHARGE
-}
+const stalePrompt = (stale) =>
+  'The base branch of effort ' + effort + ' moved under leaves not yet merged: ' + stale.nodes.join(', ') +
+  '. Read ' + stale.brief + '.\n' + RULING_CHARGE
 
-/**
- * One ruler rules each node a change touched: `{rulings, files}` — rulings a map node -> ruling,
- * null when two dispatches brought none back (the second a fresh one, since a dispatch that
- * returned nothing may just have been lost); files a map node -> the file its ruling is written to.
- */
-async function rule(label, prompt, phaseName, nodes) {
-  const files = new Map(nodes.map((id) => [id, saidPath(label + ':' + id)]))
-  const told = prompt + (saidDir
-    ? '\nBefore returning, write each node\'s ruling, in full, to its own file (its first line is the question in one sentence ' +
-      'for an affected node, the one-sentence why for an unaffected one):\n' + nodes.map((id) => '- ' + id + ': ' + files.get(id)).join('\n')
-    : '')
-  for (const attempt of [1, 2]) {
-    const res = await Promise.resolve().then(() => dispatch(told, {
-      agentType: 'agentics:ruler', schema: RULINGS, phase: phaseName, label: label + (attempt > 1 ? '#' + attempt : ''), ...tierFor(JUDGE, 'high'),
-    }, '')).catch((err) => {
-      note(label + ' returned nothing: ' + (err && err.message))
-      return null
-    })
-    if (res) return { rulings: new Map((res.rulings || []).map((r) => [r.node, r])), files }
-  }
-  return { rulings: null, files }
-}
-
-function plannerPrompt(row, why, evidence, said) {
-  const id = row.id
+function plannerPrompt(item, why, whyFile, context, said) {
+  const { id, row, card } = item
   const check = 'node "' + pluginRoot + '/lib/spec.mjs" check --repo "' + repo + '" --effort "' + effort + '" --folder "' + id + '"'
   const charge = row.kind === 'leaf'
-    ? 'Task ' + id + ' ("' + row.title + '") is promoted to a folder of its own. Write its spec: ' + row.spec_path +
-      '. Its entries realise every decision the task realises (' + ((row.decisions || []).join(', ') || 'none') +
-      ') and carry its criteria forward. Do not touch the spec that holds the task\'s entry.\n'
+    ? 'Task ' + id + ' is promoted to a folder of its own. Write its spec: ' + row.spec_path + '. Its entries realise every ' +
+      'decision the task realises (the card lists them) and carry its criteria forward. Do not touch the spec that holds the task\'s entry.\n'
     : row.kind === 'design'
-      ? 'Sub-effort ' + id + ' ("' + row.title + '") has author: planner. Write its spec: ' + row.spec_path + '.\n'
-      : 'Folder ' + id + ' ("' + row.title + '") is yours (author: planner). Rewrite its spec in place: ' + row.spec_path + '.\n'
-  return 'Plan folder ' + id + ' of effort ' + effort + ' (repository ' + repo + ').\n' + charge +
-    (why ? 'Why: ' + why + '\n' : '') +
+      ? 'Sub-effort ' + id + ' has author: planner. Write its spec: ' + row.spec_path + '.\n'
+      : 'Folder ' + id + ' is yours (author: planner). Rewrite its spec in place: ' + row.spec_path + '.\n'
+  return 'Plan folder ' + id + ' of effort ' + effort + ' (repository ' + repo + '). Its card, ' + card + ', holds its title, ' +
+    'intent and decisions, and why it is planned.\n' + charge +
+    (why ? 'Why: ' + why + (whyFile ? ' — read ' + whyFile + ' for the account behind it.' : '.') + '\n' : '') +
     'Read the tree: node "' + pluginRoot + '/lib/tree.mjs" show --repo "' + repo + '" --effort "' + effort + '" --json\n' +
     'Check the spec until it prints no problems: ' + check + '\n' +
     'Never write a Decisions row: a decision you need is a needs_decision return.\n' +
-    (evidence ? '\nEvidence (a survey of this folder\'s ground):\n' + evidence + '\n' : '') +
-    '\nReturn status written with the spec\'s path in written, or the user-bound need.' +
-    (said ? ' For any other status, first write the question or the need, in full, to ' + said + ' (its first line says it in one sentence): it is what the user reads.' : '')
+    (context ? 'Evidence: a survey of this folder\'s ground is in ' + context + '.\n' : '') +
+    '\nReturn status written once the spec is written and checked, or the user-bound need. For any other status, first write ' +
+    'the question or the need, in full, to ' + said + ' (its first line says it in one sentence): it is what the user reads.'
 }
 
-function settlePrompt(id, path, findings, refused, said) {
-  return 'Settle the autonomous review of folder ' + id + ' of effort ' + effort + ' (repository ' + repo + '). Its spec: ' + path + '.\n' +
-    'Give every finding below one disposition: incorporated (you edited the spec\'s Design, Plan or Open questions because of it) ' +
+function settlePrompt(id, specFile, findingsFile, fresh, refused, said, file) {
+  return 'Settle the autonomous review of folder ' + id + ' of effort ' + effort + ' (repository ' + repo + '). Its spec: ' + specFile +
+    '. The review\'s findings, in full: ' + findingsFile + '.\n' +
+    'Findings to settle: ' + fresh.join(', ') + '.\n' +
+    'Give each one disposition: incorporated (you edited the spec\'s Design, Plan or Open questions because of it) ' +
     'or discarded. An ambiguity or a gap can only be incorporated; a note may be discarded. A finding whose fix would state or ' +
     'change a decision is not yours: return needs_decision with the question.\n' +
     'After editing, check the spec until it prints no problems: node "' + pluginRoot + '/lib/spec.mjs" check --repo "' + repo +
     '" --effort "' + effort + '" --folder "' + id + '"\n' +
-    (refused.length ? 'Refused last time, settle these again: ' + refused.map((r) => r.why).join('; ') + '\n' : '') +
-    (said ? 'If you return needs_decision or blocked, first write the question or the need, in full, to ' + said + ' (its first line says it in one sentence).\n' : '') +
-    '\nFindings:\n' + findings.map((f) => '- ' + f.id + ' [' + f.severity + ', ' + f.axis + ', ' + f.section + '] ' + f.claim + ' — ' + f.evidence).join('\n')
+    (refused.length
+      ? 'Refused last time, settle these again: ' + refused.join(', ') + ' — each needs a disposition, and an ambiguity or a gap can only be incorporated.\n'
+      : '') +
+    'Write your dispositions, as JSON, to ' + file + ': {"dispositions": [{"finding": "<id>", "outcome": "incorporated" | "discarded"}]}. ' +
+    'If you return needs_decision or blocked, first write the question or the need, in full, to ' + said +
+    ' (its first line says it in one sentence).\nReturn your status.'
 }
 
-// ---------------------------------------------------------------- records
-
-const recordEvent = (entry) => records.push({ file: 'events', entry: { execution, ...entry } })
-
-/**
- * Where the agent behind `label` writes, in full, what it says to the user: the record then carries
- * this path, never the prose, because a courier retypes every record on its way to disk.
- */
-// One file per dispatch: the invocation, a count within it and the label, with a node id's `/`
-// written as `.` the way every other per-node file is, so no two stops ever share one.
-let saidN = 0
-const saidPath = (label) => (saidDir
-  ? saidDir + '/' + invocation + '-' + (++saidN) + '-' + label.split('/').join('.').replace(/[^A-Za-z0-9._-]+/g, '-') + '.md'
-  : '')
-
-/**
- * The text a record carries: the agent's own words only when it wrote no file, else `line`, a line
- * this script composed that holds none of them.
- */
-const onRecord = (text, said, line) => String((said ? line : text) || '').slice(0, 2000)
-
-function escalate(id, reason, detail, said, line = '') {
-  stoppedHere.add(id)
-  escalations.push({ id, reason, detail: detail || '', ...(said ? { said } : {}) })
-  recordEvent({ kind: 'escalated', node: id, reason, detail: onRecord(detail, said, line), ...(said ? { said } : {}) })
-  note('escalated ' + id + ': ' + reason)
-  leavesFinished++
-}
-
-function park(id, why, question, said, line = '') {
-  stoppedHere.add(id)
-  parked.push({ id, return: why, question: question || '', ...(said ? { said } : {}) })
-  recordEvent({ kind: 'parked', node: id, return: why, question: onRecord(question, said, line), ...(said ? { said } : {}) })
-  note('parked ' + id + ' (' + why + '): waiting on the user')
-}
-
-/** The user answered a node this invocation stopped, and disk says it is ready again: it runs on. */
-function answered(id) {
-  stoppedHere.delete(id)
-  for (const list of [escalations, parked]) {
-    for (let at = list.findIndex((x) => x.id === id); at !== -1; at = list.findIndex((x) => x.id === id)) {
-      if (list === escalations) leavesFinished--
-      list.splice(at, 1)
-    }
-  }
-  note(id + ': answered while the run went on — relaunched')
-}
-
-function approve(row, st, atIntegration) {
-  // Parked by this invocation while its chain was running (contract drift): the user rules first,
-  // and the approval is not recorded — a resume re-derives it from the measurement.
-  if (stoppedHere.has(row.id)) return
-  recordEvent({ kind: 'approved', node: row.id, head_sha: st.head, review_rounds: st.reviewRounds, at_integration: atIntegration })
-  const was = implemented.findIndex((i) => i.id === row.id)
-  if (was !== -1) implemented.splice(was, 1)
-  implemented.push({ id: row.id, rigor: row.rigor, role: row.role, rounds: st.round, review_rounds: st.reviewRounds, at_integration: atIntegration, salvaged: st.salvaged })
-  leavesFinished++
-}
-
-/**
- * A plugin fault — a boundary that stayed unbelievable, or a throw in this script — is not a
- * decision for the user: the node records no stop on disk, is held for the rest of this
- * invocation, and the next invocation takes it up where its records say it stands.
- */
-function fault(id, channel, detail) {
-  stoppedHere.add(id)
-  faults.push({ id, channel, detail: detail || '' })
-  records.push({ file: 'state', entry: { kind: 'fault', node: id, channel, detail: String(detail || '').slice(0, 500) } })
-  note('plugin fault on ' + id + ' (' + channel + '): ' + detail + ' — held for the next invocation')
-}
+// ---------------------------------------------------------------- units
 
 function launch(key, fn) {
   const p = Promise.resolve().then(fn).catch((err) => {
     const id = key.slice(key.indexOf(':') + 1)
     const channel = err instanceof TransportError ? 'transport' : 'pipeline'
     failedChannels.push(channel)
-    if (!stoppedHere.has(id)) fault(id, channel, String(err && err.message))
+    note(key + ' ended on a ' + channel + ' fault: ' + (err && err.message))
+    if (!stoppedHere.has(id)) hold(id, channel)
   }).finally(() => finished.add(key))
   running.set(key, p)
+}
+
+/** A boundary answered with an error and recorded nothing about it: the program's fault, never the user's. */
+function refusedOn(id, out) {
+  noteStops(out)
+  if (!out || !out.error) return false
+  if (!((out.stops || []).length)) hold(id, 'program')
+  return true
 }
 
 // ---------------------------------------------------------------- planning
 
 /**
- * Plan a node by writing a spec. A task is promoted by the planner; a folder is replanned by it
- * only when the planner wrote that folder. A folder the user wrote is theirs to re-spec. Returns
- * the node as compiled after its spec was prepared, or null when it was parked or escalated.
+ * Plan a node by having the planner write its spec, then review it until the gate opens, prepare
+ * it and compile it. `item` is `{id, card, row}`; `why` says why it is (re)planned and `whyFile`
+ * names the account behind it. Returns the node's row as compiled, or null once it stopped.
  */
-async function planNode(row, why, said) {
-  const id = row.id
-  if (row.kind !== 'leaf' && row.author !== 'planner') {
-    if (why) park(id, 'needs_respec', why + ' — edit ' + row.spec_path + ', re-approve it and recompile', said, 'edit ' + row.spec_path + ', re-approve it and recompile')
-    else park(id, 'needs_design', row.kind === 'design'
-      ? 'sub-effort ' + id + ' has no approved spec: run the design skill on it'
-      : 'folder ' + id + ' plans nothing: its spec ' + row.spec_path + ' needs a Plan')
-    return null
-  }
-  planning.add(id)
+async function planNode(item, why, whyFile) {
+  planning.add(item.id)
   try {
-    const spec = await writeSpec(row, why)
-    return spec ? await reviewSpec(id, spec) : null
+    const checked = await writeSpec(item, why, whyFile)
+    return checked ? await reviewSpec(item, checked) : null
   } finally {
-    planning.delete(id)
+    planning.delete(item.id)
   }
 }
 
-/** Whether a unit of this invocation is running on the node or under it. */
-const runningUnder = (id) => [...running.keys()].some((key) => {
-  const at = key.slice(key.indexOf(':') + 1)
-  return at === id || at.startsWith(id + '/')
-})
-
-/**
- * A ruler ruled that a change moved the node's premise. The planner answers first, as it does an
- * executor's premise_mismatch; the user is reached only by what the planner cannot settle. A node
- * with work already standing on its plan is not replanned under that work: it parks as `why`.
- * Returns whether the ruling is answered on disk — a replanned node or a recorded stop — as
- * opposed to a plugin fault, which leaves the ruling to be made again.
- */
-async function replanAffected(row, r, ruled, why, line) {
-  const id = row.id
-  if (row.under_way || runningUnder(id)) {
-    park(id, why, r.question, ruled, line)
-    return true
-  }
-  note(id + ': ruled affected — replanning it: ' + r.why)
-  const faultsBefore = faults.length
+/** A ruler ruled that a change moved this node's premise: the planner answers first. */
+async function replanAffected(r) {
+  note(r.id + ': ruled affected — replanning it')
   try {
-    const after = await planNode(row, 'premise_mismatch: ' + (r.question || r.why) + (ruled ? ' (the ruling in full: ' + ruled + ')' : ''), ruled)
-    if (after && after.kind === 'leaf' && after.rev === row.rev) {
-      escalate(id, 'replan_not_converging', 'the planner answered a moved premise without changing the leaf: ' + (r.question || r.why), ruled,
-        'the planner answered a moved premise without changing the leaf')
-    }
+    await planNode(r, 'premise_mismatch', r.said)
   } catch (err) {
-    if (!stoppedHere.has(id)) fault(id, 'dispatch', 'replanning its moved premise failed: ' + (err && err.message))
+    if (!stoppedHere.has(r.id)) hold(r.id, 'dispatch')
   }
-  return !faults.slice(faultsBefore).some((f) => f.id === id)
 }
 
-/** The planner writes the node's spec; the path it wrote, or null once the node is parked or escalated. */
-async function writeSpec(row, why) {
-  const id = row.id
-  let evidence = ''
+/** The planner writes the node's spec; spec-check closes its dispatch. The check, or null once the node stopped. */
+async function writeSpec(item, why, whyFile) {
+  const { id, row } = item
+  let context = ''
   if (!why && row.ground_known === false) {
     phase('Plan')
     const survey = await workflow({ scriptPath: pluginRoot + '/service-workflows/gather-evidence-without-concluding.workflow.js' }, {
-      question: 'Where and how does this change land: ' + row.title + ' — ' + (row.intent || ''),
+      question: 'Where and how does the change described in ' + item.card + ' land? Its title and intent are in that file.',
       roots: repo, notes: '', pace, intelligence: DIAL, plugin_root: pluginRoot,
     }).catch((err) => {
       failedChannels.push('survey')
@@ -795,54 +575,36 @@ async function writeSpec(row, why) {
       return null
     })
     if (survey) {
-      evidence = JSON.stringify({ items: survey.items, risks: survey.risks, coverage: survey.coverage })
-      if (survey.coverage && survey.coverage.complete !== true) note('survey for ' + id + ' is incomplete: ' + (survey.coverage.unreached || []).join('; '))
+      context = survey.context || ''
+      if (survey.coverage && survey.coverage.complete !== true) note('survey for ' + id + ' is incomplete')
     }
   }
-  const tier = tierFor(JUDGE, 'high')
-  const said = saidPath('plan:' + id)
-  const res = await dispatch(plannerPrompt(row, why, evidence, said), {
-    agentType: 'agentics:planner', schema: PLANNED, phase: 'Plan', label: 'plan:' + id, ...tier,
-  }, id)
-  if (!res) throw new Error('the planner returned nothing')
-  if (res.status === 'written') {
-    log('plan:' + id + ' wrote ' + ((res.written || []).join(', ') || row.spec_path))
-    if ((res.accepted_warnings || []).length) note('planner for ' + id + ' accepted: ' + res.accepted_warnings.join('; '))
-    if ((res.uncovered || []).length) note('planner for ' + id + ' did not cover: ' + res.uncovered.join('; '))
-    return { path: row.spec_path, written: res.written || [] }
-  }
-  if (['needs_decision', 'contract_changed', 'premise_mismatch'].includes(res.status)) {
-    park(id, res.status, res.question || res.detail, said)
+  const label = 'plan:' + id
+  const said = saidPath(label, 'md')
+  const opts = { agentType: 'agentics:planner', schema: PLANNED, phase: 'Plan', label, ...tierFor(JUDGE, 'high') }
+  const res = await dispatch(plannerPrompt(item, why, whyFile, context, said), opts).catch((err) => {
+    note(label + ' returned nothing: ' + (err && err.message))
     return null
-  }
-  escalate(id, 'plan_' + res.status, res.detail, said)
-  return null
+  })
+  const checked = await boundary('spec-check', { node: id, status: res ? res.status : '', said, dispatch: [tokenOf(opts)] },
+    { phase: 'Plan', label: 'spec-check:' + id })
+  if (refusedOn(id, checked) || checked.status !== 'checked') return null
+  log(label + ' wrote ' + checked.spec_path)
+  return checked
 }
 
-/** What makes two findings the same finding across rounds: its axis, its section, its claim. */
-const findingKey = (f) => [f.axis, f.section, String(f.claim || '').toLowerCase().replace(/\s+/g, ' ').trim()].join('|')
-
 /**
- * The autonomous review of a planner-written spec (D21): check it, attack it with a nested probe,
- * have the planner settle every finding, re-review only what changed, until the ledger's gate
- * (`spec-gate`) is ratifiable; then prepare and compile. Every exit is computed: a Decisions row
- * parks the folder; a finding back unchanged after it was incorporated, a discard refused twice,
- * or a gate still shut on a round that edited nothing escalates.
+ * The autonomous review of a planner-written spec: attack it with a nested review, record the
+ * round, have the planner settle what the round found, and re-review only what changed, until the
+ * ledger's gate opens; then prepare and compile. Every exit is computed by a boundary from the
+ * files the review and the planner wrote.
  */
-async function reviewSpec(id, spec) {
+async function reviewSpec(item, first) {
+  const { id } = item
+  let checked = first
   let since = ''
-  let incorporated = new Set()   // keys of what the last round incorporated
-  const settled = new Set()      // disposition ids of every finding settled in any round
+  let previous = { file: '', hash: '' }
   for (;;) {
-    const checked = await boundary('spec-check', { node: id }, { phase: 'Plan', label: 'spec-check:' + id })
-    if (checked.decisions_n > 0) {
-      park(id, 'needs_decision', checked.spec_path + ' states ' + checked.decisions_n + ' decision(s): only the user states decisions')
-      return null
-    }
-    if ((checked.problems || []).length) {
-      escalate(id, 'spec_refused', checked.problems.map((p) => p.file + ':' + p.line + ' ' + p.problem).join('; '))
-      return null
-    }
     const review = await workflow({ scriptPath: pluginRoot + '/service-workflows/attack-document-with-independent-reviewers.workflow.js' }, {
       artifact: checked.spec_path, roots: repo, plugin_root: pluginRoot,
       context: 'the spec develop\'s planner wrote for folder ' + id + ' of effort ' + effort,
@@ -853,175 +615,145 @@ async function reviewSpec(id, spec) {
       return null
     })
     if (!review) {
-      fault(id, 'dispatch', 'the autonomous review of ' + checked.spec_path + ' returned nothing')
+      hold(id, 'dispatch')
       return null
     }
-    // A finding's settlement id: its evidence item, or the reviewed hash and its P-id when the
-    // probe could not anchor it. Dispositions and the `reviewed` line both use it.
-    const idOf = (f) => f.item || checked.hash + '#' + f.id
-    // Every round reaches the ledger, whole or partial, before anything acts on it.
     const whole = !!(review.coverage && review.coverage.complete === true)
-    const left = whole ? [] : ((review.coverage && review.coverage.resumable && review.coverage.resumable.remaining) || [])
+    const remaining = whole ? [] : ((review.coverage && review.coverage.resumable && review.coverage.resumable.remaining) || [])
     const reviewed = await boundary('spec-reviewed', {
-      node: id, complete: whole,
-      remaining: whole || left.length ? left : ((review.coverage && review.coverage.unreached) || ['the review reported no coverage']),
-      ambiguities: (review.findings || []).filter((f) => f.severity === 'ambiguity').map(idOf),
+      node: id, hash: checked.hash, findings_file: review.findings_file || '', previous_file: previous.file,
+      previous_hash: previous.hash, complete: whole, remaining,
     }, { phase: 'Plan', label: 'spec-reviewed:' + id })
-    if (reviewed.error || reviewed.ok === false) {
-      fault(id, 'ledger', (reviewed.error && reviewed.error.message) || 'spec-reviewed refused')
-      return null
+    if (refusedOn(id, reviewed) || reviewed.status !== 'recorded') return null
+    let edited = false
+    if ((reviewed.fresh || []).length) {
+      const out = await settle(id, checked, review, reviewed.fresh)
+      if (!out) return null
+      edited = out.incorporated_n > 0
     }
-    if (!whole) {
-      escalate(id, 'review_incomplete', ((review.coverage && review.coverage.unreached) || []).join('; '))
-      return null
-    }
-    // A finding carried from an earlier round sits on lines no edit touched: it stays settled.
-    const fresh = (review.findings || []).filter((f) => !settled.has(idOf(f)))
-    const back = fresh.find((f) => incorporated.has(findingKey(f)))
-    if (back) {
-      escalate(id, 'review_not_converging', 'finding ' + back.id + ' came back unchanged after it was incorporated')
-      return null
-    }
-    let taken = []
-    if (fresh.length) {
-      const dispositions = await settle(id, spec, fresh)
-      if (!dispositions) return null
-      const byId = new Map(fresh.map((f) => [f.id, f]))
-      const settledOut = await boundary('spec-settle', {
-        node: id, dispositions: dispositions.map((d) => ({ finding: idOf(byId.get(d.finding)), outcome: d.outcome })),
-      }, { phase: 'Plan', label: 'spec-settle:' + id })
-      if (settledOut.error || settledOut.ok === false) {
-        fault(id, 'ledger', (settledOut.error && settledOut.error.message) || 'spec-settle refused')
-        return null
-      }
-      for (const f of fresh) settled.add(idOf(f))
-      taken = dispositions.filter((d) => d.outcome === 'incorporated').map((d) => d.finding)
-    }
-    // The gate is the ledger's (approvalGate), the one the design skill reads: the latest review
-    // of the spec as it stands is complete and every ambiguity it returned has a disposition, from
-    // any round. An incorporation edited the spec, so the gate stays shut until the narrowed
-    // re-review reads it. The probe's own ratifiable counts a settled carried ambiguity as open,
-    // so it is not the gate here.
-    const gate = await boundary('spec-gate', { node: id }, { phase: 'Plan', label: 'spec-gate:' + id })
+    const gate = await boundary('spec-gate', { node: id, edited }, { phase: 'Plan', label: 'spec-gate:' + id })
+    if (refusedOn(id, gate)) return null
     // The prepared line names the review return that passed. A clean round records an empty
     // return, so only a probe whose record failed (then its snapshot) or whose scope failed too
     // (then the spec hash) is named by what it read.
-    if (gate.ratifiable) return prepare(id, review.review || review.snapshot || checked.hash)
-    if (taken.length === 0) {
-      escalate(id, 'review_not_converging', 'the gate stays shut on a spec this round did not edit: open ' +
-        ((gate.open || []).join(', ') || 'none') + (gate.coverage_complete ? '' : '; coverage incomplete'))
-      return null
-    }
+    if (gate.ratifiable) return prepare(item, review.review || review.snapshot || checked.hash)
+    if (gate.status === 'stopped') return null
     since = review.snapshot || ''
-    incorporated = new Set(fresh.filter((f) => taken.includes(f.id)).map(findingKey))
+    previous = { file: review.findings_file || '', hash: checked.hash }
+    checked = await boundary('spec-check', { node: id }, { phase: 'Plan', label: 'spec-check:' + id })
+    if (refusedOn(id, checked) || checked.status !== 'checked') return null
   }
 }
 
-/**
- * The planner's dispositions, one per finding. A discarded ambiguity or gap, or a finding left
- * without one, is refused and sent back once; the same finding refused twice escalates.
- */
-async function settle(id, spec, findings) {
+/** The planner's dispositions, settled by spec-settle: refused ones go back once. Its payload, or null once the folder stopped. */
+async function settle(id, checked, review, fresh) {
   let refused = []
   for (let attempt = 1; ; attempt++) {
-    const said = saidPath('settle:' + id + '#' + attempt)
-    const res = await dispatch(settlePrompt(id, spec.path, findings, refused, said), {
-      agentType: 'agentics:planner', schema: SETTLED, phase: 'Plan', label: 'settle:' + id + '#' + attempt, ...tierFor(JUDGE, 'high'),
-    }, id)
-    if (!res) {
-      fault(id, 'dispatch', 'the planner returned nothing for ' + findings.length + ' finding(s)')
-      return null
+    const label = 'settle:' + id + '#' + attempt
+    const said = saidPath(label, 'md')
+    const file = saidPath(label, 'json')
+    const opts = { agentType: 'agentics:planner', schema: SETTLED, phase: 'Plan', label, ...tierFor(JUDGE, 'high') }
+    const res = await dispatch(settlePrompt(id, checked.spec_path, review.findings_file, fresh, refused, said, file), opts).catch(() => null)
+    const out = await boundary('spec-settle', {
+      node: id, hash: checked.hash, findings_file: review.findings_file || '', return_file: file, status: res ? res.status : '',
+      said, finding: fresh, refused, dispatch: [tokenOf(opts)],
+    }, { phase: 'Plan', label: 'spec-settle:' + id + '#' + attempt })
+    if (refusedOn(id, out)) return null
+    if (out.status === 'refused') {
+      refused = out.refused || []
+      continue
     }
-    if (res.status === 'needs_decision') {
-      park(id, 'needs_decision', res.question || res.detail, said)
-      return null
-    }
-    if (res.status === 'blocked') {
-      escalate(id, 'blocked', res.detail, said)
-      return null
-    }
-    const outcome = new Map((res.dispositions || []).map((d) => [d.finding, d.outcome]))
-    const wrong = findings.filter((f) => !outcome.has(f.id) || (outcome.get(f.id) === 'discarded' && f.severity !== 'note'))
-    if (wrong.length === 0) return findings.map((f) => ({ finding: f.id, outcome: outcome.get(f.id) }))
-    const again = wrong.find((f) => refused.some((r) => r.id === f.id))
-    if (again) {
-      escalate(id, 'review_not_converging', 'the planner left ' + again.id + ' (' + again.severity + ') unincorporated after it was refused')
-      return null
-    }
-    refused = wrong.map((f) => ({
-      id: f.id,
-      why: f.id + ' (' + f.severity + '): ' + (outcome.has(f.id) ? 'an ' + f.severity + ' can only be incorporated' : 'it has no disposition'),
-    }))
+    return out.status === 'settled' ? out : null
   }
 }
 
-/**
- * The gate passed on the review `reviewed` names (its return; its snapshot or the spec hash only
- * when the probe's record failed): record the preparation and compile. The node as compiled, or null.
- */
-async function prepare(id, reviewed) {
-  const out = await boundary('spec-prepare', { node: id, review: reviewed }, { phase: 'Plan', label: 'spec-prepare:' + id })
-  if (out.error || out.ok === false) {
-    fault(id, 'ledger', (out.error && out.error.message) || 'spec-prepare refused')
-    return null
-  }
-  if (out.status !== 'prepared') {
-    escalate(id, 'prepare_refused', (out.problems || []).map((p) => p.file + ':' + p.line + ' ' + p.problem).join('; ') || String(out.status))
-    return null
-  }
-  const compiled = out.compile || {}
-  if (compiled.ok !== true) {
-    escalate(id, 'compile_refused', (compiled.problems || []).map((p) => p.file + ':' + p.line + ' ' + p.problem).join('; '))
-    return null
-  }
-  log('prepared ' + id + ' on ' + reviewed + '; compiled ' + (compiled.written_n || 0) + ' node(s)')
-  if (out.row && out.row.kind !== 'leaf' && out.row.children_n === 0) {
-    escalate(id, 'planner_wrote_nothing', 'compiled ' + id + ' with no plan entry beneath it')
-    return null
-  }
+/** The gate passed on the review `reviewed` names: record the preparation and compile. The node as compiled, or null. */
+async function prepare(item, reviewed) {
+  const out = await boundary('spec-prepare', {
+    node: item.id, review: reviewed, leaf_rev: item.row.kind === 'leaf' ? String(item.row.rev) : '',
+  }, { phase: 'Plan', label: 'spec-prepare:' + item.id })
+  if (refusedOn(item.id, out) || out.status !== 'prepared') return null
+  log('prepared ' + item.id + ' on ' + reviewed + '; compiled ' + ((out.compile && out.compile.written_n) || 0) + ' node(s)')
   return out.row
+}
+
+// ---------------------------------------------------------------- rulings
+
+/**
+ * One ruler rules each node a change touched, writing every ruling to one file; rule-close reads
+ * it and records each ruling, parking what the user must answer. A dispatch that returned nothing
+ * is tried once more, fresh, since it may just have been lost. The nodes to replan come back.
+ */
+async function rule(kind, label, prompt, phaseName, record) {
+  const file = saidPath(label, 'json')
+  const told = prompt + '\nWrite every ruling, as JSON, to ' + file + ': {"rulings": [{"node", "ruling", "why", "question"}]}, ' +
+    'one entry per node. Then return status written.'
+  const tokens = []
+  for (const attempt of [1, 2]) {
+    const opts = { agentType: 'agentics:ruler', schema: WROTE, phase: phaseName, label: label + (attempt > 1 ? '#' + attempt : ''), ...tierFor(JUDGE, 'high') }
+    tokens.push(tokenOf(opts))
+    const res = await dispatch(told, opts).catch((err) => {
+      note(opts.label + ' returned nothing: ' + (err && err.message))
+      return null
+    })
+    if (res) {
+      if (res.status !== 'written') note(opts.label + ': the ruler says it wrote no rulings')
+      break
+    }
+  }
+  const out = await boundary('rule-close', { kind, record, rulings_file: file, running: [...running.keys()], dispatch: tokens },
+    { phase: phaseName, label: 'ruled:' + label.slice(label.indexOf(':') + 1) })
+  noteStops(out)
+  return out.replan || []
 }
 
 // ---------------------------------------------------------------- commands
 
 let establishing = null
 
-/** Establish build and test commands once per execution; the investigator records them. */
+/**
+ * Establish build and test commands once per execution: the investigator writes them and records
+ * them as `command` gotchas itself. Every leaf that waited on it gets its dispatch's cost token.
+ */
 function establishCommands(worktree) {
   if (!establishing) {
+    const file = saidPath('establish-commands', 'json')
+    const opts = { agentType: 'agentics:investigator', schema: ESTABLISHED, phase: 'Execute', label: 'establish-commands', model: 'sonnet', effort: 'medium' }
     establishing = dispatch(
       'No build or test command is established for this repository. Establish build, typecheck, suite, suite_fast and test_one in ' +
-      worktree + ', proving each by running it, and record each with:\nnode "' + pluginRoot + '/lib/gotchas.mjs" add --repo "' +
-      repo + '" --effort "' + effort + "\" --role investigator --stdin <<'AGENTICS_EOF'\n[<one JSON object per command>]\nAGENTICS_EOF",
-      { agentType: 'agentics:investigator', schema: ESTABLISHED, phase: 'Execute', label: 'establish-commands', model: 'sonnet', effort: 'medium' },
-      '',
+      worktree + ', proving each by running it. Write them, as a JSON array of command gotchas, to ' + file + ', then record them with:\n' +
+      'node "' + pluginRoot + '/lib/gotchas.mjs" add --repo "' + repo + '" --effort "' + effort + '" --role investigator --file "' + file + '"\n' +
+      'Return the commands you established, and those you could not.',
+      opts,
     ).then((res) => {
-      if (res) note('commands established: ' + (res.commands || []).map((c) => c.name + (c.absent ? ' (absent)' : ' exit ' + c.exit_status)).join(', '))
-      if (res && res.unresolved && res.unresolved.length) note('commands not established: ' + res.unresolved.join('; '))
-      return res
-    })
+      if (res) note('commands established: ' + ((res.established || []).join(', ') || 'none') + ((res.unresolved || []).length ? '; not established: ' + res.unresolved.join(', ') : ''))
+      return [tokenOf(opts)]
+    }, () => [tokenOf(opts)])
   }
   return establishing
 }
 
 // ---------------------------------------------------------------- one leaf
 
-const blockingOf = (row, findings) => findings.filter((f) => f.severity === 'critical' ||
-  (f.severity === 'major' && row.provides_n > 0 && String(f.failure_scenario || '').trim() !== ''))
+function roleOf(row) {
+  if (row.rigor === 'verify') return ''
+  if (row.role === 'red' || row.rigor === 'tests-only') return 'test-author'
+  if (row.role === 'audit') return 'auditor'
+  return 'implementer'
+}
 
-const failureKey = (failures) => (failures || []).map((f) => f.check + ':' + f.claim).sort().join('|')
-
-async function openLeaf(row, st, mode) {
-  const id = row.id
-  for (;;) {
-    const opened = await boundary('leaf-open', {
-      node: id, role: st.role, round: st.round, mode,
-      dispatch: st.role ? producerTier(row, st.raise) : COURIER,
-    }, { phase: 'Execute', label: 'open:' + id + '#' + st.round })
+async function openLeaf(item, st) {
+  const { id } = item
+  for (let attempt = 1; ; attempt++) {
+    const tier = st.role ? producerTier(item.row, st.raise) : COURIER
+    const opened = await boundary('leaf-open', { node: id, role: st.role, round: st.round, tier: tier.model + '/' + tier.effort },
+      { phase: 'Execute', label: 'open:' + id + '#' + st.round + (attempt > 1 ? '@' + attempt : '') })
+    noteStops(opened)
     if (opened.status === 'opened') {
       st.worktree = opened.worktree
       st.branch = opened.branch
       st.brief = opened.brief_path
+      st.report = opened.report_path
       st.base = opened.base_sha
       if (!st.head) st.head = opened.head_sha || opened.base_sha
       return opened
@@ -1037,19 +769,22 @@ async function openLeaf(row, st, mode) {
       log('open:' + id + ': ' + opened.status + ' — asking again')
       continue
     }
-    escalate(id, 'open_refused', (opened.error && opened.error.message) || opened.status)
+    if (!((opened.stops || []).length)) hold(id, 'program')
     return null
   }
 }
 
-async function closeLeaf(id, st, executorStatus) {
+/** Close the round: leaf-close reads the executor's status, measures, decides and records. */
+async function closeLeaf(id, st, close) {
+  let tokens = close.tokens
   for (;;) {
     const closed = await settled('leaf-close', {
-      node: id, role: st.role, round: st.round, executor_status: executorStatus, base_sha: st.base,
+      node: id, role: st.role, round: st.round, mode: close.mode, status: close.status, said: close.said,
+      head_before: st.head, base_sha: st.base, dispatch: tokens,
     }, { phase: 'Execute', label: 'close:' + id + '#' + st.round })
     if (closed.decision && closed.decision.next === 'command_unknown' && !st.commandsTried) {
       st.commandsTried = true
-      await establishCommands(st.worktree)
+      tokens = [...close.tokens, ...(await establishCommands(st.worktree))]
       continue
     }
     return closed
@@ -1058,17 +793,11 @@ async function closeLeaf(id, st, executorStatus) {
 
 /**
  * One leaf, from wherever resume says it stands, to approval, escalation or a park. `item` is its
- * launch: its row, its parent's row and its resume facts.
- *
- * The review-loop exit is carried over verbatim (docs/DESIGN.md#executors-and-review): the open
- * set is the round's blocking findings plus every prior blocker ruled not_fixed/regressed and not
- * re-reported; approval is that set being empty; escalation is computed — a fix round with no new
- * commits or a blocked status, the same id unfixed two rounds running, or two rounds that each
- * fix every prior blocker and still mint new ones. No round counter ends it.
+ * launch: its card, its row and its resume facts. Every exit — the measurement's, the review
+ * loop's — is computed and recorded by the boundary that closes the round.
  */
 async function runLeaf(item, entry) {
-  const row = item.row
-  const id = row.id
+  const { id, row } = item
   const facts = item.facts || {}
   const done = facts.rounds || 0
   let stage = entry && entry.stage ? entry.stage : ({
@@ -1078,108 +807,65 @@ async function runLeaf(item, entry) {
     // A salvaged series is closed and reviewed at the round that produced it; anything new is the
     // next round, so its brief, report and dispatch never overwrite an earlier one's.
     role: roleOf(row), round: ['close', 'review', 'approve'].includes(stage) && done ? done : done + 1,
-    reviewRounds: 0, raise: false,
-    base: facts.base_sha || '', head: facts.head_sha || '', deltaBase: '', concerns: [],
+    reviewRounds: 0, raise: false, said: '',
+    base: facts.base_sha || '', head: facts.head_sha || '', deltaBase: '',
     salvaged: false, worktree: facts.worktree || '', branch: facts.branch || '', brief: facts.brief_path || '',
-    lastFailures: '', priorBlockers: [], priorUnfixed: new Set(), cleanStreak: 0,
+    report: '', lastReview: '', inReview: false, commandsTried: false,
   }
-  let toClear = []
   if (['close', 'review', 'approve', 'continue'].includes(stage) && facts.head_sha) st.salvaged = true
   if (st.salvaged) note(id + ': salvaged from an earlier invocation at ' + (facts.next_action || stage))
+  let close = { status: 'done', said: '', mode: 'resume', tokens: [] }
 
   for (;;) {
     if (stage === 'approve') {
-      approve(row, st, !row.own_review)
+      approve(item, st)
       return null
     }
 
     if (stage === 'code' || stage === 'continue' || stage === 'fix') {
-      const opened = await openLeaf(row, st, stage === 'code' ? 'fresh' : stage)
+      const mode = stage === 'code' ? 'fresh' : stage
+      const opened = await openLeaf(item, st)
       if (!opened) return
+      close = { status: '', said: '', mode, tokens: [] }
       if (st.role) {
-        const headBefore = st.head
-        const tier = producerTier(row, st.raise)
-        const said = saidPath(st.role + ':' + id + '#' + st.round)
-        const res = await dispatch(executorPrompt(row, st.role, st.round, opened, stage === 'code' ? 'fresh' : stage, toClear, said), {
-          agentType: EXECUTOR_TYPE[st.role], schema: EXECUTOR, phase: 'Execute',
-          label: st.role + ':' + id + '#' + st.round, ...tier,
-        }, id)
-        if (!res) {
-          fault(id, 'dispatch', 'the ' + st.role + ' dispatch returned nothing')
-          return null
-        }
-        st.concerns = res.concerns || []
-        if (['decompose', 'unsplittable', 'premise_mismatch'].includes(res.status)) {
-          note(id + ': ' + res.status + ' — replanning its subtree')
-          const after = await planNode(row, res.status + ': ' + res.detail, said)
-          // A replan that wrote no new revision of the leaf would send the same executor back to
-          // the same wall.
-          if (after && after.kind === 'leaf' && after.rev === row.rev) {
-            escalate(id, 'replan_not_converging', 'the planner answered ' + res.status + ' without changing the leaf: ' + res.detail, said,
-              'the planner answered ' + res.status + ' without changing the leaf')
-          }
-          return null
-        }
-        if (['needs_decision', 'contract_changed'].includes(res.status)) {
-          park(id, res.status, res.detail, said)
-          return null
-        }
-        if (res.status === 'blocked' || res.status === 'needs_context') {
-          escalate(id, res.status, res.detail, said)
-          return null
-        }
-        if (stage === 'fix' && st.role === 'implementer' && (res.commits || []).length === 0) {
-          // Returned `done`, so it wrote no file: the line is the whole story.
-          escalate(id, 'fix_without_commits', 'fix round ' + st.round + ' returned no commits')
-          return null
-        }
-        st.executorStatus = res.status
-        st.headBefore = headBefore
+        const label = st.role + ':' + id + '#' + st.round
+        st.said = saidPath(label, 'md')
+        const opts = { agentType: EXECUTOR_TYPE[st.role], schema: EXECUTOR, phase: 'Execute', label, ...producerTier(row, st.raise) }
+        const res = await dispatch(executorPrompt(item, st, opened, mode), opts).catch(() => null)
+        close = { status: res ? res.status : '', said: st.said, mode, tokens: [tokenOf(opts)] }
       }
       stage = 'close'
     }
 
     if (stage === 'close') {
-      const closed = await closeLeaf(id, st, st.executorStatus || '')
+      const closed = await closeLeaf(id, st, close)
+      if (refusedOn(id, closed)) return
       if (closed.head_sha) {
         if (st.inReview && closed.head_sha !== st.head) st.deltaBase = st.head
         st.head = closed.head_sha
       }
-      if (!closed.decision) {
-        // The program itself failed (a detached job that threw): the plugin's, never the user's.
-        fault(id, 'program', (closed.error && closed.error.message) || 'leaf-close returned no decision')
-        return null
-      }
-      const d = closed.decision
-      if (d.next === 'approve') {
-        stage = 'approve'
+      if (closed.report_path) st.report = closed.report_path
+      const next = closed.decision.next
+      if (next === 'approve' || next === 'review') {
+        stage = next
         continue
       }
-      if (d.next === 'review') {
-        stage = 'review'
-        continue
-      }
-      if (d.next === 'finding') {
-        const parent = item.parent
-        note(id + ': a verify leaf found its premise false — replanning ' + (parent ? parent.id : 'its folder'))
-        escalate(id, 'verify_finding', (d.failures || []).map((f) => f.claim).join('; '))
-        if (parent) await planNode(parent, 'verify leaf ' + id + ' found: ' + (d.failures || []).map((f) => f.claim).join('; ') + ' (its measurement: ' + closed.record + ')')
+      if (next === 'replan') {
+        note(id + ': ' + close.status + ' — replanning its subtree')
+        await planNode(item, close.status, close.said)
         return null
       }
-      if (d.next === 'fix') {
-        const key = failureKey(d.failures)
-        if (key && key === st.lastFailures) {
-          escalate(id, 'verify_not_converging', 'two consecutive measurements failed identically: ' + key)
-          return null
-        }
-        if (st.lastFailures) st.raise = true
-        st.lastFailures = key
+      if (next === 'finding' && closed.replan) {
+        note(id + ': a verify leaf found its premise false — replanning ' + closed.replan.id)
+        await planNode(closed.replan, 'verify_finding', closed.replan.said)
+        return null
+      }
+      if (next === 'fix') {
+        st.raise = st.raise || closed.raise === true
         st.round++
-        toClear = []
         stage = 'fix'
         continue
       }
-      escalate(id, d.reason || 'escalated', (d.failures || []).map((f) => f.claim).join('; '))
       return null
     }
 
@@ -1187,129 +873,73 @@ async function runLeaf(item, entry) {
       st.inReview = true
       st.reviewRounds++
       const round = st.reviewRounds
-      const reviewed = saidPath('review:' + id + '#' + round)
-      const res = await dispatch(reviewerPrompt(row, st, round, st.priorBlockers, reviewed), {
-        agentType: 'agentics:reviewer', schema: FINDINGS, phase: 'Execute',
-        label: 'review:' + id + '#' + round, ...reviewerTier(row),
-      }, id)
-      if (!res) {
-        fault(id, 'dispatch', 'review round ' + round + ' returned nothing')
-        return null
-      }
-      const findings = res.findings || []
-      const blocking = blockingOf(row, findings)
-      const verdicts = res.fix_verdicts || []
-      // A prior blocker the round did not rule on is not fixed: it was never looked at.
-      const unfixed = verdicts.filter((v) => v.status === 'not_fixed' || v.status === 'regressed')
-        .concat(st.priorBlockers.filter((p) => !verdicts.some((v) => v.id === p.id)).map((p) => ({ id: p.id, status: 'not_fixed' })))
-      const reported = new Set(findings.map((f) => f.id))
-      const open = blocking.concat(st.priorBlockers.filter((p) => unfixed.some((u) => u.id === p.id) && !reported.has(p.id)))
-
-      if (open.length === 0) {
+      const label = 'review:' + id + '#' + round
+      const file = saidPath(label, 'json')
+      const opts = { agentType: 'agentics:reviewer', schema: WROTE, phase: 'Execute', label, ...reviewerTier(row) }
+      const res = await dispatch(reviewerPrompt(item, st, round, file), opts).catch(() => null)
+      if (res && res.status !== 'written') note(label + ': the reviewer says it wrote no review')
+      const out = await boundary('leaf-review', { node: id, round: st.round, review_round: round, review_file: file, dispatch: [tokenOf(opts)] },
+        { phase: 'Execute', label: 'reviewed:' + id + '#' + round })
+      if (refusedOn(id, out)) return
+      if (out.record) st.lastReview = out.record
+      if (out.decision.next === 'approve') {
         stage = 'approve'
         continue
       }
-      const repeat = unfixed.find((u) => st.priorUnfixed.has(u.id))
-      if (repeat) {
-        const line = 'finding ' + repeat.id + ' ruled ' + repeat.status + ' in two consecutive rounds'
-        escalate(id, 'review_not_converging', line, reviewed, line)
-        return null
+      if (out.decision.next === 'fix') {
+        st.raise = st.raise || out.raise === true
+        st.round++
+        stage = 'fix'
+        continue
       }
-      const allFixed = st.priorBlockers.length > 0 && st.priorBlockers.every((p) => verdicts.some((v) => v.id === p.id && v.status === 'fixed'))
-      st.cleanStreak = allFixed && blocking.length > 0 ? st.cleanStreak + 1 : 0
-      if (st.cleanStreak >= 2) {
-        const line = 'two rounds each fixed every prior blocker and still minted new ones'
-        escalate(id, 'review_not_converging', line, reviewed, line)
-        return null
-      }
-      st.priorUnfixed = new Set(unfixed.map((u) => u.id))
-      if (st.priorBlockers.length && unfixed.length) st.raise = true
-      st.priorBlockers = open
-      st.round++
-      toClear = open
-      stage = 'fix'
-      continue
+      return null
     }
   }
 }
 
-function roleOf(row) {
-  if (row.rigor === 'verify') return ''
-  if (row.role === 'red' || row.rigor === 'tests-only') return 'test-author'
-  if (row.role === 'audit') return 'auditor'
-  return 'implementer'
+/** The leaf is approved on disk — by the boundary that closed its last round, or before this invocation. */
+function approve(item, st) {
+  if (stoppedHere.has(item.id)) return
+  const was = implemented.findIndex((i) => i.id === item.id)
+  if (was !== -1) implemented.splice(was, 1)
+  implemented.push({
+    id: item.id, rigor: item.row.rigor, role: item.row.role, rounds: st.round, review_rounds: st.reviewRounds,
+    at_integration: st.reviewRounds === 0 && !item.row.own_review, salvaged: st.salvaged,
+  })
+  leavesFinished++
 }
 
 // ---------------------------------------------------------------- merging
 
 async function mergeInto(item) {
   const { target } = item
-  const out = await settled('merge-batch', { target, children: item.children, cycles: item.cycles }, { phase: 'Integrate', label: 'merge:' + target })
-  if (out.error || out.ok === false) {
-    // The batch could not run at all (a refresh that conflicted, a dirty integration worktree, a
-    // job that failed): the target is stopped, and nothing is re-batched into it until the user acts.
-    if (out.error && out.error.kind === 'job_failed') fault(target, 'program', out.error.message)
-    else escalate(target, 'merge_batch_failed', (out.error && out.error.message) || 'merge-batch refused')
-    return null
-  }
-  if (out.conflict) {
-    escalate(out.conflict.node, 'merge_conflict', 'conflicting paths: ' + (out.conflict.paths || []).join(', ') + ' — loci were declared disjoint; this is a planner defect')
-  }
-  for (const id of out.combination || []) escalate(id, 'combination_failure', 'passes alone, fails merged with ' + (out.combination || []).filter((x) => x !== id).join(', '))
+  const out = await settled('merge-batch', { target, card: item.card }, { phase: 'Integrate', label: 'merge:' + target })
+  if (refusedOn(target, out)) return
   const toRule = []
   for (const d of out.drift || []) {
-    drift.push(d)
-    if (d.stopped) {
-      // Already the user's: ruling on the escalation or park includes this contract moving.
-      note(d.node + ' (' + d.stopped + ') consumes contract ' + d.contract + ', which merged work touched: ' + d.files.join(', '))
-    } else if (!stoppedHere.has(d.node)) toRule.push(d)
+    drift.push({ node: d.node, contract: d.contract })
+    if (d.stopped) note(d.node + ' (' + d.stopped + ') consumes contract ' + d.contract + ', which merged work touched')
+    else if (!stoppedHere.has(d.node)) toRule.push(d.node)
   }
-  if (toRule.length) {
-    for (const d of toRule) ruling.add(d.node)
-    const nodes = [...new Set(toRule.map((d) => d.node))]
+  const nodes = [...new Set(toRule)]
+  if (nodes.length) {
+    // A consumer stays unlaunched until its ruling is answered: replanned, or parked for the user.
+    for (const id of nodes) ruling.add(id)
     try {
-      const { rulings, files } = await rule('rule:drift:' + target, driftPrompt(target, toRule, out.drift_brief), 'Integrate', nodes)
-      for (const d of toRule) {
-        const r = rulings && rulings.get(d.node)
-        const ruled = files.get(d.node)
-        if (r) records.push({ file: 'state', entry: { kind: 'drift-ruled', node: d.node, contract: d.contract, head_sha: out.head_sha || '', ruling: r.ruling === 'unaffected' ? 'unaffected' : 'affected', why: onRecord(r.why, ruled), ...(ruled ? { said: ruled } : {}) } })
-        if (r && r.ruling === 'unaffected') note(d.node + ': merged work touched contract ' + d.contract + '; ruled unaffected — ' + r.why)
-        else if (!r && !stoppedHere.has(d.node)) {
-          park(d.node, 'contract_drift', 'merged work touched ' + d.files.join(', ') + ' under contract ' + d.contract + ', which ' + d.node +
-            ' consumes, and no analyst could rule on it: rule it unaffected, re-design it or re-slice it')
-        }
-      }
-      // A consumer stays unlaunched until the planner has answered its ruling. A replan a plugin
-      // fault ended parks the consumer: drift is found only on the batch that landed it.
-      await Promise.all(nodes.map(async (id) => {
-        const r = rulings && rulings.get(id)
-        if (!r || r.ruling === 'unaffected' || stoppedHere.has(id)) return
-        const d = toRule.find((x) => x.node === id)
-        const line = 'merged work touched contract ' + d.contract + ', which ' + id + ' consumes'
-        if (!(await replanAffected(d.row, r, files.get(id), 'contract_drift', line))) park(id, 'contract_drift', r.question, files.get(id), line)
-      }))
+      const replans = await rule('drift', 'rule:drift:' + target, driftPrompt(target, nodes, out.drift_brief), 'Integrate', out.record)
+      await Promise.all(replans.map(replanAffected))
     } finally {
       for (const id of nodes) ruling.delete(id)
     }
   }
   if (out.unexamined_n) note(out.unexamined_n + ' undesigned node(s) not examined for drift')
   for (const f of out.failed_alone || []) {
-    const why = (f.failures || []).map((x) => x.claim).join('; ')
-    // A composite, or a cycle that lands as a unit, has no one producer a fix round could go to:
-    // its failure on the merged head is the user's to route.
-    if (!f.row) {
-      for (const m of (f.ids && f.ids.length ? f.ids : [f.id])) escalate(m, 'fails_on_integration', why)
-      continue
-    }
     note(f.id + ': fails on the integration head alone — a fix round on its branch, brought up to that head')
     if (running.has('leaf:' + f.id)) continue
-    launch('leaf:' + f.id, () => runLeaf({ unit: 'leaf', id: f.id, row: f.row, parent: f.parent, facts: f.facts }, { stage: 'fix' }))
+    launch('leaf:' + f.id, () => runLeaf({ unit: 'leaf', ...f }, { stage: 'fix' }))
   }
-  const progressed = (out.merged || []).length + (out.failed_alone || []).length + (out.combination || []).length + (out.conflict ? 1 : 0)
-  if (progressed === 0) escalate(target, 'merge_no_progress', 'a merge-batch into ' + target + ' merged nothing and reported no failure')
   if (input.pause && !stopping) stopping = 'pause'
   if (budgetShort() && !stopping) stopping = 'budget'
-  return null
 }
 
 const budgetShort = () => {
@@ -1320,75 +950,33 @@ const budgetShort = () => {
 
 // ---------------------------------------------------------------- composites
 
-const DRIFT = ['under', 'over', 'deviates']
-
 /**
- * The one park an integration review earns, or null. A spec defect goes first: fixing work against
- * a claim that cannot be met is wasted. Then criticals and drift, which the user routes to a fix:
- * no single producer owns a folder's merged work. Then what the review could not decide, which
- * never counts as a pass.
- */
-function integrationPark(item, findings, claims) {
-  const off = claims.filter((c) => c.verdict !== 'met')
-  const criticals = findings.filter((f) => f.severity === 'critical')
-  const why = off.some((c) => c.verdict === 'spec_defect') ? 'spec_defect'
-    : criticals.length || off.some((c) => DRIFT.includes(c.verdict)) ? 'integration_critical'
-      : off.length ? 'cant_tell' : ''
-  if (!why) return null
-  const lines = criticals.map((f) => f.id + ': ' + f.claim).concat(off.map((c) => '[' + c.verdict + '] ' + c.claim + ' — ' + c.evidence))
-  return { why, question: (why === 'spec_defect' ? 'the spec ' + item.row.spec_path + ': ' : '') + lines.join('; ') }
-}
-
-/**
- * The full suite on a finished composite's head, before its review and so before it merges up or
- * lands. A failure is the user's to route: no one producer owns a folder's merged work.
- */
-async function gateComposite(id) {
-  const out = await settled('suite-gate', { target: id }, { phase: 'Integrate', label: 'gate:' + id })
-  if (!out || out.error || out.ok === false) {
-    if (out && out.error && out.error.kind === 'job_failed') fault(id, 'program', out.error.message)
-    else escalate(id, 'suite_gate_failed', (out && out.error && out.error.message) || 'suite-gate refused')
-    return false
-  }
-  if (out.passed) return true
-  escalate(id, 'fails_full_suite', (out.failures || []).map((f) => f.claim).join('; ') + ' (the measurement: ' + out.record + ')')
-  return false
-}
-
-/**
- * The integration review, earned: when a child had no review loop of its own, or when two or more
- * children with work meet here for the first time. It always leaves a `claims` event at the head
- * it judged, which is what ripens the composite for merging up. A review that fails escalates.
+ * A finished composite: the full suite on its head (suite-gate, which also records a review that
+ * is not earned), then its integration review, read and recorded by folder-review. A review that
+ * wrote nothing is a plugin fault on the folder, and a lost check.
  */
 async function reviewComposite(item) {
-  const { id, where } = item
-  if (!(await gateComposite(id))) return null
-  const head = (where && where.head) || ''
-  if (!item.earned) {
-    note(id + ': integration review not earned (' + (where ? 'one reviewed child' : 'nothing merged') + ')')
-    recordEvent({ kind: 'claims', node: id, head_sha: head, review: 'not_earned', claims: [] })
+  const { id } = item
+  const gate = await settled('suite-gate', { target: id }, { phase: 'Integrate', label: 'gate:' + id })
+  if (refusedOn(id, gate) || !gate.passed) return
+  if (gate.review !== 'earned') {
+    note(id + ': integration review not earned')
     return null
   }
-  const said = saidPath('review:integration:' + id)
-  const res = await dispatch(integrationPrompt(item, said), {
-    agentType: 'agentics:reviewer', schema: FINDINGS, phase: 'Integrate', label: 'review:integration:' + id, ...tierFor(JUDGE, 'high'),
-  }, id).catch((err) => {
-    failedChannels.push('integration-review')
+  const label = 'review:integration:' + id
+  const file = saidPath(label, 'json')
+  const opts = { agentType: 'agentics:reviewer', schema: WROTE, phase: 'Integrate', label, ...tierFor(JUDGE, 'high') }
+  const res = await dispatch(integrationPrompt(item, file), opts).catch((err) => {
     note('integration review of ' + id + ' failed: ' + (err && err.message))
     return null
   })
-  const findings = res ? res.findings || [] : []
-  const claims = res ? res.claims || [] : []
-  reviews.push({ target: id, findings, claims, notes: res ? res.notes : '', reviewed: Boolean(res) })
-  if (!res) {
-    fault(id, 'dispatch', 'the integration review of ' + id + ' returned nothing')
-    return null
-  }
-  // The verdicts ride the record; each claim's evidence is in the reviewer's own file.
-  recordEvent({ kind: 'claims', node: id, head_sha: head, review: 'done', claims: claims.map((c) => ({ claim: c.claim, verdict: c.verdict })), ...(said ? { said } : {}) })
-  const held = integrationPark(item, findings, claims)
-  if (held) park(id, held.why, held.question, said, 'the integration review of ' + id + ' found claims that do not hold against ' + item.row.spec_path)
-  return null
+  if (res && res.status !== 'written') note(label + ': the reviewer says it wrote no review')
+  const out = await boundary('folder-review', { target: id, card: item.card, review_file: file, dispatch: [tokenOf(opts)] },
+    { phase: 'Integrate', label: 'reviewed:integration:' + id })
+  if (refusedOn(id, out)) return
+  const recorded = out.status === 'recorded'
+  if (!recorded) failedChannels.push('integration-review')
+  reviews.push({ target: id, review_file: recorded ? file : '', reviewed: recorded })
 }
 
 // ---------------------------------------------------------------- result
@@ -1397,15 +985,15 @@ const RUN_ID = 'unknown-to-script: pair `remaining` with the runId from the Work
 
 const NO_SUMMARY = { nodes_n: 0, leaves_n: 0, merged_n: 0, not_merged_n: 0, blocked_n: 0, blocked: [], root_done: false, done: false, stopped: [], held: [] }
 
-/** The return: postflight's summary of the subtree on disk, and what this invocation saw itself. */
+/** The return: postflight's summary of the subtree on disk, and what this invocation was told back. */
 function result(checkpoint, post, postflight = '') {
   const s = (post && post.summary) || NO_SUMMARY
   // Stopped nodes this invocation did not stop itself are carried from an earlier one: they lead
   // the result as much as fresh ones, or a resume reads cleaner than the run it resumed.
   for (const x of s.stopped) {
     if (stoppedHere.has(x.id)) continue
-    if (x.status === 'escalated') escalations.push({ id: x.id, reason: x.reason || 'escalated', detail: 'carried from an earlier invocation', carried: true })
-    if (x.status === 'parked') parked.push({ id: x.id, return: x.reason || 'parked', question: 'carried from an earlier invocation', carried: true })
+    if (x.status === 'escalated') escalations.push({ id: x.id, reason: x.reason || 'escalated', said: '', carried: true })
+    if (x.status === 'parked') parked.push({ id: x.id, return: x.reason || 'parked', said: '', carried: true })
   }
   const blocked = s.blocked
   const unreached = []
@@ -1448,24 +1036,24 @@ function result(checkpoint, post, postflight = '') {
 }
 
 /**
- * Close the invocation: postflight lands the last decisions and summarizes the subtree from disk.
- * When no courier can carry it, the session is handed the command itself: it has a shell, and
- * until it runs the command the stops this invocation decided last are on no disk.
+ * Close the invocation: postflight records the faults only this script saw and summarizes the
+ * subtree from disk. When no courier can carry it, the session is handed the command itself — all
+ * handles — to run in its own shell.
  */
 async function finish(checkpoint) {
+  const last = { fault: faultTokens() }
   let why = ''
   try {
-    const post = await boundary('postflight', {}, { phase: 'Postflight', label: 'postflight' })
+    const post = await boundary('postflight', last, { phase: 'Postflight', label: 'postflight' })
+    noteStops(post)
     if (!post.error) return result(checkpoint, post)
-    why = post.error.message || post.error.kind || 'postflight refused'
+    why = post.error.kind
   } catch (err) {
     why = err && err.message
   }
   failedChannels.push('postflight')
-  const trip = tripOf('postflight', { records: records.splice(0, records.length).map(withId), progress: false })
-  const command = [...trip.writes, trip.command].join('\n')
-  note('postflight could not be carried: ' + why + ' — the last decisions of this invocation are not recorded until the session runs coverage.resumable.postflight, as it stands')
-  return result(checkpoint, null, command)
+  note('postflight could not be carried: ' + why + ' — this invocation is not closed until the session runs coverage.resumable.postflight')
+  return result(checkpoint, null, tripOf('postflight', last))
 }
 
 // ---------------------------------------------------------------- the run
@@ -1479,11 +1067,11 @@ let pf
 try {
   pf = await boundary('preflight', {
     root: rootId,
-    retry_escalated: input.retry_escalated || [],
+    retry: input.retry_escalated || [],
     confirmed_duplicate: input.confirmed_duplicate === true,
     confirmed_gaps: input.confirmed_gaps === true,
     plan_only: input.plan_only === true,
-    dial: DIAL, pace, base_ref: input.base_ref || '', commands: input.commands || null,
+    dial: DIAL, pace, base_ref: input.base_ref || '', commands_file: input.commands_file || '',
   }, { phase: 'Preflight', label: 'preflight' })
 } catch (err) {
   failedChannels.push('preflight')
@@ -1492,8 +1080,8 @@ try {
 }
 
 if (pf.error) {
-  note('preflight refused: ' + pf.error.message)
-  return result({ reason: pf.error.kind || 'preflight_refused', detail: pf.error.message }, null)
+  note('preflight refused: ' + pf.error.kind)
+  return result({ reason: pf.error.kind || 'preflight_refused', detail: '' }, null)
 }
 invocation = pf.invocation
 saidDir = pf.said_dir || ''
@@ -1503,43 +1091,28 @@ if (counts.gaps) note(counts.gaps + ' traceability gap(s): node "' + pluginRoot 
 if (counts.untraced) note(counts.untraced + ' criterion/criteria tracing to no decision')
 if (pf.checkpoint) {
   phase('Postflight')
-  return finish(pf.checkpoint)
+  return finish({ reason: pf.checkpoint.reason, detail: '' })
 }
 
 // The base branch moved under leaves not yet merged: a ruler rules each before anything runs, the
 // planner replans a leaf whose premise really moved, and only what it cannot settle waits for the user.
 if (pf.stale) {
-  const { rulings, files } = await rule('rule:stale', stalePrompt(pf.stale), 'Preflight', pf.stale.nodes)
-  const replans = []
-  for (const row of pf.stale.rows) {
-    const id = row.id
-    const r = rulings && rulings.get(id)
-    const ruled = files.get(id)
-    if (!r) {
-      // No ruler could rule: the leaf is held, and the next invocation asks again.
-      fault(id, 'dispatch', 'the base moved under it and no analyst ruled on it')
-      continue
-    }
-    const affected = r.ruling !== 'unaffected'
-    const ruledLine = () => records.push({ file: 'state', entry: { kind: 'stale-ruled', node: id, base_now: pf.stale.now, ruling: affected ? 'affected' : 'unaffected', why: onRecord(r.why, ruled), ...(ruled ? { said: ruled } : {}) } })
-    if (!affected) {
-      note(id + ': the base moved under it; ruled unaffected — ' + r.why)
-      ruledLine()
-      continue
-    }
-    // An affected ruling is on record only once it is answered: a replan a plugin fault ended
-    // leaves the leaf held, and the next invocation rules on it again.
-    replans.push(replanAffected(row, r, ruled, 'premise_mismatch', 'the base branch moved files ' + id + ' writes or reads')
-      .then((answered) => { if (answered) ruledLine() }))
+  try {
+    const replans = await rule('stale', 'rule:stale', stalePrompt(pf.stale), 'Preflight', pf.stale.record)
+    await Promise.all(replans.map(replanAffected))
+  } catch (err) {
+    // No ruling reached disk: each leaf is held, and the next invocation rules on it again.
+    failedChannels.push('transport')
+    note('the rulings on a moved base could not be recorded: ' + (err && err.message))
+    for (const id of pf.stale.nodes) hold(id, 'transport')
   }
-  await Promise.all(replans)
 }
 
 log('execution ' + execution + ' of ' + rootId + ': ' + (counts.leaves || 0) + ' leaves planned, pool ' + pf.max_parallel +
   ', dial ' + DIAL + ', pace ' + pace)
 
 const UNITS = {
-  plan: (item) => planNode(item.row, item.why),
+  plan: (item) => planNode(item, item.why, ''),
   leaf: (item) => runLeaf(item),
   merge: (item) => mergeInto(item),
   review: (item) => reviewComposite(item),
@@ -1547,7 +1120,7 @@ const UNITS = {
 
 /**
  * A launch computed from what disk said when the tick was built, re-checked against what this
- * invocation decided while the tick was in flight: a node it stopped, a folder it began replanning.
+ * invocation was told while the tick was in flight: a node stopped, a folder it began replanning.
  */
 const stillLaunchable = (item) => {
   const id = item.id || item.target
@@ -1557,28 +1130,30 @@ const stillLaunchable = (item) => {
 
 phase('Execute')
 for (;;) {
-  // A unit leaves `running` only once the tick being built carries what it decided; one that ends
+  // A unit leaves `running` only once the tick being built has seen what it recorded; one that ends
   // while this tick is in flight stays in `running`, so nothing is launched beneath it or twice,
   // and it wakes the loop at once for the next tick.
   for (const key of finished) running.delete(key)
   finished.clear()
   let tick
-  // Every stop decided before this call rides in it, so the schedule computes over them; one it
-  // launches anyway was answered on disk while the run went on — a re-spec or a session's retry.
+  // A stop the schedule launches anyway was answered on disk while the run went on — a re-spec
+  // or a session's retry.
   const carriedStops = new Set(stoppedHere)
   try {
     ticks++
-    tick = await boundary('schedule', { running: [...running.keys()], planning: [...planning], held: faults.map((f) => f.id), stopping: Boolean(stopping) },
-      { phase: 'Execute', label: 'schedule#' + ticks })
+    tick = await boundary('schedule', {
+      running: [...running.keys()], planning: [...planning], stopping: Boolean(stopping), fault: faultTokens(),
+    }, { phase: 'Execute', label: 'schedule#' + ticks })
   } catch (err) {
-    tick = { error: { message: String(err && err.message) } }
+    tick = { error: { kind: String(err && err.message) } }
   }
   if (tick.error) {
     failedChannels.push('schedule')
-    note('the schedule could not be carried: ' + tick.error.message + ' — starting nothing new, letting what runs finish')
+    note('the schedule could not be carried: ' + tick.error.kind + ' — starting nothing new, letting what runs finish')
     await Promise.allSettled([...running.values()])
     break
   }
+  noteStops(tick)
   for (const item of tick.launch || []) {
     const id = item.id || item.target
     if (carriedStops.has(id) && !faults.some((f) => f.id === id)) answered(id)

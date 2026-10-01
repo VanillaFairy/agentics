@@ -8,8 +8,37 @@ import { agents, composite, recordsOf, row, simulate } from './harness/develop-s
 const WF = fileURLToPath(new URL('../service-workflows/execute-approved-plan-in-worktrees.workflow.js', import.meta.url))
 const ARGS = { repo: '/repo', effort: 'e1', execution: '20260925-120000', plugin_root: '/plugin' }
 
+/**
+ * A nested workflow's return as its contract hands it over: a review's findings as handles beside
+ * the file that holds them in full, a survey's items in the context file a planner reads. A
+ * scenario writes the findings or items whole; the file lands in the simulated store.
+ */
+const asNested = (sim, fn) => {
+  let n = 0
+  return async (ref, wargs) => {
+    const out = await fn(ref, wargs)
+    if (out && Array.isArray(out.findings) && !out.findings_file) {
+      const file = '/probe/' + (++n) + '.json'
+      sim.files.set(file, { findings: out.findings })
+      return { ...out, findings: out.findings.map(({ id, item, severity, axis, section }) => ({ id, item, severity, axis, section })), findings_file: file }
+    }
+    if (out && Array.isArray(out.items) && !out.context) {
+      const file = '/survey/' + (++n) + '.md'
+      sim.files.set(file, out.items)
+      return { ...out, items: out.items.map(({ id, topic, kind }) => ({ id, topic, kind, state: 'standing' })), context: file }
+    }
+    return out
+  }
+}
+
 const run = (sim, handlers = {}, args = {}, extra = {}) =>
-  runWorkflow(WF, { args: { ...ARGS, ...args }, agent: agents(sim, handlers), ...extra })
+  runWorkflow(WF, {
+    args: { ...ARGS, ...args }, agent: agents(sim, handlers), ...extra,
+    ...(extra.workflow ? { workflow: asNested(sim, extra.workflow) } : {}),
+  })
+
+/** Every courier command and every agent prompt carries handles: nothing a model would retype as data. */
+const DATA_ON_ARGV = /printf|--b64|--json-file|<<|--stdin/
 
 const labels = (prompts) => prompts.map((p) => p.opts.label)
 
@@ -44,9 +73,11 @@ function probes(returns) {
   return fn
 }
 
+const asked = (prompt) => /Findings to settle: ([^.\n]+)\./.exec(prompt)[1].split(', ')
+
 const settled = (outcome) => (prompt) => ({
   status: 'settled', question: '', detail: '',
-  dispositions: [...prompt.matchAll(/^- (P\d+) \[/gm)].map((m) => ({ finding: m[1], outcome })),
+  dispositions: asked(prompt).map((finding) => ({ finding, outcome })),
 })
 
 test('two independent leaves: executed, approved at integration, merged, reviewed together', async () => {
@@ -92,9 +123,11 @@ test('the review loop: a critical fixed next round approves; the open set is com
   assert.deepEqual(result.escalations, [])
   assert.equal(result.implemented[0].review_rounds, 2)
   assert.ok(labels(prompts).includes('implementer:a#2'), 'the fix round went to the implementer')
-  const fixOpen = sim.calls.find((c) => c.name === 'leaf-open' && c.args.round === 2)
-  assert.equal(fixOpen.args.fix, undefined, 'no finding crosses the courier')
-  assert.match(prompts.find((p) => p.opts.label === 'implementer:a#2').prompt, /\[critical F1\] wrong — x:1 — y/, 'the findings reach the implementer in its prompt')
+  assert.deepEqual(sim.fixes.get('a#2'), [{ source: 'review critical F1', claim: 'wrong', evidence: 'x:1 — y' }],
+    'the open findings reach the fix round through the file its brief is built from')
+  assert.ok(!prompts.find((p) => p.opts.label === 'implementer:a#2').prompt.includes('wrong'), 'never through a prompt')
+  assert.match(prompts.find((p) => p.opts.label === 'review:a#2').prompt, /Prior blockers are the `open` list in \/reviews\/a-r1\.json/,
+    'the next reviewer reads what the round before left open')
 })
 
 test('a prior blocker ruled not_fixed but not re-reported stays open', async () => {
@@ -173,12 +206,13 @@ test('what an agent asks the user never rides a record: the record carries the f
     'implementer:a#1': () => ({ status: 'needs_decision', detail: 'which format: JSON or YAML?', concerns: [], commits: [] }),
   })
   const told = prompts.find((p) => p.opts.label === 'implementer:a#1').prompt
-  const file = /first write that detail in full to (\S+)/.exec(told)[1]
+  const file = /in full, to (\S+) \(its first line/.exec(told)[1]
   assert.match(file, /^\/said\/\d+-\d+-implementer-a-1\.md$/)
   const [record] = recordsOf(sim, 'parked')
   assert.equal(record.said, file)
   assert.equal(record.question, '', 'no prose of the agent\'s crosses the courier')
-  assert.equal(result.parked[0].question, 'which format: JSON or YAML?', 'the session still gets it whole from the return')
+  assert.deepEqual(result.parked, [{ id: 'a', return: 'needs_decision', said: file }], 'the session is pointed at the file')
+  assert.equal(sim.files.get(file), 'which format: JSON or YAML?', 'which its author wrote')
 })
 
 const written = (path) => () => ({ status: 'written', written: [path], accepted_warnings: [], uncovered: [], question: '', detail: '' })
@@ -230,7 +264,7 @@ test('a childless folder you authored is parked, never handed to the planner', a
   const sim = simulate([composite('.')])
   const { result, prompts } = await run(sim)
   assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['.', 'needs_design']])
-  assert.ok(result.parked[0].question.includes(composite('.').spec_path), 'the question names the spec that needs a Plan')
+  assert.ok(recordsOf(sim, 'parked')[0].question.includes(composite('.').spec_path), 'the question names the spec that needs a Plan')
   assert.ok(!labels(prompts).some((l) => l.startsWith('plan:')))
 })
 
@@ -261,17 +295,17 @@ test('a payload no courier can carry is a plugin fault: the node is held, never 
   const { result } = await run(sim)
   assert.deepEqual(result.escalations, [])
   assert.deepEqual(result.faults.map((f) => [f.id, f.channel]), [['a', 'transport']])
-  assert.equal(sim.statusOf('a'), 'active', 'no stop lands on disk: the next invocation takes the leaf up')
-  assert.deepEqual(recordsOf(sim, 'fault').map((r) => r.node), ['a'])
+  assert.equal(sim.statusOf('a'), 'merged', 'what the close decided stands on disk, whatever became of its courier, and the run merges from it')
+  assert.deepEqual(recordsOf(sim, 'fault').map((r) => [r.node, r.channel]), [['a', 'transport']])
   assert.equal(sim.statusOf('b'), 'merged', 'the rest of the run goes on')
   assert.equal(result.coverage.complete, false)
   assert.ok(result.coverage.unreached.some((u) => /a: held on a plugin fault/.test(u)))
 })
 
-/** The program's refusal of an argument token, pasted whole by a courier that labels the run as it sees fit. */
+/** The program's refusal of arguments damaged in transit, pasted whole by a courier that labels the run as it sees fit. */
 const refusedToken = (boundary, stop_reason) => () => ({
-  ...carriedEnvelope({ boundary, ok: false, error: { kind: 'digest_mismatch', message: 'the token changed in transit' }, todos: [], notes: [] }),
-  stop_reason, task_tools: 'skipped',
+  ...carriedEnvelope({ boundary, ok: false, error: { kind: 'digest_mismatch' }, stops: [] }),
+  stop_reason,
 })
 
 test('a token the program refused as damaged on its way in is copied again by the stronger courier', async () => {
@@ -294,24 +328,25 @@ test('a token no courier copies whole is a plugin fault, never a refusal the use
   assert.equal(sim.statusOf('b'), 'merged', 'the rest of the run goes on')
 })
 
-test('a postflight no courier can carry hands the session its command, and running it records the last decisions', async () => {
-  const sim = simulate([composite('.'), row('a')])
-  const noShell = () => ({ stop_reason: 'failed', payload_raw: '', notes: 'no shell' })
-  // The couriers die after the leaf stopped: neither the tick that would carry the stop nor
-  // postflight reaches a shell.
+test('a postflight no courier can carry hands the session its command, all handles, and running it records the faults only the run saw', async () => {
+  const sim = simulate([composite('.'), row('a'), row('b')], {
+    damage: (name, args) => (name === 'leaf-close' && args.node === 'b' ? (env) => { env.payload.head_sha = 'retyped' } : null),
+  })
+  const noShell = () => ({ stop_reason: 'failed', payload_raw: '' })
   const { result } = await run(sim, {
     'implementer:a#1': () => ({ status: 'blocked', detail: 'needs a key', concerns: [], commits: [] }),
-    'schedule#2': noShell, 'schedule#2#2': noShell, postflight: noShell, 'postflight#2': noShell,
+    postflight: noShell, 'postflight#2': noShell,
   })
   assert.ok(result.coverage.failed_channels.includes('postflight'))
   assert.equal(result.coverage.complete, false)
-  assert.deepEqual(result.escalations.map((e) => e.id), ['a'], 'the run decided a stop')
-  assert.notEqual(sim.statusOf('a'), 'escalated', 'and no boundary carried it')
+  assert.equal(sim.statusOf('a'), 'escalated', 'a stop is recorded where it is decided, never left for postflight to carry')
+  assert.ok(result.notes.some((n) => n.includes('coverage.resumable.postflight')), 'the result says what to run')
 
   const command = result.coverage.resumable.postflight
-  assert.ok(result.notes.some((n) => n.includes('coverage.resumable.postflight')), 'the result says what to run')
-  sim.courier(command)
-  assert.equal(sim.statusOf('a'), 'escalated', 'the session ran the command, and the stop is on disk')
+  assert.doesNotMatch(command, DATA_ON_ARGV)
+  sim.courier('Run it:\n\n' + command)
+  assert.equal(sim.calls.at(-1).name, 'postflight')
+  assert.deepEqual(sim.calls.at(-1).args.fault, ['b:transport'], 'the command carries the faults only the run saw, as handles')
 })
 
 test('a run whose postflight was carried hands the session no command', async () => {
@@ -375,37 +410,30 @@ test('an integration critical parks the composite for the user', async () => {
   assert.equal(result.coverage.complete, false)
 })
 
-test('the cost report counts every dispatch, and the records carry a dispatch line for each', async () => {
-  const sim = simulate([composite('.'), row('a')])
+test('the cost report counts every dispatch, and each is recorded once, by its label, by the boundary that closed it', async () => {
+  const sim = simulate([composite('.'), row('a', { own_review: true })])
   const { result, prompts } = await run(sim)
   assert.equal(result.cost.dispatches, prompts.length)
-  assert.ok(recordsOf(sim, 'dispatch').length >= prompts.length - 1)
+  assert.deepEqual(recordsOf(sim, 'dispatch').map((d) => d.label).sort(), labels(prompts).sort())
+  const role = (label) => recordsOf(sim, 'dispatch').find((d) => d.label === label).role
+  assert.deepEqual([role('implementer:a#1'), role('review:a#1'), role('close:a#1')], ['implementer', 'reviewer', 'courier'])
 })
 
-test('records travel by file in lines under cmd.exe\'s cap, and a trip whose answer was lost lands each record once', async () => {
-  // Long ids make every record long, so one tick's records outgrow a single write.
-  const sim = simulate([composite('.'), ...Array.from({ length: 12 }, (_, i) => row('l' + i + '-' + 'x'.repeat(200)))])
-  // The boundary ran and wrote its records; the courier then gave up before pasting its answer.
+test('no courier carries data: every value is a handle on a flag of its own, and a boundary run again after a lost answer lands each record once', async () => {
+  const ids = Array.from({ length: 6 }, (_, i) => 'l' + i + '-' + 'x'.repeat(200))
+  const sim = simulate([composite('.'), ...ids.map((id) => row(id, { own_review: true }))])
+  // The boundary ran and recorded what it decided; the courier then gave up before pasting its answer.
   const lostAnswer = (prompt, opts, s) => {
     s.courier(prompt)
-    return { stop_reason: 'failed', payload_raw: '', task_tools: 'skipped', notes: 'the shell hung up' }
+    return { stop_reason: 'failed', payload_raw: '' }
   }
-  const { result, prompts } = await run(sim, { 'schedule#2': lostAnswer })
+  const { result, prompts } = await run(sim, { ['close:' + ids[0] + '#1']: lostAnswer, ['reviewed:' + ids[1] + '#1']: lostAnswer, 'schedule#2': lostAnswer })
   assert.equal(result.coverage.complete, true, JSON.stringify(result.coverage))
-
-  const carriers = prompts.filter((p) => /^(schedule|postflight)/.test(p.opts.label))
-  assert.ok(carriers.every((p) => /--json-file /.test(p.prompt) && !/--b64 /.test(p.prompt)), 'every record-carrying trip travels by file')
-  assert.ok(carriers.some((p) => (p.prompt.match(/printf '%s'/g) || []).length > 1), 'a token larger than one write spans several')
-  for (const p of prompts) {
-    for (const line of p.prompt.split('\n')) assert.ok(line.length < 8191, p.opts.label + ' hands a courier a ' + line.length + '-character line')
-  }
-  assert.equal(prompts.find((p) => p.opts.label === 'schedule#2#2').opts.model, 'sonnet', 'a copy that failed goes to the stronger model')
-
-  const sent = sim.records.map((r) => r.rid)
-  assert.ok(sent.length > new Set(sent).size, 'the retried trip sent its records again')
-  const landed = [...sim.events, ...sim.state].map((e) => e.rid).filter(Boolean)
-  assert.equal(landed.length, new Set(landed).size, 'no record landed twice')
-  assert.deepEqual(new Set(landed), new Set(sent), 'and none was lost')
+  for (const p of prompts) assert.doesNotMatch(p.prompt, DATA_ON_ARGV, p.opts.label)
+  assert.ok(labels(prompts).includes('close:' + ids[0] + '#1#2') && labels(prompts).includes('reviewed:' + ids[1] + '#1#2'), 'both trips were sent again')
+  assert.deepEqual(recordsOf(sim, 'approved').map((e) => e.node).sort(), [...ids].sort(), 'each approval landed once')
+  const dispatched = recordsOf(sim, 'dispatch').map((d) => d.label)
+  assert.equal(dispatched.length, new Set(dispatched).size, 'each dispatch line landed once')
 })
 
 test('bad input returns a coverage block, never undefined', async () => {
@@ -440,8 +468,10 @@ test('contract drift a ruler rules affected is replanned, and runs, without the 
   assert.equal(asked.opts.agentType, 'agentics:ruler')
   assert.ok(asked.prompt.includes('Read /merges/root.drift.md.'), 'one file holds the entry and the change')
   assert.ok(!asked.prompt.includes('DESIGN.md'), 'the ruler is never sent to find a spec')
+  const [ruled] = recordsOf(sim, 'drift-ruled')
+  assert.match(ruled.said, /^\/said\/\d+-\d+-rule-drift-\.\.?-b\.md$/, 'each drifted consumer\'s ruling is a file of its own, which the boundary wrote')
   const plan = prompts.find((p) => p.opts.label === 'plan:b')
-  assert.ok(plan.prompt.includes('premise_mismatch: api now returns a list: does b still read one?'), 'the planner is told what moved')
+  assert.ok(plan.prompt.includes('Why: premise_mismatch — read ' + ruled.said), 'the planner is pointed at what moved')
 })
 
 test('a replan of drift that needs a decision parks the consumer with the planner\'s question, and the rest keeps running', async () => {
@@ -450,11 +480,12 @@ test('a replan of drift that needs a decision parks the consumer with the planne
     'rule:drift:.': ruling('affected', 'does b still read one?'),
     'plan:': () => ({ status: 'needs_decision', written: [], accepted_warnings: [], uncovered: [], question: 'a list or one item: which does b serve?', detail: '' }),
   })
-  assert.deepEqual(result.parked.map((p) => [p.id, p.return, p.question]), [['b', 'needs_decision', 'a list or one item: which does b serve?']])
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['b', 'needs_decision']])
+  assert.equal(sim.files.get(result.parked[0].said), 'a list or one item: which does b serve?', 'the question is the planner\'s own file')
   assert.ok(!sim.opens.includes('b'))
   assert.ok(result.implemented.some((i) => i.id === 'c'))
   const asked = prompts.find((p) => p.opts.label === 'rule:drift:.')
-  assert.match(/- b: (\S+)/.exec(asked.prompt)[1], /^\/said\/\d+-\d+-rule-drift-.-b\.md$/, 'each drifted consumer gets a ruling file of its own')
+  assert.match(asked.prompt, /as JSON, to \/said\/\d+-\d+-rule-drift-\.\.?json: \{"rulings"/, 'the ruler writes every ruling to one file')
 })
 
 test('a fix round that returns done with no commits escalates on the workflow\'s own line, pointing at no file', async () => {
@@ -491,7 +522,8 @@ test('a base that moved under leaves is ruled first: an affected leaf is replann
   assert.ok(asked.includes('a, b, d') && asked.includes('Read /x/stale-n1.md.'), 'one file holds each entry and its change')
   assert.deepEqual(recordsOf(sim, 'stale-ruled').map((r) => [r.node, r.ruling, r.base_now]), [['a', 'unaffected', 'n1'], ['b', 'affected', 'n1']],
     'both rulings are kept, so a later head asks each only about what moved after this one')
-  assert.ok(prompts.find((p) => p.opts.label === 'plan:b').prompt.includes('premise_mismatch: the parser b extends is gone'))
+  const ruledB = recordsOf(sim, 'stale-ruled').find((r) => r.node === 'b').said
+  assert.ok(prompts.find((p) => p.opts.label === 'plan:b').prompt.includes('Why: premise_mismatch — read ' + ruledB))
   assert.deepEqual(result.parked, [])
   assert.deepEqual(result.faults.map((f) => f.id), ['d'], 'a leaf the ruling left out is held, never run unasked, and never put to the user')
   assert.ok(['a', 'b', 'c'].every((id) => sim.opens.includes(id)) && !sim.opens.includes('d'))
@@ -504,7 +536,7 @@ test('a moved base the planner cannot answer without a decision parks the leaf w
     'rule:stale': () => ({ rulings: [STALE_B] }),
     'plan:': () => ({ status: 'needs_decision', written: [], accepted_warnings: [], uncovered: [], question: 'keep the old parser or move to the new one?', detail: '' }),
   })
-  assert.deepEqual(result.parked.map((p) => [p.id, p.return, p.question]), [['b', 'needs_decision', 'keep the old parser or move to the new one?']])
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return, sim.files.get(p.said)]), [['b', 'needs_decision', 'keep the old parser or move to the new one?']])
   assert.ok(sim.opens.includes('c') && !sim.opens.includes('b'))
 })
 
@@ -518,19 +550,21 @@ test('a moved premise the planner answers without changing the leaf escalates in
   assert.ok(!sim.opens.includes('b'))
 })
 
-test('an affected ruling whose replan a plugin fault ended is not on record, so the next invocation rules again', async () => {
+test('an affected ruling whose replan a plugin fault ended is left unanswered, so the next invocation rules again', async () => {
   const sim = simulate([composite('.'), row('b'), row('c')], { preflight: () => ({ stale: staleOf([row('b')]) }) })
   const { result } = await run(sim, { 'rule:stale': () => ({ rulings: [STALE_B] }), 'plan:': () => { throw new Error('planner died') } })
   assert.deepEqual(result.faults.map((x) => x.id), ['b'])
   assert.deepEqual(result.parked, [])
-  assert.deepEqual(recordsOf(sim, 'stale-ruled'), [], 'a recorded ruling would be the leaf\'s anchor, and it would run unreplanned')
+  const [ruled] = recordsOf(sim, 'stale-ruled')
+  assert.ok(!sim.events.some((e) => e.node === 'b' && ['parked', 'escalated', 'replanned'].includes(e.kind) && e.seq > ruled.seq),
+    'nothing answers the ruling on disk, and an unanswered affected ruling is no anchor (test/boundary-execution.test.mjs)')
   assert.ok(sim.opens.includes('c') && !sim.opens.includes('b'))
 })
 
 test('a leaf with work already standing on its plan is never replanned under it: it parks with the ruler\'s question', async () => {
   const sim = simulate([composite('.'), row('b'), row('c')], { preflight: () => ({ stale: staleOf([{ ...row('b'), under_way: true }]) }) })
   const { result, prompts } = await run(sim, { 'rule:stale': () => ({ rulings: [STALE_B] }) })
-  assert.deepEqual(result.parked.map((p) => [p.id, p.return, p.question]), [['b', 'premise_mismatch', STALE_B.question]])
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return, sim.files.get(p.said)]), [['b', 'premise_mismatch', STALE_B.question]])
   assert.ok(!labels(prompts).some((l) => l.startsWith('plan:')))
   assert.deepEqual(recordsOf(sim, 'stale-ruled').map((r) => [r.node, r.ruling]), [['b', 'affected']], 'the park is its answer on disk')
 })
@@ -538,7 +572,7 @@ test('a leaf with work already standing on its plan is never replanned under it:
 test('a drift replan a plugin fault ended parks the consumer: the drift would not be found again', async () => {
   const sim = driftSim()
   const { result } = await run(sim, { 'rule:drift:.': ruling('affected', 'does b still read one?'), 'plan:': () => { throw new Error('planner died') } })
-  assert.deepEqual(result.parked.map((p) => [p.id, p.return, p.question]), [['b', 'contract_drift', 'does b still read one?']])
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return, sim.files.get(p.said)]), [['b', 'contract_drift', 'does b still read one?']])
   assert.ok(!sim.opens.includes('b'))
 })
 
@@ -547,7 +581,7 @@ test('contract drift no analyst could rule, twice, parks the consumer for the us
   const { result, prompts } = await run(sim, { 'rule:drift:': () => { throw new Error('analyst died') } })
   assert.deepEqual(labels(prompts).filter((l) => l.startsWith('rule:')), ['rule:drift:.', 'rule:drift:.#2'])
   assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['b', 'contract_drift']])
-  assert.match(result.parked[0].question, /no analyst could rule/)
+  assert.match(recordsOf(sim, 'parked')[0].question, /no ruler could rule/)
 })
 
 test('a leaf whose files another leaf holds is reported blocked, never re-dispatched to wait', async () => {
@@ -640,7 +674,7 @@ test('a verify finding under a folder you authored parks that folder for a re-sp
   const { result, prompts } = await run(sim)
   assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['v', 'verify_finding']])
   assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['.', 'needs_respec']])
-  assert.ok(result.parked[0].question.includes(composite('.').spec_path), 'the question names the spec to edit')
+  assert.ok(recordsOf(sim, 'parked')[0].question.includes(composite('.').spec_path), 'the question names the spec to edit')
   assert.ok(!labels(prompts).some((l) => l.startsWith('plan:')))
 })
 
@@ -849,7 +883,7 @@ test('a gate still shut after a round that incorporated nothing escalates as not
     const { result } = await run(sim, { 'plan:': written(row('p').spec_path), 'settle:': settled('discarded') }, {}, { workflow: probe })
     const label = findings.length ? 'a discarded note' : 'no finding'
     assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'review_not_converging']], label)
-    assert.ok(result.escalations[0].detail.includes('Iabandoned'), label + ': the open ambiguity is named')
+    assert.ok(recordsOf(sim, 'escalated')[0].detail.includes('Iabandoned'), label + ': the open ambiguity is named')
     assert.ok(sim.calls.some((c) => c.name === 'spec-gate'), label + ': the gate was asked')
     assert.equal(probe.calls.length, 1, label + ': an unedited spec is not reviewed again')
     assert.deepEqual(sim.prepared, [], label)
@@ -863,7 +897,7 @@ test('a compile refusal at preparation escalates, and nothing below the folder r
   })
   const { result } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, { workflow: probes([probeReturn()]) })
   assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'compile_refused']])
-  assert.ok(result.escalations[0].detail.includes('D9'))
+  assert.ok(recordsOf(sim, 'escalated')[0].detail.includes('D9'))
 })
 
 test('spec-check problems escalate spec_refused before any review', async () => {
@@ -873,7 +907,7 @@ test('spec-check problems escalate spec_refused before any review', async () => 
   const probe = probes([])
   const { result } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, { workflow: probe })
   assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'spec_refused']])
-  assert.ok(result.escalations[0].detail.includes('task x has no criterion'))
+  assert.ok(recordsOf(sim, 'escalated')[0].detail.includes('task x has no criterion'))
   assert.equal(probe.calls.length, 0)
   assert.deepEqual(sim.prepared, [])
 })
@@ -895,7 +929,7 @@ test('a preparation the boundary refuses escalates prepare_refused', async () =>
   })
   const { result } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, { workflow: probes([probeReturn()]) })
   assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'prepare_refused']])
-  assert.ok(result.escalations[0].detail.includes('gives p to the user'))
+  assert.ok(recordsOf(sim, 'escalated')[0].detail.includes('gives p to the user'))
 })
 
 test('a prepared folder that compiles with no children escalates planner_wrote_nothing', async () => {
@@ -925,7 +959,7 @@ test('a settle that needs a decision parks the folder with the planner\'s questi
     'plan:': written(row('p').spec_path),
     'settle:': () => ({ status: 'needs_decision', dispositions: [], question, detail: '' }),
   }, {}, { workflow: probe })
-  assert.deepEqual(result.parked.map((p) => [p.id, p.return, p.question]), [['p', 'needs_decision', question]])
+  assert.deepEqual(result.parked.map((p) => [p.id, p.return, sim.files.get(p.said)]), [['p', 'needs_decision', question]])
   assert.deepEqual(sim.dispositions, [])
   assert.deepEqual(sim.prepared, [])
 })
@@ -942,7 +976,7 @@ test('a planner folder still parked spec_changed after its re-derivation is hand
   assert.equal(probe.calls.length, 1)
 })
 
-test("develop's planner prompt carries the nested survey's items and risks, not verdicts", async () => {
+test("develop's planner is pointed at the nested survey's context file, and handed none of its items", async () => {
   const sim = simulate([composite('.'), row('p', { kind: 'design', author: 'planner', ground_known: false })])
   const survey = {
     question: 'q', topics: ['a'], ground: ['src'], reused: [], unrecorded: [], history: null, docs: null,
@@ -962,10 +996,11 @@ test("develop's planner prompt carries the nested survey's items and risks, not 
     },
   })
   const plan = prompts.find((p) => p.opts.label === 'plan:p').prompt
-  assert.match(plan, /the loader reads config\.json/)
-  assert.match(plan, /src\/load\.js/)
-  assert.match(plan, /tests were not searched/)
-  assert.doesNotMatch(plan, /"verdicts"/)
+  const context = /a survey of this folder's ground is in (\S+)\./.exec(plan)[1]
+  assert.deepEqual(sim.files.get(context).map((i) => i.claim), ['the loader reads config.json'], 'the file holds the items in full')
+  assert.doesNotMatch(plan, /the loader reads config\.json|src\/load\.js|tests were not searched/, 'the prompt holds none of them')
+  const card = /Its card, (\S+), holds/.exec(plan)[1]
+  assert.equal(sim.files.get(card).id, 'p', 'the title and intent are on the card the prompt names')
   assert.ok(!result.escalations.some((e) => e.reason === 'review_failed'), 'the nested probe answered')
 })
 
@@ -984,7 +1019,9 @@ test('the integration review takes the folder\'s spec as its yardstick', async (
   const sim = simulate([composite('.'), row('a'), row('b')])
   const { prompts } = await run(sim)
   const review = prompts.find((p) => p.opts.label === 'review:integration:.')
-  assert.ok(review.prompt.includes(composite('.').spec_path))
+  const card = /Its card, (\S+), names/.exec(review.prompt)[1]
+  assert.equal(sim.files.get(card).spec_path, composite('.').spec_path, 'the card the prompt names holds the yardstick')
+  assert.deepEqual(sim.files.get(card).children.sort(), ['a', 'b'])
 })
 
 test('under, over and deviates each go the integration-critical way', async () => {
@@ -995,8 +1032,8 @@ test('under, over and deviates each go the integration-critical way', async () =
     const drift = claim(verdict)
     const { result } = await run(sim, integration([claim('met', 'it builds'), drift]))
     assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['.', 'integration_critical']], verdict)
-    assert.ok(result.parked[0].question.includes('[' + drift.verdict + '] ' + drift.claim + ' — ' + drift.evidence), verdict)
-    assert.ok(!result.parked[0].question.includes('it builds'), 'a met claim is not a question')
+    assert.ok(recordsOf(sim, 'parked')[0].question.includes('[' + drift.verdict + '] ' + drift.claim + ' — ' + drift.evidence), verdict)
+    assert.ok(!recordsOf(sim, 'parked')[0].question.includes('it builds'), 'a met claim is not a question')
   }
 })
 
@@ -1004,8 +1041,8 @@ test('a spec_defect parks the folder on its spec', async () => {
   const sim = simulate([composite('.'), row('a'), row('b')])
   const { result } = await run(sim, integration([claim('spec_defect', 'the queue is both bounded and unbounded')]))
   assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['.', 'spec_defect']])
-  assert.ok(result.parked[0].question.includes('the queue is both bounded and unbounded'))
-  assert.ok(result.parked[0].question.includes(composite('.').spec_path))
+  assert.ok(recordsOf(sim, 'parked')[0].question.includes('the queue is both bounded and unbounded'))
+  assert.ok(recordsOf(sim, 'parked')[0].question.includes(composite('.').spec_path))
   assert.deepEqual(recordsOf(sim, 'claims').map((e) => e.node), ['.'], 'a parked review still records its verdicts')
 })
 
@@ -1031,7 +1068,7 @@ test('several classes park once, the spec defect first, every claim in the quest
   ]))
   assert.deepEqual(result.parked.map((p) => [p.id, p.return]), [['.', 'spec_defect']])
   for (const text of ['latency stays flat', 'retries are bounded', 'ids are unique and reused']) {
-    assert.ok(result.parked[0].question.includes(text), text)
+    assert.ok(recordsOf(sim, 'parked')[0].question.includes(text), text)
   }
 })
 
@@ -1046,7 +1083,9 @@ test('claims all met: nothing parks, and the verdicts are recorded for the landi
     'the verdicts ride the record; the evidence stays in the reviewer\'s own file')
   assert.match(recorded[0].said, /^\/said\/\d+-\d+-review-integration-\.\.md$/)
   assert.ok(recorded[0].head_sha, 'the verdicts name the head they judged')
-  assert.deepEqual(result.integration.reviews.find((r) => r.target === '.').claims, claims)
+  const review = result.integration.reviews.find((r) => r.target === '.')
+  assert.equal(review.reviewed, true)
+  assert.deepEqual(sim.files.get(review.review_file).claims, claims, 'the session is pointed at the review its author wrote')
 })
 
 test('the root\'s integration review is always earned once work merged; a sub-folder\'s by the old rule', async () => {

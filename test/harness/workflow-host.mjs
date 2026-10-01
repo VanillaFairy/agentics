@@ -18,7 +18,6 @@
 import { readFileSync } from 'node:fs'
 
 import { canonical, fnv1a } from '../../lib/plan-digest.mjs'
-import { jsonFileText } from '../../lib/store.mjs'
 
 const AsyncFunction = (async function () {}).constructor
 
@@ -152,35 +151,6 @@ export function carriedEnvelope(payload, damage, notes = 'ran the command and pa
   if (damage) damage(envelope)
 
   return { stop_reason: 'carried', payload_raw: JSON.stringify(envelope), notes }
-}
-
-/**
- * The state line a `record:` dispatch actually carries, decoded.
- *
- * The workflow mints these whole and hands them to the recorder base64-encoded: a heredoc is
- * shell syntax, and every corruption this file has seen in the field was shell syntax too — a
- * Windows path's backslashes, an apostrophe in a test name, an indented closing delimiter.
- * Tests therefore assert on the RECORD rather than on a substring of its serialization, which
- * is the more durable assertion in any case.
- *
- * @param {string} prompt a recorder dispatch prompt
- * @returns {{ entry: object, digest: string, token: string }}
- */
-export function recordedLine(prompt) {
-  const inline = /--digest (\S+) --b64 (\S+)/.exec(prompt || '')
-  if (inline) {
-    return { entry: JSON.parse(Buffer.from(inline[2], 'base64').toString('utf8')), digest: inline[1], token: inline[2] }
-  }
-
-  const byFile = /--digest (\S+) --json-file /.exec(prompt || '')
-  if (!byFile) throw new Error('this prompt carries no --digest/--b64 or --json-file token')
-  const token = jsonChunks(prompt).join('')
-  return { entry: JSON.parse(jsonFileText(token)), digest: byFile[1], token }
-}
-
-/** The chunks a courier prompt writes to its token file, one per single-quoted `printf`, in order. */
-export function jsonChunks(prompt) {
-  return [...prompt.matchAll(/printf '%s' '([^'\n]*)' >>? /g)].map((m) => m[1])
 }
 
 // ------------------------------------------------------------------ handles (docs/DESIGN.md#gp6--couriers-carry-handles-data-stays-where-its-author-wrote-it)

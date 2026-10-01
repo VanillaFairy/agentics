@@ -12,13 +12,12 @@
 // live in docs/DESIGN.md#boundaries.
 
 import { recordsToAppend } from '../../lib/boundary.mjs'
+import { canonical, fnv1a } from '../../lib/plan-digest.mjs'
 import { approvedHead } from '../../lib/resume.mjs'
 import { schedule, summarize } from '../../lib/schedule.mjs'
 import { ancestorsOf, parentOf } from '../../lib/store.mjs'
 import { childrenOf, deriveStatus, normalizeNode, ownReview } from '../../lib/tree.mjs'
-import { carriedEnvelope } from './workflow-host.mjs'
-
-const decode = (token) => JSON.parse(Buffer.from(token, 'base64').toString('utf8'))
+import { carriedEnvelope, recordedLine } from './workflow-host.mjs'
 
 /**
  * A node as a scenario writes it, defaults filled. `status` (and `reason`) seed the event log;
@@ -280,10 +279,11 @@ export function simulate(nodes, script = {}) {
   }
 
   const courier = (prompt) => {
-    const m = /lib\/boundary\.mjs"? (\S+) .*--b64 (\S+)/.exec(prompt)
+    const m = /lib\/boundary\.mjs"? (\S+) /.exec(prompt)
     if (!m) throw new Error('courier prompt names no boundary: ' + prompt.slice(0, 120))
-    const [, name, token] = m
-    const args = decode(token)
+    const name = m[1]
+    const { entry: args, digest } = recordedLine(prompt)
+    if (digest !== fnv1a(canonical(args))) throw new Error(name + ': the token does not match its digest')
     sim.calls.push({ name, args })
     for (const r of args.records || []) sim.records.push(r)
     const fresh = recordsToAppend(args.records, { events: sim.events, state: sim.state, execution: '20260925-120000' })

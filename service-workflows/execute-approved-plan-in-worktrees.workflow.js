@@ -356,9 +356,12 @@ function carried(held) {
   return { payload: parsed.payload, why: '', retry: '' }
 }
 
-function courierPrompt(command) {
-  return 'Run exactly this one command, unchanged (Bash timeout 600000), and put its entire stdout in payload_raw:\n\n' +
-    command + '\n\n' +
+function courierPrompt(command, writes) {
+  return (writes.length === 0
+    ? 'Run exactly this one command, unchanged (Bash timeout 600000), and put its entire stdout in payload_raw:\n\n' + command
+    : 'Run these commands in order, each unchanged and in its own Bash call (Bash timeout 600000); stop at the ' +
+      'first that fails. The ones before the last only write a file. Put the last one\'s entire stdout in ' +
+      'payload_raw:\n\n' + [...writes, command].join('\n\n')) + '\n\n' +
     (progress
       ? 'Then apply the todo moves listed in the printed payload.todos: call TaskList once; for each move, the task ' +
         'whose subject equals the move\'s subject is its task — TaskUpdate it with the move\'s activeForm and status; ' +
@@ -386,6 +389,49 @@ function withId(r) {
   return { ...r, rid: n === 1 ? key : key + '#' + n }
 }
 
+// cmd.exe caps a whole command line at 8191 characters, so nothing this script hands a courier to
+// type puts more than this many on one line.
+const COMMAND_BUDGET = 6000
+
+/**
+ * A token this script mints, as the courier carries it: one line of JSON written to a file under
+ * `root` by single-quoted `printf` calls of at most COMMAND_BUDGET characters each, then read by
+ * `cli` with `--json-file` under the token's digest and removed. `~` goes as `~t`, `\` as `~b`
+ * and `'` as `~q`, so no backslash reaches the layer that decodes escapes in a Bash call and no
+ * quote ends the argument (lib/store.mjs jsonFileText). Every write is a single line: the harness
+ * indents each line of a computed prompt, and that indent must land before a command, never
+ * inside the token. Returns the courier's writes and its one command.
+ */
+function viaJsonFile(cli, token, root) {
+  const json = JSON.stringify(token).replace(/~/g, '~t').replace(/\\/g, '~b').replace(/'/g, '~q')
+  const digest = fnv1a(canonical(token))
+  const dir = `${root}/.agentics/.state`
+  const file = `${dir}/token-${digest}.json`
+
+  const writes = []
+  for (let i = 0; i < json.length;) {
+    let end = Math.min(i + COMMAND_BUDGET, json.length)
+    const last = json.charCodeAt(end - 1)
+    if (end < json.length && last >= 0xd800 && last <= 0xdbff) end--
+    const chunk = `printf '%s' '${json.slice(i, end)}'`
+    writes.push(i === 0 ? `mkdir -p "${dir}" && ${chunk} > "${file}"` : `${chunk} >> "${file}"`)
+    i = end
+  }
+  return { writes, command: `${cli} --digest ${digest} --json-file "${file}"; rm -f "${file}"` }
+}
+
+/**
+ * What a courier runs for one boundary entry point over these arguments, under their digest: its
+ * file writes, then its command. A boundary that carries records travels by file, because what it
+ * carries grows with what the workflow decided; every other one is a fixed-shape token on one line.
+ */
+function tripOf(name, argsObject) {
+  const cli = 'node "' + pluginRoot + '/lib/boundary.mjs" ' + name + ' --repo "' + repo +
+    '" --effort "' + effort + '" --execution "' + execution + '"'
+  if (CARRIES_RECORDS.has(name)) return viaJsonFile(cli, argsObject, repo)
+  return { writes: [], command: cli + ' --digest ' + fnv1a(canonical(argsObject)) + ' --b64 ' + base64(JSON.stringify(argsObject)) }
+}
+
 /**
  * Run one boundary entry point through a courier and believe its payload only after the digest.
  *
@@ -395,24 +441,20 @@ function withId(r) {
  * model; a program failure is not retried. What stays unbelievable is a transport failure,
  * thrown: the unit ends as a plugin fault, never a question for the user.
  */
-/** The shell command that runs one boundary entry point over these arguments, under their digest. */
-function commandOf(name, argsObject) {
-  return 'node "' + pluginRoot + '/lib/boundary.mjs" ' + name + ' --repo "' + repo +
-    '" --effort "' + effort + '" --execution "' + execution + '" --digest ' + fnv1a(canonical(argsObject)) +
-    ' --b64 ' + base64(JSON.stringify(argsObject))
-}
-
 async function boundary(name, a, ctx) {
   const pending = CARRIES_RECORDS.has(name) ? records.splice(0, records.length).map(withId) : []
   const argsObject = { ...a, ...(CARRIES_RECORDS.has(name) ? { records: pending } : {}), progress }
-  const command = commandOf(name, argsObject)
+  const { command, writes } = tripOf(name, argsObject)
+  // A token written by file is copied by the courier, and a copy that failed once is retyped by
+  // the stronger model rather than by the same one again.
+  const again = writes.length > 0 ? COURIER_UP : COURIER
 
   const plan = [COURIER]
   let why = ''
   for (let i = 0; i < plan.length; i++) {
     let held = null
     try {
-      held = await dispatch(courierPrompt(command), {
+      held = await dispatch(courierPrompt(command, writes), {
         agentType: 'agentics:courier', schema: CARRIED, phase: ctx.phase,
         label: ctx.label + (i ? '#' + (i + 1) : ''), ...plan[i],
       }, a.node || a.target || '')
@@ -438,7 +480,7 @@ async function boundary(name, a, ctx) {
       return c.payload
     }
     why = c.why || why
-    if (c.retry === 'again' && plan.length < 2) plan.push(COURIER)
+    if (c.retry === 'again' && plan.length < 2) plan.push(again)
     else if (c.retry === 'stronger' && !plan.includes(COURIER_UP)) plan.push(COURIER_UP)
   }
   records.unshift(...pending)
@@ -1420,7 +1462,8 @@ async function finish(checkpoint) {
     why = err && err.message
   }
   failedChannels.push('postflight')
-  const command = commandOf('postflight', { records: records.splice(0, records.length).map(withId), progress: false })
+  const trip = tripOf('postflight', { records: records.splice(0, records.length).map(withId), progress: false })
+  const command = [...trip.writes, trip.command].join('\n')
   note('postflight could not be carried: ' + why + ' — the last decisions of this invocation are not recorded until the session runs coverage.resumable.postflight, as it stands')
   return result(checkpoint, null, command)
 }

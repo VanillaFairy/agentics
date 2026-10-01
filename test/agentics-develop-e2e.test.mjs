@@ -64,8 +64,13 @@ function agents(calls, jobs) {
     const type = String(opts.agentType || '').replace('agentics:', '')
     calls.push(opts.label)
     if (type === 'courier') {
-      const command = /^(node "[^\n]+)$/m.exec(prompt)[1]
-      const run = spawnSync('sh', ['-c', command], { encoding: 'utf8', env: { ...process.env, AGENTICS_INLINE_JOBS: jobs === 'inline' ? '1' : '' } })
+      // The file writes a token travels by, in order, then the command that reads it.
+      const steps = [...prompt.matchAll(/^((?:mkdir -p "|printf '%s' |node ")[^\n]+)$/gm)].map((m) => m[1])
+      let run = null
+      for (const step of steps) {
+        run = spawnSync('sh', ['-c', step], { encoding: 'utf8', env: { ...process.env, AGENTICS_INLINE_JOBS: jobs === 'inline' ? '1' : '' } })
+        if (run.status !== 0) break
+      }
       return { stop_reason: run.status === 0 ? 'carried' : 'failed', payload_raw: run.stdout.trim(), task_tools: 'skipped', notes: run.stderr }
     }
     if (type === 'implementer' || type === 'test-author') {

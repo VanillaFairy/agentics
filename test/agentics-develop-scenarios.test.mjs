@@ -382,6 +382,32 @@ test('the cost report counts every dispatch, and the records carry a dispatch li
   assert.ok(recordsOf(sim, 'dispatch').length >= prompts.length - 1)
 })
 
+test('records travel by file in lines under cmd.exe\'s cap, and a trip whose answer was lost lands each record once', async () => {
+  // Long ids make every record long, so one tick's records outgrow a single write.
+  const sim = simulate([composite('.'), ...Array.from({ length: 12 }, (_, i) => row('l' + i + '-' + 'x'.repeat(200)))])
+  // The boundary ran and wrote its records; the courier then gave up before pasting its answer.
+  const lostAnswer = (prompt, opts, s) => {
+    s.courier(prompt)
+    return { stop_reason: 'failed', payload_raw: '', task_tools: 'skipped', notes: 'the shell hung up' }
+  }
+  const { result, prompts } = await run(sim, { 'schedule#2': lostAnswer })
+  assert.equal(result.coverage.complete, true, JSON.stringify(result.coverage))
+
+  const carriers = prompts.filter((p) => /^(schedule|postflight)/.test(p.opts.label))
+  assert.ok(carriers.every((p) => /--json-file /.test(p.prompt) && !/--b64 /.test(p.prompt)), 'every record-carrying trip travels by file')
+  assert.ok(carriers.some((p) => (p.prompt.match(/printf '%s'/g) || []).length > 1), 'a token larger than one write spans several')
+  for (const p of prompts) {
+    for (const line of p.prompt.split('\n')) assert.ok(line.length < 8191, p.opts.label + ' hands a courier a ' + line.length + '-character line')
+  }
+  assert.equal(prompts.find((p) => p.opts.label === 'schedule#2#2').opts.model, 'sonnet', 'a copy that failed goes to the stronger model')
+
+  const sent = sim.records.map((r) => r.rid)
+  assert.ok(sent.length > new Set(sent).size, 'the retried trip sent its records again')
+  const landed = [...sim.events, ...sim.state].map((e) => e.rid).filter(Boolean)
+  assert.equal(landed.length, new Set(landed).size, 'no record landed twice')
+  assert.deepEqual(new Set(landed), new Set(sent), 'and none was lost')
+})
+
 test('bad input returns a coverage block, never undefined', async () => {
   const { result } = await runWorkflow(WF, { args: { repo: '/r' }, agent: () => { throw new Error('none') } })
   assert.equal(result.checkpoint.reason, 'bad_input')

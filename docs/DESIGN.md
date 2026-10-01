@@ -1704,8 +1704,8 @@ disagree about it.
 
 | role | does | cannot | tools |
 |---|---|---|---|
-| scout, historian, doc-researcher | find, to exhaustion | conclude | search tools; historian read-only git; doc-researcher the web |
-| analyst | judge what it is handed | search | `Read` only |
+| scout, historian, doc-researcher | find, to exhaustion | conclude | search tools; historian read-only git; doc-researcher the web; write (the return file its dispatch names) |
+| analyst | judge what it is handed | search | read; write (the return file its dispatch names) |
 | ruler | rule whether a change — drift, a moved base, an edited spec — moved the premises of the nodes it reaches | search, touch the work | read; write (the ruling files its dispatch names) |
 | planner | write the spec of a folder develop owns (an `author: planner` sub-effort, a promoted task, its own folder replanned) and settle its autonomous review | state a decision, implement | read, search, shell (for `lib/spec.mjs check`), write |
 | implementer | code one leaf as a focused series, or its fix round | leave its locus, amend, merge, certify | read, edit, shell |
@@ -1724,10 +1724,12 @@ Agents with a shell are restrained by their definitions and audited post hoc (th
 commit-series check): the criterion is zero breaches surviving to review. The allowlists are pinned
 by `test/agent-allowlists.test.mjs`.
 
-Two host facts shape the roster. **An agent must carry at least one tool**, so the analyst — which
-the design wants tool-less — keeps `Read` alone: it cannot search, and it opens only what it was
-pointed at. **A subagent may not be granted task tools**; the courier lists them, and when they are
-absent it says so and the session takes the `--no-progress` path.
+The evidence agents — scout, historian, doc-researcher, analyst — carry `Write` for one file: the
+return file a dispatch names, where the agent writes its full return as JSON for `lib/` to read
+(GP6). Their definitions share the `return-file` block, which confines `Write` to that file; nothing
+else does. The analyst holds `Read` and `Write` and nothing that searches, so it opens only what it
+was pointed at. **A subagent may not be granted task tools**; the courier lists them, and when
+they are absent it says so and the session takes the `--no-progress` path.
 
 ---
 

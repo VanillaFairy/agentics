@@ -34,16 +34,19 @@ const AGENTS = new URL('../agents/', import.meta.url)
  * file without reading it.
  */
 const ALLOWLISTS = {
-  // `Read` alone: the host refuses an agent with no tools, and an analyst judges what it is handed
-  // — without Grep or Glob it cannot widen the evidence base, which is the point of the role.
-  analyst: ['Read'],
+  // An analyst judges what it is handed — without Grep or Glob it cannot widen the evidence base,
+  // which is the point of the role. Write only for the return file its dispatch names, which lib
+  // reads so no courier retypes what it judged.
+  analyst: ['Read', 'Write'],
   // Writes only its report file; it declares mutations and a script applies them.
   auditor: ['Glob', 'Grep', 'Read', 'Write'],
   // Runs one lib command and pastes stdout; the task tools move the launching session's todo
   // list. No Read: a courier that could open files would be tempted to tidy what it carries.
   courier: ['Bash', 'TaskCreate', 'TaskList', 'TaskUpdate'],
-  'doc-researcher': ['Glob', 'Grep', 'Read', 'WebFetch', 'WebSearch'],
-  historian: ['Bash', 'Grep', 'Read'],
+  // The evidence agents below write their full return to the file their dispatch names, for lib to
+  // read; Write is for that file alone.
+  'doc-researcher': ['Glob', 'Grep', 'Read', 'WebFetch', 'WebSearch', 'Write'],
+  historian: ['Bash', 'Grep', 'Read', 'Write'],
   implementer: ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write'],
   investigator: ['Bash', 'Glob', 'Grep', 'Read'],
   planner: ['Bash', 'Glob', 'Grep', 'Read', 'Write'],
@@ -52,7 +55,7 @@ const ALLOWLISTS = {
   // Judges what it is handed, like the analyst; Write only for the ruling files its dispatch
   // names, where each ruling goes in full so no courier retypes it.
   ruler: ['Read', 'Write'],
-  scout: ['Glob', 'Grep', 'Read'],
+  scout: ['Glob', 'Grep', 'Read', 'Write'],
   'test-author': ['Edit', 'Glob', 'Grep', 'Read', 'Write'],
 }
 

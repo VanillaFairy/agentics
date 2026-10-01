@@ -135,6 +135,15 @@ test('atomicity: overlapping loci need an ordering, and a coupled pair is exempt
   assert.deepEqual(checkAtomicity(nodes, 'e'), [])
 })
 
+test('atomicity: a directory entry overlaps every file under it, and a shared directory couples', () => {
+  const nodes = tree(root({ shared: ['config/'] }),
+    leaf('a', { locus: ['tests/unit/'] }), leaf('b', { locus: ['tests/unit/x.test.ts'] }),
+    leaf('c', { locus: ['tests/unit-old/x.test.ts'] }), leaf('e', { locus: ['config/app.json'] }))
+  assert.deepEqual(checkAtomicity(nodes, 'b').map((f) => f.condition), [3])
+  assert.deepEqual(checkAtomicity(nodes, 'c'), [], 'a sibling that only shares the prefix is not under it')
+  assert.equal(coupledOf(nodes, 'e'), true)
+})
+
 test('atomicity: fit is computed from file sizes against the model budget', () => {
   const r = repo()
   mkdirSync(join(r, 'src'))

@@ -116,6 +116,23 @@ test('a shell-less author: its locus files are committed, a stray file is revert
   assert.match(readFileSync(round2.brief_path, 'utf8'), /## Fix round 2[\s\S]*\[verification\][\s\S]*stray\.txt/, 'the next round\'s brief carries the failure and its evidence from disk')
 })
 
+test('a shell-less author whose locus is a directory commits the files under it, none reverted', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(), leaf('t', { rigor: 'tests-only', locus: ['test/'] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const open = B(r, 'leaf-open', { node: 't', role: 'test-author', round: 1 })
+  writeFileSync(join(open.worktree, 'test', 'more.test.mjs'), "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { add } from '../src/add.mjs'\ntest('adds negatives', () => assert.equal(add(-1, -2), -3))\n")
+  writeFileSync(open.report_path, [
+    '```agentics-commit', 'Test add with negatives', '```',
+    '```agentics-mutations', JSON.stringify([{ file: 'src/add.mjs', find: 'a + b', replace: 'a - b', expect_failing: ['test/more.test.mjs'] }]), '```',
+  ].join('\n'))
+  const close = B(r, 'leaf-close', { node: 't', role: 'test-author', round: 1, base_sha: open.base_sha })
+  assert.equal(close.committed, true)
+  const { measurement } = JSON.parse(readFileSync(close.record, 'utf8'))
+  assert.deepEqual(measurement.series_findings, [])
+  assert.equal(close.decision.next, 'approve', JSON.stringify(close.decision))
+})
+
 test('a red/green cycle: green is cut from red, measured on red\'s tests, and the pair merges through its tip', () => {
   const r = repo()
   seedTree(r, 'e1', [root(),

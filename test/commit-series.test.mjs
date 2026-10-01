@@ -376,6 +376,26 @@ test('a locus entry that merely starts with the touched path does not cover it',
   assert.deepEqual(idsOf(analyzeSeries(commits, LOCUS)), [`${SHA_A} locus-breach true`])
 })
 
+test('a locus entry ending in / holds every file under it, at any depth', () => {
+  // Spec check and compile accept a directory entry; read as an exact path it matched nothing
+  // under it, and every commit touching one was a blocking breach no commit could avoid.
+  const commits = [commit(SHA_A, 'pass the new id', ['tests/unit/foundations/schemes.test.ts', 'tests/unit/foundations/deep/a.test.ts'])]
+
+  assert.deepEqual(analyzeSeries(commits, ['tests/unit/foundations/']), [])
+})
+
+test('a directory entry does not hold a sibling that only shares its prefix', () => {
+  const commits = [commit(SHA_A, 'pass the new id', ['tests/unit/foundations-old/a.test.ts'])]
+
+  assert.deepEqual(idsOf(analyzeSeries(commits, ['tests/unit/foundations/'])), [`${SHA_A} locus-breach true`])
+})
+
+test('an entry without the trailing / is a file, never a directory', () => {
+  const commits = [commit(SHA_A, 'pass the new id', ['tests/unit/foundations/a.test.ts'])]
+
+  assert.deepEqual(idsOf(analyzeSeries(commits, ['tests/unit/foundations'])), [`${SHA_A} locus-breach true`])
+})
+
 // --- an empty locus permits nothing ------------------------------------------------------
 
 /** Two ordinary in-tree files, judged against a locus that declares nothing at all. */

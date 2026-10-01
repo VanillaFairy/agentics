@@ -289,3 +289,10 @@ test('a red leaf is judged on its own failures: a baseline failure outside its l
   const measured = m({ ...red, failing_tests: [...red.failing_tests, { file: 'test/old.test.mjs', id: 'old' }], baseline_failing: [{ file: 'test/old.test.mjs', id: 'old' }] })
   assert.deepEqual(measurementOk(measured, LEAVES.red).failures, [])
 })
+
+test('a red leaf whose locus is a directory owns the failures under it, and only those', () => {
+  const dirRed = leaf({ rigor: 'tdd-pair', role: 'red', locus: ['test/'] })
+  assert.deepEqual(measurementOk(m(red), dirRed).failures, [])
+  const stray = m({ ...red, failing_tests: [...red.failing_tests, { file: 'tests-old/y.test.mjs', id: 'y' }] })
+  assert.deepEqual(measurementOk(stray, dirRed).failures.map((f) => f.check), ['suite'])
+})

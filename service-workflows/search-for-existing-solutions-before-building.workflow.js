@@ -1,12 +1,12 @@
 export const meta = {
   name: 'search-for-existing-solutions-before-building',
-  description: 'Before building something, find what already exists that does it: libraries, tools, standards, services, and whatever this repository already depends on. Returns candidates with licence, version and fit facts plus a coverage block — never a recommendation.',
+  description: 'Before building something, find what already exists that does it: libraries, tools, standards, services, and whatever this repository already depends on. Returns a summary file of the candidates with licence, version, fit facts and computed verdicts, plus a coverage block — never a recommendation.',
   whenToUse: 'The build-or-adopt evidence phase. Called by the design skill before approaches are drawn up, and invocable on its own. Distinct from gather-evidence-without-concluding, which searches the code you already have; this one searches the world outside it.',
   phases: [
     { title: 'Frame', detail: 'analyst: the capability, its hard constraints, and what disqualifies a candidate' },
     { title: 'Search', detail: 'one researcher per ecosystem angle, plus a scout over your existing dependencies' },
     { title: 'Assess', detail: 'analyst: dedupe, then rule each candidate against the declared disqualifiers' },
-    { title: 'Record', detail: 'candidates and what the repository already carries, into the project-wide evidence pool' },
+    { title: 'Record', detail: 'lib decides which candidates are viable, records them and what the repository already carries, and writes one summary' },
   ],
 }
 
@@ -27,15 +27,19 @@ export const meta = {
 // It recommends nothing. Licence tolerance, dependency appetite and "we want to own this"
 // are the caller's to weigh; this returns the facts they weigh.
 
-// ---------------------------------------------------------------- schemas
+/// ---------------------------------------------------------------- schemas
 //
 // No minItems / maxItems / minLength / maxLength anywhere: structured outputs do not support
 // them, so a bound written here would silently do nothing or turn a good result into a
 // dropped one. Every bound lives in the prompt as behaviour and is enforced in JS.
 //
-// No verdict booleans. Whether a candidate is viable is COMPUTED below from the
-// disqualifiers it was measured against — the moment a schema offers `suitable: boolean`,
-// the decision migrates out of JS and into a model's taste.
+// No verdict booleans. Whether a candidate is viable is COMPUTED by lib/evidence.mjs from the
+// disqualifiers it was measured against — the moment a schema offers `suitable: boolean`, the
+// decision migrates out of code and into a model's taste.
+//
+// Every agent here writes its full return to the file its dispatch names, and lib reads those
+// files (docs/DESIGN.md#gp6--couriers-carry-handles-data-stays-where-its-author-wrote-it); what
+// comes back to this script is what it branches on and what its coverage block says.
 //
 // Field semantics go in `description`, never in a comment: comments are stripped before a
 // schema reaches the model, so a contract written only in a comment binds nobody.
@@ -45,242 +49,118 @@ export const meta = {
 // point of the workflow: "I searched npm and nothing there does this" is a FINDING that
 // supports building. "I never searched npm" is a HOLE that supports nothing at all.
 // Every coverage field is ALWAYS present — an empty string is the correct value for "nothing
-// to carry", and each description says so outright. Conditional-sounding wording ("must be
-// non-empty whenever...") read to an exhausted agent as "must be non-empty", so it omitted
-// the field it had nothing for, tripped required-field validation, re-submitted the same
-// shape until the platform killed it, and a finished search was dropped whole.
-const coverageFields = (searchedDescription) => ({
-  searched: {
-    type: 'array',
-    items: { type: 'string' },
-    description: searchedDescription +
-      ' Always include this field. It is the evidence trail behind stop_reason: without it ' +
-      'your completeness claim is an unverifiable self-report, and nobody can resume where ' +
-      'you stopped.',
-  },
+// to carry", and each description says so outright: an omitted field fails validation and a
+// finished search is dropped whole.
+const coverageFields = () => ({
   stop_reason: {
     type: 'string',
     enum: ['exhausted', 'unfinished', 'stuck'],
     description:
-      'Always include this field. "exhausted" — you covered the surface you were asked to ' +
-      'cover and can name it. "unfinished" — one pass could not cover the surface; you are ' +
-      'handing back an honest partial and the caller will resume you until the search is ' +
-      'done. "stuck" — you could not find a way forward. Cost, effort already spent, and ' +
-      'the size of your report are never reasons to stop: never stop because the work ' +
-      'feels large. Only "exhausted" counts as complete, so claim it only when it is true. ' +
-      'The other two are not failures: the caller will resume you.',
+      'Always include this field, the same value as in your return file. "exhausted" — you ' +
+      'covered the surface you were asked to cover and can name it. "unfinished" — one pass could ' +
+      'not cover the surface; the caller will resume you. "stuck" — you could not find a way ' +
+      'forward. Cost and effort are never reasons to stop. Only "exhausted" counts as complete.',
   },
   no_match: {
     type: 'string',
     description:
-      'What you looked for and genuinely did not find. This is a FINDING, not a gap — here ' +
-      'it is often the finding that decides the question, because it is what says nothing ' +
-      'off the shelf does this. Name the surface it is true of ("no maintained Rust crate ' +
-      'on crates.io"), never just "nothing found". Send an empty string — never omit the ' +
-      'field — when everything you looked for was there.',
+      'What you looked for and genuinely did not find, the same text as in your return file — a ' +
+      'FINDING, not a gap. Name the surface it is true of ("no maintained Rust crate on ' +
+      'crates.io"). Send an empty string — never omit the field — when everything you looked for was there.',
   },
   not_reached: {
     type: 'string',
     description:
-      'What you never searched at all, named specifically enough for someone else to pick ' +
-      'it up without redoing your work. Send an empty string when stop_reason is ' +
-      '"exhausted"; otherwise it must name what remains. Never merge this with no_match: ' +
-      'an unsearched ecosystem reported as an empty one is how a team ends up rebuilding ' +
-      'something that already exists.',
+      'What you never searched at all, the same text as in your return file, named specifically ' +
+      'enough for someone else to pick it up. An empty string when stop_reason is "exhausted". ' +
+      'Never merge this with no_match.',
   },
 })
 
-// Only the payload field goes in `required`: the coverage fields are demanded by their
-// descriptions and normalized in JS after the call, because a required field with
-// conditional semantics is a validation deadlock that drops a finished search whole —
-// see the same note in gather-evidence-without-concluding, where it was observed in the field.
+const coverageShape = '"searched": ["<every query you ran and every URL or path you actually read>"], ' +
+  '"no_match": "<what you looked for and genuinely did not find; empty when none>", ' +
+  '"not_reached": "<what you never searched; empty when exhausted>", "stop_reason": "exhausted|unfinished|stuck"'
 
 const FRAME = {
   type: 'object',
   additionalProperties: false,
-  required: ['capability_line', 'hard_constraints', 'disqualifiers', 'angles', 'repo_question'],
+  required: ['angles'],
   properties: {
-    capability_line: {
-      type: 'string',
-      description:
-        'The capability in one sentence, stated so that any implementation of it would ' +
-        'qualify — no library name, no architecture, no chosen approach. "Rate-limit ' +
-        'inbound HTTP requests per API key" admits candidates; "a token-bucket middleware ' +
-        'struct" has already picked one and will find only itself.',
-    },
-    hard_constraints: {
-      type: 'array',
-      items: { type: 'string' },
-      description:
-        'What any candidate must satisfy to be usable here at all: language and runtime, ' +
-        'platform, licence tolerance, offline or air-gapped operation, existing framework it ' +
-        'must sit inside. Take these from the caller notes and from a manifest at a repository ' +
-        'root. Do not invent preferences the caller never stated.',
-    },
-    disqualifiers: {
-      type: 'array',
-      items: { type: 'string' },
-      description:
-        'Falsifiable statements that rule a candidate OUT, each checkable against facts a ' +
-        'researcher can report — "GPL-licensed", "no release in over two years", "Python ' +
-        'only", "requires a hosted service". These are what the assessment stage measures ' +
-        'against, so a vague one ("poor quality") produces a vague verdict.',
-    },
     angles: {
       type: 'array',
-      description:
-        'Independent places to look, each searchable on its own with no dependency on the ' +
-        'others. Cover the ones that actually apply: the language\'s own standard library ' +
-        'first, its package registry, established standards or specifications, well-known ' +
-        'tools and services in the domain, and the framework already in use here. The ' +
-        'standard library is the angle most often skipped and most often right.',
+      description: 'The angles of your frame file, by key only.',
       items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['key', 'find'],
-        properties: {
-          key: { type: 'string', description: 'Short kebab-case identifier, unique within the frame.' },
-          find: {
-            type: 'string',
-            description: 'A precise instruction for a documentation researcher: what to look for and where.',
-          },
-        },
+        type: 'object', additionalProperties: false, required: ['key'],
+        properties: { key: { type: 'string', description: 'The angle\'s key, as in the frame file.' } },
       },
-    },
-    repo_question: {
-      type: 'string',
-      description:
-        'What a read-only code scout should look for in the repository itself: a declared ' +
-        'dependency that already provides this, vendored code, or a partial implementation ' +
-        'somebody started. A capability you already depend on beats every candidate on this ' +
-        'list, and it is the cheapest thing here to check.',
     },
   },
 }
+
+const FRAME_FILE = '{"capability": "<the CAPABILITY above, copied exactly>", ' +
+  '"capability_line": "<the capability in one sentence, stated so that any implementation of it would qualify — no ' +
+  'library name, no architecture, no chosen approach>", ' +
+  '"hard_constraints": ["<what any candidate must satisfy to be usable here at all, from the caller\'s words and a ' +
+  'manifest at a repository root; no preference the caller never stated>"], ' +
+  '"disqualifiers": ["<a falsifiable statement that rules a candidate OUT, checkable against a fact a researcher ' +
+  'can report: \'GPL-licensed\', \'no release in over two years\'>"], ' +
+  '"angles": [{"key": "<short kebab-case, unique>", "find": "<a precise instruction for a documentation ' +
+  'researcher: what to look for and where>"}], ' +
+  '"repo_question": "<what a read-only code scout should look for in the repository itself: a declared dependency, ' +
+  'vendored code, or a partial implementation>"}'
 
 const CANDIDATES = {
   type: 'object',
   additionalProperties: false,
-  required: ['candidates'],
+  required: ['candidates_n'],
   properties: {
-    candidates: {
-      type: 'array',
-      description:
-        'One entry per existing solution you found. Report what the primary source says; ' +
-        'report nothing it does not. An empty list is a legitimate and valuable answer when ' +
-        'your search was genuinely exhausted.',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['name', 'source_url', 'what_it_is', 'latest_version', 'license',
-                   'maintenance', 'covers', 'does_not_cover'],
-        properties: {
-          name: { type: 'string', description: 'The package, tool, standard or service, as its own docs spell it.' },
-          source_url: { type: 'string', description: 'The primary source you read — its docs, repository, or registry page.' },
-          what_it_is: { type: 'string', description: 'One line: what it does, in its own terms.' },
-          latest_version: {
-            type: 'string',
-            description:
-              'The current released version, read from the registry or release page today — ' +
-              'never from memory, which is stale by construction. Empty string when the ' +
-              'thing is not versioned (a standard, a service).',
-          },
-          license: { type: 'string', description: 'The licence as stated by the project. Empty string when you could not find it stated.' },
-          maintenance: {
-            type: 'string',
-            description:
-              'Observed signals of whether it is alive: date of the most recent release or ' +
-              'commit, and anything the project itself says (archived, deprecated, seeking ' +
-              'maintainers). Facts with dates, not an impression of health.',
-          },
-          covers: { type: 'string', description: 'Which part of the requested capability it does provide.' },
-          does_not_cover: {
-            type: 'string',
-            description:
-              'Which part it does NOT provide, against the capability you were given. This ' +
-              'is the field that decides adoption, and the one a summary always drops — a ' +
-              'candidate with an honest gap is far more useful than one described as a ' +
-              'perfect fit. Write "nothing identified" only if you actually checked.',
-          },
-        },
-      },
-    },
-    ...coverageFields('Every query you ran and every URL you actually read.'),
+    candidates_n: { type: 'integer', description: 'How many candidates your return file holds.' },
+    ...coverageFields(),
   },
 }
+
+const CANDIDATES_FILE = '{"candidates": [{"name": "<as its own docs spell it>", "source_url": "<the primary source ' +
+  'you read>", "what_it_is": "<one line, in its own terms>", "latest_version": "<read from the registry or release ' +
+  'page today; empty when unversioned>", "license": "<as the project states it; empty when not stated>", ' +
+  '"maintenance": "<observed signals with dates: latest release or commit, archived, deprecated>", "covers": ' +
+  '"<which part of the capability it provides>", "does_not_cover": "<which part it does NOT — \'nothing identified\' ' +
+  'only if you checked>"}], ' + coverageShape + '}'
 
 const PRESENT = {
   type: 'object',
   additionalProperties: false,
-  required: ['hits'],
+  required: ['hits_n'],
   properties: {
-    hits: {
-      type: 'array',
-      description:
-        'One entry per place this repository already carries some of this capability: a ' +
-        'dependency declared in a manifest, vendored code, or a partial implementation. ' +
-        'Locations only — no judgment about whether it is good enough.',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['path', 'line', 'note'],
-        properties: {
-          path: { type: 'string', description: 'Path to the file containing the hit.' },
-          line: { type: 'integer', description: 'Line number of the hit.' },
-          note: { type: 'string', description: 'What is at that line, in one line.' },
-        },
-      },
-    },
-    ...coverageFields('Every grep pattern, glob, and path you actually searched.'),
+    hits_n: { type: 'integer', description: 'How many locations your return file holds.' },
+    ...coverageFields(),
   },
 }
+
+const PRESENT_FILE = '{"hits": [{"path": "<repo-relative>", "line": <n>, "note": "<what is at that line, in one ' +
+  'line>"}], ' + coverageShape + '}'
 
 const ASSESSMENT = {
   type: 'object',
   additionalProperties: false,
-  required: ['assessed', 'notes'],
+  required: ['assessed_n'],
+  properties: { assessed_n: { type: 'integer', description: 'How many candidates your return file rules on.' } },
+}
+
+const ASSESSMENT_FILE = '{"assessed": [{"name": "<as the researchers reported it>", "source_url": "", "what_it_is": "", ' +
+  '"latest_version": "", "license": "", "maintenance": "", "covers": "", "does_not_cover": "", ' +
+  '"disqualifiers_hit": ["<each disqualifier from the frame file it actually violates, copied VERBATIM>"]}], ' +
+  '"notes": "<what the facts could not settle: a licence nobody states, two candidates you suspect are one project>"}'
+
+// What a courier hands back: one command's stdout, byte-exact, in one string. The shape of
+// `execute-approved-plan-in-worktrees`'s CARRIED, copied rather than shared because a workflow script cannot
+// import. This workflow moves no todos, so the two todo fields are left out of its shape.
+const CARRIED = {
+  type: 'object', additionalProperties: false,
+  required: ['stop_reason', 'payload_raw', 'notes'],
   properties: {
-    assessed: {
-      type: 'array',
-      description:
-        'Every distinct candidate you were handed, merged across the angles that found it, ' +
-        'and measured against the disqualifiers. Carry all of them, including the ones that ' +
-        'fail: a caller who cannot see what was ruled out and why has to redo the search to ' +
-        'check your work.',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['name', 'source_url', 'what_it_is', 'latest_version', 'license',
-                   'maintenance', 'covers', 'does_not_cover', 'disqualifiers_hit'],
-        properties: {
-          name: { type: 'string', description: 'The candidate name, as the researchers reported it.' },
-          source_url: { type: 'string' },
-          what_it_is: { type: 'string' },
-          latest_version: { type: 'string' },
-          license: { type: 'string' },
-          maintenance: { type: 'string' },
-          covers: { type: 'string' },
-          does_not_cover: { type: 'string' },
-          disqualifiers_hit: {
-            type: 'array',
-            items: { type: 'string' },
-            description:
-              'Copy, VERBATIM, each disqualifier this candidate actually violates, and say ' +
-              'nothing here you cannot point at a reported fact for. An empty array means ' +
-              'you measured it against every disqualifier and it violated none — it does ' +
-              'NOT mean you recommend it, and it is not yours to recommend. Never add a ' +
-              'disqualifier that was not on the list you were given.',
-          },
-        },
-      },
-    },
-    notes: {
-      type: 'string',
-      description:
-        'What the facts could not settle: a licence nobody states, a maintenance signal you ' +
-        'could not read, two candidates you suspect are the same project under two names. ' +
-        'Uncertainty belongs here, never smoothed into the rows above.',
-    },
+    stop_reason: { type: 'string', enum: ['carried', 'failed'] },
+    payload_raw: { type: 'string' },
+    notes: { type: 'string' },
   },
 }
 
@@ -313,9 +193,8 @@ function resolvePluginRoot() {
 const pluginRoot = resolvePluginRoot()
 
 // The intelligence dial — the same three positions every skill in this plugin passes, because
-// they share one derivation rule (fable → max, opus → normal, sonnet and below → low) and a
-// sonnet session therefore sends `low` here as readily as it sends it to develop. The judging
-// tier in this workflow is the analyst that frames the capability and the ones that assess
+// they share one derivation rule (fable → max, opus → normal, sonnet and below → low). The judging
+// tier in this workflow is the analyst that frames the capability and the one that assesses
 // each candidate.
 const JUDGE_TIER = { low: { model: 'sonnet' }, normal: { model: 'opus' }, max: { model: 'opus' } }
 const intelligence = Object.hasOwn(JUDGE_TIER, input.intelligence) ? input.intelligence : 'normal'
@@ -331,10 +210,9 @@ const tiered = (tier, base) => ({
 
 // ---------------------------------------------------------------- the transport
 //
-// A payload computed on disk arrives through a model, so it is re-digested here before a field of
-// it is believed; a location list this script mints travels as plain text on one argv slot with
-// its digest beside it. The functions are copies of `lib/plan-digest.mjs`'s and
-// `gather-evidence-without-concluding`'s: scripts cannot import, and the suite pins them together.
+// The one courier here carries handles both ways: the return files' paths in, counts and paths
+// back, re-digested before a field of it is believed. canonical and fnv1a are copies of
+// `lib/plan-digest.mjs`'s: scripts cannot import, and the suite pins them together.
 function canonical(value) {
   if (value === undefined) return 'null'
   if (value === null || typeof value !== 'object') return JSON.stringify(value)
@@ -354,23 +232,6 @@ function fnv1a(text) {
   }
 
   return (hash >>> 0).toString(16).padStart(8, '0')
-}
-
-// What a courier hands back: one command's stdout, byte-exact, in one string. The shape of
-// `execute-approved-plan-in-worktrees`'s CARRIED, copied rather than shared because a workflow script cannot
-// import. This workflow moves no todos, so the two todo fields are left out of its shape.
-//
-// `failed` is the courier unable to run the command AT ALL — node missing, the path unreadable,
-// the shell refusing. A program that ran and refused prints a payload saying so, which is read
-// as the program's answer rather than as a transport failure.
-const CARRIED = {
-  type: 'object', additionalProperties: false,
-  required: ['stop_reason', 'payload_raw', 'notes'],
-  properties: {
-    stop_reason: { type: 'string', enum: ['carried', 'failed'] },
-    payload_raw: { type: 'string' },
-    notes: { type: 'string' },
-  },
 }
 
 /** What a courier carried back: the payload, or why it cannot be believed and how to retry. */
@@ -409,17 +270,12 @@ function carriedRead(held) {
 
 const COURIER = { model: 'haiku', effort: 'low' }
 const COURIER_UP = { model: 'sonnet', effort: 'low' }
-// The refusals that mean the token was damaged on its way in, not that the program failed.
-const DAMAGED_IN = ['digest_mismatch', 'args_unreadable']
+// The refusal that means a handle was damaged on its way in, not that the program failed.
+const DAMAGED_IN = ['args_unreadable']
 
-function courierPrompt(command, writes) {
-  const steps = writes.length === 0
-    ? 'Run exactly this one command, unchanged, and put its entire stdout in payload_raw:\n\n' + command
-    : 'Run these commands in order, each unchanged and in its own Bash call; stop at the first that ' +
-      'fails. The ones before the last only write a file. Put the last one\'s entire stdout in ' +
-      'payload_raw:\n\n' + [...writes, command].join('\n\n')
-  return steps + '\n\n' +
-    'Move no todos.' +
+function courierPrompt(command) {
+  return 'Run exactly this one command, unchanged, and put its entire stdout in payload_raw:\n\n' + command +
+    '\n\nMove no todos.' +
     (pluginRoot === SHELL_ROOT
       ? '\nIf ' + SHELL_ROOT + ' is empty in your shell, do not guess a path: set stop_reason ' +
         '"failed" and say so.'
@@ -429,23 +285,18 @@ function courierPrompt(command, writes) {
 /**
  * Carry one command's payload, believed only after its digest.
  *
- * Retries are sized to what was observed, as `execute-approved-plan-in-worktrees`'s boundaries size them: a courier
- * that returned nothing or could not run the command is run again once; a payload damaged in
- * transit buys one refetch on a stronger model; a token the program refused as damaged on its way
- * IN is copied again by the stronger model; a program failure is not retried. What stays unbelievable comes back as
- * `{payload: null, why}` — every carry in this workflow is a side channel with a fallback, so
- * none of them may throw. `writes` are the file writes a token too long for one argv slot
- * travels by, run by the same courier before `command`.
+ * Retries are sized to what was observed, as `execute-approved-plan-in-worktrees`'s boundaries
+ * size them: a courier that returned nothing or could not run the command is run again once; a
+ * payload damaged in transit buys one refetch on a stronger model, and so does a handle the
+ * program refused as damaged on its way in; a program failure is not retried. What stays
+ * unbelievable comes back as `{payload: null, why}`.
  */
-async function carry(command, label, phaseName, writes = []) {
+async function carry(command, label, phaseName) {
   const ladder = [COURIER]
-  // A token written by file is copied by the courier, and a copy that failed once is retyped by
-  // the stronger model rather than by the same one again.
-  const again = writes.length > 0 ? COURIER_UP : COURIER
   let why = ''
 
   for (let i = 0; i < ladder.length; i++) {
-    const held = await agent(courierPrompt(command, writes), {
+    const held = await agent(courierPrompt(command), {
       agentType: 'agentics:courier', schema: CARRIED, phase: phaseName,
       label: label + (i ? '#' + (i + 1) : ''), ...ladder[i],
     }).catch((e) => {
@@ -456,63 +307,37 @@ async function carry(command, label, phaseName, writes = []) {
     const c = carriedRead(held)
     if (c.payload) {
       const refused = c.payload.ok === false && c.payload.error
-      // A model that miscopies a token miscopies it the same way again: the copy goes to the
-      // stronger one.
       if (refused && DAMAGED_IN.includes(c.payload.error.kind) && !ladder.includes(COURIER_UP)) {
-        why = c.payload.error.message || 'the argument token was damaged on its way in'
+        why = 'a handle was damaged on its way in (' + c.payload.error.kind + ')'
         ladder.push(COURIER_UP)
         continue
       }
-      if (refused) return { payload: null, why: 'the program refused: ' + (c.payload.error.message || c.payload.error.kind) }
+      if (refused) return { payload: null, why: 'the program refused: ' + c.payload.error.kind }
       return { payload: c.payload, why: '' }
     }
 
     why = c.why || why
-    if (c.retry === 'again' && ladder.length < 2) ladder.push(again)
+    if (c.retry === 'again' && ladder.length < 2) ladder.push(COURIER)
     else if (c.retry === 'stronger' && !ladder.includes(COURIER_UP)) ladder.push(COURIER_UP)
   }
 
   return { payload: null, why }
 }
 
-// cmd.exe caps a whole command line at 8191 characters, so nothing this script hands a courier to
-// type puts more than this many on one line.
-const COMMAND_BUDGET = 6000
-
-/**
- * A token this script mints, as the courier carries it: one line of JSON written to a file under
- * `root` by single-quoted `printf` calls of at most COMMAND_BUDGET characters each, then read by
- * `cli` with `--json-file` under the token's digest and removed. `~` goes as `~t`, `\` as `~b`
- * and `'` as `~q`, so no backslash reaches the layer that decodes escapes in a Bash call and no
- * quote ends the argument (lib/store.mjs jsonFileText). Every write is a single line: the harness
- * indents each line of a computed prompt, and that indent must land before a command, never
- * inside the token. Returns the courier's writes and its one command.
- */
-function viaJsonFile(cli, token, root) {
-  const json = JSON.stringify(token).replace(/~/g, '~t').replace(/\\/g, '~b').replace(/'/g, '~q')
-  const digest = fnv1a(canonical(token))
-  const dir = `${root}/.agentics/.state`
-  const file = `${dir}/token-${digest}.json`
-
-  const writes = []
-  for (let i = 0; i < json.length;) {
-    let end = Math.min(i + COMMAND_BUDGET, json.length)
-    const last = json.charCodeAt(end - 1)
-    if (end < json.length && last >= 0xd800 && last <= 0xdbff) end--
-    const chunk = `printf '%s' '${json.slice(i, end)}'`
-    writes.push(i === 0 ? `mkdir -p "${dir}" && ${chunk} > "${file}"` : `${chunk} >> "${file}"`)
-    i = end
-  }
-  return { writes, command: `${cli} --digest ${digest} --json-file "${file}"; rm -f "${file}"` }
-}
-
 // Excerpts and efforts are per repository, so a question spanning several roots resolves against
 // the first — the repository it is anchored in, and what the recorder is told is its ground.
-// `repo` already names the repository scan's result in this file, so this stays its own name.
 const groundRepo = String(roots).split(/[,;\n]/)[0].trim() || '.'
 
-/** An item's identity, minted exactly as `lib/evidence.mjs`'s `itemId` does: a script cannot import. */
-const itemIdOf = (item) => 'I' + fnv1a(canonical({ question: item.question, topic: item.topic, claim: item.claim }))
+// An agent whose output lib/ reads writes it to a return file under the working root, named by its
+// dispatch label and the digest of what it was handed, so a retried dispatch rewrites the same file.
+const INBOX = `${groundRepo}/.agentics/.state/evidence/inbox`
+const returnFile = (label, body) => `${INBOX}/${label.replace(/[^A-Za-z0-9._-]+/g, '-')}-${fnv1a(body)}.json`
+const toFile = (body, file, shape) => body +
+  `\n\nRETURN FILE — write your full return to ${file} as one JSON object of exactly this shape:\n${shape}\n` +
+  'Then return only what your schema asks for.'
+
+// Angle keys are a model's words and become labels, so each is spelled as a slug.
+const slug = (text) => String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'angle'
 
 // ---------------------------------------------------------------- coverage
 //
@@ -540,30 +365,21 @@ function coverageOf(dropped, incomplete, failedChannels, unreached) {
   }
 }
 
+const NO_COUNTS = {
+  present: 0, candidates: 0, viable: 0, ruled_out: 0, invented: 0, lost: 0, unanchored: 0, unread: 0, unsettled: 0, present_read: 0,
+}
+
 // Every exit path returns this shape. A caller that receives `undefined` cannot tell
-// "nothing exists" from "nothing ran", and those two justify opposite decisions.
-// `items` are the pool's copy of `candidates` and `already_present`, anchored and dated: what
-// couldn't be recorded (a refusal, a dead courier) is named in `unrecorded`; what couldn't even
-// be anchored to send (no source, no line) is named in `unanchored` and never sent.
-function solutionsResult(frame, present, assessed, viable, ruledOut, coverageBlock, items, unrecorded, unanchored) {
-  return {
-    capability,
-    constraints,
-    frame,
-    already_present: present,
-    candidates: assessed,
-    viable,
-    ruled_out: ruledOut,
-    coverage: coverageBlock,
-    items,
-    unrecorded,
-    unanchored,
-  }
+// "nothing exists" from "nothing ran", and those two justify opposite decisions. `frame` and
+// `summary` are files: the frame its analyst wrote, and the one lib wrote with every candidate's
+// facts and verdict and what the repository already carries. `counts` are lib's; `items` are the
+// pool's handles for what the sweep recorded.
+function solutionsResult({ frame = '', summary = '', counts = NO_COUNTS, measured = false, items = [], recorded = false, coverageBlock }) {
+  return { capability, constraints, frame, summary, counts, measured, items, recorded, coverage: coverageBlock }
 }
 
 if (!capability.trim()) {
-  return solutionsResult(null, [], [], [], [],
-    coverageOf([], [], [], ['no capability was supplied, so nothing was searched']), [], [], [])
+  return solutionsResult({ coverageBlock: coverageOf([], [], [], ['no capability was supplied, so nothing was searched']) })
 }
 
 log(`Capability: ${capability}`)
@@ -580,10 +396,10 @@ phase('Frame')
 const constraintBlock = constraints ? `CONSTRAINTS THE CALLER STATED:\n${constraints}\n\n` : ''
 const notesBlock = notes ? `BACKGROUND SUPPLIED BY THE CALLER:\n${notes}\n\n` : ''
 
-const frame = await agent(
+const frameBody =
   `Frame a build-or-adopt search. Somebody is considering writing this themselves; your job ` +
   `is to set up the search that finds out whether they need to.\n\n` +
-  `CAPABILITY THEY ARE CONSIDERING BUILDING:\n${capability}\n\n` +
+  `CAPABILITY THEY ARE CONSIDERING BUILDING:\n${capability.trim()}\n\n` +
   `REPOSITORIES: ${roots}\n\n` +
   constraintBlock +
   notesBlock +
@@ -603,33 +419,41 @@ const frame = await agent(
   `repository to find a dependency, vendored copy, or half-built version that already ` +
   `provides some of this. Something already on the dependency list beats every candidate ` +
   `the search will turn up, and it costs one scout to check.\n\n` +
+  `Copy the CAPABILITY into the file exactly as it is written above: the store records the sweep ` +
+  `under it and checks your copy against it.\n\n` +
   `You carry Read and nothing that searches, and the searching is the scouts' and the ` +
   `researchers' after you. Where the constraints turn on what the repository is — its ` +
   `language, its runtime — you may Read a manifest at a repository root (package.json, ` +
   `pyproject.toml, Cargo.toml, go.mod) and nothing further; what you cannot tell from that ` +
-  `and the caller's words stays out of hard_constraints. Frame only.`,
+  `and the caller's words stays out of hard_constraints. Frame only.`
+const frameFile = returnFile('frame', frameBody)
+
+const framed = await agent(toFile(frameBody, frameFile, FRAME_FILE),
   { agentType: 'agentics:analyst', schema: FRAME, label: 'frame', ...tiered(judge, 'medium') },
 ).catch((e) => {
   log(`WARNING: framing failed: ${e && e.message}`)
   return null
 })
 
-if (!frame || !frame.angles || frame.angles.length === 0) {
+const framedAngles = framed && Array.isArray(framed.angles) ? framed.angles.filter((a) => a && a.key) : []
+if (framedAngles.length === 0) {
   log('No search angles were produced, so nothing was searched.')
-  return solutionsResult(frame || null, [], [], [], [],
-    coverageOf([], [], ['frame'],
+  return solutionsResult({
+    frame: framed ? frameFile : '',
+    coverageBlock: coverageOf([], [], ['frame'],
       ['framing produced no search angles, so no ecosystem was searched and this result ' +
-       'says nothing about whether an existing solution exists']), [], [], [])
+       'says nothing about whether an existing solution exists']),
+  })
 }
 
-const angles = frame.angles.slice(0, maxAngles)
+const angles = framedAngles.slice(0, maxAngles).map((a) => ({ key: slug(a.key), frameKey: String(a.key) }))
 
-for (const extra of frame.angles.slice(maxAngles)) {
-  dropped.push(extra.key)
-  log(`Framing returned ${frame.angles.length} angles; keeping ${maxAngles}, dropping: ${extra.key}`)
+for (const extra of framedAngles.slice(maxAngles)) {
+  dropped.push(slug(extra.key))
+  log(`Framing returned ${framedAngles.length} angles; keeping ${maxAngles}, dropping: ${slug(extra.key)}`)
 }
 
-log(`Frame: ${angles.length} angle(s), ${(frame.disqualifiers || []).length} disqualifier(s).`)
+log(`Frame: ${angles.length} angle(s).`)
 
 // ---------------------------------------------------------------- 2. search
 //
@@ -639,67 +463,59 @@ log(`Frame: ${angles.length} angle(s), ${(frame.disqualifiers || []).length} dis
 
 phase('Search')
 
-const constraintLine = (frame.hard_constraints || []).join('\n')
-
 // IRON LAW §3: an unexhausted search is RESUMED, never reported as a result. Every exit
 // returns an object, and every incomplete exit records the angle — because here, more than
 // anywhere, an interrupted search that reads as a finished one licenses the wrong decision.
 //
 // No round counter ends this loop (§1): it runs until the angle is exhausted, dead-ends
-// without naming what is left, errors out, or a round covers no new ground — the observable
-// form of "stuck". Progress is judged on evidence actually gained (new candidates or new
-// searched surface, both deduplicated), never on the agent's account of itself: a round
-// that re-treads old ground while naming the same remainder would otherwise resume forever.
+// without naming what is left, errors out, or a round leaves the very remainder it was handed —
+// the observable form of "stuck". Each round writes its own return file, and a continuation
+// names every earlier one, so a researcher reads what it already covered rather than being told.
 async function searchUntilComplete(angle) {
-  const candidates = []
-  const searched = []
+  const files = []
   const noMatch = []
-  const seen = new Set()
   let round = 0
-  let found = null
+  let remainder = ''
 
-  function incomplete(notReached) {
+  const charge =
+    `Find existing solutions. FINDING-EXISTING-SOLUTIONS MODE.\n\n` +
+    `Read the frame file ${frameFile}: WHAT IS WANTED is its capability_line, THIS ANGLE is the ` +
+    `angle keyed "${angle.frameKey}" there (its find), and its hard_constraints are what a ` +
+    `candidate must satisfy.\n\n` + constraintBlock +
+    `Read primary sources: the project's own documentation, its repository, its registry ` +
+    `page. Do not report a candidate you found only in a listicle without opening what it ` +
+    `points at — a package that was abandoned three years ago still has glowing blog ` +
+    `posts about it.\n\n` +
+    `Read latest_version off the registry or the release page TODAY. A version recalled ` +
+    `from training data is stale by construction, and a stale version is exactly the fact ` +
+    `that makes a caller dismiss a candidate that has since grown the feature they need.\n\n` +
+    `Fill does_not_cover honestly for every candidate. A caller decides with that field; ` +
+    `a row that claims a perfect fit and hides a gap costs them the whole adoption.\n\n` +
+    `Finding nothing IS a result here, and often the decisive one — but only if your ` +
+    `search was exhausted. Put what you covered in searched, what is genuinely absent in ` +
+    `no_match, and what you never got to in not_reached, and never merge the last two.`
+
+  const incomplete = (notReached) => {
     partial.push(angle.key)
-    return { candidates, searched, noMatch: noMatch.join('\n'), notReached }
+    return { files, noMatch: noMatch.join('\n'), notReached }
   }
 
-  while (true) {
+  for (;;) {
     round++
+    const body = round === 1
+      ? charge
+      : `Continue an unfinished search — do not start over.\n\nORIGINAL REQUEST:\n${charge}\n\n` +
+        `YOUR EARLIER ROUNDS' REPORTS — read them first: do not repeat what they searched, and do ` +
+        `not report again the candidates they found:\n${files.join('\n')}\n\n` +
+        `STILL NOT REACHED — this is your job now:\n${remainder}`
+    const label = `find:${angle.key}${round > 1 ? `#${round}` : ''}`
+    const file = returnFile(label, body)
 
-    const opening = round === 1
-      ? `Find existing solutions. FINDING-EXISTING-SOLUTIONS MODE.\n\n` +
-        `WHAT IS WANTED: ${frame.capability_line}\n\n` +
-        `THIS ANGLE: ${angle.find}\n\n` +
-        `HARD CONSTRAINTS a candidate must satisfy:\n${constraintLine}\n\n` +
-        constraintBlock
-      : `Continue an unfinished search — do not start over.\n\n` +
-        `WHAT IS WANTED: ${frame.capability_line}\n` +
-        `THIS ANGLE: ${angle.find}\n\n` +
-        `ALREADY SEARCHED (do not repeat these):\n${searched.join('\n')}\n\n` +
-        `ALREADY FOUND (do not report these again):\n` +
-        candidates.map((c) => c.name).join('\n') +
-        `\n\nSTILL NOT REACHED — this is your job now:\n${found.not_reached}\n\n`
-
+    let found
     try {
-      found = await agent(
-        opening +
-        `Read primary sources: the project's own documentation, its repository, its registry ` +
-        `page. Do not report a candidate you found only in a listicle without opening what it ` +
-        `points at — a package that was abandoned three years ago still has glowing blog ` +
-        `posts about it.\n\n` +
-        `Read latest_version off the registry or the release page TODAY. A version recalled ` +
-        `from training data is stale by construction, and a stale version is exactly the fact ` +
-        `that makes a caller dismiss a candidate that has since grown the feature they need.\n\n` +
-        `Fill does_not_cover honestly for every candidate. A caller decides with that field; ` +
-        `a row that claims a perfect fit and hides a gap costs them the whole adoption.\n\n` +
-        `Finding nothing IS a result here, and often the decisive one — but only if your ` +
-        `search was exhausted. Put what you covered in searched, what is genuinely absent in ` +
-        `no_match, and what you never got to in not_reached, and never merge the last two.`,
-        {
-          agentType: 'agentics:doc-researcher', effort: 'low', schema: CANDIDATES,
-          phase: 'Search', label: `find:${angle.key}${round > 1 ? `#${round}` : ''}`,
-        },
-      )
+      found = await agent(toFile(body, file, CANDIDATES_FILE), {
+        agentType: 'agentics:doc-researcher', effort: 'low', schema: CANDIDATES, phase: 'Search', label,
+      })
     } catch (e) {
       log(`${angle.key}: round ${round} threw (${e && e.message}); keeping what was found.`)
       return incomplete(`round ${round} failed before completion: ${e && e.message}`)
@@ -709,38 +525,25 @@ async function searchUntilComplete(angle) {
       log(`${angle.key}: round ${round} returned nothing; keeping what was found.`)
       return incomplete(`round ${round} produced no result`)
     }
-
-    // Absorb the round deduplicated. Exact-name matching is the trivial half of deduping
-    // and belongs in JS; the same project under two names stays the assessor's job. The
-    // growth of `seen` is also the progress measure that decides whether resuming can work.
-    const before = seen.size
-    for (const c of found.candidates || []) {
-      const k = `candidate:${String((c && c.name) || '').trim().toLowerCase()}`
-      if (!seen.has(k)) { seen.add(k); candidates.push(c) }
-    }
-    for (const s of found.searched || []) {
-      const k = `searched:${String(s).trim()}`
-      if (String(s).trim() && !seen.has(k)) { seen.add(k); searched.push(s) }
-    }
+    files.push(file)
     if ((found.no_match || '').trim()) noMatch.push(found.no_match.trim())
 
-    if (found.stop_reason === 'exhausted') {
-      return { candidates, searched, noMatch: noMatch.join('\n'), notReached: '' }
-    }
+    if (found.stop_reason === 'exhausted') return { files, noMatch: noMatch.join('\n'), notReached: '' }
 
     // Not exhausted but nothing named as unreached: another round would be handed an empty
-    // task and would return "exhausted" having done nothing. Treat it as the dead end it is
-    // rather than paying for a round that launders it into completeness.
-    if (!(found.not_reached || '').trim()) {
+    // task and would return "exhausted" having done nothing. Treat it as the dead end it is.
+    const next = (found.not_reached || '').trim()
+    if (!next) {
       const reason = found.stop_reason || 'unstated'
       log(`${angle.key}: stop_reason "${reason}" with nothing named as unreached — treating as a dead end.`)
       return incomplete(`search stopped as "${reason}" without naming what was missed`)
     }
 
-    if (seen.size === before) {
-      log(`${angle.key}: round ${round} covered no new ground — stopping as stuck rather than looping.`)
-      return incomplete(found.not_reached)
+    if (next.replace(/\s+/g, ' ').toLowerCase() === remainder.replace(/\s+/g, ' ').toLowerCase()) {
+      log(`${angle.key}: round ${round} left the same ground unreached — stopping as stuck rather than looping.`)
+      return incomplete(next)
     }
+    remainder = next
 
     log(`${angle.key}: unfinished after round ${round} (${found.stop_reason || 'unstated'}), resuming.`)
   }
@@ -748,18 +551,19 @@ async function searchUntilComplete(angle) {
 
 // The repo channel gets the same treatment every side channel in this plugin gets: it may
 // fail, and a failure must not discard the external search already paid for (IRON LAW §5).
-const repoChannel = agent(
-  `${frame.repo_question}\n\n` +
-  `Repositories: ${roots}\n` +
-  `Context: somebody is considering building "${frame.capability_line}" and wants to know ` +
-  `whether this repository already has it.\n\n` +
+const repoBody =
+  `Read the frame file ${frameFile}: its repo_question is your charge, and its capability_line is ` +
+  `what somebody is considering building — they want to know whether this repository already has it.\n\n` +
+  `Repositories: ${roots}\n\n` +
   `Search the dependency manifests as well as the source — a package already on the ` +
   `dependency list that provides this is the cheapest possible answer, and it is invisible ` +
   `to anyone grepping only for implementation code.\n\n` +
   `Report locations. Do not judge whether what you find is good enough; that is not your ` +
-  `question and not your call.`,
-  { agentType: 'agentics:scout', effort: 'low', schema: PRESENT,
-    phase: 'Search', label: 'repo' },
+  `question and not your call.`
+const repoFile = returnFile('repo', repoBody)
+
+const repoChannel = agent(toFile(repoBody, repoFile, PRESENT_FILE),
+  { agentType: 'agentics:scout', effort: 'low', schema: PRESENT, phase: 'Search', label: 'repo' },
 ).then(
   (result) => result ? { result, error: '' } : { result: null, error: 'the scout returned no result' },
   (e) => {
@@ -773,11 +577,10 @@ const repo = await repoChannel
 
 // A dropped angle produced nothing at all, which is different from one that searched and
 // found nothing. `parallel` resolves a thrown thunk to null, so the null IS the report.
-const gathered = []
+const researched = []
 
 // A plain loop rather than forEach: `coverage-block` reads a bare `return` as a path that
 // exits with no coverage block, and it cannot tell a callback's early exit from the script's.
-// The rule is right to be blunt about it — `continue` says the same thing and says it here.
 for (let i = 0; i < angles.length; i++) {
   const angle = angles[i]
   const found = searches[i]
@@ -788,7 +591,7 @@ for (let i = 0; i < angles.length; i++) {
     continue
   }
 
-  gathered.push(...found.candidates)
+  researched.push(...found.files)
 
   if ((found.noMatch || '').trim()) {
     unreached.push(`${angle.key} searched and found nothing: ${found.noMatch.trim()}`)
@@ -798,16 +601,11 @@ for (let i = 0; i < angles.length; i++) {
   }
 }
 
-let present = []
-
 if (repo.result) {
-  present = repo.result.hits || []
-
   // Gated on stop_reason, not on not_reached alone — the same test the angle loop applies.
   // A scan that stopped unfinished and left not_reached blank was reading as a finished one,
   // and this is the channel whose answer the skill calls the cheapest and most decisive in
-  // the workflow: "you already depend on something that does this". Reported complete when
-  // it is not, it sends the user to adopt an external dependency they already had.
+  // the workflow: "you already depend on something that does this".
   const repoDone = repo.result.stop_reason === 'exhausted'
   const repoRemainder = (repo.result.not_reached || '').trim()
 
@@ -825,49 +623,33 @@ if (repo.result) {
     'this result cannot say whether you already depend on something that does this')
 }
 
-log(`Search: ${gathered.length} raw candidate(s) across ${angles.length} angle(s); ${present.length} hit(s) already in the tree.`)
-
-// A no_match line is evidence FOR building, and it is exactly the line a reader skims past.
-// It is carried in `unreached` above so it keeps `complete` honest, and logged here so the
-// narrator line does not read as a silent empty result.
-if (gathered.length === 0) {
-  log('No external candidates found. Read the coverage block before treating that as a green light.')
-}
+log(`Search: ${researched.length} researcher report(s) across ${angles.length} angle(s); the repository scan ` +
+  (repo.result ? `reported ${Number(repo.result.hits_n) || 0} hit(s).` : 'failed.'))
 
 // ---------------------------------------------------------------- 3. assess
 //
-// One analyst over all candidates, and this is the barrier case that is genuinely justified:
-// deduping the same package found by two angles, and ranking against a shared disqualifier
-// list, both need every result at once. Per-candidate assessors would each see one row and
-// could not tell you that two of them are the same project under different names.
+// One analyst over every researcher's report, and this is the barrier case that is genuinely
+// justified: deduping the same package found by two angles, and ranking against a shared
+// disqualifier list, both need every result at once.
 
-let assessed = []
-let viable = []
-let ruledOut = []
+let assessFile = ''
 
-if (gathered.length > 0) {
+if (researched.length > 0) {
   phase('Assess')
 
-  const disqualifierLines = (frame.disqualifiers || []).join('\n')
-  const candidateBlock = gathered
-    .map((c) => `- ${c.name} (${c.source_url})\n  is: ${c.what_it_is}\n  version: ${c.latest_version}\n` +
-                `  licence: ${c.license}\n  maintenance: ${c.maintenance}\n` +
-                `  covers: ${c.covers}\n  does not cover: ${c.does_not_cover}`)
-    .join('\n')
-
-  const assessment = await agent(
+  const assessBody =
     `Rule on candidates for a build-or-adopt decision. You measure them; you do not pick ` +
     `one, and nobody is asking you to.\n\n` +
-    `WHAT IS WANTED: ${frame.capability_line}\n\n` +
-    `HARD CONSTRAINTS:\n${constraintLine}\n\n` +
-    `DISQUALIFIERS — the only grounds on which you may rule a candidate out:\n` +
-    `${disqualifierLines}\n\n` +
-    `CANDIDATES, as the researchers reported them. Several angles searched independently, so ` +
-    `the same project may appear more than once, under more than one name:\n${candidateBlock}\n\n` +
+    `Read the frame file ${frameFile}: WHAT IS WANTED is its capability_line, its hard_constraints ` +
+    `bind every candidate, and its disqualifiers are the ONLY grounds on which you may rule a ` +
+    `candidate out.\n\n` +
+    `Then read the researchers' reports, each a file of candidates as they reported them. Several ` +
+    `angles searched independently, so the same project may appear more than once, under more ` +
+    `than one name:\n${researched.join('\n')}\n\n` +
     constraintBlock +
     `Merge duplicates into one row, keeping the fullest facts from each. Then, for each ` +
     `distinct candidate, copy VERBATIM into disqualifiers_hit each disqualifier it actually ` +
-    `violates according to the facts above. An empty array means you checked it against every ` +
+    `violates according to the facts reported. An empty array means you checked it against every ` +
     `disqualifier and it violated none.\n\n` +
     `Carry every candidate through, the failing ones included, with what ruled them out. A ` +
     `reader who cannot see what was rejected and why has to redo the entire search to check ` +
@@ -877,190 +659,100 @@ if (gathered.length > 0) {
     `the fact, that belongs in notes as an open question — you have no search tools, and a ` +
     `fact you would have to go and find is exactly such a question. Whether the remaining candidates ` +
     `are worth adopting is the caller's decision and rests on things you cannot see: their ` +
-    `dependency appetite, their licence policy, whether they want to own this code.`,
+    `dependency appetite, their licence policy, whether they want to own this code.`
+  const file = returnFile('assess', assessBody)
+
+  const assessment = await agent(toFile(assessBody, file, ASSESSMENT_FILE),
     { agentType: 'agentics:analyst', schema: ASSESSMENT, label: 'assess', ...tiered(judge, 'high') },
   ).catch((e) => {
     log(`WARNING: assessment failed: ${e && e.message}`)
     return null
   })
+  if (assessment) assessFile = file
+}
 
-  // Two angles searching independently will report the same package twice, so a name seen
-  // already is a duplicate rather than a second candidate. Exact-name matching is the trivial
-  // half of deduping and belongs in JS; the same project under two different names is the half
-  // that genuinely needs a model, and it stays the assessor's job.
-  const nameKey = (name) => (name || '').trim().toLowerCase()
+// ---------------------------------------------------------------- 3b. record and decide
+//
+// One courier hands lib every file this sweep's agents wrote. lib decides what they mean — which
+// candidates hit no declared disqualifier, which grounds nobody declared, which candidates the
+// assessment dropped — records each anchored candidate and each hit the repository carries into
+// the project's evidence pool, and writes all of it to one summary file. The decision is code's,
+// never a model's: an assessor told to copy disqualifiers verbatim is obeyed by a membership test,
+// not by trust.
 
-  // The assessor is told to copy disqualifiers VERBATIM and never to invent one. Obedience
-  // is not a mechanism: an invented ground — or a paraphrase of a real one that quietly
-  // widens it — rules a candidate out just as effectively as a declared one, and the only
-  // viable library in the sweep can vanish on a rule nobody wrote. So membership is checked
-  // here, against the frame the user actually settled. An entry that matches nothing does
-  // not rule anything out; it is reported as an unsettled observation instead.
-  const declared = new Map(
-    (frame.disqualifiers || []).map((d) => [String(d).trim().toLowerCase(), true]))
-  const invented = []
+phase('Record')
 
-  function disqualifiersHitOf(candidate) {
-    const hits = candidate.disqualifiers_hit || []
-    const kept = []
-    for (const hit of hits) {
-      if (declared.has(String(hit).trim().toLowerCase())) kept.push(hit)
-      else invented.push(`${candidate.name}: ${hit}`)
-    }
-    return kept
-  }
+const held = await carry(
+  `node "${pluginRoot}/lib/evidence.mjs" record --repo "${groundRepo}" --root "${groundRepo}" --kind solutions ` +
+    `--frame "${frameFile}" --question-digest ${fnv1a(capability.trim())}` +
+    (assessFile ? ` --assessed "${assessFile}"` : '') + (repo.result ? ` --present "${repoFile}"` : '') +
+    researched.map((f) => ` --from "${f}"`).join(''),
+  'record', 'Record')
+const decided = held.payload
 
-  function distinctByName(rows) {
-    const seen = new Set()
-    const out = []
-    for (const row of rows) {
-      const key = nameKey(row.name)
-      if (seen.has(key)) continue
-      seen.add(key)
-      out.push(row)
-    }
-    return out
-  }
-
-  // Whether anyone measured these candidates at all. The verdict below is computed from
-  // `disqualifiers_hit`, and on this path that array is something this script wrote, not
-  // something an assessor observed — so the verdict must not be computed from it.
-  let assessMeasured = true
-
-  if (!assessment || !assessment.assessed) {
-    assessMeasured = false
+let counts = NO_COUNTS
+if (!decided) {
+  failedChannels.push('record')
+  unreached.push(`what this sweep found was never read back from its agents' files (${held.why}), so nothing ` +
+    'here says which candidates are viable, and nothing was recorded')
+} else {
+  counts = { ...NO_COUNTS, ...(decided.counts || {}) }
+  const summary = decided.summary_file
+  if (counts.candidates > 0 && decided.measured === false) {
     failedChannels.push('assess')
     unreached.push(
       'the candidates were found but never measured against the disqualifiers, so nothing ' +
-      'here says which of them are usable; they are returned raw — exact-name duplicates ' +
-      'merged and nothing else — with disqualifiers_hit empty because nobody checked rather ' +
-      'than because nothing was hit')
-    assessed = distinctByName(gathered).map((c) => ({ ...c, disqualifiers_hit: [] }))
-  } else {
-    assessed = assessment.assessed
-
-    if ((assessment.notes || '').trim()) {
-      unreached.push(`the assessment could not settle: ${assessment.notes.trim()}`)
-    }
-
-    // A candidate the researchers found and the assessor silently dropped would vanish
-    // without a trace, and the result would still read as a complete sweep. IRON LAW §4: it
-    // is named instead. Compared on a normalized name because the two stages are two models
-    // and a difference of capitalization is not a dropped candidate.
-    const kept = new Set(assessed.map((c) => nameKey(c.name)))
-    const lost = distinctByName(gathered.filter((c) => !kept.has(nameKey(c.name))))
-      .map((c) => c.name)
-
-    if (lost.length > 0) {
-      log(`WARNING: the assessment dropped ${lost.join(', ')} without ruling on them.`)
-      unreached.push(
-        `found but never ruled on: ${lost.join(', ')} — these were reported by a researcher ` +
-        `and did not survive the assessment stage, so they are neither viable nor ruled out`)
-    }
+      'here says which of them are usable; they are carried unmeasured in ' + summary + ' — exact-name ' +
+      'duplicates merged and nothing else — neither viable nor ruled out, because nobody checked')
   }
-
-  // The verdict, computed here and nowhere else. `disqualifiers_hit` is a list of facts the
-  // assessor was asked to copy verbatim; viability is what this line does with them. A
-  // schema field called `suitable` would have moved this decision into a model's taste.
-  //
-  // With no assessor there are no such facts, and an empty `disqualifiers_hit` this script
-  // wrote itself would name EVERY candidate viable — a licence the user's own policy would
-  // have killed, presented as cleared — and the empty ruled_out would then suppress the
-  // incomplete-sweep warning below, which fires only when nothing is viable. Both lists stay
-  // empty instead: the candidates still ride in `assessed`, and failed_channels says why
-  // nobody ruled on them. This is the one place the script could mint a partial result into
-  // a whole one entirely on its own.
-  if (assessMeasured) {
-    viable = assessed.filter((c) => disqualifiersHitOf(c).length === 0).map((c) => c.name)
-    ruledOut = assessed
-      .filter((c) => disqualifiersHitOf(c).length > 0)
-      .map((c) => ({ name: c.name, why: disqualifiersHitOf(c).join('; ') }))
-
-    log(`Assessed ${assessed.length} distinct candidate(s): ${viable.length} hit no disqualifier, ${ruledOut.length} ruled out.`)
-
-    if (invented.length > 0) {
-      log(`WARNING: ${invented.length} ground(s) cited that nobody declared — not counted.`)
-      unreached.push(
-        `ruled out on grounds nobody declared, so not counted against them: ` +
-        `${invented.join('; ')} — these may be real objections, but they are not in the ` +
-        `frame's disqualifier list and no candidate was rejected for them here`)
-    }
-  } else {
-    log(`${assessed.length} candidate(s) carried through unmeasured — neither viable nor ruled out.`)
+  if (counts.unsettled > 0) unreached.push(`the assessment could not settle questions it names in ${summary}`)
+  if (counts.lost > 0) {
+    log(`WARNING: the assessment dropped ${counts.lost} candidate(s) without ruling on them.`)
+    unreached.push(`${counts.lost} candidate(s) were found but never ruled on — reported by a researcher and ` +
+      `dropped by the assessment, so neither viable nor ruled out; they are named in ${summary}`)
   }
-}
-
-// ---------------------------------------------------------------- 3b. record
-//
-// What the sweep established enters the project's evidence pool, so the next design that asks
-// the same thing finds it anchored and dated rather than buying the sweep again. A side channel:
-// what cannot be recorded is logged and costs no coverage, because the candidates are returned
-// either way.
-
-const question = capability.trim()
-const items = []
-const unanchored = []
-
-for (const c of assessed) {
-  if (!String(c.source_url || '').trim()) { unanchored.push(c.name); continue }
-  const item = {
-    question, topic: 'candidates', ground: [], kind: 'external',
-    claim: `${c.name} — ${c.what_it_is}. Covers: ${c.covers}. Does not cover: ${c.does_not_cover}.`,
-    spans: [], queries: [], rests_on: [],
-    sources: [{ url: String(c.source_url).trim(), version: c.latest_version || '', retrieved: '' }],
-    detail: { name: c.name, license: c.license || '', maintenance: c.maintenance || '', disqualifiers_hit: c.disqualifiers_hit || [] },
+  if (counts.invented > 0) {
+    log(`WARNING: ${counts.invented} ground(s) cited that nobody declared — not counted.`)
+    unreached.push(`${counts.invented} ground(s) the assessment cited are not in the frame's disqualifier list, ` +
+      `so no candidate was ruled out for them; they are named in ${summary}`)
   }
-  items.push({ ...item, id: itemIdOf(item) })
-}
-for (const h of present) {
-  const path = String(h.path || '').split('\\').join('/')
-  if (!path || !Number.isInteger(h.line) || h.line < 1) { unanchored.push(`${path}:${h.line}`); continue }
-  const item = {
-    question, topic: 'already-present', ground: [path], kind: 'behaviour', claim: `${path}: ${h.note}`,
-    spans: [{ path, start: h.line, end: h.line, at: '' }], queries: [], sources: [], rests_on: [],
+  if (counts.unread > 0) {
+    unreached.push(`${counts.unread} researcher report(s) could not be read, so their candidates are in nothing here`)
   }
-  items.push({ ...item, id: itemIdOf(item) })
-}
-
-const unrecorded = []
-
-if (unanchored.length > 0) {
-  log(`Not anchorable, so not sent to the evidence store: ${unanchored.join(', ')}`)
-}
-
-if (items.length > 0) {
-  phase('Record')
-
-  const { command, writes } = viaJsonFile(
-    `node "${pluginRoot}/lib/evidence.mjs" record --repo "${groundRepo}" --root "${groundRepo}" --kind solutions`,
-    { items: items.map(({ id, ...rest }) => rest) }, groundRepo)
-  const { payload, why } = await carry(command, 'record', 'Record', writes)
-
-  if (!payload) {
-    unrecorded.push(...items.map((it) => it.id))
-    log(`${items.length} item(s) not recorded (${why})`)
-  } else if (payload.ok === false) {
-    unrecorded.push(...items.map((it) => it.id))
-    const problems = (payload.refused || []).flatMap((r) => r.problems || []).join('; ')
-    log(`${items.length} item(s) not recorded (${problems || 'refused'})`)
+  if (repo.result && !counts.present_read) {
+    failedChannels.push('repo')
+    unreached.push('the repository scan\'s report could not be read, so what the tree already provides is unknown')
   }
+  if (!decided.recorded && (decided.refused_n || 0) > 0) {
+    log(`${decided.refused_n} item(s) refused by the evidence store` +
+      (decided.refusals_file ? `; what is wrong with each is in ${decided.refusals_file}` : '') + ' — not recorded.')
+  }
+  if (counts.unanchored > 0) log(`${counts.unanchored} candidate(s) or hit(s) not anchorable, so not sent to the evidence store.`)
+  log(`Assessed ${counts.candidates} distinct candidate(s): ${counts.viable} hit no disqualifier, ${counts.ruled_out} ruled out.`)
 }
 
 // ---------------------------------------------------------------- 4. account
 
-if (present.length > 0) {
-  log(`ALREADY IN THE TREE: ${present.length} hit(s) — check these before anything on the candidate list.`)
+if (counts.present > 0) {
+  log(`ALREADY IN THE TREE: ${counts.present} hit(s) — check these before anything on the candidate list.`)
+}
+if (researched.length > 0 && counts.candidates === 0 && decided) {
+  log('No external candidates found. Read the coverage block before treating that as a green light.')
 }
 
 const coverage = coverageOf(dropped, partial, failedChannels, unreached)
 
-if (!coverage.complete && viable.length === 0) {
+if (!coverage.complete && counts.viable === 0) {
   log('INCOMPLETE SWEEP WITH NO VIABLE CANDIDATE. This does not mean nothing exists — it means ' +
       'nobody finished looking. Read coverage.unreached before deciding to build.')
 }
 
-return solutionsResult(
-  { capability_line: frame.capability_line,
-    hard_constraints: frame.hard_constraints || [],
-    disqualifiers: frame.disqualifiers || [] },
-  present, assessed, viable, ruledOut, coverage, items, unrecorded, unanchored)
+return solutionsResult({
+  frame: frameFile,
+  summary: decided ? decided.summary_file : '',
+  counts,
+  measured: Boolean(decided && decided.measured),
+  items: decided && Array.isArray(decided.items) ? decided.items : [],
+  recorded: Boolean(decided && decided.recorded),
+  coverageBlock: coverage,
+})

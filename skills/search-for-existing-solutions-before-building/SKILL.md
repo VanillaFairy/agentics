@@ -80,20 +80,23 @@ the launch used, with the args from `coverage.resumable.args`.
 
 ## Step 3 — Present it, in this order
 
-1. **What you already have.** `already_present` first, always. A dependency you are already
+Read the result's `summary` file whole: it holds every candidate with its facts and verdict, and
+`counts` says how many of each there are.
+
+1. **What you already have.** Its first section, always. A dependency you are already
    paying for, or a half-built version somebody started, changes the decision more than
    anything on the candidate list and is the thing a reader most wants to know.
-2. **Viable candidates.** `viable` names the ones that hit **no** disqualifier. Show each with
+2. **Viable candidates.** Under VIABLE, the ones that hit **no** disqualifier. Show each with
    its version, licence, maintenance signal, and — this one is not optional —
-   `does_not_cover`. That field is what adoption actually turns on, and it is the first thing
+   `does not cover`. That field is what adoption actually turns on, and it is the first thing
    a summary drops.
-3. **Ruled out, with the reason.** `ruled_out` carries `why` per candidate, quoting the
-   disqualifier it violated. Never trim this to save space: a reader who cannot see what was
-   rejected has to redo the search to check the work.
+3. **Ruled out, with the reason.** Under RULED OUT, each with the disqualifier it violated.
+   Never trim this to save space: a reader who cannot see what was rejected has to redo the
+   search to check the work.
 4. **Coverage.** Step 4.
 
-`viable` is computed in JS from the disqualifiers the frame declared, not chosen by a model —
-report it as the count it is, and never upgrade it into a recommendation.
+Viability is computed by `lib/evidence.mjs` from the disqualifiers the frame declared, not chosen
+by a model — report it as the count it is, and never upgrade it into a recommendation.
 
 ## Step 4 — Surface the coverage
 
@@ -112,9 +115,11 @@ So, **binding**:
   *"crates.io never reached"* is **evidence of nothing at all**. Present them apart.
 - `failed_channels` naming `repo` means nobody checked what you already depend on. Any claim
   that this capability is missing from the codebase is unsupported.
-- `failed_channels` naming `assess` means candidates were found and never measured. They are
-  returned raw with empty `disqualifiers_hit` — because nobody checked, not because nothing
-  was hit. Do not read that emptiness as viability.
+- `failed_channels` naming `assess` means candidates were found and never measured. The summary
+  lists them UNMEASURED — no disqualifier against them because nobody checked, not because
+  nothing was hit. Do not read that emptiness as viability.
+- `failed_channels` naming `record` means nothing the sweep found was read back: no summary, no
+  verdict. Say so; nothing here supports a decision.
 
 Then the one-line finding: what exists, or what genuinely does not.
 

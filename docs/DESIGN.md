@@ -91,7 +91,7 @@ certifies it; a reviewer has findings and no approval to give; approval is the o
 being empty.
 
 *Enforced by:* agent schemas with no verdict fields (the `no-self-verdict` lint rule); verdict
-predicates in code (`lib/verdict.mjs`, the review-loop exit in `execute-approved-plan-in-worktrees`).
+predicates in code (`lib/verdict.mjs`, its `reviewExit` the review-loop exit `leaf-review` computes).
 
 **Why:** an agent that can approve can be persuaded, and an agent that certifies its own work is
 the examinee marking the exam.
@@ -400,7 +400,8 @@ command, `show`: nothing outside compile calls `addNodes`, and there is no CLI v
       cites.jsonl                 each folder's evidence citations ([Cites](#cites))
       knowledge/                  gotchas (see Gotchas)
       executions/<stamp>/         one execution of a subtree: execution.json, state.jsonl,
-                                  journal.jsonl, briefs/, jobs/, closes/, merges/, fixes/, said/
+                                  journal.jsonl, briefs/, cards/, jobs/, closes/, reviews/,
+                                  merges/, fixes/, said/
       reports/                    executor reports, one file per dispatch
       locks/                      locus and branch locks
 ```
@@ -504,14 +505,15 @@ under the effort's lock — a script minting a counter, so no agent ever supplie
 entry without a `kind`, or fails its caller's digest. Appends are all or nothing and never
 read-then-write. Readers are tolerant: a torn line is counted, never thrown on.
 
-Lines the workflow mints whole travel base64 on one argv slot with a digest, so there is no path
-to escape and no apostrophe to close. A line only the observing agent can fill in (a finished
-series) goes by heredoc on stdin and carries no digest; the writer still refuses what does not
-parse. A digest makes corruption detectable; the encoding makes it unlikely.
+No record of an execution reaches the ledger through a model. The process that decides or
+observes a line appends it — a boundary recording what it computed from the files agents wrote
+([Boundaries](#boundaries)), a measurement journalling what it saw — and the workflow hands that
+process handles only.
 
-Evidence tokens — a survey's, probe's or solutions sweep's items, a re-judge's verdicts — and the
-records `schedule` and `postflight` carry are the exception: they are long, or grow with what the
-workflow decided, and base64 is both longer and the text a courier copies worst. They
+Tokens an evidence workflow mints whole travel base64 on one argv slot with a digest, so there is
+no path to escape and no apostrophe to close. A digest makes corruption detectable; the encoding
+makes it unlikely. Evidence tokens — a survey's, probe's or solutions sweep's items, a re-judge's
+verdicts — are long, and base64 is both longer and the text a courier copies worst, so they
 travel as JSON by file (`viaJsonFile` in each workflow that sends one): the courier writes one line of
 JSON to `.agentics/.state/token-<digest>.json` with single-quoted `printf '%s' '<chunk>'` calls of
 at most `COMMAND_BUDGET` characters (under cmd.exe's 8191-character line), and the lib reads it
@@ -886,22 +888,27 @@ A spec develop's planner writes (an `author: planner` sub-effort, a promoted tas
 folder replanned) goes ahead without the user's approval, but only once an adversarial review
 passes. It runs inside `execute-approved-plan-in-worktrees`, one folder at a time:
 
-1. **Check.** The `spec-check` boundary parses the spec with its ancestors' decisions in view. A
-   Decisions row parks the folder `needs_decision`, because only the user states decisions; any
-   other problem escalates `spec_refused`.
+1. **Check.** The `spec-check` boundary closes the planner's dispatch: a status other than
+   `written` parks the folder (`needs_decision`, `contract_changed`, `premise_mismatch`) or
+   escalates it (`plan_<status>`) on the file the planner wrote. It then parses the spec with its
+   ancestors' decisions in view. A Decisions row parks the folder `needs_decision`, because only
+   the user states decisions; any other problem escalates `spec_refused`.
 2. **Attack.** A nested `attack-document-with-independent-reviewers` reviews the spec. After the first round, `since` (the
    previous return's snapshot) narrows the review to the spans changed since. `spec-reviewed`
-   records every round as a `reviewed` ledger line with the settlement ids of its ambiguities; an
-   incomplete one escalates `review_incomplete`.
-3. **Settle.** The planner gives every new finding a disposition: incorporated (the spec
-   changed) or discarded. An `ambiguity` or a `gap` can only be incorporated; a discard of one is
+   reads the round's findings from the file the review names and records every round as a
+   `reviewed` ledger line with the settlement ids of its ambiguities; an incomplete one escalates
+   `review_incomplete`. The findings still to settle are the ones no disposition on the ledger
+   has settled: a finding the probe carries from an earlier round stays settled.
+3. **Settle.** The planner gives every finding still to settle a disposition, written to the file
+   its dispatch names: incorporated (the spec changed) or discarded. `spec-settle` reads it: an
+   `ambiguity` or a `gap` can only be incorporated, so a discard of one, or a finding left out, is
    refused and sent back once, and refused again it escalates `review_not_converging`. A finding
    whose fix would state a decision parks the folder `needs_decision`. `spec-settle` records each
    disposition, `by: planner`, under the finding's settlement id (its evidence-item id, or the
-   reviewed hash and its `P<n>` when it has none). A finding the probe carries
-   from an earlier round (its lines untouched since) stays settled and is not asked about again.
-4. **Converge.** A new finding with the same axis, section and claim as one the previous round
-   incorporated escalates `review_not_converging`: a computed exit, never a round counter (IL1).
+   reviewed hash and its `P<n>` when it has none).
+4. **Converge.** `spec-reviewed` escalates `review_not_converging` when a finding still to settle
+   has the same axis, section and claim as one the previous round's file holds and the ledger shows
+   incorporated: a computed exit, never a round counter (IL1).
 5. **Prepare.** The gate is the `spec-gate` boundary, `approvalGate` on the ledger, the one the
    design session reads: the latest review of the spec as it stands is complete and every
    ambiguity it returned has a disposition. An incorporation edited the spec, so it buys a
@@ -909,7 +916,8 @@ passes. It runs inside `execute-approved-plan-in-worktrees`, one folder at a tim
    `review_not_converging`. Then `spec-prepare` records the `prepared` ledger line naming the raw
    return the passing review recorded (an empty one when it found nothing new; its snapshot, else
    the spec hash, only when the probe's scope or record failed), and compiles the folder. A
-   compile refusal escalates `compile_refused`.
+   compile refusal escalates `compile_refused`, a folder compiled with nothing beneath it
+   `planner_wrote_nothing`, and a task replanned into the same leaf `replan_not_converging`.
 
 A park or an escalation stops only that folder; develop keeps running whatever does not depend on
 it. A `spec_changed` park on a folder the planner wrote goes back to the planner, which re-derives
@@ -1087,77 +1095,84 @@ launches it with a stamp it minted, because a workflow cannot read a clock.
 
 ### Boundaries
 
-Every deterministic step runs at one of seven boundaries, each one courier dispatch running one
-`lib/boundary.mjs` entry point under one digest. Every entry point is **idempotent**: re-running it
-after an unobserved outcome converges on the same state, because each step first checks whether its
-effect already exists (a merge already in the branch, a record already in the log, a worktree
-already attached).
+Every deterministic step runs at a boundary: one courier dispatch running one `lib/boundary.mjs`
+entry point. Its arguments are handles, each on a flag of its own, built by the workflow from the
+entry point's row in `ARGS` and parsed back by `handleArgs` under a digest over the same object;
+what it prints is one `handleEnvelope` line (GP6). Every entry point is **idempotent**: re-running
+it after an unobserved outcome converges on the same state, because each step first checks whether
+its effect already exists (a merge already in the branch, a record already the node's word, a
+worktree already attached).
 
 | boundary | fused steps |
 |---|---|
-| **preflight** | refuse an execution overlapping an open one; check whether the base moved under its leaves; traceability; free this execution's slots and its dead worktrees (clean ones only — a dirty one is reported, never forced); write the ruler's brief for the leaves the base moved under; create the execution root's todo. A checkpoint's lists (the overlapping executions, the gaps) go on its state line, for the session to read with `lib/status.mjs checkpoint`; the payload carries counts |
-| **schedule** | append the workflow's decisions; compute what to launch from the tree on disk (`lib/schedule.mjs`, see [Scheduling](#scheduling)); attach to each launch the one row it needs, and to a leaf's its parent's row and its resume ladder; move the todos of the nodes it touched |
-| **leaf-open** | acquire a slot and the locus locks; ensure the parent's integration branch (lazily, refreshed from its own parent) and cut or attach the leaf's branch and worktree, brought up to that parent's head; assemble its brief; append `dispatched` unless the leaf's status already stands on this same dispatch (execution, role and round), so an open sent again lands once and one after a replan, an approval or a round lands anew; move the todo |
-| **leaf-close** | commit a shell-less author's locus files (anything outside is reverted and reported as a breach); build, typecheck, suite, discriminator, declared mutations and named checks by rigor; journal the observation; write and delete reported gotchas; compute the close decision; move the todo |
-| **merge-batch** | under the branch lock, record `batch-started` with the head it starts from; merge every approved child into one integration branch in dependency order; verify the merged head with the fast suite; bisect a red one; append `merged` and `merge-observed`; release locus locks; append a `batch` state line; complete the todos. A batch that started and never recorded its outcome is reset to where it started and done again, so an unverified merge is never recorded as landed |
-| **suite-gate** | on a composite whose children have all merged, under its branch lock: run the full suite on its integration head, against the head it was cut from; write the measurement; append a `gate` state line. It runs nothing where the repository does not split its tests, or where the full suite already passed at that head in this execution ([The suite gate](#the-suite-gate)) |
-| **postflight** | append the workflow's last decisions; release this execution's slots; summarize the subtree from disk (counts, the nodes the user must act on, the leaves waiting behind each, cycle members held); append `closed` when every leaf in scope merged; count the branches eligible for cleanup |
+| **preflight** | refuse an execution overlapping an open one; adopt or write the envelope (base, dial, pace, and the commands the session wrote to `commands_file`); check whether the base moved under its leaves and write the ruler's brief and its record for those; traceability; free this execution's slots and its dead worktrees (clean ones only — a dirty one is reported, never forced). A checkpoint's lists (the overlapping executions, the gaps) go on its state line, for the session to read with `lib/status.mjs checkpoint`; the payload carries counts |
+| **schedule** | record the faults the workflow names; compute what to launch from the tree on disk (`lib/schedule.mjs`, see [Scheduling](#scheduling)); write each launch's card — a leaf's entry and parent, a plan's intent and why, a batch's children and cycles, a review's merged diff and children — and hand back its path with the handles the workflow branches on; park a folder the user writes that has nothing planned (`needs_design`); approve a leaf the resume ladder finds measured green, with no review loop of its own and no approval standing |
+| **leaf-open** | acquire a slot and the locus locks; ensure the parent's integration branch (lazily, refreshed from its own parent) and cut or attach the leaf's branch and worktree, brought up to that parent's head; assemble its brief, the round's fixes file included; append `dispatched` unless the leaf's status already stands on this same dispatch (execution, role and round), so an open sent again lands once and one after a replan, an approval or a round lands anew; a refusal escalates `open_refused` |
+| **leaf-close** | read the executor's status: a park, an escalation, a replan or a dispatch that returned nothing is recorded without measuring, and a fix round that moved nothing escalates `fix_without_commits`; otherwise commit a shell-less author's locus files (anything outside is reverted and reported as a breach); journal the series as `series-done`, from git, when the executor said it was done; build, typecheck, suite, discriminator, declared mutations and named checks by rigor; journal the observation; write and delete reported gotchas; compute the close decision and record it — the approval, the escalation, a verify leaf's finding (and the `needs_respec` park of a folder the user writes), `verify_not_converging` when a fix repeats the close before it at a moved head, `command_unknown` once an investigator ran |
+| **leaf-review** | read the review the reviewer wrote; compute the review loop's exit (`reviewExit`) against what the round before left open (`reviews/<node>-r<n>.json`); record the approval or the escalation, or write the open findings to the next round's fixes file |
+| **merge-batch** | under the branch lock, record `batch-started` with the head it starts from; merge every child the card names into one integration branch in dependency order; verify the merged head with the fast suite; bisect a red one; append `merged` and `merge-observed`; release locus locks; append a `batch` state line; record what stops — a conflict, a combination failure, a composite or a cycle failing alone, a batch that moved nothing, a batch that could not run; write the drift record and the ruler's brief. A batch that started and never recorded its outcome is reset to where it started and done again, so an unverified merge is never recorded as landed |
+| **suite-gate** | on a composite whose children have all merged, under its branch lock: run the full suite on its integration head, against the head it was cut from; write the measurement; append a `gate` state line; escalate `fails_full_suite` or `suite_gate_failed`. It runs nothing where the repository does not split its tests, or where the full suite already passed at that head in this execution ([The suite gate](#the-suite-gate)). A gate that passes says whether the integration review is earned, and records one that is not as `claims` with `review: not_earned` |
+| **folder-review** | read the integration review its reviewer wrote; record its claim verdicts as `claims` at the head the card names; record the one park they earn |
+| **rule-close** | read the rulings a ruler wrote on drift or a moved base; write beside them, per node, the file its record points at; record `drift-ruled` or `stale-ruled`; park what the user must answer and hand back what the planner replans; park a drifted consumer no ruling reached, hold a moved leaf no ruling reached |
+| **postflight** | record the faults the workflow names; release this execution's slots; summarize the subtree from disk (counts, the nodes the user must act on, the leaves waiting behind each, cycle members held); append `closed` when every leaf in scope merged; count the branches eligible for cleanup |
 
-Schedule and postflight first append the workflow's pending decisions (`records`: approvals,
-escalations, parks, integration verdicts, dispatch cost lines). No other boundary carries them, and
-the main loop calls those two one at a time. Each record carries an id: the invocation's number,
-which preflight mints on disk (the workflow has no clock and no randomness), and a digest of the
-record's content, counted when one invocation decides the same thing twice. A record sent again
-after a lost courier lands once; the same decision taken in a later invocation — an approval at the
-same head after a retry — has a new id and lands again; a run the host resumes replays the dead
-run's preflight, and so re-derives the same id for the same decision in whatever order its units
-finish. A record the lib writes itself (a merge-batch run again) is known by its content.
+The spec boundaries of a planner's folder are in [Autonomous review](#autonomous-review).
 
-**A decision is never left in the workflow alone.** Records a boundary refused, or that no courier
-could carry, go back on the pending list for the next carry. When postflight itself cannot be
-carried there is no next carry, so the result hands the session the postflight command whole
-(`coverage.resumable.postflight`): the session has a shell, runs it as it stands, and the last
-decisions land under the same digest and the same ids. Until it has, the stops that invocation
-decided last are in its result and on no disk.
+**The workflow mints no record.** Each decision is recorded by the boundary that closes the
+dispatch behind it, from what its agent wrote; the workflow tells it only which dispatch, at which
+tier, by handle. A record lands unless it is already the node's word (`freshRecords`): a stop
+while it stands, an approval at the same head, a review's claims at the same head while they stand,
+a fault once per invocation, a ruling once per head, a dispatch line once by its label. So a
+boundary sent again after a lost courier lands nothing twice, and the same decision taken again —
+after a retry cleared a stop, at a new round — lands again. The cost line of every dispatch rides
+the call that closes it: `dispatch` names each agent dispatch the call closes and each attempt of
+its own courier (`<label>=<role>/<model>/<effort>`; a retry is `#n`, a poll `@n`), and the boundary
+records them before anything else it does.
 
-**A unit is in flight until a tick has carried what it decided.** A unit that ends while a schedule
-call is out stays in the workflow's running set, so that call launches nothing beneath it or twice,
-and the loop ticks again at once to land its records. Launches that come back are checked against
-what the workflow decided while the call was out — a node it stopped or one a leaf waits on (the
-launch's `waits_on`), a folder it began replanning — and a stale one is dropped for the next tick.
+**What only the workflow sees, it names.** A boundary that stayed unbelievable (`transport`), a
+throw in the script (`pipeline`) and a nested review or survey that threw (`dispatch`) are faults no
+boundary observes. The workflow keeps them and names each on every schedule and on postflight as
+`fault: <node>:<channel>`. When postflight itself cannot be carried, the result hands the session
+its command (`coverage.resumable.postflight`), all handles, to run in its own shell; every stop
+is on disk already, and what waits on that command is the faults and the close of the invocation.
 
-**A payload is bounded by the pool, never by the effort.** A courier pastes what it carries, and a
-host shows only so much of one shell call's output, so nothing a boundary prints grows with the
-size of the tree: launches are capped by `max_parallel` per kind, each launch carries one row, and
-what spans the whole effort — a checkpoint's lists, the per-leaf picture — stays on disk for the
-session, which can read it. What may list nodes is bounded by one folder's fan-out (a merge-batch's
-children, an integration review's) or is a node the user must act on (a stopped node).
+**A unit is in flight until a tick has been built after it ended.** A unit that ends while a
+schedule call is out stays in the workflow's running set, so that call launches nothing beneath it
+or twice, and the loop ticks again at once. Launches that come back are checked against what the
+workflow was told while the call was out — a node stopped or one a leaf waits on (the launch's
+`waits_on`), a folder it began replanning — and a stale one is dropped for the next tick.
 
-**A payload carries only what the workflow branches on.** A courier retypes what it carries, token
-by token, and a model retyping long or repetitive text — a test run's output above all — normalizes
-it: the digest then fails however strong the model. So no output of a build, a suite or a check
-crosses the channel in either direction. leaf-close writes everything it measured and decided to
-`closes/<stem>.json` and carries `{next, reason, failures[{check, claim}]}`, the record's path and
-the todos; merge-batch writes its measurement to `merges/<target>-<pre>.json`. Whoever decides a
-node's next round — leaf-close on `fix`, merge-batch for a leaf that fails on the integration head
-alone — writes the failures with their evidence to `fixes/<node>-r<round>.json`, and leaf-open
-builds that round's brief from it; the arguments carry none. A close that decides anything but
-`fix` removes the file for the round after it.
+**A payload is bounded by the pool, never by the effort.** Nothing a boundary prints grows with
+the size of the tree: launches are capped by `max_parallel` per kind, each launch carries one card
+path, and what spans the whole effort — a checkpoint's lists, the per-leaf picture — stays on disk
+for the session, which can read it. What may list nodes is bounded by one folder's fan-out (a
+merge-batch's results) or is a node the user must act on (a stopped node).
 
-**What an agent says to the user, it writes itself.** The workflow's records reach disk inside a
-schedule or postflight token a courier retypes, so they carry no agent's prose. Preflight names
-the execution's `said/` directory; every agent that can stop a node — an executor, the planner
-writing or settling a spec, a reviewer, the ruler ruling on drift or a moved base — is told a file
-there and writes to it, in full, the question, the need, the review or one node's ruling, its first
-line saying it in one sentence. Each file is its own: named by the invocation, a count within it
-and the dispatch label (a node id's `/` written `.`), so no later dispatch overwrites what an open
-stop points at and a file its author did not write is seen missing, never mistaken for an older
-one; the ruler gets one file per node. The record carries that path (`said`) and no text of the
-agent's; its own `question` or `detail` holds only a line the workflow composed, or nothing. Every
-reader — the Next line and the watch (the first line), the snapshot and the landing check (the
-whole) — shows the file (`saidOf`), and says so plainly when its author did not write it. Text the workflow holds itself — a
-reviewer's findings — goes to the executor in its dispatch prompt, which is never retyped. A
-payload field the workflow does not read is not printed.
+**A payload carries handles only.** `handleEnvelope` refuses to print anything else. What a
+prompt or a later boundary needs and that is not a handle is in a file the lib wrote: a launch's
+card (`cards/`), a close's record (`closes/<stem>.json`, every measurement and the decision with
+its failures and their evidence), a merge's (`merges/<target>-<pre>.json`), a review round's
+(`reviews/`). An error is `{kind}`; where its detail matters, the boundary records it on the stop
+itself. Whoever decides a node's next round — leaf-close or leaf-review on `fix`, merge-batch for a
+leaf that fails on the integration head alone — writes what that round must clear, with its
+evidence, to `fixes/<node>-r<round>.json`, and leaf-open builds that round's brief from it. A close
+that decides anything but `fix` removes the file for the round after it.
+
+**What an agent says or decides, it writes itself.** Preflight names the execution's `said/`
+directory, and every dispatch whose output a boundary or the user reads is told a file there,
+named by the invocation, a count within it and the dispatch label (a node id's `/` written `.`), so
+no later dispatch overwrites what an open stop points at and a file its author did not write is
+seen missing, never mistaken for an older one. An executor or the planner writes its need or its
+question there, its first line saying it in one sentence; the reviewer writes its review, the ruler
+every ruling, the planner its dispositions, as JSON. The agent returns only its status. A boundary
+that reads a JSON file writes beside it the markdown a record points at — a review's lead and its
+findings, each node's ruling with its question or why first. The record carries that path (`said`);
+its own `question` or `detail` holds a line the lib composed, or nothing. Every reader — the Next
+line and the watch (the first line), the snapshot and the landing check (the whole) — shows the
+file (`saidOf`), and says so plainly when its author did not write it.
+
+**What an agent reads, the lib wrote.** A prompt names the card, the brief, the review record, the
+findings file or the context file, and never inlines a title, an intent, a finding or an excerpt.
 
 **Why the lib schedules:** a workflow script has no filesystem, so a scheduler in the script needs
 the whole tree carried to it and a second copy of status kept beside the one on disk. Scheduling
@@ -1167,7 +1182,8 @@ where the tree already is removes both: the script holds only its units in fligh
 arguments and by what their answer depends on — the worktree's head and state, the report, the
 established commands, the target's head, the payload's format — and are polled; a poll that reaches the limit (kept
 under the courier's own shell-call limit) answers `pending`, and the workflow re-dispatches the
-same boundary, which finds the same job. A host's shell timeout can end a courier, never the work. The
+same boundary, which finds the same job. The dispatches a call closes are recorded before its job
+starts and are no part of its key. A host's shell timeout can end a courier, never the work. The
 same arguments over a moved tree are a new job, and a job that failed is never kept as an answer.
 
 **Integration branches are locked while they move.** leaf-open creates, attaches and refreshes
@@ -1177,21 +1193,23 @@ lock held longer than a leaf-open may wait answers `busy`, and the workflow re-d
 
 **Retries are sized to what was observed.** A courier that returned nothing or could not run the
 command is re-run once, because the entry point is idempotent; a payload that fails its digest
-buys one refetch on a stronger model; an argument token the program refused as damaged
-(`digest_mismatch`, `args_unreadable`) is copied again by the stronger model, because a model that
-miscopies a token miscopies it the same way again, and one refused there too is a `transport`
-fault; a program failure is not retried. What the program printed decides which of these it is:
-a digest-covered payload is read whatever `stop_reason` the courier gave it, since a courier may
-call a typed refusal a failed run, and `stop_reason` is consulted only where nothing believable
-was printed.
+buys one refetch on a stronger model; arguments the program refused as damaged
+(`digest_mismatch`, `args_unreadable`) are copied again by the stronger model, because a model that
+miscopies an argument miscopies it the same way again, and arguments refused there too are a
+`transport` fault; a program failure is not retried. What the program printed decides which of
+these it is: a digest-covered payload is read whatever `stop_reason` the courier gave it, since a
+courier may call a typed refusal a failed run, and `stop_reason` is consulted only where nothing
+believable was printed.
 
-**A plugin fault is never the user's decision.** A boundary that stays unbelievable (`transport`),
-a detached job that threw (`program`), an agent dispatch that returned nothing (`dispatch`), a
-ledger that refused a record (`ledger`), or a throw in the workflow itself (`pipeline`) ends that
-unit as a `fault {node, channel, detail}` state line: no `escalated` event lands, so the node's
-status on disk is what its last real record says. It is held for the rest of the invocation — the
-schedule is told (`held`) and neither launches it nor counts it against the pool, and its slot is
-freed — and the result lists it under `faults` and in `coverage.unreached`. develop
+**A plugin fault is never the user's decision.** A fault is recorded where it is known, as a
+`fault {node, channel, detail}` state line: by the job that threw (`program`), by the boundary that
+closes a dispatch which returned nothing or wrote no file (`dispatch`), and from the workflow's
+naming (`transport`, `pipeline`, `dispatch`). No `escalated` event lands, so the node's status on
+disk is what its last real record says. It is held for the rest of the invocation — the schedule
+reads this invocation's faults and neither launches the node nor counts it against the pool, and
+its slot is freed — and the result lists it under `faults` and in `coverage.unreached`. A fault on
+a consumer whose drift a ruler ruled affected, and that nothing answered yet, parks it
+`contract_drift` with that ruling as well: drift is found only on the batch that landed it. develop
 relaunches the execution once at once, and the next invocation takes the node up where it stands;
 a fault on the same node again is reported as a plugin defect with what it left undone, never asked
 as a question. The user is reached for two things only: a premise a parallel change made obsolete
@@ -1254,8 +1272,9 @@ fast suite misses before anything outside depends on it.
 A ready set per execution, recomputed by the `schedule` boundary (`lib/schedule.mjs`, pure over
 the node records, the event log and the execution's state log) whenever anything in flight settles.
 The workflow says what it has in flight — its running units, and the folders a running unit is
-replanning inline, and the nodes it holds on a plugin fault — and launches what comes back.
-Nothing below a running or replanning node launches, and a held node does not launch at all.
+replanning inline — and names the plugin faults only it saw; it launches what comes back.
+Nothing below a running or replanning node launches, and a node a fault of this invocation holds
+does not launch at all.
 
 A leaf's dependencies are its own and every ancestor's: a dependency declared on a composite or a
 group binds every leaf beneath it. A leaf is ready when its dependencies' outputs exist where it
@@ -1264,9 +1283,11 @@ groups passed over) has merged into that ancestor's integration branch, or, for 
 or park sits on its dependency chain, no unmerged leaf outside its cycle holds a lock on its locus,
 and a slot can be had. Leaves launch up to the pool less the leaves running.
 
-A folder with nothing planned beneath it is planned, up to the pool less the plans running. A
+A folder with nothing planned beneath it is planned, up to the pool less the plans running, when
+the planner writes it; one the user writes is parked `needs_design` by the tick that finds it. A
 folder the planner wrote that its compile parked `spec_changed` (the park's `return`) is re-derived
-once per park: again only when this execution has no `plan:<id>` dispatch newer than that park.
+once per park: again only when this execution has no `plan:<id>` dispatch line newer than that
+park.
 
 A merge-batch runs whenever approved children wait on an integration branch nobody is merging into,
 at the heads their approvals named; a leaf still running (a fix round after it failed on the
@@ -1324,10 +1345,10 @@ merge-batch. Coupled leaves run one at a time; everything else keeps running.
 - **Executors** are standalone agents, one per leaf per round: implementer, test-author, auditor.
   Each fetches its brief by reference and confirms its digest (a shell-less author reads it, and
   leaf-close re-checks), writes a focused commit series inside its locus (no amends, no rebases),
-  writes its report to a file, and returns a short typed status: `done`, `done_with_concerns`,
-  `blocked`, `needs_context`, or a [replanning](#replanning) return. The implementer journals
-  `series-done` by heredoc when it has finished; for a shell-less author leaf-close commits its
-  files and journals it. An implementer or test author also keeps a [progress
+  writes its report to a file, and returns its status alone: `done`, `done_with_concerns`,
+  `blocked`, `needs_context`, or a [replanning](#replanning) return, any but done written first in
+  full to the file its dispatch names. leaf-close reads that status: on done it journals the series
+  as `series-done` from git, after committing a shell-less author's files. An implementer or test author also keeps a [progress
   file](#progress-file): the pieces its work splits into, each `pending`, `working` or `done`,
   written before its first edit and rewritten at every move.
 - **Verification failures** send a fresh producer a fix round carrying the failures. A fix round
@@ -1336,8 +1357,10 @@ merge-batch. Coupled leaves run one at a time; everything else keeps running.
   the locus can move — a discriminator that is the only failing fact on a `tdd` leaf
   (`discriminator_undecidable`), a locus breach and a broken build alternating
   (`verify_oscillating`) — and any environment error by its kind.
-- **Review** is a fresh reviewer each round, given the brief, the span, the executor's concerns and
-  the prior round's open findings. The exit is computed, never judged:
+- **Review** is a fresh reviewer each round, given the brief, the span, the executor's report (its
+  concerns first) and the record of what the prior round left open; it writes its review to the
+  file its dispatch names, and `leaf-review` computes the exit (`reviewExit` in `lib/verdict.mjs`),
+  never judged:
   - Round 1 reviews the whole series; later rounds rule on the open blockers and review the fix
     span alone — the merged change is reviewed whole again at integration.
   - The blocking set is the round's criticals, plus its majors when the leaf provides a contract
@@ -1345,11 +1368,12 @@ merge-batch. Coupled leaves run one at a time; everything else keeps running.
   - The open set is the round's blocking findings, plus every prior blocker ruled
     `not_fixed`/`regressed` in `fix_verdicts` — or not ruled on at all — that the round did not
     re-report. Never narrow this to the round's criticals alone.
-  - The leaf is approved when the open set is empty — a count the workflow computes.
+  - The leaf is approved when the open set is empty — a count the boundary computes.
   - It escalates when a fix round returns no commits or a blocked status, when the same finding is
     ruled `not_fixed`/`regressed` in two consecutive rounds, or when two consecutive rounds each
     rule every prior blocker fixed and still mint new blocking findings.
-  - Otherwise a fix round, re-verification, and a fresh reviewer. No round counter ends the loop.
+  - Otherwise a fix round, its brief listing the open findings, re-verification, and a fresh
+    reviewer. No round counter ends the loop.
 - **The code severity ladder** is the verbatim block `severity-ladder` (in `agents/reviewer.md` and
   below): critical must not merge; major is real but mergeable and blocks only on a contract leaf,
   only with a failure scenario; minor never blocks. A fix verdict on a prior blocker is `fixed`,
@@ -1379,18 +1403,20 @@ merge-batch. Coupled leaves run one at a time; everything else keeps running.
   decision list, the criteria of every child reviewed there, and the folder's spec as its
   yardstick. It is earned at the root whenever something merged there (the landing view reads its
   verdicts), and below the root when a child had no review loop of its own or two or more children
-  with work meet there; otherwise it is skipped and the log says why. When planned children did not
+  with work meet there; otherwise it is skipped, and the suite gate that found it unearned records
+  so. When planned children did not
   land, every finding carries that caveat. Besides findings it returns a **claim verdict** for each
   claim the spec makes (a success criterion, a Design statement, a plan criterion): `met`, `under`,
-  `over`, `deviates`, `spec_defect` or `cant_tell`, recorded as a `claims` event at the head it
-  judged (`review: done`; a skipped review records `review: not_earned` and no verdicts, and one
-  that returns nothing escalates the folder `review_failed`). Routing is by
-  class, first match: any `spec_defect` parks the folder `spec_defect` on its spec (a re-spec);
+  `over`, `deviates`, `spec_defect` or `cant_tell`, written to its review file and recorded by
+  `folder-review` as a `claims` event at the head it judged (`review: done`; a skipped review
+  records `review: not_earned` and no verdicts, and one that wrote nothing is a plugin fault on the
+  folder and a lost check). Routing (`integrationPark`) is by class, first match: any `spec_defect` parks the folder `spec_defect` on its spec (a re-spec);
   any critical, or any `under`, `over` or `deviates`, parks it `integration_critical` (the user
   routes the fix); any `cant_tell` parks it `cant_tell`, which never counts as a pass.
 - **Establishing commands** is judgment: when no build or test command is established, leaf-close
-  returns `command_unknown`, and an investigator establishes them once for the execution, recorded
-  as `command` gotchas.
+  returns `command_unknown`, and an investigator establishes them once for the execution: it
+  writes them to the file its dispatch names and records that file as `command` gotchas. A close
+  that still finds none once an investigator ran escalates `command_unknown`.
 
 ### Model tier
 
@@ -1595,41 +1621,36 @@ executions, the gaps — is on its state line, and
 ## Progress
 
 The user follows work through the todo list of the session that launched the execution. The
-couriers that run the boundaries move it live while the workflow runs.
+session writes it from the event logs (`lib/status.mjs todos`) on launch, on every line its watch
+prints, and on return; the workflow's log narrates every boundary in between.
 
-- **One todo per node**, subject `<node-id> — <title>`; composites get one too, completed by the
-  merge-batch that merges them. A composite whose children have all merged gets a second todo,
+- **One todo per node**, subject `<node-id> — <title>`; composites get one too, completed once
+  they merge. A composite whose children have all merged gets a second todo,
   its integration review, keyed `<node-id>/@review` (`@review` at the root; `reviewIdOf` in
   `lib/tree.mjs`) and listed after its children: `in review` while the composite is `reviewing`,
   pending while the composite is stopped before its review, completed once a review stands. The
   composite's own todo reads `awaiting review` meanwhile.
-- **The stage is the `activeForm`**, set to what happens next: `implementing`, `writing tests`,
-  `auditing` or `checking` (leaf-open); `in review`, `awaiting merge` or `fix round N`
-  (leaf-close, from the decision); `held` for a cycle member awaiting its tip; `waiting on user`
-  (a parked node); completed on merge; pending with the reason when escalated.
-- **The movers are the boundary couriers**, which already run at every stage change, so progress
-  adds task-tool calls to existing dispatches and no dispatch of its own. The first boundary that
-  touches a node creates its todo. A move names no task id: the courier finds the node's task by
-  its subject with one TaskList call, and creates it when there is none.
-- **`--no-progress`** drops those calls. The session then derives the list from the event logs
-  (`lib/status.mjs todos`) on launch, on wake and on return, and the workflow's log still narrates
-  every boundary. The same path serves a host whose subagents have no task tools: the courier
-  reports `task_tools: unavailable` and the workflow says so.
+- **The stage is the `activeForm`**, derived from the node's status and latest dispatch:
+  `implementing`, `writing tests`, `auditing` or `checking` while dispatched, `fix round N` from the
+  second round; `awaiting merge` once approved, `held` for a cycle member awaiting its tip;
+  `waiting on user` for a parked node; completed on merge; pending with the reason when escalated.
 - **The list is a view.** Nothing reads it back as state, it is never hand-edited, and a status
   header (`ONGOING`, `DONE`, `NEEDS_INPUT`) is rendered from derived status for display only.
 
-**Why a flag:** each todo move is a turn on a courier, which is cheap but not free; a user who
-watches the log or checks in only at the end should not pay for it.
+**Why the session writes it:** a todo is a title and a stage — text — and a courier that moved
+todos would retype it, which GP6 rules out; the task tools are the session's, and the event logs
+already hold everything the list shows. The list moves when the session wakes, which is when a
+question arrives and when the run returns.
 
 **Questions are asked while the run goes on.** A park or an escalation stops only its node; the
 develop session watches for them with `lib/status.mjs watch`, which prints one line per
 `escalated` or `parked` event of the execution after the watch began and exits when postflight
 appends `ended`. The session asks the user at once and records the answer: a re-spec's approval and
 compile clears a park (`replanned`, `answered`), and `lib/boundary.mjs retry --node <id>` clears an
-escalation (`replanned`, `retry_escalated`). The workflow snapshots the stops it decided before
-each schedule call; a node from that snapshot the schedule launches anyway is one disk no longer
-holds stopped, so the workflow drops it from its escalations and parks and runs it again in the
-same invocation. A stop decided while a call was out is not in the snapshot and stays dropped
+escalation (`replanned`, `retry_escalated`). The workflow snapshots the stops the boundaries told
+it of before each schedule call; a node from that snapshot the schedule launches anyway is one disk
+no longer holds stopped, so the workflow drops it from its escalations and parks and runs it again
+in the same invocation. A stop told while a call was out is not in the snapshot and stays dropped
 (see [Boundaries](#boundaries)); a plugin fault is never relaunched this way.
 
 **Why:** the user's attention is the scarcest resource in the loop. A question held until the whole
@@ -1706,14 +1727,14 @@ disagree about it.
 |---|---|---|---|
 | scout, historian, doc-researcher | find, to exhaustion | conclude | search tools; historian read-only git; doc-researcher the web |
 | analyst | judge what it is handed | search | `Read` only |
-| ruler | rule whether a change — drift, a moved base, an edited spec — moved the premises of the nodes it reaches | search, touch the work | read; write (the ruling files its dispatch names) |
-| planner | write the spec of a folder develop owns (an `author: planner` sub-effort, a promoted task, its own folder replanned) and settle its autonomous review | state a decision, implement | read, search, shell (for `lib/spec.mjs check`), write |
+| ruler | rule whether a change — drift, a moved base, an edited spec — moved the premises of the nodes it reaches | search, touch the work | read; write (the one rulings file its dispatch names) |
+| planner | write the spec of a folder develop owns (an `author: planner` sub-effort, a promoted task, its own folder replanned) and settle its autonomous review | state a decision, implement | read, search, shell (for `lib/spec.mjs check`), write (the spec, its dispositions file, its said file) |
 | implementer | code one leaf as a focused series, or its fix round | leave its locus, amend, merge, certify | read, edit, shell |
 | test-author | write a leaf's tests and declare mutations | implement, execute anything | read, edit |
 | auditor | declare mutations against an implementation | edit source, execute anything | read, write (its report, and its said file when it stops short) |
 | reviewer | attack a span | approve, edit | read, read-only git; write (its own review file) |
-| investigator | establish build and test commands when none are known, recorded as `command` gotchas | judge quality, fix anything | read, shell |
-| courier | run one command (after the token writes it is handed), paste stdout; move todos | anything else | shell, task tools |
+| investigator | establish build and test commands when none are known, recorded as `command` gotchas from the file it writes | judge quality, fix anything | read, shell, write (its commands file) |
+| courier | run one command of handles, paste its one line | anything else | shell |
 
 ### Capability layer
 
@@ -1724,10 +1745,10 @@ Agents with a shell are restrained by their definitions and audited post hoc (th
 commit-series check): the criterion is zero breaches surviving to review. The allowlists are pinned
 by `test/agent-allowlists.test.mjs`.
 
-Two host facts shape the roster. **An agent must carry at least one tool**, so the analyst — which
+One host fact shapes the roster. **An agent must carry at least one tool**, so the analyst — which
 the design wants tool-less — keeps `Read` alone: it cannot search, and it opens only what it was
-pointed at. **A subagent may not be granted task tools**; the courier lists them, and when they are
-absent it says so and the session takes the `--no-progress` path.
+pointed at. Every agent that writes a file a boundary reads carries `Write` for that file alone;
+nothing enforces the "alone" but its definition.
 
 ---
 
@@ -1783,9 +1804,11 @@ Two conventions hold throughout:
   keys sorted, `undefined` read as `null`. `execute-approved-plan-in-worktrees` carries identical copies.
 - **A CLI whose output a courier carries back** prints `{payload, payload_digest}` and exits 0,
   even when the payload reports a typed error. `{error}` with exit 1 means the program itself
-  failed. Arguments minted by the workflow arrive as `--b64 <token> --digest <d>`, or
-  `--json-file <path> --digest <d>` for an evidence token or a boundary call that carries records; a mismatch is
-  refused as `digest_mismatch`, and nothing is written.
+  failed. A boundary's arguments are handle flags parsed by `handleArgs` under `--digest <d>`, and
+  its payload is printed by `handleEnvelope`, which refuses anything but handles; an evidence
+  token arrives as `--b64 <token> --digest <d>` or `--json-file <path> --digest <d>`. A mismatch is
+  refused as `digest_mismatch`, a value that is no handle as `args_unreadable`, and nothing is
+  written.
 
 ### Node record and events
 
@@ -1800,14 +1823,16 @@ Fields as in [Nodes](#nodes). Event lines are `{kind, node, execution, seq, ...}
 `planned {by}` · `replanned {reason, by}` (also `retry_escalated` and `answered`) ·
 `dispatched {role, round, model, effort}` · `approved {head_sha, review_rounds, at_integration}` ·
 `merged {into, merged_sha, head_sha}` · `escalated {reason, detail, said?}` · `parked {return,
-question, said?}` (`said` is the file the agent behind it wrote, in full; `detail` or `question` is
-then empty, and `saidOf` in `lib/store.mjs` reads either)
+question, said?}` (`said` is the file the agent behind it wrote, or the boundary wrote beside
+the JSON the agent wrote; `detail` or `question` is a line the lib composed, or empty, and `saidOf`
+in `lib/store.mjs` reads either)
 (`return` is a replanning return, `needs_design`, `needs_respec`, `integration_critical`,
 `spec_defect`, `cant_tell` or `contract_drift`) ·
 `landed {into, merged_sha}` · `claims {head_sha, review: done | not_earned, claims[{claim, verdict}],
-said?}` (each verdict's evidence is in the reviewer's `said` file) · `noted {by, text}` (what a
-session learned about the node; no status is derived from it).
-An event the workflow decided carries its record id, `rid`.
+said?}` (each verdict's evidence is in the `said` file, written beside the reviewer's JSON) ·
+`noted {by, text}` (what a session learned about the node; no status is derived from it).
+A boundary appends an event only while it is not already the node's word (`freshRecords` in
+`lib/boundary.mjs`, [Boundaries](#boundaries)).
 
 ### Snapshot
 
@@ -1980,32 +2005,38 @@ file is `{rulings: [{node, ruling, why, question, fix}]}`, one per node of `node
 
 ### State and journal lines
 
-- **Owner:** `lib/boundary.mjs` (`batch`, `gate`, `checkpoint`, `closed`, `merge-observed`, `series-done`
-  for shell-less authors), `dispatch` in `execute-approved-plan-in-worktrees`, `collectUsage` in
-  `lib/usage.mjs` (`usage`), `journalLine` in `lib/verify.mjs`.
-- **Restated in:** the implementer's `series-done` heredoc in `execute-approved-plan-in-worktrees`; `lib/resume.mjs`
-  and `lib/status.mjs` (readers).
+- **Owner:** `lib/boundary.mjs` (`dispatch`, `fault`, `drift-ruled`, `stale-ruled`, `batch`,
+  `batch-started`, `gate`, `checkpoint`, `checkpoint-confirmed`, `invocation`, `closed`, `ended`,
+  `merge-observed`, `series-done`), `collectUsage` in `lib/usage.mjs` (`usage`), `journalLine` in
+  `lib/verify.mjs`.
+- **Restated in:** `test/harness/develop-sim.mjs`; `lib/resume.mjs` and `lib/status.mjs` (readers).
 
-`state.jsonl` (what the workflow decided): `dispatch {label, node, role, model, effort}`;
+`state.jsonl` (what the execution decided): `dispatch {label, node, role, model, effort}`, one per
+agent or courier dispatch, recorded by the boundary that closes it from the call's `dispatch`
+tokens, once per label;
 `usage {agent, label, models{<model id>: {input, cache_write_5m, cache_write_1h, cache_read, output}}}`,
 what one agent spent, the last line per `agent` standing: a `dispatch` is reported when a `usage`
 carries its `label`, and the spend is the node's that the label names (`<what>:<node id>#<round>`,
-the form every `dispatch` call in the workflow gives a label about a node);
+a retry adding `#<n>` and a poll `@<n>`, the form every dispatch the workflow makes about a node
+takes);
 `batch {target, merged[], head_sha, verified,
 failed_alone[], combination[], conflict}`; `gate {target, head_sha, passed}`, one per suite gate
 that ran; `checkpoint {reason, detail, executions?, gaps?}`
 (the lists the checkpoint found; `lib/status.mjs checkpoint` prints them); `closed {status}`;
 `batch-started {target, pre, children}`; `checkpoint-confirmed {gaps?}` (what the user
-confirmed past, printed by the same command); `drift-ruled {node, contract, head_sha, ruling, why, said?}`
-and `stale-ruled {node, base_now, ruling, why, said?}` (either ruling; `why` is empty when the
-ruler's `said` file holds it; the newest `stale-ruled` of a leaf is its anchor for the next moved base); `invocation {}`, one per preflight, whose count
-numbers the invocation's record ids; `fault {node, channel, detail}`, a unit a plugin fault ended;
-`ended {}`, one per postflight, where a watching session stops. A line the workflow decided carries its `rid`.
+confirmed past, printed by the same command); `drift-ruled {node, contract, head_sha, ruling, why, said}`
+and `stale-ruled {node, base_now, ruling, why, said}` (`said` the file rule-close wrote from the
+ruler's rulings, `why` empty; the newest `stale-ruled` of a leaf is its anchor for the next moved
+base once it is `unaffected` or answered on disk — the leaf revised, stopped or replanned after
+it); `invocation {}`, one per preflight; `fault {node, channel, detail}`, a unit a plugin fault
+ended, once per node and channel in an invocation (the faults after the latest `invocation` are
+what the schedule holds); `ended {}`, one per postflight, where a watching session stops.
 
 `journal.jsonl` (what was observed, by whoever observed it): `verify-observed {node, branch,
 worktree, base_sha, head_sha, stop_reason, build, typecheck, suite, failing_tests, baseline_failing,
 discriminator, mutations, series_findings, checks}`; `merge-observed {node, branch, into, merged_sha, head_sha}`;
-`series-done {node, branch, head_sha, commits[{sha, subject}]}`.
+`series-done {node, branch, head_sha, commits[{sha, subject}]}`, journalled by leaf-close from git
+when the executor returned done.
 
 ### The seq counter
 
@@ -2067,61 +2098,90 @@ the taker waits.
 
 ### Boundary payloads
 
-- **Owner:** `lib/boundary.mjs`; the launches and the summary are `lib/schedule.mjs`'s.
-- **Restated in:** `execute-approved-plan-in-worktrees` (the readers); `test/harness/develop-sim.mjs`.
+- **Owner:** `ARGS` and every entry point in `lib/boundary.mjs`; the launches and the summary are
+  `lib/schedule.mjs`'s; the card and review-record paths `lib/store.mjs`'s.
+- **Restated in:** `ARGS` and the readers in `execute-approved-plan-in-worktrees`;
+  `test/harness/develop-sim.mjs`; `test/harness/boundary-fixture.mjs`.
 
-Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}], notes}` plus:
+Every call also takes `dispatch[]`: the dispatches it closes and its own courier's attempts, each
+`<label>=<role>/<model>/<effort>`. Every payload holds handles only:
+`{boundary, ok, error: {kind} | null, stops[{id, status: escalated | parked | held, reason, said}]}`,
+`stops` naming what the call recorded, plus:
 
-- **preflight** — `invocation`, `checkpoint {reason, detail}`, `said_dir` (where the execution's
-  agents write what a record only points at), `stale {nodes, rows, now, brief}`
-  (null unless the base moved under a leaf since its anchor; `rows` are those leaves' launch rows plus `under_way`,
-  `brief` the path of what the ruler reads), `counts {nodes, leaves, gaps, untraced}`,
-  `dirty_worktrees`, `max_parallel`.
-- **schedule** — `launch[]`, `idle`, `max_parallel`, `records`. A launch is one of
-  `{unit: plan, id, why, row}` (its row with the folder's `intent`), `{unit: leaf, id, row, parent
-  {id, title, kind, author, spec_path}, facts, waits_on}` (its dependencies and every ancestor's), `{unit: merge, target,
-  children[{id, head_sha}], cycles[[id]]}`, `{unit: review, id, row, earned, where {branch,
-  worktree, head, base}, children, unreviewed}`. `facts` is the resume ladder's row for the leaf:
-  `{id, next_action, branch, worktree, head_sha, base_sha, rounds, brief_path}`. A row is `{id, title, kind, author, rigor, role, provides_n,
-  decisions, dispatch, ground_known, rev, spec_path, children_n, own_review}`.
-- **leaf-open** — `status` (`opened | no_slot | locus_held | busy | refused`), `branch`, `worktree`,
-  `base_sha`, `head_sha`, `brief_path`, `brief_digest`, `report_path`, `slot`,
-  `max_parallel`, `held_by[{effort, path, node, execution, status}]`.
-- **leaf-close** — `status` (`done | pending`), `node`, `head_sha`, `decision {next, reason,
-  failures[{check, claim}]}`, `record` (the path of `closes/<stem>.json`: `{node, role, round,
-  head_sha, measurement, decision}` with each failure's `evidence`, `gotchas_written`,
-  `gotchas_deleted`, `mutations`, `committed`, `notes`), `committed`. On `fix` it also writes
+- **preflight** — takes `root, retry[], confirmed_duplicate, confirmed_gaps, plan_only, dial,
+  pace, base_ref, commands_file`. Prints `invocation`, `checkpoint {reason}`, `said_dir` (where the
+  execution's agents write what a boundary or a record reads), `stale {nodes, now, brief, record}`
+  (null unless the base moved under a leaf since its anchor; `brief` what the ruler reads, `record`
+  `{kind: stale, now, nodes}`), `counts {nodes, leaves, gaps, untraced}`, `dirty_worktrees`,
+  `max_parallel`.
+- **schedule** — takes `running[]` (`<unit>:<id>`), `planning[]`, `stopping`, `fault[]`
+  (`<node>:<channel>`). Prints `launch[]`, `idle`, `max_parallel`. A launch is `{unit: plan, id,
+  why: '' | spec_changed, card, row}`, `{unit: leaf, id, card, row, facts, waits_on}` (its
+  dependencies and every ancestor's), `{unit: merge, target, card}` or `{unit: review, id, card}`.
+  A row is `{kind, author, rigor, role, provides_n, dispatch, ground_known, rev, spec_path,
+  children_n, own_review}`; `facts` the resume ladder's row for the leaf, `{next_action, branch,
+  worktree, head_sha, base_sha, rounds, brief_path}`. A card (`cards/<unit>-<node>-<digest>.json`)
+  is the node's `{unit, id, title, kind, author, rigor, role, spec_path, decisions, intent}`, plus a
+  leaf's `parent {id, title, kind, author, spec_path}`, a plan's `why`, a review's `where {branch,
+  worktree, head, base}`, `children` and `unreviewed`; a merge's card is `{unit, id,
+  children[{id, head_sha}], cycles[[id]]}`.
+- **leaf-open** — takes `node, role, round, tier` (`<model>/<effort>`), `wait_ms`. Prints `status`
+  (`opened | no_slot | locus_held | busy | refused`), `branch`, `worktree`, `base_sha`, `head_sha`,
+  `brief_path`, `brief_digest`, `report_path`, `slot`, `max_parallel`, `held_by[{node, status}]`.
+- **leaf-close** — takes `node, role, round, mode` (`fresh | continue | fix | resume`), `status`
+  (the executor's, `''` when it returned nothing), `said`, `head_before`, `base_sha`. Prints
+  `status` (`done | pending`), `node`, `head_sha`, `decision {next, failures_n}` (`next`: `approve |
+  review | fix | escalate | finding | command_unknown | replan | stopped | held`), `raise` (a second
+  fix in a row), `record` (the path of `closes/<stem>.json`: `{node, role, round, head_sha,
+  measurement, decision}` with each failure's `evidence`, `gotchas_written`, `gotchas_deleted`,
+  `mutations`, `committed`, `notes`), `report_path`, `replan` (`{id, card, row, said}` of a verify
+  leaf's folder the planner writes, else null). On `fix` it also writes
   `fixes/<node>-r<round+1>.json`, `[{source, check, claim, evidence}]`, which leaf-open reads.
-- **merge-batch** — `status`, `target`, `target_branch`, `target_worktree`, `target_base`,
-  `merged[{id, merged_sha}]`, `conflict {node, nodes, paths}`, `head_sha`, `verified`, `record`
-  (the path of `merges/<target>-<pre>.json`, with the measurement and each failure's evidence),
-  `failed_alone[{id, ids, failures[{check, claim}], row?, parent?, facts?}]` (the row, the
-  parent's row and the resume facts for a single leaf, whose fix round launches from them and
-  whose `fixes/` file merge-batch writes),
-  `combination[]`, `drift[{node, contract, files, row?, stopped?}]` (a node not yet merged
-  whose consumed contract the merge touched, with its launch row plus `under_way`; `stopped` names its escalation
-  or park, which the drift is reported beside and never parked over), `drift_brief` (the path of
-  what the ruler reads about the unstopped consumers, or `''`), `unexamined_n` (undesigned nodes drift could not check).
-- **suite-gate** — `status` (`done | pending`), `target`, `head_sha`, `ran`, `passed`,
-  `failures[{check, claim}]`, `record` (the path of `gates/<target>-<head>.json`, with the
-  measurement and each failure's evidence; `''` when nothing ran).
-- **postflight** — `summary {nodes_n, leaves_n, merged_n, not_merged_n, blocked_n,
-  blocked[{blocked_by, leaves_n}], root_status, root_done, done, stopped[{id, status, reason}],
-  held[{id, behind}]}`, `integration {branch, head_sha}` of the execution's root, `cleanup_n`,
-  `unmerged_n`, `closed`, `records`.
-- **spec-check** — `node`, `spec_path`, `exists`, `hash`, `decisions_n`,
-  `problems[{file, line, problem}]`: a planner-written spec, checked with its ancestors' decisions
-  in view.
-- **spec-settle** — `recorded`: the dispositions appended, `by: planner`; one already in the
-  ledger for that folder is not appended again.
-- **spec-reviewed** — no fields beyond the common ones: it appends the round's `reviewed` ledger
-  line (`complete`, `remaining`, `ambiguities`).
-- **spec-gate** — `ratifiable`, `open`, `coverage_complete`, `reviewed`: the `approvalGate` of the
-  folder's spec as it stands.
-- **spec-prepare** — `status` (`prepared | refused`), `hash`, `compile {ok, problems, written_n}`
-  (of the `compileEffort` result), `problems`, `row` (the prepared node as compiled, which is how a replan learns whether
-  it changed the node and whether it planned anything beneath it). A `spec_changed` park its compile raises on the prepared folder is cleared
-  by a `replanned` event, reason `spec_rederived`.
+- **leaf-review** — takes `node, round, review_round, review_file`, the reviewer's
+  `{findings, fix_verdicts, claims, notes}` ([Review returns](#review-returns)). Prints `decision
+  {next: approve | fix | escalate | held, reason}`, `raise`, `record` (the path of
+  `reviews/<node>-r<n>.json`: `reviewExit`'s `{open, unfixed, clean_streak}` and the head it
+  judged). On `fix` it writes the open findings to the next round's fixes file as `{source:
+  "review <severity> <id>", claim, evidence}`.
+- **merge-batch** — takes `target, card`. Prints `status`, `target`, `head_sha`, `verified`,
+  `record` (the path of `merges/<target>-<pre>.json`, with the measurement, `conflict`,
+  `combination`, `failed_alone` with each failure's evidence, and `drift[{node, contract, files,
+  stopped?}]`), `merged[{id, merged_sha}]`, `failed_alone[{id, card, row, facts}]` (a single leaf's
+  fix-round launch, whose `fixes/` file merge-batch writes), `drift[{node, contract, stopped}]` (a
+  node not yet merged whose consumed contract the merge touched; `stopped` names its escalation or
+  park, which the drift is reported beside and never parked over), `drift_brief` (the path of what
+  the ruler reads about the unstopped consumers, or `''`), `unexamined_n` (undesigned nodes drift
+  could not check).
+- **suite-gate** — takes `target`. Prints `status` (`done | pending`), `target`, `head_sha`, `ran`,
+  `passed`, `review` (`earned | not_earned`, `''` when the gate failed), `record` (the path of
+  `gates/<target>-<head>.json`, with the measurement and each failure's evidence; `''` when nothing
+  ran).
+- **folder-review** — takes `target, card, review_file`. Prints `status` (`recorded | no_review`),
+  `claims_n`, `findings_n`.
+- **rule-close** — takes `kind` (`drift | stale`), `record` (the merge's or preflight's), the
+  ruler's `rulings_file` (`{rulings[{node, ruling, why, question}]}`), `running[]`. Prints
+  `replan[{id, card, row, said}]`, the nodes the planner replans.
+- **postflight** — takes `fault[]`. Prints `summary {nodes_n, leaves_n, merged_n, not_merged_n,
+  blocked_n, blocked[{blocked_by, leaves_n}], root_status, root_done, done, stopped[{id, status,
+  reason}], held[{id, behind}]}`, `integration {branch, head_sha}` of the execution's root,
+  `cleanup_n`, `unmerged_n`, `closed`.
+- **spec-check** — takes `node`, and `status, said` when it closes the planner's dispatch. Prints
+  `status` (`checked | stopped | held`), `node`, `spec_path`, `exists`, `hash`, `decisions_n`,
+  `problems_n`: a planner-written spec, checked with its ancestors' decisions in view.
+- **spec-reviewed** — takes `node, hash, findings_file, previous_file, previous_hash, complete,
+  remaining[]`; appends the round's `reviewed` ledger line (`complete`, `remaining`,
+  `ambiguities`). Prints `status` (`recorded | stopped`), `fresh[]` (the ids of findings no
+  disposition settles yet).
+- **spec-settle** — takes `node, hash, findings_file, return_file` (the planner's `{dispositions
+  [{finding, outcome}]}`), `status`, `said`, `finding[]`, `refused[]`. Prints `status` (`settled |
+  refused | stopped | held`), `refused[]`, `incorporated_n`; each disposition is appended once, `by:
+  planner`.
+- **spec-gate** — takes `node, edited`. Prints `ratifiable`, `status` (`open | shut | stopped`),
+  `open`, `coverage_complete`, `reviewed`: the `approvalGate` of the folder's spec as it stands.
+- **spec-prepare** — takes `node, review, leaf_rev` (the revision of a leaf being replanned, `''`
+  otherwise). Prints `status` (`prepared | stopped`), `hash`, `compile {ok, written_n}`, `row
+  {kind, rev, children_n}` (the prepared node as compiled). A `spec_changed` park its compile
+  raises on the prepared folder is cleared by a `replanned` event, reason `spec_rederived`.
 - **land** (the session's, plain JSON) — `check`: `open_escalations`, `parked`, `human`,
   `drift {base_sha, base_moved, commits, overlap}`, `root_status`, `root_claims`, `landing`;
   `merge`: `merged_sha`; `cleanup`: `removed`, `kept`.
@@ -2131,11 +2191,13 @@ Every payload: `{boundary, ok, error, todos[{key, subject, activeForm, status}],
 
 ### Replanning returns
 
-- **Owner:** `EXECUTOR_STATUSES` in `execute-approved-plan-in-worktrees`; `EXECUTOR_STATUSES` in `lib/brief.mjs`.
+- **Owner:** `EXECUTOR_STATUSES` in `execute-approved-plan-in-worktrees`; `EXECUTOR_STATUSES` in `lib/brief.mjs`;
+  `executorOutcome` in `lib/boundary.mjs` (what each decides).
 - **Restated in:** `agents/implementer.md`, `agents/test-author.md`, `agents/planner.md`.
 
 `done | done_with_concerns | blocked | needs_context | decompose | unsplittable | premise_mismatch
-| needs_decision | contract_changed`, with `detail` saying what was established, tried and needed.
+| needs_decision | contract_changed`, returned alone; for any but done, what was established,
+tried and needed is written first to the file the dispatch names.
 
 ### Coverage block
 
@@ -2149,8 +2211,8 @@ merged, the root integrated, nothing escalated or parked — carried from an ear
 not — and no earned integration review or survey lost), `dropped[]`, `incomplete[]`,
 `failed_channels[]`, `unreached[]` (prose, loss first), `resumable {runId, remaining, args?,
 postflight?}`. `postflight` is `execute-approved-plan-in-worktrees`'s alone, present only when no
-courier could carry its postflight: the boundary's file writes and command, one per line, for the
-session to run in order.
+courier could carry its postflight: the boundary's one command, all handles, for the session to
+run as it stands.
 
 ### Evidence item store
 
@@ -2183,14 +2245,15 @@ with `renamed_from`.
 ### Workflow returns
 
 - **`execute-approved-plan-in-worktrees`** — takes `repo, effort, root, execution, intelligence, pace, plan_only,
-  pause, progress, retry_escalated, confirmed_duplicate, confirmed_gaps, base_ref,
-  commands, plugin_root`. Returns `{effort, root, execution, checkpoint, nodes_n,
+  pause, retry_escalated, confirmed_duplicate, confirmed_gaps, base_ref,
+  commands_file, plugin_root`. Returns `{effort, root, execution, checkpoint {reason, detail}, nodes_n,
   implemented[{id, rigor, role, rounds, review_rounds, at_integration, salvaged}],
-  escalations[{id, reason, detail, said?}], parked[{id, return, question, said?}], faults[{id, channel, detail}],
-  blocked[{blocked_by, leaves_n}], integration{branch, head_sha, reviews[{target, findings, claims, notes, reviewed}]}, drift, cleanup_n,
-  cost{dispatches, by_model, tokens}, stopped, notes, coverage}`. `coverage.unreached` names every
-  stopped node and counts the rest; `coverage.resumable.remaining` names the execution's root,
-  because a relaunch with the same stamp re-derives everything below it.
+  escalations[{id, reason, said, carried?}], parked[{id, return, said, carried?}], faults[{id, channel}],
+  blocked[{blocked_by, leaves_n}], integration{branch, head_sha, reviews[{target, review_file, reviewed}]},
+  drift[{node, contract}], cleanup_n, cost{dispatches, by_model, tokens}, stopped, notes, coverage}`.
+  A stop's text is the file `said` names, or the node's card when it is empty. `coverage.unreached`
+  names every stopped node and counts the rest; `coverage.resumable.remaining` names the
+  execution's root, because a relaunch with the same stamp re-derives everything below it.
 - **`gather-evidence-without-concluding`** — takes `question, roots, notes, prior, max_topics, intelligence, pace,
   plugin_root, ground`. Returns `{question, topics, ground, items, reused, unrecorded,
   risks[{topic, text}], history, docs, coverage}`: reused standing items first, then new ones in
@@ -2209,24 +2272,40 @@ with `renamed_from`.
 
 ### Review returns
 
-- **Owner:** `FINDINGS` in `execute-approved-plan-in-worktrees`.
-- **Restated in:** `agents/reviewer.md` (the verdicts, and when a review returns them).
-  `skills/task` asks its own reviewer for `{findings, fix_verdicts, notes}` only.
+- **Owner:** `leafReview` and `folderReview` in `lib/boundary.mjs` (the readers), over `reviewExit`
+  and `integrationPark` in `lib/verdict.mjs`.
+- **Restated in:** `reviewFileShape` in `execute-approved-plan-in-worktrees` (the shape a prompt
+  gives); `agents/reviewer.md` (the verdicts, and when a review carries them). `skills/task` asks
+  its own reviewer to return `{findings, fix_verdicts, notes}` itself, with no file.
 
-`{findings[{id, severity: critical|major|minor, claim, evidence, failure_scenario}],
-fix_verdicts[{id, status: fixed|not_fixed|regressed, evidence}], claims[{claim, verdict:
-met|under|over|deviates|spec_defect|cant_tell, evidence}], notes}`. A leaf review returns
-`claims: []`.
+The review file the reviewer writes: `{findings[{id, severity: critical|major|minor, claim,
+evidence, failure_scenario}], fix_verdicts[{id, status: fixed|not_fixed|regressed, evidence}],
+claims[{claim, verdict: met|under|over|deviates|spec_defect|cant_tell, evidence}], notes}`. A leaf
+review writes `claims: []`. The reviewer returns `{status: written | not_written}`.
 
 ### Planner returns
 
-- **Owner:** `PLANNED` and `SETTLED` in `execute-approved-plan-in-worktrees`.
+- **Owner:** `PLANNED` and `SETTLED` in `execute-approved-plan-in-worktrees` (the statuses);
+  `planOutcome` and `settleOutcome` in `lib/boundary.mjs` (what they decide, and the dispositions
+  file).
 - **Restated in:** `agents/planner.md`.
 
-Writing a spec: `{status: written|needs_decision|contract_changed|premise_mismatch|unsplittable|blocked,
-written[], accepted_warnings[], uncovered[], question, detail}`, with the spec's path in
-`written`. Settling a review: `{status: settled|needs_decision|blocked, dispositions[{finding,
-outcome: incorporated|discarded}], question, detail}`.
+Writing a spec: `{status: written|needs_decision|contract_changed|premise_mismatch|unsplittable|blocked}`,
+any but `written` written first in full to the file the dispatch names. Settling a review:
+`{status: settled|needs_decision|blocked}`, the dispositions written to the file the dispatch
+names as `{dispositions[{finding, outcome: incorporated|discarded}]}`.
+
+### Ruler and investigator files
+
+- **Owner:** `rulingOutcome` in `lib/boundary.mjs` (the rulings); `itemsFrom` in `lib/gotchas.mjs`
+  (the commands).
+- **Restated in:** the ruling prompts in `execute-approved-plan-in-worktrees`; `agents/ruler.md`;
+  `agents/investigator.md`.
+
+The ruler writes `{rulings[{node, ruling: unaffected|affected, why, question}]}` to the one file its
+dispatch names and returns `{status: written | not_written}`. The investigator writes its commands
+as an array of `command` gotchas ([Gotcha file](#gotcha-file)), records them with `lib/gotchas.mjs
+add --file`, and returns `{established[], unresolved[]}`, command names.
 
 ---
 
@@ -2238,7 +2317,9 @@ outcome: incorporated|discarded}], question, detail}`.
   frontmatter, gate clauses in gated skills, a stated task-tool fallback, and size budgets.
 - **The scenario harness** (`test/harness/workflow-host.mjs`) runs the real workflows with scripted
   agents; `test/harness/develop-sim.mjs` answers `execute-approved-plan-in-worktrees`'s boundaries from an in-memory
-  tree. Every claim about dispatch count is a harness assertion, not prose.
+  tree, parsing every courier command with the lib's own `handleArgs` over `ARGS`, printing every
+  payload through `handleEnvelope`, and deciding with the lib's own outcome functions. Every claim
+  about dispatch count is a harness assertion, not prose.
 - **Real git.** Every boundary, the resume ladder, verification and landing are tested against
   real repositories and worktrees.
 - **Pins:** verbatim blocks match across files (`test/verbatim-blocks.test.mjs`); every agent's

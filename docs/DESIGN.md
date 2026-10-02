@@ -413,8 +413,8 @@ the top of a working tree is its own root. Names of efforts, folders and entries
 segment rule: `^[a-z0-9][a-z0-9-]*$`, at most 120 characters, no `--`; so no file the store writes
 can pass for one. Worktrees live under `.claude/worktrees/`.
 
-Every name minted from something that grows is bounded (`nameKey`). A node appears in a branch,
-worktree or file name as its **key**: its id with `/` spelled `.`, kept whole up to 40 characters
+Every name minted from something that grows is bounded (`nameKey`). A node appears in a branch
+or file name as its **key**: its id with `/` spelled `.`, kept whole up to 40 characters
 and otherwise cut to its first 31, `_` and the `fnv1a` digest of the whole. A dispatch label in a
 return-file or said-file name is bounded the same way; a commit in a file name is its sha's first
 10 characters. Ids and labels carry no `_`, so a cut key never equals a whole one. **Why:** a name
@@ -424,6 +424,14 @@ agent's `Write` meets with a `.tmp.<pid>.<hex>` suffix on top. Bounded, the long
 rule admits leaves every path the plugin mints within both under a checkout as long as
 `C:/Users/<first.last>/source/repos/<project>` and a 60-character effort name
 (`test/name-limits.test.mjs`).
+
+A worktree's directory is bounded tighter: it is the name of the branch it holds past
+`agentics/` — `<effort>` or `<effort>--<key>` — kept whole up to 32 characters and otherwise cut
+to its first 23, `_` and the digest of the whole (`worktreeOfBranch`). **Why:** every file the
+project checks out in a worktree spends its path's length on the worktree's root first, and a
+checkout that runs past MAX_PATH fails without `core.longpaths`, which the plugin does not own.
+Named this way, a worktree root under that same long checkout leaves a project path of 150
+characters room, whatever the effort's name or the node's depth.
 
 ### Specs, approval and compile
 
@@ -568,8 +576,8 @@ into the user's branch. Every other node's branch is its sibling, `agentics/<eff
 the node's key as [Storage](#storage) mints it. **Why not `agentics/<effort>/<id>`:** git stores a
 branch as a file under `refs/heads/`, so `agentics/e` and `agentics/e/auth` — or `auth` and
 `auth/session` — cannot both exist. Node-id segments carry no dot and effort names carry no `--`,
-so no two nodes share a name; nothing reads an id back out of one. Worktrees follow the same names
-under `.claude/worktrees/`.
+so no two nodes share a name; nothing reads an id back out of one. A worktree is named after the
+branch it holds, bounded tighter ([Storage](#storage)).
 
 A leaf's worktree lives until the leaf merges. merge-batch removes it, clean, with the merge
 (`detach` in `lib/integration.mjs`); its branch stays until [landing](#landing-and-drift) sweeps

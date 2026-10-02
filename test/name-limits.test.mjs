@@ -2,10 +2,10 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  NAME_KEY_MAX, ROOT_ID, branchOf, briefPath, cardPath, closePath, fixesPath, gatePath, mergePath, nameKey,
+  NAME_KEY_MAX, ROOT_ID, WORKTREE_KEY_MAX, branchOf, briefPath, cardPath, closePath, fixesPath, gatePath, mergePath, nameKey,
   nodeIdProblem, nodeKey, progressPath, reportPath, respecPath, reviewPath, specCopyPath, stalePath, worktreeOf,
 } from '../lib/store.mjs'
-import { EFFORT, ROOT, overruns } from './harness/path-limits.mjs'
+import { EFFORT, PROJECT_PATH_BUDGET, ROOT, overruns } from './harness/path-limits.mjs'
 
 // The longest node id the id rule admits, nested as deep as its length allows.
 const LONGEST_ID = Array.from({ length: 8 }, (_, i) => 'growth-axes-and-ports-' + i).join('/').padEnd(200, 'x')
@@ -58,6 +58,22 @@ test('every name minted from the longest node id fits on Windows under a long ch
   for (const [what, path] of Object.entries(byAgents)) assert.deepEqual(overruns(path), [], what)
   for (const [what, path] of Object.entries(byLib)) assert.deepEqual(overruns(path, ''), [], what)
   assert.deepEqual(overruns(ROOT + '/.git/refs/heads/' + branchOf(EFFORT, LONGEST_ID), '.lock'), [])
+})
+
+test('every worktree root leaves the project its path budget under a long checkout', () => {
+  const project = 'p'.repeat(PROJECT_PATH_BUDGET)
+  for (const id of [ROOT_ID, 'a', LONGEST_ID]) {
+    assert.deepEqual(overruns(worktreeOf(ROOT, EFFORT, id) + '/' + project, ''), [], id)
+  }
+})
+
+test('a worktree is named by its branch: whole when short, bounded and distinct when long', () => {
+  assert.ok(worktreeOf(ROOT, 'e1', 'a/b').endsWith('/.claude/worktrees/e1--a.b'))
+  assert.ok(worktreeOf(ROOT, 'e1', ROOT_ID).endsWith('/.claude/worktrees/e1'))
+  const dirOf = (id) => worktreeOf(ROOT, EFFORT, id).split('/').pop()
+  assert.equal(dirOf('wishing/wishing-rules-green').length, WORKTREE_KEY_MAX)
+  assert.notEqual(dirOf('wishing/wishing-rules-green'), dirOf('wishing/wishing-rules-red'))
+  assert.notEqual(dirOf(ROOT_ID), dirOf('a'))
 })
 
 test('the root keeps its plain names', () => {

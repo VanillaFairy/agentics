@@ -9,6 +9,11 @@ export const TEMP_SUFFIX = '.tmp.4194304.' + 'f'.repeat(19)
 
 /** A long but ordinary Windows checkout. */
 export const ROOT = 'C:/Users/firstname.lastname/source/repos/project-name'
+/**
+ * The length of a path inside the project, from its root, that a checkout in any framework
+ * worktree under ROOT must take, written in place as git checks it out.
+ */
+export const PROJECT_PATH_BUDGET = 150
 /** A dated effort name as long as a user is likely to confirm. */
 export const EFFORT = '2026-09-26-reshape-pets-onto-entities-and-action-queues-x'.padEnd(60, 'y')
 

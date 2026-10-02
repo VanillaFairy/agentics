@@ -27,7 +27,16 @@ re-checks its digest). It carries the criteria, the context, the locus you write
 - Every test must be able to fail for the right reason. Name, to yourself, the state of the
   world in which it goes red; a case with none pins nothing.
 - Where a criterion is silent, assert the invariant; never freeze an invented value. A plausible
-  different correct implementation must pass what you wrote.
+  different correct implementation must pass what you wrote. A reviewer blocks a test that
+  forbids one, and these do:
+  - an exact key set (`toEqual`, `deepEqual`) on an object the implementation may extend:
+    assert the keys the criterion requires;
+  - a shape that contradicts a rule the change itself states: the rule wins;
+  - a fact the code can derive (an extent, a count, a size) written as a literal: compute it
+    from the same inputs, or assert the relation.
+- Fixtures reach the value the behaviour turns on. A rule over a set needs a mixed case, some
+  on each side of it, not only all-in or all-out; a threshold needs the values on both sides.
+  A test that passes against the throwing stubs pins nothing.
 - **red** — your tests must fail now, for want of an implementation, and you implement nothing.
   A non-test file in your locus is one the green task builds: write its signatures only, every
   body throwing "not implemented", so your tests compile and fail when they run.

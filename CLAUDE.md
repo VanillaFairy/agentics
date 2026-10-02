@@ -122,7 +122,7 @@ The laws themselves are in `docs/DESIGN.md#iron-laws`.
 | Law | Enforced by |
 |---|---|
 | IL1 — a set task is finished; no counter ends anything | `tools/rules/no-turn-caps.mjs`; typed escalations on every agent; the resume ladder (`lib/resume.mjs`) |
-| IL2 — a partial result never looks like a whole one | `tools/rules/coverage-block.mjs`; `stop_reason` schemas; continuation loops in `gather-evidence-without-concluding`; a `.catch` on every side channel; `tools/rules/task-tool-fallback.mjs` |
+| IL2 — a partial result never looks like a whole one | `tools/rules/coverage-block.mjs`; `stop_reason` in every search's return file; continuation loops keyed on `lib/evidence.mjs`'s `roundOf`; a `.catch` on every side channel; `tools/rules/task-tool-fallback.mjs` |
 | IL3 — nothing judges itself | `tools/rules/no-self-verdict.mjs`; `lib/verdict.mjs`, whose `reviewExit` computes the review-loop exit |
 | IL4 — the user owns decisions and their tree | `lib/boundary.mjs land` behind the session's gate; `lib/verify.mjs`'s linked-worktree refusal; `decisionProblems` in `lib/tree.mjs`, which admits a decision only from compile, against the approved copy on the ledger (`lib/approval.mjs`), and refuses a replan that changes a contract or drops a realised decision; `lib/respec.mjs`, which approves a changed spec without the user only on rulings that are all `unaffected`, each recorded on the ledger |
 | GP2 — nothing outlives its consumer | `test/liveness.test.mjs`; `tools/rules/size-budget.mjs` |

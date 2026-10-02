@@ -22,7 +22,7 @@ test('the Iron Laws section matches its pinned hash', () => {
   //   console.log(c.createHash('sha256').update(r.slice(r.indexOf('## Iron Laws'),r.indexOf('## Guiding Principles'))).digest('hex'))"
   const law = design.slice(design.indexOf('## Iron Laws'), design.indexOf('## Guiding Principles'))
   assert.equal(createHash('sha256').update(law).digest('hex'),
-    'dc826a9c0cdd7ebb65ae8ea744c3b2e29ee3e992820b727c0b7cbe79ce4a99c0')
+    '0828db18275d211f0bf229d014a497a340b4917f2deb31a49507f710594618a8')
 })
 
 test('each law names its enforcement', () => {

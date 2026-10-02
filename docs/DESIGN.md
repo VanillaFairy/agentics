@@ -81,8 +81,9 @@ observed. `complete` is computed from those fields, never reported. "Looked and 
 incomplete after exhaustion **leads** the report. A failing side channel keeps what was already
 paid for and marks what rests on it as unsupported.
 
-*Enforced by:* the `coverage-block` lint rule; `stop_reason` schemas; continuation loops keyed on
-`stop_reason`; a `.catch` on every side channel; the `task-tool-fallback` lint rule.
+*Enforced by:* the `coverage-block` lint rule; `stop_reason` in every search's return file;
+continuation loops keyed on lib's reading of it (`roundOf`); a `.catch` on every side channel; the
+`task-tool-fallback` lint rule.
 
 ### IL3 — Nothing judges itself
 
@@ -900,7 +901,8 @@ same anchor check as all other evidence, with no mechanism of its own. An artefa
 `since` buys no analyst. The gate is unchanged: a carried ambiguity is an open ambiguity.
 
 Each prober writes its findings — axis, severity, section, claim, evidence, artefact lines — to its
-return file and hands back only whether it finished. One courier closes the round
+return file with its `stop_reason` and `not_reached`, and hands back a count; whether it finished
+is lib's reading of that file ([Resumed rounds](#resumed-rounds)). One courier closes the round
 (`evidence.mjs record --kind probe`): lib reads every prober's file, lists the carried findings
 first and the new ones after, numbers them `P1…`, credits a finding whose axis its prober did not
 hold to that prober's bundle, anchors a range outside the snapshot to the whole document, records
@@ -1000,8 +1002,9 @@ Every agent whose output lib reads — a survey's planner, scouts, historian, do
 judges; a probe's locating scout and probers; a solutions sweep's framer, researchers, repository
 scout and assessor; a re-judge — writes its full return as JSON, with its own `Write` tool, to the
 **return file** its dispatch names, in the shape the dispatch states (the `return-file` block in
-each agent's definition). Its structured return to the workflow carries only what the workflow
-branches on: a stop reason and what is not reached, counts, keys, hit locations. A courier then
+each agent's definition). Its structured return to the workflow carries only handles: counts,
+keys, ids. Whatever a workflow branches on that the agent established — whether a search goes on —
+lib reads from the file ([Resumed rounds](#resumed-rounds)), never from the return. A courier then
 hands lib the files' paths (`record --from`, `judge --from`, `excerpts --hits`), and lib maps what
 was written to items, deterministically: a judge's topic to its subtree, a derived item's sibling
 claims to ids, a probe finding's lines into the snapshot, a candidate to an `external` item.
@@ -1021,6 +1024,42 @@ the first agent that writes a file: the survey's planner copies the question int
 the sweep's framer the capability into its frame file, and the courier carries the digest of the
 caller's text (`--question-digest`). lib checks the copy against it and refuses a mismatch
 (`question_mismatch`), so the one copy a model makes is checked, never trusted.
+
+### Resumed rounds
+
+A searching agent — a survey's scouts, historian and doc-researcher, a probe's locating scout and
+probers, a solutions sweep's researchers and repository scan — writes its coverage to its return
+file with everything else: `stop_reason`, `not_reached`, `no_match` and what it searched. That file
+is the one record of what the round established. After each round one courier runs `evidence.mjs
+round --from <this round's file> --earlier <each earlier round's file>…`, and `roundOf` reads the
+files and rules:
+
+- `done` when the round's file says `exhausted`;
+- `stop` with `dead_end` when it says `artefact_unreadable`, or `stuck` without naming a remainder;
+- `stop` with `no_progress` when the round found no entry no earlier round holds (a location by
+  path and line, a candidate by name) and named the same remainder as the round before, case and
+  spacing aside;
+- `stop` with `unreadable` when the file is missing or not JSON;
+- `continue` otherwise.
+
+A round that stops `unfinished` without naming what it missed, or states no stop reason at all, is
+continued: the scout or researcher covers whatever the original request asks that its earlier
+reports' `searched` lists do not show, and a prober attacks the whole document again and reports
+only what its earlier files do not hold. A slip in filling one field costs one more round, never
+the search, and a round that gains nothing ends it, so an agent with nothing more to find never
+loops. No counter ends a search (IL1).
+
+A continuation names every earlier round's file and points at the last one's `not_reached`, so the
+remainder's text never passes through the workflow (GP6); a search that ended short is named in
+the coverage block by the file that holds what it never reached. `entries_n` and `kinds` count the
+distinct locations across the rounds and size their readers: the probe's guidance and ground
+context files, the survey's judges. A round whose reading the courier never brought back ends the
+search short (`uncarried`), and its counts are unknown rather than zero, so its reports still reach
+their readers.
+
+**Why:** an agent that echoes its file in its structured return keeps two copies of the same
+facts, and they can disagree with nothing to say which holds. The file is what lib and every reader
+read, so it is the copy the workflow acts on too.
 
 ### Items and anchors
 
@@ -1099,9 +1138,10 @@ The survey (`gather-evidence-without-concluding`) gathers evidence for one quest
    file — the question copied in, each topic's instruction — and hands back each topic's key and
    subtree. A pool that answers the question buys no search.
 3. **Scout.** One scout per topic, the common ground scouted once, each pointed at its entry in the
-   plan file. Scouts write their locations with a note each, what they searched, `no_match` and
-   `not_reached` to their return files, and hand back the locations and a `stop_reason`. A scout is
-   continued on exactly what remains until exhausted, each round naming the earlier rounds' files.
+   plan file. Scouts write their locations with a note each, what they searched, `no_match`,
+   `not_reached` and `stop_reason` to their return files, and hand back a count. A scout is
+   continued until lib reads a round as done or ending short ([Resumed rounds](#resumed-rounds)),
+   each round naming the earlier rounds' files.
    History and docs channels run alongside when the plan asks, each with its own `.catch`.
 4. **Assemble context for analysis.** Judges are dealt first: one analyst for every topic, unless
    `pace` or more than 60 distinct locations earns more. Then, per judge, `lib/citations.mjs
@@ -2405,6 +2445,8 @@ checkout by default.
 - `items --ground <a,b> [--states <s,s>] [--return-kind <kind>]` → `{items[{id, state, topic,
   kind, seq, ground[]}], context}` (`context` '' when there are none).
 - `judge --from <file> --id <id>…` → `{read, recorded_n, standing_n, failed_n}`.
+- `round --from <file> [--earlier <file>…]` → `{read, stop_reason, named, absent, gained_n,
+  entries_n, kinds{<kind>: n}, next: done|continue|stop, why: ''|unreadable|dead_end|no_progress}`.
 - `context [--ground <a,b> --return-kind <kind>] [--return <name>…] [--from <judge file>…]
   [--history <file>…] [--docs <file>…]` → `{items[{id, topic, kind, state, return}], context,
   counts{items, risks, history, docs}}`.

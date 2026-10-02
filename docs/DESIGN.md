@@ -2128,7 +2128,7 @@ latest, and whether an escalation or park is newer than the replan that would cl
 `failing_tests[{file, id}]`; `baseline_failing[{file, id}]` (failing tests that fail at the base too);
 `discriminator[{test_id, adds_test, failed_on_base, passes_now}]` (`adds_test` false for a file of
 the leaf's own diff that adds no test case; an entry without it is read as adding one);
-`mutations[{file, applied, unapplied_reason, expect_failing, observed_failing, bites}]`;
+`mutations[{file, find, replace, applied, unapplied_reason, expect_failing, observed_failing, bites}]`;
 `series_findings[{sha, check, message, blocking}]`; `checks[{command, status, failing_tests,
 baseline_failing}]` (`status` `passed | failed | unrunnable`); `notes`; `error`
 (`null` or `{kind, message}`: `no_worktree`, `main_worktree`, `series_unreadable`,

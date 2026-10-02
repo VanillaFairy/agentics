@@ -442,6 +442,19 @@ test('bad input returns a coverage block, never undefined', async () => {
   assert.equal(result.coverage.complete, false)
 })
 
+test('a relative repo is refused before any courier runs: it would resolve wherever a shell stands', async () => {
+  for (const repo of ['.', 'sub/dir', '']) {
+    const calls = []
+    const { result } = await runWorkflow(WF, { args: { ...ARGS, repo }, agent: (prompt) => { calls.push(prompt); throw new Error('none') } })
+    assert.equal(result.checkpoint.reason, 'bad_input', JSON.stringify(repo))
+    assert.deepEqual(calls, [], 'nothing was dispatched for ' + JSON.stringify(repo))
+  }
+  for (const repo of ['C:/work/r', 'C:\\work\\r', '/srv/r']) {
+    const { result } = await runWorkflow(WF, { args: { ...ARGS, repo }, agent: () => { throw new Error('none') } })
+    assert.notEqual(result.checkpoint.reason, 'bad_input', JSON.stringify(repo) + ' is absolute')
+  }
+})
+
 const B_CONSUMES = { deps: ['a'], consumes: [{ name: 'api', paths: ['src/api.js'] }] }
 const driftSim = (script = {}) => simulate([composite('.'), row('a'), row('b', B_CONSUMES), row('c')], {
   merge: (args) => (args.children.some((ch) => ch.id === 'a')

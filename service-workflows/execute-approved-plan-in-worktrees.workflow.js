@@ -1061,6 +1061,10 @@ async function finish(checkpoint) {
 if (!effort || !execution) {
   return result({ reason: 'bad_input', detail: 'effort and execution (a UTC stamp minted by the session) are required' }, null)
 }
+// docs/DESIGN.md#execution: a relative repo resolves in whatever directory each courier's shell stands.
+if (!/^([A-Za-z]:)?\//.test(repo)) {
+  return result({ reason: 'bad_input', detail: 'repo must be the repository\'s absolute path, not ' + JSON.stringify(repo) }, null)
+}
 
 phase('Preflight')
 let pf

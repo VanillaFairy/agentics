@@ -1140,6 +1140,14 @@ An execution runs a subtree in the integration worktrees of its composites and i
 worktrees, and never touches the user's tree. The workflow is `execute-approved-plan-in-worktrees`; the session
 launches it with a stamp it minted, because a workflow cannot read a clock.
 
+It launches it with the repository's absolute path, too, and the workflow refuses a relative one
+(`bad_input`) before any courier runs. A relative `repo` resolves in whatever directory each
+courier's shell stands in when it runs, and that is the session's shell, whose working directory
+persists from command to command: one stray `cd` would cut every later worktree, and read every
+later record, from another directory. Every `lib/` call then names the repository with `git -C`,
+and every agent is handed absolute worktree paths, so nothing an execution creates depends on a
+process's working directory.
+
 ### Boundaries
 
 Every deterministic step runs at a boundary: one courier dispatch running one `lib/boundary.mjs`

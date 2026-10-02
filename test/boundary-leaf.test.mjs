@@ -285,6 +285,20 @@ test('a green\'s implementer that can fix only a test returns needs_tests: no st
   assert.doesNotMatch(readFileSync(author.brief_path, 'utf8'), /\[review critical F1\]/, 'the implementation\'s finding was the implementer\'s to answer')
 })
 
+test('a green\'s test-author round salvaged by a later execution is closed as the test-author\'s', () => {
+  // The mistake: reading a round's role off this execution's dispatches only, so a later
+  // invocation closes a test-author's round as an implementer's and never commits its files.
+  const { r, green } = greenWithAGap()
+  const gap = { id: 'T1', severity: 'critical', claim: 'no test pins the table', evidence: 'src/table.mjs:1', failure_scenario: 'capacity: 2 passes', remedy: 'tests' }
+  B(r, 'leaf-review', { node: 'g', round: 1, review_round: 1, review_file: wrote({ ...CLEAN_REVIEW, findings: [gap] }) })
+  const author = B(r, 'leaf-open', { node: 'g', role: 'implementer', round: 2 })
+  writeFileSync(join(author.worktree, 'src', 'table.test.mjs'), "import { test } from 'node:test'\ntest('t', () => {})\n")
+  const later = '20260926-120000'
+  B(r, 'preflight', { root: '.', commands: COMMANDS }, later)
+  B(r, 'leaf-close', { node: 'g', role: 'implementer', round: 2, mode: 'resume', status: 'done', base_sha: green.base_sha }, later)
+  assert.equal(git(author.worktree, 'show', '--name-only', '--format=', 'HEAD'), 'src/table.test.mjs')
+})
+
 test('needs_tests stops every leaf but a green\'s implementer round, as blocked does', () => {
   const at = (role, leafRole) => executorOutcome({ node: 'x', role, status: 'needs_tests', said: 's.md', mode: 'fix', round: 2, head_before: 'h', head: 'h', leafRole })
   assert.deepEqual([at('implementer', 'green').next, at('implementer', 'green').needs_tests], ['fix', true])

@@ -26,6 +26,8 @@ test('checksFor: the SPEC table, a role outranking its rigor and integration out
   assert.deepEqual(pick({ rigor: 'tdd' }), ['tdd', true, true, true, true, false])
   assert.deepEqual(pick({ rigor: 'tdd-pair', role: 'red' }), ['red', true, true, false, false, false])
   assert.deepEqual(pick({ rigor: 'tdd-triad', role: 'green' }), ['green', true, true, false, true, false])
+  assert.deepEqual(pick({ rigor: 'tdd-pair', role: 'green', producer: 'test-author' }), ['green-tests', true, true, true, true, false],
+    'a green\'s test-author round is measured by the breaks its new tests catch')
   assert.deepEqual(pick({ rigor: 'tdd-triad', role: 'audit' }), ['audit', true, false, true, false, true])
   assert.deepEqual(pick({}), ['tdd', true, true, true, true, false], 'no rigor measures as before rigor existed')
   assert.deepEqual(pick({ mode: 'integration', rigor: 'tdd-pair', role: 'red' }),

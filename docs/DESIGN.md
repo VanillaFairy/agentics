@@ -1629,6 +1629,7 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
 | tdd | yes | full: fails at base, passes now; an upkeep file passes now | when declared | when given |
 | red | yes | red: fails now, fails at base | no | — |
 | green | yes | the red leaf's tests pass now | no | when given |
+| green, a test-author round | yes | the red leaf's tests and the round's new ones pass now | required, this round's alone | when given |
 | audit | no series expected | no | required | — |
 
 - **Absent is never inferred, in either direction.** `absent` means the repository defines no such
@@ -1686,9 +1687,13 @@ measurement, no failed build or typecheck and no blocking series finding; then p
 leaf's test files that add a test case fail at base and pass now, and its upkeep files pass now —
 when none adds one, every file is held to the whole discriminator; a tests-only leaf's tests pass, every held
 mutation bites and each test file that adds a case is one a biting mutation names; a red leaf's tests
-fail now and at base; a green leaf's cycle tests pass; an audit's held mutations all bite over the
+fail now and at base; a green leaf's cycle tests pass; a green's test-author round's cycle tests
+and new tests pass, at least one mutation it declared this round, each biting, and each test file
+that adds a case one a biting mutation names; an audit's held mutations all bite over the
 cycle's tests; trivial, verify, tdd, tests-only and green need their
-named checks and their own tests not to have failed). A named check fails for the change when it
+named checks and their own tests not to have failed). The profile is the leaf's rigor and role
+and, on a green, the measured round's producer (`profileOf(leaf, producer)`): leaf-close passes it
+and the `verify-observed` line records it, so a resume judges a measurement as its close did. A named check fails for the change when it
 did not pass, unless it failed naming tests every one of which fails at its base too
 (`checkFailed`). A suite failed for the change only when one of its named failing tests is the
 change's own: `baseline_failing` lists the failing tests, in files the change did not touch, whose
@@ -2151,7 +2156,7 @@ ended, once per node and channel in an invocation (the faults after the latest `
 what the schedule holds); `ended {}`, one per postflight, where a watching session stops.
 
 `journal.jsonl` (what was observed, by whoever observed it): `verify-observed {node, branch,
-worktree, base_sha, head_sha, stop_reason, build, typecheck, suite, failing_tests, baseline_failing,
+worktree, base_sha, head_sha, producer, stop_reason, build, typecheck, suite, failing_tests, baseline_failing,
 discriminator, mutations, series_findings, checks}`; `merge-observed {node, branch, into, merged_sha, head_sha}`;
 `series-done {node, branch, head_sha, commits[{sha, subject}]}`, journalled by leaf-close from git
 when the executor returned done; `authored {node, role, round, sha}`, the commit leaf-close made

@@ -33,6 +33,9 @@ const LEAVES = {
   green: leaf({ rigor: 'tdd-pair', role: 'green', locus: ['src/x.mjs'] }),
   audit: leaf({ rigor: 'tdd-triad', role: 'audit', locus: ['src/x.mjs'] }),
 }
+// A green's test-author round: the same leaf, measured as the round that closes a test gap.
+LEAVES['green-tests'] = LEAVES.green
+const PRODUCER = { 'green-tests': 'test-author' }
 
 const m = (over = {}) => ({
   stop_reason: 'completed',
@@ -66,17 +69,17 @@ const red = { suite: 'failed', failing_tests: [{ file: 'test/x.test.mjs', id: 'x
 const ROWS = [
   ['a discriminating test, green suite', m({ discriminator: [disc(true, true)] }), {
     tdd: true, 'tests-only': ['mutation'], trivial: true, verify: true, green: true,
-    red: ['discriminator', 'suite'], audit: ['mutation'],
+    red: ['discriminator', 'suite'], audit: ['mutation'], 'green-tests': ['mutation'],
   }],
   ['a discriminating test and a net that bites', m({ discriminator: [disc(true, true)], mutations: [bites] }), {
-    tdd: true, 'tests-only': true, audit: true, trivial: true,
+    tdd: true, 'tests-only': true, audit: true, trivial: true, 'green-tests': true,
   }],
   ['a test that passes at base too, with a biting net', m({ discriminator: [disc(false, true)], mutations: [bites] }), {
     tdd: ['discriminator'], 'tests-only': true, green: true, red: ['discriminator', 'suite'],
   }],
   ['no test at all', m(), {
     tdd: ['new-test'], 'tests-only': ['mutation', 'new-test'], trivial: true, verify: true,
-    red: ['new-test', 'suite'], green: ['new-test'], audit: ['mutation'],
+    red: ['new-test', 'suite'], green: ['new-test'], audit: ['mutation'], 'green-tests': ['mutation', 'new-test'],
   }],
   ['a red measurement, placed in its own test file', m(red), {
     red: true, tdd: ['discriminator', 'suite'], green: ['discriminator', 'suite'], trivial: ['suite'],
@@ -104,7 +107,7 @@ const ROWS = [
     tdd: ['series-unreadable'],
   }],
   ['a net that survives its break', m({ discriminator: [disc(false, true)], mutations: [survives] }), {
-    'tests-only': ['mutation'], audit: ['mutation'], tdd: ['discriminator', 'mutation'],
+    'tests-only': ['mutation'], audit: ['mutation'], tdd: ['discriminator', 'mutation'], 'green-tests': ['mutation'],
   }],
   ['a stale mutation spec', m({ discriminator: [disc(false, true)], mutations: [stale] }), {
     'tests-only': ['mutation'], audit: ['mutation'],
@@ -132,9 +135,10 @@ const ROWS = [
   ['a failed suite', m({ suite: 'failed', suite_output_tail: 'boom', failing_tests: [{ file: 'test/x.test.mjs', id: 'x' }],
     discriminator: [disc(true, true)], mutations: [bites] }), {
     tdd: ['suite'], 'tests-only': ['suite'], trivial: ['suite'], verify: ['suite'], green: ['suite'], audit: ['suite'],
+    'green-tests': ['suite'],
   }],
   ['a test that does not pass now', m({ discriminator: [disc(true, false)], mutations: [bites] }), {
-    tdd: ['discriminator'], 'tests-only': ['discriminator'], green: ['discriminator'],
+    tdd: ['discriminator'], 'tests-only': ['discriminator'], green: ['discriminator'], 'green-tests': ['discriminator'],
   }],
   ['an upkeep file passing at base beside a discriminating one', m({ discriminator: [disc(true, true), upkeep(true)] }), {
     tdd: true,
@@ -152,7 +156,7 @@ const ROWS = [
 for (const [name, measurement, expected] of ROWS) {
   for (const [profile, want] of Object.entries(expected)) {
     test(`${profile}: ${name}`, () => {
-      const { ok, failures } = measurementOk(measurement, LEAVES[profile])
+      const { ok, failures } = measurementOk(measurement, LEAVES[profile], PRODUCER[profile])
       const checks = [...new Set(failures.map((f) => f.check))].sort()
       if (want === true) {
         assert.equal(ok, true, 'expected a pass, got ' + JSON.stringify(failures))
@@ -178,6 +182,21 @@ test('profileOf: a role outranks its rigor, and an unknown rigor is judged as td
   assert.equal(profileOf(leaf({ rigor: '' })), 'tdd')
   assert.equal(profileOf(leaf({ rigor: 'something-new' })), 'tdd')
   assert.equal(profileOf(LEAVES.verify), 'verify')
+  assert.equal(profileOf(LEAVES.green, 'test-author'), 'green-tests')
+  assert.equal(profileOf(LEAVES.green, 'implementer'), 'green')
+  assert.equal(profileOf(LEAVES.red, 'test-author'), 'red', 'a red is always a test-author\'s: its round is no test gap')
+})
+
+test('a green\'s test-author round shows every test it added catches a break; the red\'s untouched tests owe none', () => {
+  const redTest = { test_id: 'test/x.test.mjs', adds_test: false, failed_on_base: true, passes_now: true }
+  const added = disc(false, true, 'test/table.test.mjs')
+  const named = { ...bites, expect_failing: ['test/table.test.mjs'], observed_failing: ['test/table.test.mjs'] }
+  assert.deepEqual(measurementOk(m({ discriminator: [redTest, added], mutations: [named] }), LEAVES.green, 'test-author').failures, [])
+  const blind = measurementOk(m({ discriminator: [redTest, added], mutations: [bites] }), LEAVES.green, 'test-author').failures
+  assert.deepEqual(blind.map((f) => f.claim), ['test/table.test.mjs adds a test no biting mutation names'])
+  assert.equal(closeDecision(m({ discriminator: [redTest, added], mutations: [named] }), LEAVES.green, [], 'test-author').next, 'review')
+  assert.equal(closeDecision(m({ discriminator: [redTest, added] }), LEAVES.green, [], 'test-author').next, 'fix',
+    'a round with no declared break measured nothing about its tests')
 })
 
 test('the suite tail rides a suite failure as its evidence', () => {

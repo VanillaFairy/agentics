@@ -173,6 +173,20 @@ test('a red/green cycle: green is cut from red, measured on red\'s tests, and th
   assert.equal(merged.verified, true)
 })
 
+test('a red leaf\'s major with a failure scenario blocks: its tests are the yardstick a green is coded against', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(),
+    leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'] }),
+    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], locus: ['src/r.mjs'] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const red = B(r, 'leaf-open', { node: 'r', role: 'test-author', round: 1 })
+  writeFileSync(join(red.worktree, 'test', 'r.test.mjs'), "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\ntest('r is exactly {a: 2}', async () => { const { r } = await import('../src/r.mjs'); assert.deepEqual(r(), { a: 2 }) })\n")
+  writeFileSync(red.report_path, '```agentics-commit\nPin r\n```\n')
+  assert.equal(B(r, 'leaf-close', { node: 'r', role: 'test-author', round: 1, status: 'done', base_sha: red.base_sha }).decision.next, 'review')
+  const major = { id: 'M1', severity: 'major', claim: 'deepEqual pins the exact key set of an object the criterion lets the green extend', evidence: 'test/r.test.mjs:3', failure_scenario: 'a green returning {a: 2, b: 1} meets the criterion and fails this test' }
+  assert.equal(B(r, 'leaf-review', { node: 'r', round: 1, review_round: 1, review_file: wrote({ ...CLEAN_REVIEW, findings: [major] }) }).decision.next, 'fix')
+})
+
 test('a leaf review round: open findings reach the next brief, the next reviewer rules on them, and the approval lands once', () => {
   const r = repo()
   seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'], provides: [{ name: 'api', paths: ['src/a.mjs'] }] })])

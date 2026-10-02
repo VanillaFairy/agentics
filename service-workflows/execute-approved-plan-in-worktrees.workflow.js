@@ -437,7 +437,9 @@ function reviewerPrompt(item, st, round, file) {
       ? 'Brief (criteria, locus, decisions, contracts): read ' + st.brief + '.\n'
       : 'Criteria, locus, decisions and contracts: node "' + pluginRoot + '/lib/tree.mjs" show --repo "' + repo +
         '" --effort "' + effort + '" --root "' + id + '" --json\n') +
-    (row.provides_n > 0 ? 'This leaf PROVIDES a contract: its majors with a failure scenario block like criticals.\n' : '') +
+    (isYardstick(row) ? 'This leaf\'s output is a YARDSTICK (' + (row.provides_n > 0 ? 'it provides a contract' : 'role ' + row.role) +
+      '): its majors with a failure scenario block like criticals.\n' : '') +
+    (row.role === 'red' ? 'Its tests are what the green is coded against: a test a correct green would fail is critical.\n' : '') +
     (row.role === 'green' ? 'The tests were written by another agent before this code and sit outside this locus.\n' : '') +
     (st.report ? 'The executor\'s report, whose concerns you attack first: ' + st.report + '.\n' : '') +
     (st.lastReview

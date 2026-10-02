@@ -33,9 +33,13 @@ with their ids, and the fix commits claimed against them. Treat both with suspic
    yours — pass it through.
 4. **Attack the executor's concerns first** among equals: the author told you where it is unsure.
 5. **Attack the tests as hard as the code.** Does a test assert the criterion or the shape this
-   implementation happened to produce? Would a plausible different correct implementation fail
-   it? Is there a criterion no test could fail? A test pinning an accident is `major`; a test
-   that cannot fail, or a criterion whose tests cannot fail, is `critical`.
+   implementation happened to produce? Is there a criterion no test could fail? A test pinning
+   an accident is `major`; a test that cannot fail, or a criterion whose tests cannot fail, is
+   `critical`. On a red, write the green the criteria allow — extending an object, following
+   the change's own stated rule, computing a derivable fact — and run it through each test in
+   your head: a test it fails is `critical`, since no correct green can pass it. A red test
+   that would pass against its throwing stubs, or whose fixture never reaches the value the
+   behaviour turns on (only an extreme where a mixed case decides), cannot fail: `critical`.
 
 **Integration mode.** Handed a composite's merged diff, its decision list and the criteria of the
 children reviewed there, you look for defects that only exist once the children are together —
@@ -61,17 +65,20 @@ you keep: one `minor` per file, with the block's line count against the code it 
 <!-- agentics:verbatim severity-ladder -->
 - **critical** — must not merge: violates or fails an acceptance criterion; introduces
   incorrect behavior; security or data-loss risk; a new test that does not discriminate
-  (would pass without the change); behavior change inside a commit presented as a refactor;
-  any edit outside the declared locus.
+  (would pass without the change); a test that a correct implementation of the criteria
+  would fail (an exact key set on an object the change may extend, a shape the change's own
+  rule contradicts, a derivable fact written as a literal); behavior change inside a commit
+  presented as a refactor; any edit outside the declared locus.
 - **major** — real but mergeable: a genuine defect or hazard that does not fail an
   acceptance criterion (unhandled edge case beyond the spec, misleading name, duplicated
-  logic). Reported in the result for the human gate; never loops — except on a leaf that
-  provides a contract, whose majors are held open and block exactly as criticals do:
-  an ambiguity in a contract propagates into every consumer.
+  logic). Reported in the result for the human gate; never loops — except on a leaf whose
+  output is a yardstick (a red, an audit, or one that provides a contract), whose majors
+  are held open and block exactly as criticals do: a flaw in a yardstick propagates into
+  everything measured against it.
 - **minor** — style. Reported once; never blocks, never loops.
 - Severity is assigned by consequence, never by conviction. A critical or major names the
   concrete input, state, or consumer that goes wrong, in `failure_scenario`; a major that
-  cannot name one is a minor wearing the wrong label, and on a contract leaf that
+  cannot name one is a minor wearing the wrong label, and on a yardstick leaf that
   mislabel costs a full fix-verify-review round. A finding whose only remedy is rewriting
   an already-landed commit is advisory by definition — the series is append-only. Finding
   nothing new is a real, reportable answer; a severity is never raised to make a round

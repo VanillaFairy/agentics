@@ -1418,8 +1418,11 @@ merge-batch. Coupled leaves run one at a time; everything else keeps running.
   never judged:
   - Round 1 reviews the whole series; later rounds rule on the open blockers and review the fix
     span alone — the merged change is reviewed whole again at integration.
-  - The blocking set is the round's criticals, plus its majors when the leaf provides a contract
-    and the finding carries a non-empty `failure_scenario`.
+  - The blocking set is the round's criticals, plus its majors when the leaf is a yardstick —
+    a `red`, an `audit`, or one that `provides` a contract (`isYardstick` in `lib/tree.mjs`) —
+    and the finding carries a non-empty `failure_scenario`. A red's tests are what its green is
+    coded against: a test that forbids a correct green, approved as advisory, makes the right
+    implementation impossible and the wrong one the only one that passes.
   - The open set is the round's blocking findings, plus every prior blocker ruled
     `not_fixed`/`regressed` in `fix_verdicts` — or not ruled on at all — that the round did not
     re-report. Never narrow this to the round's criticals alone.
@@ -1430,24 +1433,27 @@ merge-batch. Coupled leaves run one at a time; everything else keeps running.
   - Otherwise a fix round, its brief listing the open findings, re-verification, and a fresh
     reviewer. No round counter ends the loop.
 - **The code severity ladder** is the verbatim block `severity-ladder` (in `agents/reviewer.md` and
-  below): critical must not merge; major is real but mergeable and blocks only on a contract leaf,
+  below): critical must not merge; major is real but mergeable and blocks only on a yardstick leaf,
   only with a failure scenario; minor never blocks. A fix verdict on a prior blocker is `fixed`,
   `not_fixed` or `regressed`.
 
 <!-- agentics:verbatim severity-ladder -->
 - **critical** — must not merge: violates or fails an acceptance criterion; introduces
   incorrect behavior; security or data-loss risk; a new test that does not discriminate
-  (would pass without the change); behavior change inside a commit presented as a refactor;
-  any edit outside the declared locus.
+  (would pass without the change); a test that a correct implementation of the criteria
+  would fail (an exact key set on an object the change may extend, a shape the change's own
+  rule contradicts, a derivable fact written as a literal); behavior change inside a commit
+  presented as a refactor; any edit outside the declared locus.
 - **major** — real but mergeable: a genuine defect or hazard that does not fail an
   acceptance criterion (unhandled edge case beyond the spec, misleading name, duplicated
-  logic). Reported in the result for the human gate; never loops — except on a leaf that
-  provides a contract, whose majors are held open and block exactly as criticals do:
-  an ambiguity in a contract propagates into every consumer.
+  logic). Reported in the result for the human gate; never loops — except on a leaf whose
+  output is a yardstick (a red, an audit, or one that provides a contract), whose majors
+  are held open and block exactly as criticals do: a flaw in a yardstick propagates into
+  everything measured against it.
 - **minor** — style. Reported once; never blocks, never loops.
 - Severity is assigned by consequence, never by conviction. A critical or major names the
   concrete input, state, or consumer that goes wrong, in `failure_scenario`; a major that
-  cannot name one is a minor wearing the wrong label, and on a contract leaf that
+  cannot name one is a minor wearing the wrong label, and on a yardstick leaf that
   mislabel costs a full fix-verify-review round. A finding whose only remedy is rewriting
   an already-landed commit is advisory by definition — the series is append-only. Finding
   nothing new is a real, reportable answer; a severity is never raised to make a round

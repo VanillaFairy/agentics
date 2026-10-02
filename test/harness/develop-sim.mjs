@@ -20,7 +20,7 @@ import {
 import { approvedHead } from '../../lib/resume.mjs'
 import { reviewOf, schedule, summarize } from '../../lib/schedule.mjs'
 import { ancestorsOf, handleArgs, handleEnvelope, parentOf } from '../../lib/store.mjs'
-import { childrenOf, deriveStatus, normalizeNode, ownReview } from '../../lib/tree.mjs'
+import { childrenOf, deriveStatus, isYardstick, normalizeNode, ownReview } from '../../lib/tree.mjs'
 import { integrationPark, reviewExit } from '../../lib/verdict.mjs'
 import { carriedEnvelope } from './workflow-host.mjs'
 
@@ -283,7 +283,7 @@ export function simulate(nodes, script = {}) {
         return ok('leaf-review', { decision: { next: 'held', reason: '' }, raise: false, record: '', stops: record(faultRecords(id, 'dispatch', '', disk())) })
       }
       const prior = sim.reviewRecords.get(id + '#' + (args.review_round - 1)) || {}
-      const exit = reviewExit({ provides: (sim.nodes.get(id).provides || []).length > 0, findings: review.findings, verdicts: review.fix_verdicts || [], prior })
+      const exit = reviewExit({ yardstick: isYardstick(normalizeNode(sim.nodes.get(id))), findings: review.findings, verdicts: review.fix_verdicts || [], prior })
       sim.reviewRecords.set(id + '#' + args.review_round, exit)
       const recordPath = '/reviews/' + id + '-r' + args.review_round + '.json'
       const records = []

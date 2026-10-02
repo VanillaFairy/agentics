@@ -323,12 +323,12 @@ test('a fix close that repeats the last one at a moved head does not converge; a
 
 const critical = (id) => ({ id, severity: 'critical', claim: 'wrong', evidence: 'x:1', failure_scenario: 'y' })
 
-test('a review round approves on an empty open set and blocks only on criticals, or a contract leaf\'s majors with a scenario', () => {
+test('a review round approves on an empty open set and blocks only on criticals, or a yardstick leaf\'s majors with a scenario', () => {
   assert.equal(reviewExit({ findings: [] }).next, 'approve')
   const major = { id: 'M', severity: 'major', claim: 'c', evidence: 'e', failure_scenario: 'breaks a consumer' }
-  assert.equal(reviewExit({ findings: [major] }).next, 'approve', 'a major is advisory on a leaf that provides nothing')
-  assert.equal(reviewExit({ findings: [major], provides: true }).next, 'fix')
-  assert.equal(reviewExit({ findings: [{ ...major, failure_scenario: ' ' }], provides: true }).next, 'approve')
+  assert.equal(reviewExit({ findings: [major] }).next, 'approve', 'a major is advisory on a leaf no later work is measured against')
+  assert.equal(reviewExit({ findings: [major], yardstick: true }).next, 'fix')
+  assert.equal(reviewExit({ findings: [{ ...major, failure_scenario: ' ' }], yardstick: true }).next, 'approve')
   const first = reviewExit({ findings: [critical('F1')] })
   assert.deepEqual([first.next, first.open.map((f) => f.id), first.raise], ['fix', ['F1'], false])
 })

@@ -142,15 +142,18 @@ test('a prior blocker ruled not_fixed but not re-reported stays open', async () 
   assert.equal(result.coverage.complete, false)
 })
 
-test('a major blocks only on a contract leaf, and only with a failure scenario', async () => {
+test('a major blocks only on a yardstick leaf — a contract, a red, an audit — and only with a failure scenario', async () => {
   const major = (scenario) => () => ({ findings: [{ id: 'M', severity: 'major', claim: 'c', evidence: 'e', failure_scenario: scenario }], fix_verdicts: [], notes: '' })
-  const plain = simulate([composite('.'), row('a', { own_review: true, rigor: 'tdd-pair', role: 'red' })])
+  const fixed = () => ({ findings: [], fix_verdicts: [{ id: 'M', status: 'fixed', evidence: 'ok' }], notes: '' })
+  const plain = simulate([composite('.'), row('a', { own_review: true, rigor: 'tdd-pair', role: 'green' })])
   const one = await run(plain, { 'review:a#1': major('breaks consumer') })
-  assert.equal(one.result.implemented[0].review_rounds, 1, 'not a contract: the major is advisory')
+  assert.equal(one.result.implemented[0].review_rounds, 1, 'a green is measured against its red: the major is advisory')
 
-  const contract = simulate([composite('.'), row('a', { own_review: true, provides: [{ name: 'api', paths: ['src/'] }] })])
-  const two = await run(contract, { 'review:a#1': major('breaks consumer'), 'review:a#2': () => ({ findings: [], fix_verdicts: [{ id: 'M', status: 'fixed', evidence: 'ok' }], notes: '' }) })
-  assert.equal(two.result.implemented[0].review_rounds, 2)
+  for (const extra of [{ provides: [{ name: 'api', paths: ['src/'] }] }, { rigor: 'tdd-pair', role: 'red' }]) {
+    const yardstick = simulate([composite('.'), row('a', { own_review: true, ...extra })])
+    const two = await run(yardstick, { 'review:a#1': major('a correct implementation fails it'), 'review:a#2': fixed })
+    assert.equal(two.result.implemented[0].review_rounds, 2, JSON.stringify(extra))
+  }
 
   const vague = simulate([composite('.'), row('a', { own_review: true, provides: [{ name: 'api', paths: ['src/'] }] })])
   const three = await run(vague, { 'review:a#1': major('') })

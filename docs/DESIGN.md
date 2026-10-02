@@ -2494,7 +2494,12 @@ add --file`, and returns `{established[], unresolved[]}`, command names.
   into `.agentics/`: each effort's files into its `.state/`, its design documents into its
   `.legacy/`, and its slot configuration into `config.json`. It never deletes: it lists the
   committed files it copied for the user to remove, and a second run copies nothing. Nothing
-  reads the old layout.
+  reads the old layout. `tools/migrate-node-keys.mjs` is the one-shot rename to bounded keys
+  ([Storage](#storage)): for each node whose key differs from its spelled-out id, its branch,
+  its worktree and the store's files named after it (spec copies, respec files, reports, briefs,
+  closes, review rounds, fixes, cards); and every progress file to its `.json` name. Said files,
+  merges and gates keep their paths, which records point at. A target that exists refuses that
+  node whole; the default is a dry run, `--yes` renames, and a second run renames nothing.
 
 ---
 

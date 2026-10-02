@@ -39,21 +39,16 @@ an escalation is open.
 node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" land --repo . --effort <e> --action merge
 ```
 
-It runs `git merge --no-ff agentics/<effort>` in the user's checkout and records `landed`. It
-refuses over an open escalation or a dirty tree: report the refusal as it came. A dirty tree is the
-user's to commit or stash, never yours. A conflict stops the merge: surface the paths, and resolve
-nothing without the user.
+It runs `git merge --no-ff agentics/<effort>` in the user's checkout, records `landed`, and then
+sweeps the effort's merged branches and the clean worktrees on them (`removed`), with `git branch
+-d` only. It refuses over an open escalation or a dirty tree: report the refusal as it came. A
+dirty tree is the user's to commit or stash, never yours. A conflict stops the merge: surface the
+paths, and resolve nothing without the user.
 
-## 5. Cleanup, on a second go
+## 5. Report what was kept
 
-Offer it after the merge; run it only when the user says so, from the checkout that took the merge:
-
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" land --repo . --effort <e> --action cleanup
-```
-
-It removes the worktrees still on merged node branches (a leaf's went with its merge) and deletes
-those branches with `git branch -d`.
-It keeps dirty worktrees and unmerged branches — the escalated and parked nodes' resumable state.
-Read the kept list out loud. Nothing under `.agentics/<effort>/` is removed: it is
-the only record of what was decided and done.
+Read `kept` out loud, each branch with its `why`: unmerged branches and dirty worktrees are the
+escalated and parked nodes' resumable state, and the user decides their fate. Delete nothing
+yourself. Where a `why` says a worktree could not be removed, run the same `--action merge` again
+once the user has closed what held it: it merges nothing and sweeps again. Nothing under
+`.agentics/<effort>/` is removed: it is the only record of what was decided and done.

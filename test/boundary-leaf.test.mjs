@@ -94,8 +94,9 @@ test('a leaf from preflight to landing: open, measure, merge, close, land, clean
   assert.equal(landed.ok, true, landed.error)
   assert.ok(existsSync(join(r, 'src', 'a.mjs')), 'the user branch now has the work')
   assert.equal(readTree(r, 'e1').status.get('.').status, 'landed')
-  const clean = land(r, 'e1', 'cleanup')
-  assert.deepEqual(clean.removed.sort(), ['agentics/e1', 'agentics/e1--a'])
+  assert.deepEqual(landed.removed.sort(), ['agentics/e1', 'agentics/e1--a'], 'the landing swept what it merged')
+  assert.deepEqual(landed.kept, [])
+  assert.equal(git(r, 'branch', '--list', 'agentics/*'), '')
 })
 
 test('a shell-less author: its locus files are committed, a stray file is reverted and reported', () => {

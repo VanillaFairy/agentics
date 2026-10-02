@@ -559,8 +559,8 @@ as a file under `refs/heads/`, so `agentics/e` and `agentics/e/auth` — or `aut
 so the spelling is reversible. Worktrees follow the same names under `.claude/worktrees/`.
 
 A leaf's worktree lives until the leaf merges. merge-batch removes it, clean, with the merge
-(`detach` in `lib/integration.mjs`); its branch stays until cleanup at
-[landing](#landing-and-drift). A merged leaf has nothing left to run in a worktree, and resume
+(`detach` in `lib/integration.mjs`); its branch stays until [landing](#landing-and-drift) sweeps
+it. A merged leaf has nothing left to run in a worktree, and resume
 reads git refs, not the checkout. A dirty one is never forced: preflight reports it, and removes
 any clean one merge-batch did not reach.
 
@@ -1536,9 +1536,14 @@ root's claim verdicts (`root_claims`) and the **landing view** (`landing`, from
 not hold first, a `cant_tell` counted apart from `met`). The session shows it, asks, and runs
 `--action merge`, which merges the effort branch into the user's checked-out branch and appends
 `landed`. It refuses over an open escalation, a parked node or a dirty tree; untracked state under
-`.claude/` and `.agentics/` is not dirt. Cleanup of merged branches and the clean worktrees still
-on them — composites' integration worktrees; a leaf's went with its merge — (`--action cleanup`)
-follows on a go, and only from the checkout that took the merge.
+`.claude/` and `.agentics/` is not dirt. The same call then sweeps: every branch of the effort that
+the landed head holds, and the clean worktree still on it — composites' integration worktrees; a
+leaf's went with its merge — is removed, with `git branch -d` and never `-D`, after a `git
+worktree prune`. It sweeps from the checkout that took the merge because that is the one call that
+holds it: "merged" is read against that checkout's `HEAD`, and a sweep run elsewhere would read it
+against a head that never took the merge. What it keeps — a branch git does not see merged, a dirty
+worktree, one git would not remove — it names with why. A `merge` run again over a landed effort
+merges nothing and sweeps again, so a sweep a locked file stopped is finished by asking twice.
 
 ---
 
@@ -2233,7 +2238,8 @@ Every call also takes `dispatch[]`: the dispatches it closes and its own courier
   raises on the prepared folder is cleared by a `replanned` event, reason `spec_rederived`.
 - **land** (the session's, plain JSON) — `check`: `open_escalations`, `parked`, `human`,
   `drift {base_sha, base_moved, commits, overlap}`, `root_status`, `root_claims`, `landing`;
-  `merge`: `merged_sha`; `cleanup`: `removed`, `kept`.
+  `merge`: `merged_sha`, `already` (nothing left to merge), `removed[]` (the branches swept),
+  `kept[{branch, why}]`.
 - **retry** and **note** (the session's, plain JSON) — `retry --node <id>…`: `{retried[], error}`;
   `note --node <id> --text <t>`: `{noted, error}`, `noted` the node a `noted` event was appended
   for, empty when the node is not live or the text is empty.

@@ -2,7 +2,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { freshRecords, land } from '../lib/boundary.mjs'
@@ -73,6 +73,42 @@ test('landing never counts .agentics/ as dirt, and still refuses any other untra
   const dirty = land(r, 'e1', 'merge')
   assert.equal(dirty.ok, false)
   assert.match(dirty.error, /dirty/)
+})
+
+test('landing sweeps what it merged and keeps, with why, an unmerged branch and a dirty worktree', () => {
+  const r = repo()
+  git(r, 'checkout', '-q', '-b', 'agentics/e1')
+  writeFileSync(join(r, 'work.txt'), 'the effort\n')
+  git(r, 'add', '-A')
+  git(r, 'commit', '-q', '-m', 'the effort')
+  git(r, 'checkout', '-q', 'main')
+  const wt = (branch, name) => {
+    const path = join(r, '.claude', 'worktrees', name)
+    git(r, 'worktree', 'add', '-q', path, branch)
+    return path
+  }
+  git(r, 'branch', 'agentics/e1--merged')
+  const clean = wt('agentics/e1--merged', 'e1--merged')
+  git(r, 'branch', 'agentics/e1--dirty')
+  writeFileSync(join(wt('agentics/e1--dirty', 'e1--dirty'), 'README.md'), 'edited\n')
+  git(r, 'branch', 'agentics/e1--open')
+  const open = wt('agentics/e1--open', 'e1--open')
+  writeFileSync(join(open, 'later.txt'), 'x\n')
+  git(open, 'add', '-A')
+  git(open, 'commit', '-q', '-m', 'not landed')
+
+  const landed = land(r, 'e1', 'merge')
+  assert.equal(landed.ok, true, landed.error)
+  assert.deepEqual(landed.removed.sort(), ['agentics/e1', 'agentics/e1--merged'])
+  assert.deepEqual(landed.kept.map((k) => k.branch).sort(), ['agentics/e1--dirty', 'agentics/e1--open'])
+  assert.ok(landed.kept.every((k) => k.why), 'every kept branch says why')
+  assert.ok(!existsSync(clean), 'the clean worktree went with its branch')
+  assert.equal(git(r, 'rev-parse', '--verify', '--quiet', 'refs/heads/agentics/e1--open') !== '', true, 'the unmerged branch is never forced')
+
+  git(join(r, '.claude', 'worktrees', 'e1--dirty'), 'checkout', '--', 'README.md')
+  const again = land(r, 'e1', 'merge')
+  assert.equal(again.already, true)
+  assert.deepEqual(again.removed, ['agentics/e1--dirty'], 'landing again finishes the sweep')
 })
 
 test('a decision lands once while it is the node\'s word, and again once something has cleared it', () => {

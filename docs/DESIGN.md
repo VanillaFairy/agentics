@@ -777,8 +777,12 @@ Unsure between `tdd` and `tdd-pair`: `tdd` when the leaf is small, `tdd-pair` wh
 - **An audit gap is closed inside the cycle.** From the first measurement in which the cycle's
   tests let an applied mutation through (`auditGap`), every later round of the audit goes to a
   test-author instead of the auditor — leaf-open and leaf-close derive the round's role from the
-  journal, whatever the workflow asked — writing into the cycle's test files, which an audit's
-  writable locus includes (`writableLocus` in `lib/tree.mjs`). Its fix round lists each surviving
+  journal, whatever the workflow asked — writing the cycle's tests and nothing else
+  (`cycleTestLocus` in `lib/tree.mjs`): the test files of the red's locus, and a new test file
+  directly beside an entry of a member's locus that no unmerged leaf outside the cycle holds;
+  never a source file. Leaf-close commits only what that admits, journals the commit as
+  `authored`, and the series check holds each such commit to it and every other commit to the
+  leaf's own locus. Its fix round lists each surviving
   mutation, its text and the tests it names, and the audit approves only once every held mutation
   bites. A fix round that went back to the auditor could only withdraw the mutation; one that
   went to the planner as new children would test against mutations of their own choosing.
@@ -2117,7 +2121,7 @@ file is `{rulings: [{node, ruling, why, question, fix}]}`, one per node of `node
 
 - **Owner:** `lib/boundary.mjs` (`dispatch`, `fault`, `drift-ruled`, `stale-ruled`, `batch`,
   `batch-started`, `gate`, `checkpoint`, `checkpoint-confirmed`, `invocation`, `closed`, `ended`,
-  `merge-observed`, `series-done`), `collectUsage` in `lib/usage.mjs` (`usage`), `journalLine` in
+  `merge-observed`, `series-done`, `authored`), `collectUsage` in `lib/usage.mjs` (`usage`), `journalLine` in
   `lib/verify.mjs`.
 - **Restated in:** `test/harness/develop-sim.mjs`; `lib/resume.mjs` and `lib/status.mjs` (readers).
 
@@ -2146,7 +2150,8 @@ what the schedule holds); `ended {}`, one per postflight, where a watching sessi
 worktree, base_sha, head_sha, stop_reason, build, typecheck, suite, failing_tests, baseline_failing,
 discriminator, mutations, series_findings, checks}`; `merge-observed {node, branch, into, merged_sha, head_sha}`;
 `series-done {node, branch, head_sha, commits[{sha, subject}]}`, journalled by leaf-close from git
-when the executor returned done.
+when the executor returned done; `authored {node, role, round, sha}`, the commit leaf-close made
+for a shell-less author, read across executions by the series check of a green or an audit.
 
 ### The seq counter
 
@@ -2178,7 +2183,9 @@ baseline_failing}]` (`status` `passed | failed | unrunnable`); `notes`; `error`
 `test_unrunnable`, `tree_not_restored`); `journal` (`null` or `{written, error}`). The series checks
 come from `lib/commit-series.mjs`: `empty-series`, `empty-commit`, `locus-breach`, `wip-subject`,
 `checkpoint-commit`, `and-subject`, `subject-length`. They run over `base..HEAD` less every merge
-whose later parents the base holds: a refresh from the parent, not the leaf's work.
+whose later parents the base holds: a refresh from the parent, not the leaf's work. `locus-breach`
+holds a commit to the leaf's locus, or to its own fence where the caller names one by sha (a
+test-author's commit on a green or an audit, held to the cycle's tests).
 
 ### Gotcha file
 

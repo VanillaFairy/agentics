@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url'
 
 import { append } from '../lib/ledger.mjs'
 import {
-  addNodes, cycleOf, deriveStatus, executorRole, liveNodes, normalizeNode, ownReview, ownerOf, readTree,
-  renderTree, subtreeOf, treeProblems, unitsOf,
+  addNodes, cycleOf, cycleTestLocus, deriveStatus, executorRole, liveNodes, normalizeNode, ownReview, ownerOf, readTree,
+  renderTree, subtreeOf, testLocusAdmits, treeProblems, unitsOf,
 } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 import { checkAtomicity, coupledOf, fitOf } from '../lib/atomicity.mjs'
@@ -88,6 +88,25 @@ test('a red/green/audit cycle is read from role and deps', () => {
 
   const bad = tree(root(), leaf('g', { rigor: 'tdd-pair', role: 'green' }))
   assert.match(treeProblems(bad).map((p) => p.problem).join(), /depends on exactly one red/)
+})
+
+test('a cycle\'s test locus: red\'s tests and new test files beside its loci, never a source, never another leaf\'s path', () => {
+  const nodes = tree(root(),
+    leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['src/Letters.test.ts', 'src/Letters.ts'] }),
+    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], locus: ['src/Letters.ts', 'src/table/Table.ts'] }),
+    leaf('o', { locus: ['src/table/Other.test.ts'] }),
+    leaf('m', { locus: ['src/table/Merged.test.ts'] }))
+  const status = new Map([['m', { status: 'merged' }]])
+  const scope = cycleTestLocus(nodes, status, nodes.get('g'))
+  const admits = (path, isNew = () => true) => testLocusAdmits(scope, path, isNew)
+  assert.equal(admits('src/Letters.test.ts', () => false), true, 'red\'s own test file, though it exists')
+  assert.equal(admits('src/table/Table.test.ts'), true, 'a new test beside a green source')
+  assert.equal(admits('src/table/Table.ts'), false, 'a source file is the implementer\'s, even inside the cycle')
+  assert.equal(admits('src/Letters.ts'), false, 'red\'s signature file is a source, not a test')
+  assert.equal(admits('src/table/Other.test.ts'), false, 'a path an unmerged leaf outside the cycle holds')
+  assert.equal(admits('src/table/Merged.test.ts', () => false), false, 'an existing file nobody in the cycle owns')
+  assert.equal(admits('src/table/deep/Table.test.ts'), false, 'only directly beside a cycle entry')
+  assert.equal(admits('test/Table.test.ts'), false, 'nor in a directory the cycle never touched')
 })
 
 test('a verify leaf writes nothing and has no producer', () => {

@@ -322,6 +322,18 @@ test('the locus-breach message names the offending file', () => {
   )
 })
 
+test('a fenced commit is held to its own locus, and every other commit to the leaf\'s', () => {
+  // A green's test-author commit writes a test the green's locus excludes; the implementer's
+  // commits stay held to the green's locus, so neither producer can write the other's files.
+  const commits = [
+    commit(SHA_A, 'add the parser', ['lib/commit-series.mjs', 'test/table.test.mjs']),
+    commit(SHA_B, 'pin the table', ['test/table.test.mjs']),
+  ]
+  const found = analyzeSeries(commits, ['lib/commit-series.mjs'], { [SHA_B]: ['test/table.test.mjs'] })
+  assert.deepEqual(idsOf(found), [`${SHA_A} locus-breach true`])
+  assert.match(found[0].message, /test\/table\.test\.mjs/)
+})
+
 /** The multi-file breach fixture, shared by the two tests below so they cannot drift. */
 const BREACHES_TWICE = [
   commit(SHA_A, 'add the parser', [

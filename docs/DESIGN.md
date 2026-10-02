@@ -2508,6 +2508,12 @@ add --file`, and returns `{established[], unresolved[]}`, command names.
   closes, review rounds, fixes, cards); and every progress file to its `.json` name. Said files,
   merges and gates keep their paths, which records point at. A target that exists refuses that
   node whole; the default is a dry run, `--yes` renames, and a second run renames nothing.
+  `tools/migrate-worktree-keys.mjs` is the one-shot move of every worktree under
+  `.claude/worktrees/` holding an `agentics/` branch to the bounded directory that branch names
+  ([Storage](#storage)), with `git worktree move`, uncommitted work and all. Nothing else names a
+  worktree's directory. A target that exists refuses that worktree; the default is a dry run,
+  `--yes` moves, and a second run moves nothing. The two run in either order: the node-key rename
+  finds a node's worktree by the branch it holds, wherever it is.
 
 ---
 

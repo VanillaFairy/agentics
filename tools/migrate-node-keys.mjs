@@ -5,7 +5,7 @@
 // permanent second reader).
 //
 // Only a node whose id, its `/` spelled `.`, is longer than NAME_KEY_MAX has a key that differs.
-// For each: its branch is renamed, its worktree moved, and every file the store names after it —
+// For each: its branch is renamed, the worktree holding it moved, and every file the store names after it —
 // a spec copy, a respec brief or rulings, a report, a brief, a close, a review round, a fixes file,
 // a card — renamed to the key. A progress file loses its `.progress` infix, whatever its node.
 // Records point at said files, merges and gates by path, so those stay as they are. Nodes are taken
@@ -17,6 +17,7 @@ import { existsSync, readdirSync, renameSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { worktrees } from '../lib/integration.mjs'
 import { readLog } from '../lib/ledger.mjs'
 import {
   agenticsRoot, effortStateDir, executionsRoot, flat, git, nodeKey, posix, safeSlug, worktreeOf,
@@ -58,6 +59,7 @@ export function plan(repo) {
   const root = resolve(repo)
   const out = { root: posix(root), branches: [], worktrees: [], files: [], refused: [] }
   const claimed = new Set()
+  const checkedOut = [...worktrees(root).values()]
 
   for (const effort of entriesOf(agenticsRoot(root), true).filter((e) => safeSlug(e) === e).sort()) {
     const ids = [...new Set(readLog(root, effort, 'nodes').entries.map((e) => e.node && e.node.id).filter((id) => typeof id === 'string'))]
@@ -67,7 +69,8 @@ export function plan(repo) {
       const old = flat(id)
       const key = nodeKey(id)
       const branch = { from: 'agentics/' + effort + '--' + old, to: 'agentics/' + effort + '--' + key }
-      const worktree = { from: posix(join(root, '.claude', 'worktrees', effort + '--' + old)), to: worktreeOf(root, effort, id) }
+      const holder = checkedOut.find((w) => w.branch === branch.from)
+      const worktree = { from: holder ? holder.path : '', to: worktreeOf(root, effort, id) }
       const files = []
       for (const dir of dirs) {
         for (const name of entriesOf(dir, false)) {
@@ -77,7 +80,7 @@ export function plan(repo) {
       }
       const moves = [
         ...(branchExists(root, branch.from) ? [{ kind: 'branch', ...branch }] : []),
-        ...(existsSync(worktree.from) ? [{ kind: 'worktree', ...worktree }] : []),
+        ...(holder ? [{ kind: 'worktree', ...worktree }] : []),
         ...files.map((f) => ({ kind: 'file', ...f })),
       ]
       const clash = moves.find((m) => (m.kind === 'branch' ? branchExists(root, m.to) : existsSync(m.to)))

@@ -55,7 +55,8 @@ Run the checks with:
 - **Runtime text holds instructions and contracts; reasons live in DESIGN.md.** Every skill and
   agent file has a size budget in `tools/budgets.json`, enforced by the `size-budget` lint rule.
 - **A format change ships a one-shot migration script, never a permanent second reader**
-  (`tools/migrate-legacy.mjs` and `tools/migrate-node-keys.mjs` are the current ones).
+  (`tools/migrate-legacy.mjs`, `tools/migrate-node-keys.mjs` and `tools/migrate-worktree-keys.mjs`
+  are the current ones).
 - `docs/superpowers/` is gitignored scratch for the vf-superpowers planning skills; nothing in the
   repository may point into it.
 

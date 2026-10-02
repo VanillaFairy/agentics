@@ -13,6 +13,7 @@ import {
   branchOf, cardPath, effortStateDir, executionDir, flat, nodeKey, posix, reportPath, reviewPath, specCopyPath, worktreeOf,
 } from '../lib/store.mjs'
 import { apply, plan } from '../tools/migrate-node-keys.mjs'
+import * as worktreeKeys from '../tools/migrate-worktree-keys.mjs'
 import { git, leaf, repo, root } from './harness/boundary-fixture.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 
@@ -89,4 +90,13 @@ test('a target that already exists refuses that node whole', (t) => {
   assert.deepEqual(p.refused.map((x) => x.id), [LONG])
   assert.deepEqual([p.branches, p.worktrees], [[], []])
   assert.ok(!p.files.some((f) => f.from === posix(old.review)))
+})
+
+test('a worktree another migration already moved still follows its node', (t) => {
+  const { r } = before(t)
+  worktreeKeys.apply(worktreeKeys.plan(r))
+  const p = plan(r)
+  assert.deepEqual([p.refused, p.worktrees.length], [[], 1])
+  apply(p)
+  assert.equal(git(worktreeOf(r, EFFORT, LONG), 'rev-parse', '--abbrev-ref', 'HEAD'), branchOf(EFFORT, LONG))
 })

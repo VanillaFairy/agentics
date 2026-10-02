@@ -78,6 +78,20 @@ test('preflight removes a merged leaf\'s clean worktree and reports a dirty one'
   assert.equal(readFileSync(join(y.worktree, 'README.md'), 'utf8'), 'unsaved\n', 'never forced')
 })
 
+test('preflight removes a merged leaf\'s worktree when its key is bounded', () => {
+  const r = repo()
+  const long = 'growth-axes-and-ports-of-the-entity-layer-x'
+  seedTree(r, 'e1', [root(), leaf(long, { rigor: 'trivial', locus: ['README.md'] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const x = B(r, 'leaf-open', { node: long, role: 'implementer', round: 1 })
+  const xs = commitIn(x.worktree, { 'README.md': 'hello world\n' }, 'Greet the world')
+  B(r, 'merge-batch', { target: '.', children: [{ id: long, head_sha: xs }], cycles: [] })
+  git(r, 'worktree', 'add', '-q', x.worktree, x.branch)
+
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  assert.equal(existsSync(x.worktree), false)
+})
+
 test('a reopened leaf follows its moved parent: the parent head is its base, and the merge is not its work', () => {
   const r = repo()
   seedTree(r, 'e1', [root(),

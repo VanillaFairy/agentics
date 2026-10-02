@@ -16,7 +16,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  auditGap, closeDecision, fixNotConverging, heldMutations, integrationPark, measurementOk, ownFailing, profileOf, reviewExit, suiteFailed,
+  auditGap, closeDecision, fixNotConverging, greenRoundRole, heldMutations, integrationPark, measurementOk, ownFailing, profileOf, reviewExit,
+  suiteFailed,
 } from '../lib/verdict.mjs'
 import { normalizeNode } from '../lib/tree.mjs'
 
@@ -385,6 +386,19 @@ test('a prior blocker the round under review could not fix is carried: open stil
   assert.deepEqual([r4.next, r4.reason], ['escalate', 'review_not_converging'], 'unfixed twice by the producer that owns it')
   const plain = reviewExit({ findings: [gap], verdicts: [{ id: 'F1', status: 'fixed' }, { id: 'T1', status: 'not_fixed' }], prior: r1 })
   assert.deepEqual(plain.unfixed, ['T1'], 'with no producer named, a remedy carries nothing: a leaf with one producer owns every finding')
+})
+
+test('a green\'s next round goes to a test-author only when what is left is the tests\' to fix', () => {
+  const tests = { ...critical('T1'), remedy: 'tests' }
+  const fix = (failures, role = 'test-author') => ({ role, decision: { next: 'fix', failures } })
+  assert.equal(greenRoundRole({}), 'implementer')
+  assert.equal(greenRoundRole({ close: { role: 'implementer', status: 'needs_tests', decision: { next: 'fix' } } }), 'test-author')
+  assert.equal(greenRoundRole({ review: { next: 'fix', open: [tests] } }), 'test-author')
+  assert.equal(greenRoundRole({ review: { next: 'fix', open: [tests, critical('F1')] } }), 'implementer', 'a mixed set: the code first')
+  assert.equal(greenRoundRole({ review: { next: 'fix', open: [critical('F1')] } }), 'implementer', 'a finding with no remedy is the code\'s')
+  assert.equal(greenRoundRole({ close: fix([{ check: 'mutation' }, { check: 'series-locus-breach' }]) }), 'test-author', 'its own break or breach')
+  assert.equal(greenRoundRole({ close: fix([{ check: 'mutation' }, { check: 'discriminator' }]) }), 'implementer', 'a new test failing now may be the code\'s')
+  assert.equal(greenRoundRole({ close: fix([{ check: 'mutation' }], 'implementer') }), 'implementer')
 })
 
 test('an integration review parks once, by class: a spec defect, then criticals and drift, then what it could not tell', () => {

@@ -125,11 +125,61 @@ test('the review loop: a critical fixed next round approves; the open set is com
   assert.deepEqual(result.escalations, [])
   assert.equal(result.implemented[0].review_rounds, 2)
   assert.ok(labels(prompts).includes('implementer:a#2'), 'the fix round went to the implementer')
-  assert.deepEqual(sim.fixes.get('a#2'), [{ source: 'review critical F1', claim: 'wrong', evidence: 'x:1 — y' }],
+  assert.deepEqual(sim.fixes.get('a#2'), [{ source: 'review critical F1', claim: 'wrong', evidence: 'x:1 — y', remedy: 'code' }],
     'the open findings reach the fix round through the file its brief is built from')
   assert.ok(!prompts.find((p) => p.opts.label === 'implementer:a#2').prompt.includes('wrong'), 'never through a prompt')
   assert.match(prompts.find((p) => p.opts.label === 'review:a#2').prompt, /Prior blockers are the `open` list in \/reviews\/a-r1\.json/,
     'the next reviewer reads what the round before left open')
+})
+
+const cycle = () => [composite('.'),
+  row('r', { rigor: 'tdd-pair', role: 'red', own_review: true, locus: ['src/Letters.test.ts', 'src/Letters.ts'] }),
+  row('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], own_review: true, locus: ['src/Letters.ts', 'src/Table.ts'] })]
+const tableGap = { id: 'R1', severity: 'critical', claim: 'the Table clause has no test that can fail', evidence: 'src/Table.ts:3', failure_scenario: 'drop capacity: 1 and npm test passes', remedy: 'tests' }
+
+test('a green whose review finds a test gap gets a test-author round, not an implementer that cannot write tests', async () => {
+  // The mistake: every green fix round goes to an implementer, whose locus holds no test file, so a
+  // test gap returns blocked and the leaf escalates.
+  const sim = simulate(cycle())
+  const { result, prompts } = await run(sim, {
+    'review:g#1': () => ({ findings: [tableGap], fix_verdicts: [], notes: '' }),
+    'review:g#2': () => ({ findings: [], fix_verdicts: [{ id: 'R1', status: 'fixed', evidence: 'src/Table.test.ts:1' }], notes: '' }),
+  })
+  assert.deepEqual(result.escalations, [])
+  assert.ok(labels(prompts).includes('test-author:g#2') && !labels(prompts).includes('implementer:g#2'), labels(prompts).join(' '))
+  assert.equal(prompts.find((p) => p.opts.label === 'test-author:g#2').opts.agentType, 'agentics:test-author')
+  assert.deepEqual(sim.fixes.get('g#2').map((f) => [f.source, f.remedy, Boolean(f.carried)]), [['review critical R1', 'tests', false]])
+  assert.equal(result.implemented.find((i) => i.id === 'g').review_rounds, 2)
+})
+
+test('a green whose implementer can fix only a test returns needs_tests, and a test-author round follows', async () => {
+  // The mistake: needs_tests read as a stop, or as a fix round that returned no commits.
+  const sim = simulate(cycle())
+  const code = { id: 'F1', severity: 'critical', claim: 'a Table takes a second letter', evidence: 'src/Table.ts:3', failure_scenario: 'two letters on one table' }
+  const { result, prompts } = await run(sim, {
+    'review:g#1': () => ({ findings: [code], fix_verdicts: [], notes: '' }),
+    'implementer:g#2': () => ({ status: 'needs_tests', detail: 'Table already holds one letter; only a test can pin it', concerns: [], commits: [] }),
+    'review:g#2': () => ({ findings: [], fix_verdicts: [{ id: 'F1', status: 'fixed', evidence: 'src/Table.test.ts:1' }], notes: '' }),
+  })
+  assert.deepEqual(result.escalations, [])
+  assert.ok(labels(prompts).includes('implementer:g#2') && labels(prompts).includes('test-author:g#3'), labels(prompts).join(' '))
+  assert.deepEqual(sim.fixes.get('g#3').map((f) => [f.source, f.claim]), [['needs_tests', 'Table already holds one letter; only a test can pin it']])
+})
+
+test('a mixed open set: the implementer first with the test gap carried, then a test-author, and the carried finding is no strike', async () => {
+  // The mistake: a carried finding, ruled not_fixed by the round that was never asked to fix it,
+  // counted as the first of two strikes and escalated the leaf one round later.
+  const sim = simulate(cycle())
+  const code = { id: 'F1', severity: 'critical', claim: 'a Table takes a second letter', evidence: 'src/Table.ts:3', failure_scenario: 'two letters on one table' }
+  const { result, prompts } = await run(sim, {
+    'review:g#1': () => ({ findings: [code, tableGap], fix_verdicts: [], notes: '' }),
+    'review:g#2': () => ({ findings: [tableGap], fix_verdicts: [{ id: 'F1', status: 'fixed', evidence: 'x' }, { id: 'R1', status: 'not_fixed', evidence: 'carried' }], notes: '' }),
+    'review:g#3': () => ({ findings: [tableGap], fix_verdicts: [{ id: 'R1', status: 'not_fixed', evidence: 'still blind' }], notes: '' }),
+    'review:g#4': () => ({ findings: [], fix_verdicts: [{ id: 'R1', status: 'fixed', evidence: 'src/Table.test.ts:1' }], notes: '' }),
+  })
+  assert.deepEqual(result.escalations, [], 'the test-author\'s first miss is its first strike')
+  assert.ok(['implementer:g#2', 'test-author:g#3', 'test-author:g#4'].every((l) => labels(prompts).includes(l)), labels(prompts).join(' '))
+  assert.deepEqual(sim.fixes.get('g#2').map((f) => [f.source, Boolean(f.carried)]), [['review critical F1', false], ['review critical R1', true]])
 })
 
 test('a prior blocker ruled not_fixed but not re-reported stays open', async () => {

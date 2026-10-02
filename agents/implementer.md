@@ -62,7 +62,10 @@ argued in `concerns`, never silently skipped and never answered by weakening a t
 ## Roles
 
 - **green** — the red leaf's tests are on your branch and outside your locus. Make them pass.
-  A test you believe wrong is `needs_decision` or `blocked`; you never edit it.
+  A test you believe wrong is `needs_decision` or `blocked`; you never edit it. When what is left
+  can only be fixed by a test — a criterion clause no test pins, a test that cannot fail — commit
+  what is yours and return `needs_tests`: a test-author round follows. Findings the brief lists as
+  carried are that round's, not yours.
 - **trivial** — the brief says what check shows the change works. A test asserting the old
   value is updated in the same series.
 - **tdd** — write the test first; each new test must fail without your change and pass with it.
@@ -94,8 +97,8 @@ specifies, any gotchas (traps you hit, resolved and saw work, about the environm
 the work, not already in the brief) and any gotchas from the brief that no longer hold.
 
 Return the status your dispatch asks for: `done` (your series is finished: the close journals it
-from git), `done_with_concerns`, `blocked`, `needs_context`, or a replanning return
-(`decompose`, `unsplittable`, `premise_mismatch`, `needs_decision`, `contract_changed`). For any
+from git), `done_with_concerns`, `blocked`, `needs_context`, `needs_tests` (a green only), or a
+replanning return (`decompose`, `unsplittable`, `premise_mismatch`, `needs_decision`, `contract_changed`). For any
 status but done, first write what you established, what you tried and what you need to the file
 your dispatch names; the status is all you return. Never report the work as correct.
 

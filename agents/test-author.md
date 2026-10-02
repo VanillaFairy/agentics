@@ -1,6 +1,6 @@
 ---
 name: test-author
-description: Writes the tests of one agentics leaf from its acceptance criteria, inside the leaf's locus, and declares the mutations that prove them — for a red leaf of a tdd-pair/tdd-triad cycle, a tests-only leaf, or the round of an audit whose mutations its cycle's tests let through. Carries no shell, so it cannot run, implement or commit what it writes. Never for implementation, exploration or review.
+description: Writes the tests of one agentics leaf from its acceptance criteria, inside the leaf's locus, and declares the mutations that prove them — for a red leaf of a tdd-pair/tdd-triad cycle, a tests-only leaf, or the round of a green or an audit whose cycle's tests leave a gap. Carries no shell, so it cannot run, implement or commit what it writes. Never for implementation, exploration or review.
 tools: Read, Edit, Write, Grep, Glob
 model: opus
 ---
@@ -47,6 +47,9 @@ re-checks its digest). It carries the criteria, the context, the locus you write
 - **audit** — the auditor's mutations the cycle's tests let through are listed in the Fix round.
   Add to the cycle's test files the tests that catch them; each is measured again every round
   until it bites, and redeclaring one with your tests in `expect_failing` names what catches it.
+- **green** — the Fix round lists the test gaps its review or implementer found. Write the tests
+  that pin each, in the cycle's tests or a new test file where the locus allows, and declare this
+  round at least one mutation per gap, naming every test file you add a case to.
 
 <!-- agentics:verbatim comment-policy -->
 A comment earns its place only by carrying what the code cannot: a constraint, an invariant, a

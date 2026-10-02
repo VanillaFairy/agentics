@@ -97,7 +97,7 @@ const CARRIED = {
   },
 }
 
-const EXECUTOR_STATUSES = ['done', 'done_with_concerns', 'blocked', 'needs_context',
+const EXECUTOR_STATUSES = ['done', 'done_with_concerns', 'blocked', 'needs_context', 'needs_tests',
   'decompose', 'unsplittable', 'premise_mismatch', 'needs_decision', 'contract_changed']
 
 const EXECUTOR_TYPE = {
@@ -764,7 +764,8 @@ async function openLeaf(item, st) {
       { phase: 'Execute', label: 'open:' + id + '#' + st.round + (attempt > 1 ? '@' + attempt : '') })
     noteStops(opened)
     if (opened.status === 'opened') {
-      // The lib decides whom a round is for: an audit whose tests let a mutation through goes to a test-author.
+      // The lib decides whom a round of a cycle's later member is for, from its records: a test gap
+      // in an audit or a green goes to a test-author. roleOf only names the first.
       if (opened.role) st.role = opened.role
       st.worktree = opened.worktree
       st.branch = opened.branch

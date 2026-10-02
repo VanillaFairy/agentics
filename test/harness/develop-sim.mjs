@@ -15,14 +15,14 @@
 
 import {
   ARGS, approved, closeOutcome, escalated, executorOutcome, faultRecords, freshRecords, gateOutcome, launchRecords,
-  mergeRecords, parked, planOutcome, prepareOutcome, reviewFixes, reviewedOutcome, reviewedProducer, rulingOutcome, settleOutcome,
-  specStops, stopsOf,
+  mergeRecords, needsTestsFixes, parked, planOutcome, prepareOutcome, reviewFixes, reviewedOutcome, reviewedProducer, rulingOutcome,
+  settleOutcome, specStops, stopsOf,
 } from '../../lib/boundary.mjs'
 import { approvedHead } from '../../lib/resume.mjs'
 import { reviewOf, schedule, summarize } from '../../lib/schedule.mjs'
 import { ancestorsOf, handleArgs, handleEnvelope, parentOf } from '../../lib/store.mjs'
 import { childrenOf, deriveStatus, isYardstick, normalizeNode, ownReview } from '../../lib/tree.mjs'
-import { integrationPark, reviewExit } from '../../lib/verdict.mjs'
+import { greenRoundRole, integrationPark, reviewExit } from '../../lib/verdict.mjs'
 import { carriedEnvelope } from './workflow-host.mjs'
 
 const STAMP = '20260925-120000'
@@ -125,6 +125,13 @@ export function simulate(nodes, script = {}) {
   /** The role the simulated leaf-open dispatched a round to, as lib/boundary.mjs reads it off the event log. */
   const roleOfRound = (id, round) =>
     (sim.events.filter((e) => e.kind === 'dispatched' && e.node === id && e.round === round).pop() || {}).role || ''
+  /** Whom a round is for, as lib/boundary.mjs derives it: a green's from the close and review of the round before. */
+  const roundRoleOf = (id, round, given) => {
+    if (normalizeNode(sim.nodes.get(id) || {}).role !== 'green') return given
+    if (round <= 1) return 'implementer'
+    const review = [...sim.reviewRecords.entries()].filter(([k, r]) => k.startsWith(id + '#') && r.round === round - 1).map(([, r]) => r).pop() || null
+    return greenRoundRole({ close: sim.closes.get(id + '#' + (round - 1)) || null, review })
+  }
 
   const SEED = {
     active: (r) => [{ kind: 'dispatched', node: r.id }],
@@ -242,9 +249,10 @@ export function simulate(nodes, script = {}) {
         sim.locked.set(args.node, 'x')
         return ok('leaf-open', { status: 'locus_held', held_by: [{ node: 'x', status: 'approved' }] })
       }
-      if (st === 'opened') event({ kind: 'dispatched', node: args.node, role: args.role, round: args.round })
+      const role = roundRoleOf(args.node, args.round, args.role)
+      if (st === 'opened') event({ kind: 'dispatched', node: args.node, role, round: args.round })
       return ok('leaf-open', {
-        status: st, branch: 'agentics/e--' + args.node,
+        status: st, role, branch: 'agentics/e--' + args.node,
         worktree: '/wt/' + args.node, base_sha: 'b-' + args.node, head_sha: 'b-' + args.node,
         brief_path: '/briefs/' + args.node + '-r' + args.round + '.md', brief_digest: 'd' + args.round,
         report_path: '/reports/' + args.node + '-r' + args.round + '.md', max_parallel: 4,
@@ -252,13 +260,19 @@ export function simulate(nodes, script = {}) {
     },
     'leaf-close'(args) {
       const id = args.node
-      const commits = sim.commits.get(args.role + ':' + id + '#' + args.round)
+      const leafRole = normalizeNode(sim.nodes.get(id) || {}).role
+      const role = leafRole === 'green' ? roleOfRound(id, args.round) || args.role : args.role
+      const commits = sim.commits.get(role + ':' + id + '#' + args.round)
       const head = commits && commits.length === 0 ? args.head_before : 'h-' + id + '-' + args.round
       const recordPath = '/closes/' + id + '-r' + args.round + '.json'
-      const front = executorOutcome({ node: id, role: args.role, status: args.status, said: args.said, mode: args.mode, round: args.round, head_before: args.head_before, head })
+      const front = executorOutcome({ node: id, role, status: args.status, said: args.said, mode: args.mode, round: args.round, head_before: args.head_before, head, leafRole })
       if (front) {
         const stops = record(front.next === 'held' ? faultRecords(id, 'dispatch', '', disk()) : front.records)
-        return ok('leaf-close', { status: 'done', node: id, head_sha: head, decision: { next: front.next, failures_n: 0 }, raise: false, record: '', replan: null, stops })
+        if (front.needs_tests) {
+          sim.closes.set(id + '#' + args.round, { role, status: 'needs_tests', decision: { next: 'fix', failures: [] }, head_sha: head })
+          sim.fixes.set(id + '#' + (args.round + 1), needsTestsFixes(sim.fixes.get(id + '#' + args.round), args.said, sim.files.get(args.said) || ''))
+        }
+        return ok('leaf-close', { status: 'done', node: id, head_sha: head, decision: { next: front.next, failures_n: 0 }, raise: false, record: front.needs_tests ? recordPath : '', replan: null, stops })
       }
       const n = count('close:' + id)
       const plan = script.close && script.close[id]
@@ -270,7 +284,7 @@ export function simulate(nodes, script = {}) {
         previous: sim.closes.get(id + '#' + (args.round - 1)) || null,
         established: sim.state.some((e) => e.kind === 'dispatch' && e.role === 'investigator'),
       })
-      sim.closes.set(id + '#' + args.round, { decision, head_sha: head })
+      sim.closes.set(id + '#' + args.round, { role, decision, head_sha: head })
       if (out.next === 'fix') sim.fixes.set(id + '#' + (args.round + 1), decision.failures.map((f) => ({ source: 'verification', ...f })))
       const parent = parentOfRow(id)
       return ok('leaf-close', {
@@ -292,12 +306,12 @@ export function simulate(nodes, script = {}) {
         yardstick: isYardstick(leaf), findings: review.findings, verdicts: review.fix_verdicts || [], prior,
         producer: reviewedProducer(leaf, roleOfRound(id, args.round)),
       })
-      sim.reviewRecords.set(id + '#' + args.review_round, exit)
+      sim.reviewRecords.set(id + '#' + args.review_round, { ...exit, round: args.round })
       const recordPath = '/reviews/' + id + '-r' + args.review_round + '.json'
       const records = []
       if (exit.next === 'approve') records.push(approved(id, 'h-' + id + '-' + args.round, args.review_round, false))
       if (exit.next === 'escalate') records.push(escalated(id, exit.reason, exit.detail, args.review_file.replace(/\.json$/, '.md')))
-      if (exit.next === 'fix') sim.fixes.set(id + '#' + (args.round + 1), reviewFixes(exit.open))
+      if (exit.next === 'fix') sim.fixes.set(id + '#' + (args.round + 1), reviewFixes(exit.open, leaf))
       return ok('leaf-review', { decision: { next: exit.next, reason: exit.reason }, raise: exit.raise, record: recordPath, stops: record(records) })
     },
     'merge-batch'(args) {

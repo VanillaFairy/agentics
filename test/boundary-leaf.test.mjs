@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'no
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 
-import { land } from '../lib/boundary.mjs'
+import { executorOutcome, land, needsTestsFixes, reviewFixes } from '../lib/boundary.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
 import { heldBy } from '../lib/locks.mjs'
 import { addNodes, readTree } from '../lib/tree.mjs'
@@ -217,6 +217,90 @@ test('an audit mutation the tests let through goes to a test-author, in the cycl
   const closed = B(r, 'leaf-close', { node: 'au', role: 'auditor', round: 3, status: 'done', base_sha: closing.base_sha })
   assert.equal(closed.decision.next, 'review', JSON.stringify(closed.decision) + readFileSync(closed.record, 'utf8'))
   assert.ok(git(closing.worktree, 'log', '--format=%s', closing.base_sha + '..HEAD').includes('Pin r on 3'), 'the test-author\'s tests were committed in the cycle\'s test file')
+})
+
+/** A tdd-pair whose red pins r and whose green's criterion also states a table clause no red test pins. */
+function greenWithAGap() {
+  const r = repo()
+  seedTree(r, 'e1', [root(),
+    leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'] }),
+    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], locus: ['src/r.mjs', 'src/table.mjs'] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const red = B(r, 'leaf-open', { node: 'r', role: 'test-author', round: 1 })
+  writeFileSync(join(red.worktree, 'test', 'r.test.mjs'), "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\ntest('doubles 2', async () => { const { r } = await import('../src/r.mjs'); assert.equal(r(2), 4) })\n")
+  writeFileSync(red.report_path, '```agentics-commit\nPin r\n```\n')
+  B(r, 'leaf-close', { node: 'r', role: 'test-author', round: 1, status: 'done', base_sha: red.base_sha })
+  B(r, 'leaf-review', { node: 'r', round: 1, review_round: 1, review_file: wrote(CLEAN_REVIEW) })
+  const green = B(r, 'leaf-open', { node: 'g', role: 'implementer', round: 1 })
+  commitIn(green.worktree, { 'src/r.mjs': 'export const r = (x) => x * 2\n', 'src/table.mjs': 'export const table = () => ({ capacity: 1 })\n' }, 'Implement r and its table')
+  B(r, 'leaf-close', { node: 'g', role: 'implementer', round: 1, status: 'done', base_sha: green.base_sha })
+  return { r, green }
+}
+
+test('a green\'s test gap goes to a test-author, who writes a test beside a cycle source and nothing else, and the green closes on a biting break', () => {
+  const { r, green } = greenWithAGap()
+  const gap = { id: 'T1', severity: 'critical', claim: 'the table clause has no test that can fail', evidence: 'src/table.mjs:1', failure_scenario: 'capacity: 2 passes every test', remedy: 'tests' }
+  assert.equal(B(r, 'leaf-review', { node: 'g', round: 1, review_round: 1, review_file: wrote({ ...CLEAN_REVIEW, findings: [gap] }) }).decision.next, 'fix')
+
+  const author = B(r, 'leaf-open', { node: 'g', role: 'implementer', round: 2 })
+  assert.equal(author.role, 'test-author', 'every open blocker is the tests\': the lib sends the round to a test-author, whatever the workflow asked')
+  const brief = readFileSync(author.brief_path, 'utf8')
+  assert.match(brief, /## Locus\n\n- test\/r\.test\.mjs\n- a new test file directly in test\/[^\n]*\n- a new test file directly in src\//, 'its locus is the cycle\'s tests and where a new one may go')
+  assert.match(brief, /\[review critical T1\] the table clause has no test that can fail/)
+  const pin = "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { table } from './table.mjs'\ntest('holds one letter', () => assert.equal(table().capacity, 1))\n"
+  writeFileSync(join(author.worktree, 'src', 'table.test.mjs'), pin)
+  writeFileSync(join(author.worktree, 'src', 'table.mjs'), 'export const table = () => ({ capacity: 9 })\n')
+  const bite = { file: 'src/table.mjs', find: 'capacity: 1', replace: 'capacity: 2', expect_failing: ['src/table.test.mjs'] }
+  writeFileSync(author.report_path, '```agentics-commit\nPin the table\'s capacity\n```\n```agentics-mutations\n' + JSON.stringify([bite]) + '\n```\n')
+  const strayed = B(r, 'leaf-close', { node: 'g', role: 'implementer', round: 2, mode: 'fix', status: 'done', base_sha: green.base_sha })
+  assert.equal(git(author.worktree, 'show', 'HEAD:src/table.mjs'), 'export const table = () => ({ capacity: 1 })', 'the source it touched was never committed')
+  assert.deepEqual(git(author.worktree, 'show', '--name-only', '--format=', 'HEAD'), 'src/table.test.mjs', 'the test beside the cycle\'s source was')
+  assert.equal(strayed.decision.next, 'fix', 'writing a source is a blocking breach')
+
+  const again = B(r, 'leaf-open', { node: 'g', role: 'implementer', round: 3 })
+  assert.equal(again.role, 'test-author', 'a breach is the test-author\'s own, so the round stays its')
+  writeFileSync(again.report_path, '```agentics-mutations\n' + JSON.stringify([bite]) + '\n```\n')
+  const closed = B(r, 'leaf-close', { node: 'g', role: 'implementer', round: 3, mode: 'fix', status: 'done', base_sha: green.base_sha })
+  const { measurement } = JSON.parse(readFileSync(closed.record, 'utf8'))
+  assert.equal(closed.decision.next, 'review', JSON.stringify(measurement.series_findings) + measurement.notes)
+  assert.deepEqual(measurement.series_findings.filter((f) => f.blocking), [], 'the authored test commit is fenced by the cycle\'s tests, the implementer\'s by the green\'s locus')
+  assert.ok(measurement.mutations[0].bites)
+  const fixed = { ...CLEAN_REVIEW, fix_verdicts: [{ id: 'T1', status: 'fixed', evidence: 'src/table.test.mjs:4' }] }
+  assert.equal(B(r, 'leaf-review', { node: 'g', round: 3, review_round: 2, review_file: wrote(fixed) }).decision.next, 'approve')
+})
+
+test('a green\'s implementer that can fix only a test returns needs_tests: no stop, and the next round is a test-author\'s', () => {
+  const { r, green } = greenWithAGap()
+  const code = { id: 'F1', severity: 'critical', claim: 'a table takes a second letter', evidence: 'src/table.mjs:1', failure_scenario: 'two letters on one table' }
+  B(r, 'leaf-review', { node: 'g', round: 1, review_round: 1, review_file: wrote({ ...CLEAN_REVIEW, findings: [code] }) })
+  const fix = B(r, 'leaf-open', { node: 'g', role: 'implementer', round: 2 })
+  assert.equal(fix.role, 'implementer')
+  const said = wrote('', 'said.md')
+  writeFileSync(said, 'The table already holds one letter; what is missing is a test that pins it.\nsrc/table.mjs:1\n')
+  const close = B(r, 'leaf-close', { node: 'g', role: 'implementer', round: 2, mode: 'fix', status: 'needs_tests', said, head_before: fix.head_sha, base_sha: green.base_sha })
+  assert.deepEqual([close.decision.next, close.stops], ['fix', []], 'neither a stop nor a fix without commits')
+  const author = B(r, 'leaf-open', { node: 'g', role: 'implementer', round: 3 })
+  assert.equal(author.role, 'test-author')
+  assert.match(readFileSync(author.brief_path, 'utf8'), /\[needs_tests\] The table already holds one letter; what is missing is a test that pins it\./)
+  assert.doesNotMatch(readFileSync(author.brief_path, 'utf8'), /\[review critical F1\]/, 'the implementation\'s finding was the implementer\'s to answer')
+})
+
+test('needs_tests stops every leaf but a green\'s implementer round, as blocked does', () => {
+  const at = (role, leafRole) => executorOutcome({ node: 'x', role, status: 'needs_tests', said: 's.md', mode: 'fix', round: 2, head_before: 'h', head: 'h', leafRole })
+  assert.deepEqual([at('implementer', 'green').next, at('implementer', 'green').needs_tests], ['fix', true])
+  for (const [role, leafRole] of [['implementer', 'none'], ['test-author', 'red'], ['test-author', 'green'], ['auditor', 'audit']]) {
+    assert.deepEqual(at(role, leafRole).records.map((x) => [x.entry.kind, x.entry.reason, x.entry.said]), [['escalated', 'needs_tests', 's.md']], role + ' on ' + leafRole)
+  }
+})
+
+test('a mixed open set on a green goes to the implementer with the tests\' findings carried', () => {
+  const green = { role: 'green' }
+  const open = [{ id: 'F1', severity: 'critical', claim: 'c', evidence: 'e' }, { id: 'T1', severity: 'critical', claim: 't', evidence: 'e', remedy: 'tests' }]
+  assert.deepEqual(reviewFixes(open, green).map((f) => [f.remedy, Boolean(f.carried)]), [['code', false], ['tests', true]])
+  assert.deepEqual(reviewFixes([open[1]], green).map((f) => Boolean(f.carried)), [false], 'only tests left: the test-author takes them')
+  assert.deepEqual(reviewFixes(open, { role: 'none' }).map((f) => Boolean(f.carried)), [false, false], 'a leaf with one producer carries nothing')
+  assert.deepEqual(needsTestsFixes(reviewFixes(open, green), 's.md', 'only a test can\nmore').map((f) => [f.source, Boolean(f.carried)]),
+    [['review critical T1', false], ['needs_tests', false]], 'after needs_tests the carried finding is the test-author\'s, the code one is gone')
 })
 
 test('a red leaf\'s major with a failure scenario blocks: its tests are the yardstick a green is coded against', () => {

@@ -742,7 +742,7 @@ Every leaf carries a `rigor`, set by its author. Walk the table top-down; the fi
 | `trivial` | writes a change a test would only restate: literal values and user-visible text (a window title, a label, a message), config values, docs, assets, renames behind an unchanged interface, dependency versions, wiring of existing parts | one implementer leaf | the named check, when the leaf needs one to show it works (build, typecheck, the tests the change can reach, running it, a `HUMAN:` look); a test asserting the changed value is updated in the same leaf |
 | `tests-only` | only adds tests to code that is already correct | one test-author leaf | each new test passes now, and its file fails under a mutation the test-author declared |
 | `tdd` | adds behaviour whose expected results the criteria state exactly | one implementer leaf, test first | at least one test file adds a test case, and each that does fails at base and passes now; one that adds none (upkeep: existing tests kept working) passes now |
-| `tdd-pair` | adds behaviour where a wrong reading of the criteria would pass its author's own tests: edge-case rules, parsers, state machines, concurrency, contracts other nodes consume | a `red` test-author leaf, then a `green` implementer leaf | red: its tests fail for want of the implementation; green: they pass, tests untouched |
+| `tdd-pair` | adds behaviour where a wrong reading of the criteria would pass its author's own tests: edge-case rules, parsers, state machines, concurrency, contracts other nodes consume | a `red` test-author leaf, then a `green` implementer leaf | red: its tests fail for want of the implementation; green: they pass, the tests untouched by its implementer; a test gap is a test-author round of the green |
 | `tdd-triad` | as `tdd-pair`, and a miss ships silently into durable state or is costly to find: persistence formats, migrations, data loss, security, money | red, green, then an `audit` leaf | as `tdd-pair`, plus every mutation the auditor declared and the measurement applied is killed — by the cycle's tests, or by the tests a test-author adds in the audit's later rounds |
 
 **Would a test only restate the diff?** A test of a `trivial` change asserts that the value
@@ -774,23 +774,35 @@ Unsure between `tdd` and `tdd-pair`: `tdd` when the leaf is small, `tdd-pair` wh
   declarations alone, because their implementation moves and an old `find` with it.
 - **Every new test is shown to catch something.** A `tests-only` leaf's test file that adds a case
   is named in the `expect_failing` of a mutation that bites, or the leaf fails.
-- **An audit gap is closed inside the cycle.** From the first measurement in which the cycle's
-  tests let an applied mutation through (`auditGap`), every later round of the audit goes to a
-  test-author instead of the auditor — leaf-open and leaf-close derive the round's role from the
-  journal, whatever the workflow asked — writing the cycle's tests and nothing else
-  (`cycleTestLocus` in `lib/tree.mjs`): the test files of the red's locus, and a new test file
-  directly beside an entry of a member's locus that no unmerged leaf outside the cycle holds;
-  never a source file. Leaf-close commits only what that admits, journals the commit as
-  `authored`, and the series check holds each such commit to it and every other commit to the
-  leaf's own locus. Its fix round lists each surviving
-  mutation, its text and the tests it names, and the audit approves only once every held mutation
-  bites. A fix round that went back to the auditor could only withdraw the mutation; one that
-  went to the planner as new children would test against mutations of their own choosing.
+- **A cycle's test gap is closed inside the cycle.** A gap in the cycle's tests found after the red
+  is approved — by an audit's mutation, by a green's review, by a green's implementer — goes to a
+  test-author round of the leaf that found it, never to an agent that cannot write tests and never
+  to the planner as new children, which would test against breaks of their own choosing.
+  Leaf-open derives each round's role from the records, whatever the workflow asked, and
+  leaf-close and resume read it back off the round's dispatch:
+  - **An audit.** From the first measurement in which the cycle's tests let an applied mutation
+    through (`auditGap`), every later round goes to a test-author instead of the auditor. Its fix
+    round lists each surviving mutation, its text and the tests it names, and the audit approves
+    only once every held mutation bites. A round that went back to the auditor could only
+    withdraw the mutation.
+  - **A green** (`greenRoundRole` in `lib/verdict.mjs`, from the close and the review of the round
+    before). A test-author when the implementer returned `needs_tests`, when every blocker the
+    review left open has `remedy: tests`, or when a test-author round's measurement failed only on
+    what it wrote (its mutations, its series); an implementer otherwise. A mixed open set goes to
+    the implementer first, with the tests' findings listed as carried, then to a test-author once
+    only they remain. A test-author round is measured by the breaks it catches (the `green-tests`
+    profile, [Verification](#verification)).
+  - Either way the round writes the cycle's tests and nothing else (`cycleTestLocus` in
+    `lib/tree.mjs`): the test files of the red's locus, and a new test file directly beside an
+    entry of a member's locus — new meaning absent from the parent's integration head — that no
+    unmerged leaf outside the cycle holds; never a source file. Leaf-close commits only what that
+    admits, journals the commit as `authored`, and the series check holds each such commit to it
+    and every other commit to the leaf's own locus, so neither producer writes the other's files.
 - **Review follows rigor.** `tdd-pair`, `tdd-triad` and any leaf that `provides` a contract get a
   review loop of their own; `trivial`, `tests-only` and `tdd` leaves are reviewed at integration;
   `verify` leaves write nothing to review.
-- **A fix round** on a test finding goes to a fresh test-author; on an implementation finding, to a
-  fresh implementer.
+- **A fix round** goes to a fresh producer of the leaf: on a green or an audit, to whichever the
+  records name above; on any other leaf, to its one producer, which owns its tests and its code.
 
 **Why:** assurance should rise with the cost of a wrong reading, and the cheapest assurance that
 closes the specific hole is the right one.
@@ -1446,9 +1458,15 @@ merge-batch. Coupled leaves run one at a time; everything else keeps running.
   Each fetches its brief by reference and confirms its digest (a shell-less author reads it, and
   leaf-close re-checks), writes a focused commit series inside its locus (no amends, no rebases),
   writes its report to a file, and returns its status alone: `done`, `done_with_concerns`,
-  `blocked`, `needs_context`, or a [replanning](#replanning) return, any but done written first in
-  full to the file its dispatch names. leaf-close reads that status: on done it journals the series
-  as `series-done` from git, after committing a shell-less author's files. An implementer or test author also keeps a [progress
+  `blocked`, `needs_context`, `needs_tests`, or a [replanning](#replanning) return, any but done
+  written first in full to the file its dispatch names. leaf-close reads that status: on done it
+  journals the series as `series-done` from git, after committing a shell-less author's files.
+  `needs_tests` is a green implementer's: what is left can only be fixed by a test outside its
+  locus. It is no stop and no fix without commits (it may carry commits or none): leaf-close writes
+  the round's close record with `status: needs_tests`, hands the next round its test findings,
+  its failures and what the implementer said, and the round goes to a test-author
+  ([Rigor](#rigor)). From any other leaf it escalates, as `blocked` does: a plain implementer leaf
+  owns its tests, and a test-author or an auditor never returns it. An implementer or test author also keeps a [progress
   file](#progress-file): the pieces its work splits into, each `pending`, `working` or `done`,
   written before its first edit and rewritten at every move.
 - **Verification failures** send a fresh producer a fix round carrying the failures. A fix round
@@ -1480,7 +1498,9 @@ merge-batch. Coupled leaves run one at a time; everything else keeps running.
     ruled `not_fixed`/`regressed` in two consecutive rounds, or when two consecutive rounds each
     rule every prior blocker fixed and still mint new blocking findings.
   - Otherwise a fix round, its brief listing the open findings, re-verification, and a fresh
-    reviewer. No round counter ends the loop.
+    reviewer. No round counter ends the loop. On a green the round's producer follows the open
+    findings' remedies ([Rigor](#rigor)); an implementer's brief lists the `tests` findings of a
+    mixed set apart, as carried to a later test-author round.
 - **The code severity ladder** is the verbatim block `severity-ladder` (in `agents/reviewer.md` and
   below): critical must not merge; major is real but mergeable and blocks only on a yardstick leaf,
   only with a failure scenario; minor never blocks. A fix verdict on a prior blocker is `fixed`,
@@ -2254,7 +2274,7 @@ Every call also takes `dispatch[]`: the dispatches it closes and its own courier
   children[{id, head_sha}], cycles[[id]]}`.
 - **leaf-open** — takes `node, role, round, tier` (`<model>/<effort>`), `wait_ms`. Prints `status`
   (`opened | no_slot | locus_held | busy | refused`), `role` (the round's, which the workflow
-  dispatches: on an audit the journal's, not the one it was given), `branch`, `worktree`, `base_sha`, `head_sha`,
+  dispatches: on an audit or a green the records', not the one it was given), `branch`, `worktree`, `base_sha`, `head_sha`,
   `brief_path`, `brief_digest`, `report_path`, `slot`, `max_parallel`, `held_by[{node, status}]`.
 - **leaf-close** — takes `node, role, round, mode` (`fresh | continue | fix | resume`), `status`
   (the executor's, `''` when it returned nothing), `said`, `head_before`, `base_sha`. Prints
@@ -2262,15 +2282,19 @@ Every call also takes `dispatch[]`: the dispatches it closes and its own courier
   review | fix | escalate | finding | command_unknown | replan | stopped | held`), `raise` (a second
   fix in a row), `record` (the path of `closes/<stem>.json`: `{node, role, round, head_sha,
   measurement, decision}` with each failure's `evidence`, `gotchas_written`, `gotchas_deleted`,
-  `mutations`, `committed`, `notes`), `report_path`, `replan` (`{id, card, row, said}` of a verify
-  leaf's folder the planner writes, else null). On `fix` it also writes
-  `fixes/<node>-r<round+1>.json`, `[{source, check, claim, evidence}]`, which leaf-open reads.
+  `mutations`, `committed`, `notes`; after a green implementer's `needs_tests`, `{node, role,
+  round, head_sha, status: needs_tests, said, decision}` and no measurement), `report_path`,
+  `replan` (`{id, card, row, said}` of a verify leaf's folder the planner writes, else null). On
+  `fix` it also writes `fixes/<node>-r<round+1>.json`, `[{source, check, claim, evidence}]`, which
+  leaf-open reads; after `needs_tests` the round's own fixes less those with `remedy: code`, plus
+  `{source: needs_tests, claim, evidence}` (the said file's first line, and its path).
 - **leaf-review** — takes `node, round, review_round, review_file`, the reviewer's
   `{findings, fix_verdicts, claims, notes}` ([Review returns](#review-returns)). Prints `decision
   {next: approve | fix | escalate | held, reason}`, `raise`, `record` (the path of
-  `reviews/<node>-r<n>.json`: `reviewExit`'s `{open, unfixed, clean_streak}` and the head it
-  judged). On `fix` it writes the open findings to the next round's fixes file as `{source:
-  "review <severity> <id>", claim, evidence}`.
+  `reviews/<node>-r<n>.json`: `reviewExit`'s `{open, unfixed, clean_streak}`, the executor
+  `round` it reviewed and the head it judged). On `fix` it writes the open findings to the next
+  round's fixes file as `{source: "review <severity> <id>", claim, evidence, remedy, carried?}`,
+  `carried: true` on a green's `tests` findings when the next round is an implementer's.
 - **merge-batch** — takes `target, card`. Prints `status`, `target`, `head_sha`, `verified`,
   `record` (the path of `merges/<key>-<pre>.json`, with the measurement, `conflict`,
   `combination`, `failed_alone` with each failure's evidence, and `drift[{node, contract, files,
@@ -2324,9 +2348,10 @@ Every call also takes `dispatch[]`: the dispatches it closes and its own courier
   `executorOutcome` in `lib/boundary.mjs` (what each decides).
 - **Restated in:** `agents/implementer.md`, `agents/test-author.md`, `agents/planner.md`.
 
-`done | done_with_concerns | blocked | needs_context | decompose | unsplittable | premise_mismatch
-| needs_decision | contract_changed`, returned alone; for any but done, what was established,
-tried and needed is written first to the file the dispatch names.
+`done | done_with_concerns | blocked | needs_context | needs_tests | decompose | unsplittable |
+premise_mismatch | needs_decision | contract_changed`, returned alone; for any but done, what was
+established, tried and needed is written first to the file the dispatch names. `needs_tests` is
+offered to a green's implementer alone ([Executors and review](#executors-and-review)).
 
 ### Coverage block
 

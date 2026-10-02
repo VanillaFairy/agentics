@@ -352,6 +352,22 @@ test('two rounds that each fix every prior blocker and still mint new ones escal
   assert.deepEqual([r3.next, r3.reason], ['escalate', 'review_not_converging'])
 })
 
+test('a prior blocker the round under review could not fix is carried: open still, and never a strike toward escalation', () => {
+  const gap = { ...critical('T1'), remedy: 'tests' }
+  const r1 = reviewExit({ findings: [critical('F1'), gap], producer: 'code' })
+  // An implementer's round: it fixed F1 and was never asked to touch T1, which the reviewer re-reports.
+  const r2 = reviewExit({ findings: [gap], verdicts: [{ id: 'F1', status: 'fixed' }, { id: 'T1', status: 'not_fixed' }], prior: r1, producer: 'code' })
+  assert.deepEqual([r2.next, r2.open.map((f) => f.id), r2.unfixed, r2.raise, r2.clean_streak], ['fix', ['T1'], [], false, 0],
+    'T1 stays open, but is no strike, no raise and no newly minted blocker')
+  // The test-author's round left it unfixed: that is its first strike, not its second.
+  const r3 = reviewExit({ findings: [gap], verdicts: [{ id: 'T1', status: 'not_fixed' }], prior: r2, producer: 'tests' })
+  assert.deepEqual([r3.next, r3.unfixed, r3.raise], ['fix', ['T1'], true])
+  const r4 = reviewExit({ findings: [gap], verdicts: [{ id: 'T1', status: 'not_fixed' }], prior: r3, producer: 'tests' })
+  assert.deepEqual([r4.next, r4.reason], ['escalate', 'review_not_converging'], 'unfixed twice by the producer that owns it')
+  const plain = reviewExit({ findings: [gap], verdicts: [{ id: 'F1', status: 'fixed' }, { id: 'T1', status: 'not_fixed' }], prior: r1 })
+  assert.deepEqual(plain.unfixed, ['T1'], 'with no producer named, a remedy carries nothing: a leaf with one producer owns every finding')
+})
+
 test('an integration review parks once, by class: a spec defect, then criticals and drift, then what it could not tell', () => {
   const claim = (verdict, text = 't') => ({ claim: text, verdict, evidence: 'a:1' })
   assert.equal(integrationPark([], [claim('met')], 'S'), null)

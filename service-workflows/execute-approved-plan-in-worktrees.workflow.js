@@ -428,7 +428,7 @@ function executorPrompt(item, st, opened, mode) {
 }
 
 const reviewFileShape = (claims) => 'Write your review, as JSON, to the file below: {"findings": [{"id", "severity", "claim", ' +
-  '"evidence", "failure_scenario"}], "fix_verdicts": [{"id", "status", "evidence"}], "claims": ' +
+  '"evidence", "failure_scenario", "remedy"}], "fix_verdicts": [{"id", "status", "evidence"}], "claims": ' +
   (claims ? '[{"claim", "verdict", "evidence"}]' : '[]') + ', "notes"}. Then return status written.'
 
 function reviewerPrompt(item, st, round, file) {

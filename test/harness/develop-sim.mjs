@@ -15,7 +15,8 @@
 
 import {
   ARGS, approved, closeOutcome, escalated, executorOutcome, faultRecords, freshRecords, gateOutcome, launchRecords,
-  mergeRecords, parked, planOutcome, prepareOutcome, reviewFixes, reviewedOutcome, rulingOutcome, settleOutcome, specStops, stopsOf,
+  mergeRecords, parked, planOutcome, prepareOutcome, reviewFixes, reviewedOutcome, reviewedProducer, rulingOutcome, settleOutcome,
+  specStops, stopsOf,
 } from '../../lib/boundary.mjs'
 import { approvedHead } from '../../lib/resume.mjs'
 import { reviewOf, schedule, summarize } from '../../lib/schedule.mjs'
@@ -121,6 +122,9 @@ export function simulate(nodes, script = {}) {
     return stopsOf(records)
   }
   const disk = () => ({ nodes: tree(), events: sim.events, state: sim.state })
+  /** The role the simulated leaf-open dispatched a round to, as lib/boundary.mjs reads it off the event log. */
+  const roleOfRound = (id, round) =>
+    (sim.events.filter((e) => e.kind === 'dispatched' && e.node === id && e.round === round).pop() || {}).role || ''
 
   const SEED = {
     active: (r) => [{ kind: 'dispatched', node: r.id }],
@@ -283,7 +287,11 @@ export function simulate(nodes, script = {}) {
         return ok('leaf-review', { decision: { next: 'held', reason: '' }, raise: false, record: '', stops: record(faultRecords(id, 'dispatch', '', disk())) })
       }
       const prior = sim.reviewRecords.get(id + '#' + (args.review_round - 1)) || {}
-      const exit = reviewExit({ yardstick: isYardstick(normalizeNode(sim.nodes.get(id))), findings: review.findings, verdicts: review.fix_verdicts || [], prior })
+      const leaf = normalizeNode(sim.nodes.get(id))
+      const exit = reviewExit({
+        yardstick: isYardstick(leaf), findings: review.findings, verdicts: review.fix_verdicts || [], prior,
+        producer: reviewedProducer(leaf, roleOfRound(id, args.round)),
+      })
       sim.reviewRecords.set(id + '#' + args.review_round, exit)
       const recordPath = '/reviews/' + id + '-r' + args.review_round + '.json'
       const records = []

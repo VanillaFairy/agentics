@@ -1471,6 +1471,10 @@ merge-batch. Coupled leaves run one at a time; everything else keeps running.
   - The open set is the round's blocking findings, plus every prior blocker ruled
     `not_fixed`/`regressed` in `fix_verdicts` — or not ruled on at all — that the round did not
     re-report. Never narrow this to the round's criticals alone.
+  - Each finding names its `remedy`: `code` (the default) or `tests`. On a green, whose rounds go
+    to an implementer or a test-author, a prior blocker whose remedy was not the reviewed round's
+    producer's was **carried** past that round: it stays open, and counts toward neither
+    escalation rule nor a raise, because nobody who could fix it was asked to.
   - The leaf is approved when the open set is empty — a count the boundary computes.
   - It escalates when a fix round returns no commits or a blocked status, when the same finding is
     ruled `not_fixed`/`regressed` in two consecutive rounds, or when two consecutive rounds each
@@ -2444,9 +2448,11 @@ with `renamed_from`.
   its own reviewer to return `{findings, fix_verdicts, notes}` itself, with no file.
 
 The review file the reviewer writes: `{findings[{id, severity: critical|major|minor, claim,
-evidence, failure_scenario}], fix_verdicts[{id, status: fixed|not_fixed|regressed, evidence}],
+evidence, failure_scenario, remedy?: code|tests}], fix_verdicts[{id, status: fixed|not_fixed|regressed, evidence}],
 claims[{claim, verdict: met|under|over|deviates|spec_defect|cant_tell, evidence}], notes}`. A leaf
-review writes `claims: []`. The reviewer returns `{status: written | not_written}`.
+review writes `claims: []`. `remedy` is who must change to fix a finding — the implementation
+(`code`, read when absent) or the cycle's tests (`tests`); `remedyOf` in `lib/verdict.mjs` reads it.
+The reviewer returns `{status: written | not_written}`.
 
 ### Planner returns
 

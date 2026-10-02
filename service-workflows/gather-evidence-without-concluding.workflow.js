@@ -33,44 +33,11 @@ export const meta = {
 // stripped before the schema reaches the model, so a contract written only in a comment
 // binds nobody — and the coverage fields are load-bearing.
 
-// The coverage contract every evidence-gathering agent answers to: the scouts, the historian
-// and the doc-researcher alike. Completeness is DERIVED in JS from stop_reason, and a resume
-// is driven by not_reached, so both come back in the structured return; what was searched and
-// what was proven absent go to the return file, where the judge reads them.
-//
-// Every coverage field is ALWAYS present — an empty string is the correct value for "nothing
-// to carry", and each description says so outright. Conditional wording ("must be non-empty
-// whenever stop_reason is not exhausted") reads to an exhausted agent as "must be non-empty",
-// so it omits the field it has nothing for, trips required-field validation, re-submits the
-// same shape until the platform kills it, and a finished search is dropped whole.
-const coverageFields = () => ({
-  stop_reason: {
-    type: 'string',
-    enum: ['exhausted', 'unfinished', 'stuck'],
-    description:
-      'Always include this field, the same value as in your return file. "exhausted" — every ' +
-      'candidate your searches turned up has been triaged and you can name the surface that ' +
-      'covers the request. "unfinished" — one pass could not cover the surface; you are handing ' +
-      'back an honest partial and the caller will resume you until the search is done. "stuck" — ' +
-      'you could not find a way forward. Cost, effort already spent, and the size of your report ' +
-      'are never reasons to stop. Only "exhausted" counts as a complete result, so claim it only ' +
-      'when it is true.',
-  },
-  not_reached: {
-    type: 'string',
-    description:
-      'What you never searched at all, the same text as in your return file, named specifically ' +
-      'enough for someone else to pick it up. Send an empty string when stop_reason is ' +
-      '"exhausted"; otherwise it must name what remains — a search you do not describe cannot ' +
-      'be resumed and is recorded as a dead end. Never put what you searched and did not find here.',
-  },
-})
-
-// Only the payload field goes in `required`. The coverage fields are demanded by their
-// descriptions and normalized in JS after the call — never by the validator: a required
-// field whose semantics are conditional is a deadlock. Absence is normalized in the safe
-// direction: a missing stop_reason never reads as "exhausted", so sloppiness degrades toward
-// incomplete, never toward false completeness.
+// The coverage contract every evidence-gathering agent answers to — the scouts, the historian and
+// the doc-researcher alike — is in its return file: `stop_reason`, `not_reached`, what was searched
+// and what was proven absent. That file is the record. lib reads each round's (`evidence.mjs round`)
+// and says whether the search goes on, so nothing this script acts on is an agent's echo of what it
+// wrote, and its structured return is a count.
 
 const PLAN = {
   type: 'object',
@@ -107,23 +74,8 @@ const PLAN_FILE = '{"question": "<the QUESTION above, copied exactly>", "topics"
 const HITS = {
   type: 'object',
   additionalProperties: false,
-  required: ['hits'],
-  properties: {
-    hits: {
-      type: 'array',
-      description: 'Every location in your return file, by path and line only.',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['path', 'line'],
-        properties: {
-          path: { type: 'string', description: 'Path to the file containing the hit, relative to the repository it is in.' },
-          line: { type: 'integer', description: 'Line number of the hit.' },
-        },
-      },
-    },
-    ...coverageFields(),
-  },
+  required: ['hits_n'],
+  properties: { hits_n: { type: 'integer', description: 'How many hits your return file holds.' } },
 }
 
 const HITS_FILE = '{"hits": [{"path": "<repo-relative>", "line": <n>, "note": "<what is at that line, in one line>"}], ' +
@@ -137,8 +89,8 @@ const HITS_FILE = '{"hits": [{"path": "<repo-relative>", "line": <n>, "note": "<
 const CHANNEL = {
   type: 'object',
   additionalProperties: false,
-  required: ['stop_reason'],
-  properties: coverageFields(),
+  required: ['searched_n'],
+  properties: { searched_n: { type: 'integer', description: 'How many entries your return file\'s searched list holds.' } },
 }
 
 const channelFile = (findings, searched) => '{"findings": "' + findings + '", "searched": ["' + searched + '"], ' +
@@ -423,6 +375,30 @@ async function carry(command, label, phaseName) {
 
 const lib = (cli, verb) => `node "${pluginRoot}/lib/${cli}.mjs" ${verb} --repo "${repo}"`
 const flags = (name, values) => values.map((v) => `--${name} "${v}"`).join(' ')
+
+/**
+ * One round of a resumed agent as lib reads it from the return files its rounds wrote, the last
+ * one this round's: `{next: done|continue|stop, why, stop_reason, named, gained_n, entries_n,
+ * kinds}`. A round lib's reading never came back from ends the search short (`uncarried`).
+ */
+async function readRound(files, label, phaseName) {
+  const held = await carry(`${lib('evidence', 'round')} --from "${files[files.length - 1]}"` +
+    files.slice(0, -1).map((f) => ` --earlier "${f}"`).join(''), 'round:' + label, phaseName)
+  return held.payload || { next: 'stop', why: 'uncarried', carried: held.why, stop_reason: '', named: false, gained_n: 0 }
+}
+
+/** What a search that ended short never reached, as a phrase a coverage line puts after "never reached". */
+function shortOf(round, file) {
+  if (round.why === 'uncarried') return `what ${file} names under not_reached (lib's reading of it never came back: ${round.carried})`
+  if (round.why === 'unreadable') return `whatever ${file} would have named: that report could not be read`
+  return round.named
+    ? `what ${file} names under not_reached`
+    : `whatever ${file} did not search: it stopped "${round.stop_reason || 'unstated'}" without naming it`
+}
+
+const CONTINUE_ON =
+  `STILL NOT REACHED — this is your job now: what the last of those reports names under not_reached. ` +
+  `Where it names nothing, cover whatever the original request asks that the reports' searched lists do not show.`
 
 // ---------------------------------------------------------------- return files
 //
@@ -780,35 +756,29 @@ const chargeOf = (topic) => topic.forced
 // ---------------------------------------------------------- 2. the resume engine
 //
 // Drives one evidence agent to exhaustion (IRON LAW §3): the scouts, the historian and the
-// doc-researcher all go through here. Every stop condition is about the GOAL, and none is a
-// counter or a budget (§1): the loop ends when the agent exhausts the surface, when it
-// dead-ends without naming what is left, when a round errors out, or when a round covers no
-// new ground — the observable form of "stuck". Cost never ends it.
-//
-// `absorb(found)` folds one round into the caller's accumulators and returns true when the
-// round gained new ground. Progress is judged on evidence actually gained, never on the
-// agent's account of itself.
-
-// A remainder, normalized for comparison. Whitespace and case only: two differently-worded
-// descriptions of the same unreached surface are the same surface.
-const remainderKey = (text) => String(text || '').replace(/\s+/g, ' ').trim().toLowerCase()
+// doc-researcher all go through here. Each round is read from the return file it wrote, and lib's
+// reading decides whether it goes on: on while a round is not exhausted and either found a location
+// no earlier round holds or named a remainder other than the last one. None of that is a counter or
+// a budget (§1), and cost never ends it. A round that stops unfinished without naming what it
+// missed is continued over whatever its reports' searched lists do not show, until a round makes
+// no progress.
 
 /**
  * One evidence agent, round by round. Each round writes its own return file; a continuation names
- * every earlier round's file, for what was searched and found, and the remainder the last one named.
+ * every earlier round's file, for what was searched, found and left unreached. `count` is how many
+ * distinct locations lib read across them, null when its reading never came back.
  */
-async function resumeToExhaustion({ key, label, charge, shape, launch, absorb }) {
+async function resumeToExhaustion({ key, label, charge, shape, launch, phaseName }) {
   const files = []
   let round = 0
-  let prevRemainder = null
+  let count = null
   for (;;) {
     round++
     const body = round === 1
       ? charge
       : `Continue an unfinished search — do not start over.\n\nORIGINAL REQUEST:\n${charge}\n\n` +
         `YOUR EARLIER ROUNDS' REPORTS — read them first: do not repeat what they searched, and do ` +
-        `not report again what they found:\n${files.join('\n')}\n\n` +
-        `STILL NOT REACHED — this is your job now:\n${prevRemainder}`
+        `not report again what they found:\n${files.join('\n')}\n\n` + CONTINUE_ON
     const roundLabel = label + (round > 1 ? `#${round}` : '')
     const file = returnFile(roundLabel, body)
     let found
@@ -816,40 +786,22 @@ async function resumeToExhaustion({ key, label, charge, shape, launch, absorb })
       found = await launch(toFile(body, file, shape), roundLabel)
     } catch (e) {
       log(`${key}: round ${round} threw (${e && e.message}); keeping what was found.`)
-      return { files, exhausted: false, notReached: `round ${round} failed before completion: ${e && e.message}` }
+      return { files, count, exhausted: false, notReached: `what round ${round} was sent to search: it failed before completion (${e && e.message})` }
     }
     if (!found) {
       log(`${key}: round ${round} returned nothing; keeping what was found.`)
-      return { files, exhausted: false, notReached: `round ${round} produced no result` }
+      return { files, count, exhausted: false, notReached: `what round ${round} was sent to search: it produced no result` }
     }
     files.push(file)
-    const progressed = absorb(found)
 
-    if (found.stop_reason === 'exhausted') return { files, exhausted: true, notReached: '' }
-
-    // Not exhausted but nothing named as unreached: another round would be handed an empty
-    // task and would return "exhausted" having done nothing. Treat it as the dead end it is
-    // rather than paying for a round that launders it into completeness.
-    const remainder = String(found.not_reached || '').trim()
-    if (!remainder) {
-      const reason = found.stop_reason || 'unstated'
-      log(`${key}: stop_reason "${reason}" with nothing named as unreached — treating as a dead end.`)
-      return { files, exhausted: false, notReached: `search stopped as "${reason}" without naming what was missed` }
+    const r = await readRound(files, roundLabel, phaseName)
+    if (r.kinds) count = r.entries_n
+    if (r.next === 'done') return { files, count, exhausted: true, notReached: '' }
+    if (r.next !== 'continue') {
+      log(`${key}: round ${round} ends the search short (${r.why}).`)
+      return { files, count, exhausted: false, notReached: shortOf(r, file) }
     }
-
-    // Two independent ways a round can advance: it brought back evidence nobody had, or it
-    // narrowed the surface still to cover. An agent told not to repeat itself rewords its
-    // account of the same ground every round — and left alone that runs until something
-    // outside the workflow kills it.
-    const narrowed = prevRemainder === null || remainderKey(remainder) !== remainderKey(prevRemainder)
-    prevRemainder = remainder
-    if (!progressed && !narrowed) {
-      log(`${key}: round ${round} brought back nothing new and left the same ground unreached — ` +
-        `stopping as stuck rather than looping.`)
-      return { files, exhausted: false, notReached: remainder }
-    }
-
-    log(`${key}: unfinished after round ${round} (${found.stop_reason || 'unstated'}), resuming.`)
+    log(`${key}: unfinished after round ${round} (${r.stop_reason || 'unstated'}), resuming.`)
   }
 }
 
@@ -876,7 +828,7 @@ async function channelToExhaustion({ key, charge, shape, agentType, phaseName })
   const end = await resumeToExhaustion({
     key, label: key, charge, shape,
     launch: (prompt, label) => agent(prompt, { agentType, effort: 'low', schema: CHANNEL, phase: phaseName, label }),
-    absorb: () => false,
+    phaseName,
   })
   return end.files.length === 0 ? null : end
 }
@@ -900,26 +852,10 @@ const docsChannel = sideChannel('documentation research', plan.docs_needed === t
 phase('Scout')
 
 const partial = []
-const locKey = (h) => String(h.path).split('\\').join('/') + ':' + (Number.isInteger(h.line) ? h.line : 0)
 
 // Search to exhaustion. IRON LAW §3: an incomplete scout is RESUMED, never reported as a
-// result. The engine owns the stop conditions; this wrapper owns what a scout accumulates —
-// its distinct locations, which double as the engine's progress measure.
+// result. The engine owns the stop conditions and counts the scout's distinct locations.
 async function scoutUntilComplete(topic) {
-  const hits = []
-  const seen = new Set()
-
-  // Progress is HITS, not lines of self-report: a scout told not to repeat itself keeps
-  // producing fresh descriptions of ground it has already covered.
-  const absorb = (found) => {
-    const fresh = (Array.isArray(found.hits) ? found.hits : []).filter((h) => h && !seen.has(locKey(h)))
-    for (const h of fresh) {
-      seen.add(locKey(h))
-      hits.push(h)
-    }
-    return fresh.length > 0
-  }
-
   // The shared ground is searched once, by its own scout, so every other scout is told to
   // leave it alone. The common scout itself is never handed the exclusion.
   const exclude = commonPlanned && !topic.common
@@ -931,16 +867,16 @@ async function scoutUntilComplete(topic) {
     `is covered or you are genuinely stuck, never because the list is getting long or ` +
     `the work feels large. If one pass truly cannot cover the request, report what you ` +
     `have, set stop_reason to "unfinished", and name exactly what remains in ` +
-    `not_reached — you will be resumed until the search is done.`
+    `not_reached in your return file — you will be resumed until the search is done.`
 
   const end = await resumeToExhaustion({
     key: topic.key, label: `scout:${topic.key}`, charge, shape: HITS_FILE,
     launch: (prompt, label) => agent(prompt, { agentType: 'agentics:scout', effort: 'low', schema: HITS, phase: 'Scout', label }),
-    absorb,
+    phaseName: 'Scout',
   })
   if (!end.exhausted) partial.push(topic.key)
 
-  return { hits, files: end.files, complete: end.exhausted, notReached: end.notReached }
+  return { count: end.count, files: end.files, complete: end.exhausted, notReached: end.notReached }
 }
 
 // The shared scout runs alongside the topic scouts. It is an ordinary scout in every other
@@ -966,12 +902,12 @@ const common = await commonGround
 
 const LOCATIONS_PER_JUDGE = 60
 
-const distinct = (hits) => new Set(hits.map(locKey)).size
+// A scout whose count lib never read back weighs one location: its reports are still judged.
+const weight = (scout) => (!scout ? 0 : scout.count === null ? 1 : scout.count)
 const scoutOf = (topic) => scouted[topics.indexOf(topic)]
-const commonHits = common ? common.hits : []
 const judged = topics.filter((t) => scoutOf(t))
-const hitsOf = (group) => group.flatMap((t) => scoutOf(t).hits).concat(commonHits)
-const total = distinct(hitsOf(judged))
+const locationsOf = (group) => group.reduce((n, t) => n + weight(scoutOf(t)), 0) + weight(common)
+const total = locationsOf(judged)
 
 let groups
 if (judged.length === 0) {
@@ -985,7 +921,7 @@ if (judged.length === 0) {
 
   // Heaviest topic first onto the lightest reader, then each reader's topics back in plan order.
   const loads = Array.from({ length: readers }, () => ({ weight: 0, topics: [] }))
-  const weighed = judged.map((t) => ({ t, n: distinct(scoutOf(t).hits) })).sort((a, b) => b.n - a.n)
+  const weighed = judged.map((t) => ({ t, n: weight(scoutOf(t)) })).sort((a, b) => b.n - a.n)
   for (const { t, n } of weighed) {
     const lightest = loads.reduce((a, b) => (b.weight < a.weight ? b : a))
     lightest.weight += n
@@ -1018,7 +954,7 @@ const reportsOf = (group) => group.flatMap((t) => scoutOf(t).files).concat(commo
 
 async function assembleContext(group) {
   const files = reportsOf(group)
-  if (files.length === 0 || hitsOf(group).length === 0) {
+  if (files.length === 0 || locationsOf(group) === 0) {
     log(`No context to assemble${groupName(group) ? ' for ' + groupName(group) : ''}: no scout reported a location.`)
     return { path: '', files }
   }
@@ -1043,7 +979,7 @@ function topicLine(topic) {
     (f.complete
       ? 'The search was exhausted; judge its surface for yourself, and if it does not actually cover ' +
         'the topic, say so in risks rather than accepting it.'
-      : `WARNING: the search did NOT finish (never reached: ${f.notReached}). Your conclusion ` +
+      : `WARNING: the search did NOT finish (it never reached ${f.notReached}). Your conclusion ` +
         'inherits that limit — state what it rests on and what would change it.')
 }
 
@@ -1073,7 +1009,7 @@ function judgePrompt(group, context, continued) {
         `scout's reports: ${common.files.map(baseName).join(', ') || '(none came back)'}.` +
         (common.complete
           ? ''
-          : ` WARNING: the shared-ground search did NOT finish. It never reached: ${common.notReached}. ` +
+          : ` WARNING: the shared-ground search did NOT finish. It never reached ${common.notReached}. ` +
             `Anything you conclude from the shared ground inherits that limit — state what your ` +
             `conclusion rests on.`)
       : '') +

@@ -10,7 +10,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import {
-  carriedEnvelope, contextPath, courierCommand, courierProblems, flagValues, returnFileOf, runWorkflow, scriptedAgents,
+  WROTE, carriedEnvelope, contextPath, courierCommand, courierProblems, flagValues, returnFileOf, runWorkflow, scriptedAgents,
 } from './harness/workflow-host.mjs'
 import { ITEM_KINDS } from '../lib/evidence.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
@@ -219,7 +219,7 @@ test('the resume round is handed what was never reached and the earlier reports,
 
   const resume = promptFor(prompts, 'scout:a#2')
   assert.ok(resume, 'a non-exhausted scout must be resumed rather than reported')
-  assert.match(resume, /STILL NOT REACHED[\s\S]*src\/legacy\/ was never opened/)
+  assert.match(resume, /STILL NOT REACHED — this is your job now: what the last of those reports names under not_reached/)
   assert.ok(resume.includes(returnFileOf(promptFor(prompts, 'scout:a'))), 'what round 1 searched and found is read from its file')
   assert.notEqual(returnFileOf(resume), returnFileOf(promptFor(prompts, 'scout:a')))
   assert.deepEqual(flagValues(commandFor(prompts, 'assemble'), 'hits'),
@@ -254,7 +254,7 @@ test('a resumed round that covers no new ground ends the loop as stuck, not anot
   assert.equal(prompts.filter((p) => String(p.opts.label).startsWith('scout:')).length, 2)
   assert.deepEqual(result.coverage.incomplete, ['a'])
   assert.equal(result.coverage.complete, false)
-  assert.ok(logs.some((l) => /brought back nothing new/.test(l)))
+  assert.ok(logs.some((l) => /ends the search short \(no_progress\)/.test(l)))
 })
 
 test('a scout that rewords its remainder but finds nothing new is stuck, not progressing', async () => {
@@ -355,7 +355,7 @@ test('an unfinished evidence channel is resumed to exhaustion, and its reports r
   })
 
   const resumed = promptFor(prompts, 'history#2')
-  assert.match(resumed, /STILL NOT REACHED[\s\S]*refs older than 2024/)
+  assert.ok(resumed.includes(returnFileOf(promptFor(prompts, 'history'))), 'the remainder is read from the round that named it')
   assert.ok(promptFor(prompts, 'history').includes('history_question in the plan file'))
   assert.equal(result.coverage.complete, true)
   assert.deepEqual(flagValues(commandFor(prompts, 'context'), 'history'), result.history)
@@ -406,7 +406,28 @@ test('a shared scout that cannot finish is incomplete work and warns every judge
   assert.equal(prompts.filter((p) => String(p.opts.label).startsWith('scout:common-ground')).length, 2)
   assert.ok(result.coverage.incomplete.includes('common-ground'))
   assert.equal(result.coverage.complete, false)
-  assert.match(promptFor(prompts, 'judge'), /the shared-ground search did NOT finish[\s\S]*src\/scenes\/ was never opened/)
+  const last = returnFileOf(promptFor(prompts, 'scout:common-ground#2'))
+  assert.ok(promptFor(prompts, 'judge').includes(`the shared-ground search did NOT finish. It never reached what ${last} names under not_reached`))
+})
+
+test('a scout round is read from the report it wrote, not from what it echoed back', async () => {
+  const wrote = HITS({ stop_reason: 'unfinished', not_reached: 'src/legacy/ was never opened' })
+  const { result, prompts } = await run({
+    plan: PLAN(),
+    'scout:a': { ...HITS({ stop_reason: 'exhausted' }), [WROTE]: wrote },
+    'scout:a#2': HITS({ hits: [{ path: 'src/legacy/x.js', line: 4 }] }),
+  })
+  assert.ok(promptFor(prompts, 'scout:a#2'), 'an echoed "exhausted" over an unfinished report is not done')
+  assert.deepEqual(flagValues(commandFor(prompts, 'round:scout:a'), 'from'), [returnFileOf(promptFor(prompts, 'scout:a'))])
+  assert.equal(result.coverage.complete, true)
+})
+
+test('a scout that stops unfinished without naming what it missed is continued over what its reports never searched', async () => {
+  const { result, prompts } = await run({
+    plan: PLAN(), 'scout:a': HITS({ stop_reason: 'unfinished' }), 'scout:a#2': HITS({ hits: [{ path: 'src/b.js', line: 2 }] }),
+  })
+  assert.match(promptFor(prompts, 'scout:a#2'), /searched lists do not show/)
+  assert.equal(result.coverage.complete, true)
 })
 
 // ------------------------------------------------------------- prior context

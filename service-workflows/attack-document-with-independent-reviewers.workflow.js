@@ -272,6 +272,10 @@ function fnv1a(text) {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
+// lib/store.mjs's nameKey, copied because a script cannot import, and pinned to it by the suite.
+const NAME_KEY_MAX = 40
+const nameKey = (text) => (text.length <= NAME_KEY_MAX ? text : text.slice(0, NAME_KEY_MAX - 9) + '_' + fnv1a(text))
+
 /** What a courier carried back: the payload, or why it cannot be believed and how to retry. */
 function carriedRead(held) {
   if (!held) return { payload: null, why: 'the dispatch returned nothing', retry: 'again' }
@@ -362,10 +366,11 @@ async function carry(command, label, phaseName) {
 const lib = (cli, verb) => `node "${pluginRoot}/lib/${cli}.mjs" ${verb} --repo "${groundRepo}"`
 
 // An agent whose output lib/ reads writes it to a return file under the working root, named by its
-// dispatch label and the digest of what it was handed, so a retried dispatch rewrites the same file.
+// dispatch label, bounded by nameKey, and the digest of what it was handed, so a retried dispatch
+// rewrites the same file.
 // A workflow has no clock and no randomness, so nothing else could name it.
 const INBOX = `${groundRepo}/.agentics/.state/evidence/inbox`
-const returnFile = (label, body) => `${INBOX}/${label.replace(/[^A-Za-z0-9._-]+/g, '-')}-${fnv1a(body)}.json`
+const returnFile = (label, body) => `${INBOX}/${nameKey(label.replace(/[^A-Za-z0-9.-]+/g, '-'))}-${fnv1a(body)}.json`
 const toFile = (body, file, shape) => body +
   `\n\nRETURN FILE — write your full return to ${file} as one JSON object of exactly this shape:\n${shape}\n` +
   'Then return only what your schema asks for.'

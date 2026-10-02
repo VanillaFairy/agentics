@@ -981,8 +981,8 @@ was written to items, deterministically: a judge's topic to its subtree, a deriv
 claims to ids, a probe finding's lines into the snapshot, a candidate to an `external` item.
 
 A return file lives under the working root's `.agentics/.state/evidence/inbox/`, named by the
-dispatch's label and the digest of what it was handed, so a retried dispatch rewrites the same
-file; a workflow has no clock and no randomness to name it otherwise. Files a week old are pruned
+dispatch's label, bounded ([Storage](#storage)), and the digest of what it was handed, so a retried
+dispatch rewrites the same file; a workflow has no clock and no randomness to name it otherwise. Files a week old are pruned
 when lib records. A file that is missing or not JSON is a typed refusal (`return_unreadable`) where
 the record cannot stand without it (a survey's judges, a draft); where it is one agent's share among
 several (a prober, a researcher, the repository scan) it is a gap the result names; a re-judge's

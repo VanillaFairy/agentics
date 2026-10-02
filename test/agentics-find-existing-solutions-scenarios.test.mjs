@@ -19,6 +19,8 @@ import {
   carriedEnvelope, contextPath, courierCommand, courierProblems, flagValues, returnFileOf, runWorkflow, scriptedAgents,
 } from './harness/workflow-host.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
+import { nameKey } from '../lib/store.mjs'
+import { overruns } from './harness/path-limits.mjs'
 
 const WF = fileURLToPath(new URL('../service-workflows/search-for-existing-solutions-before-building.workflow.js', import.meta.url))
 
@@ -271,4 +273,14 @@ test('no researcher report means no assessor is dispatched, and lib still decide
   const { prompts } = await run({ agent: happy({ 'find:': () => null }) })
   assert.ok(!prompts.some((p) => p.opts.label === 'assess'))
   assert.ok(prompts.some((p) => p.opts.label === 'record'), 'what the repository carries is still read and recorded')
+})
+
+test('a researcher on a long angle writes to a return file that fits on Windows', async () => {
+  const root = 'C:/Users/firstname.lastname/source/repos/project-name'
+  const angle = 'token-bucket-rate-limiters-in-maintained-http-middleware-packages'
+  const { prompts } = await runWorkflow(WF, { args: { ...ARGS, roots: root }, agent: happy({ frame: frame([angle]) }) })
+  const label = 'find:' + angle
+  assert.ok(returnFileOf(byLabel(prompts, label)).startsWith(root + '/.agentics/.state/evidence/inbox/' +
+    nameKey(label.replace(/[^A-Za-z0-9.-]+/g, '-')) + '-'))
+  for (const p of prompts.filter((x) => returnFileOf(x.prompt))) assert.deepEqual(overruns(returnFileOf(p.prompt)), [], p.opts.label)
 })

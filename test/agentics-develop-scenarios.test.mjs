@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url'
 
 import { carriedEnvelope, runWorkflow } from './harness/workflow-host.mjs'
 import { agents, composite, recordsOf, row, simulate } from './harness/develop-sim.mjs'
+import { executionDir, nameKey } from '../lib/store.mjs'
+import { EFFORT, ROOT, overruns } from './harness/path-limits.mjs'
 
 const WF = fileURLToPath(new URL('../service-workflows/execute-approved-plan-in-worktrees.workflow.js', import.meta.url))
 const ARGS = { repo: '/repo', effort: 'e1', execution: '20260925-120000', plugin_root: '/plugin' }
@@ -737,6 +739,18 @@ test('an incomplete review is recorded as partial, naming the axes it left, and 
   assert.deepEqual(sim.reviewed.map((r) => [r.node, r.complete, r.remaining]), [['p', false, ['growth']]])
   assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'review_incomplete']])
   assert.deepEqual(sim.prepared, [])
+})
+
+test('a planner\'s said file is named within the limits however deep its folder\'s id', async () => {
+  const id = Array.from({ length: 8 }, (_, i) => 'growth-axes-and-ports-' + i).join('/').padEnd(200, 'x')
+  const above = id.split('/').slice(0, -1).map((_, i, segs) => composite(segs.slice(0, i + 1).join('/')))
+  const sim = simulate([composite('.'), ...above, row(id, { kind: 'design', author: 'planner' })], {
+    compiled: () => [composite('.'), ...above, composite(id, { author: 'planner' }), row(id + '/x')],
+  })
+  await run(sim, { 'plan:': written(row(id).spec_path) }, {}, { workflow: probes([probeReturn()]) })
+  const said = sim.calls.find((c) => c.name === 'spec-check' && c.args.said).args.said
+  assert.ok(said.endsWith('-' + nameKey('plan-' + id.split('/').join('.')) + '.md'), said)
+  assert.deepEqual(overruns(executionDir(ROOT, EFFORT, '20261002-075950') + '/said/' + said.split('/').pop()), [])
 })
 
 test('a spec_changed park on a folder the planner wrote is re-derived by the planner; one you wrote waits for you', async () => {

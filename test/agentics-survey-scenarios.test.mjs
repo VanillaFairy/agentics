@@ -14,6 +14,8 @@ import {
 } from './harness/workflow-host.mjs'
 import { ITEM_KINDS } from '../lib/evidence.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
+import { nameKey } from '../lib/store.mjs'
+import { overruns } from './harness/path-limits.mjs'
 
 const WF = fileURLToPath(new URL('../service-workflows/gather-evidence-without-concluding.workflow.js', import.meta.url))
 const QUESTION = 'how does X work'
@@ -825,4 +827,18 @@ test('a pool that cannot be read costs a full survey, never a skipped one', asyn
 test('the caller\'s ground travels in the resume args', async () => {
   const { result } = await run({ plan: PLAN(), 'scout:': HITS() }, GROUND)
   assert.deepEqual(result.coverage.resumable.args.ground, GROUND.ground)
+})
+
+test('a judge holding many topics writes to a return file that fits on Windows', async () => {
+  const root = 'C:/Users/firstname.lastname/source/repos/project-name'
+  const topics = Array.from({ length: 12 }, (_, i) => ({ key: 'entity-action-queue-topic-' + i, subtree: 'src/t' + i }))
+  const hits = (prompt, opts) => HITS({ hits: Array.from({ length: 11 }, (_, i) => ({ path: opts.label + '.js', line: i + 1 })) })
+  const { prompts } = await run({ plan: PLAN({ topics }), 'scout:': hits }, { roots: root })
+  const judges = prompts.filter((p) => /^judge:entity/.test(p.opts.label))
+  assert.ok(judges.length > 1 && judges.every((p) => p.opts.label.length > 40), 'judges are named by the topics they hold')
+  for (const p of judges) {
+    assert.ok(returnFileOf(p.prompt).startsWith(root + '/.agentics/.state/evidence/inbox/' +
+      nameKey(p.opts.label.replace(/[^A-Za-z0-9.-]+/g, '-')) + '-'), p.opts.label)
+  }
+  for (const p of prompts.filter((x) => returnFileOf(x.prompt))) assert.deepEqual(overruns(returnFileOf(p.prompt)), [], p.opts.label)
 })

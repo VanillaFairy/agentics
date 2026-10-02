@@ -14,7 +14,9 @@ import { fileURLToPath } from 'node:url'
 import {
   carriedEnvelope, contextPath, courierCommand, courierProblems, flagValues, returnFileOf, runWorkflow, scriptedAgents,
 } from './harness/workflow-host.mjs'
+import { overruns } from './harness/path-limits.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
+import { nameKey } from '../lib/store.mjs'
 
 const WF = fileURLToPath(new URL('../service-workflows/attack-document-with-independent-reviewers.workflow.js', import.meta.url))
 
@@ -589,4 +591,20 @@ test('a narrowed re-review is sized by the lines it attacks, not by the whole ar
     agent: probeAgents({ ground: groundPayload({ artifact_lines: 900 }), scope: narrowedScope({ lines: 900 }) }),
   })
   assert.equal(result.analysts.length, 1, 'three changed lines are one reader\'s work')
+})
+
+// The axes of the probe whose return file could not be written: one analyst holding every axis
+// the standing four and eight derived ones name, under a long Windows checkout.
+const MANY_AXES = ['growth-axes-rewrite', 'nth-case-touches-existing-code', 'hardcoded-should-be-data', 'class-per-kind-contract',
+  'engine-native-state', 'layer-boundary-and-ports', 'single-owner', 'save-and-determinism']
+const LONG_ROOT = 'C:/Users/firstname.lastname/source/repos/project-name'
+
+test('a probe holding every axis writes to a return file that fits on Windows', async () => {
+  const axes = axesResult({ axes: MANY_AXES.map((key) => ({ key, charge: 'attack ' + key, source: 'CLAUDE.md' })) })
+  const { prompts } = await runWorkflow(WF, { args: { artifact: 'docs/proposal.md', roots: LONG_ROOT }, agent: probeAgents({ axes }) })
+  const [probe] = probesIn(prompts)
+  assert.equal(probe.opts.label, 'probe:' + STANDING.concat(MANY_AXES).join('+'))
+  const file = returnFileOf(probe.prompt)
+  assert.ok(file.startsWith(LONG_ROOT + '/.agentics/.state/evidence/inbox/' + nameKey(probe.opts.label.replace(/[^A-Za-z0-9.-]+/g, '-')) + '-'), file)
+  for (const p of prompts.filter((x) => returnFileOf(x.prompt))) assert.deepEqual(overruns(returnFileOf(p.prompt)), [], p.opts.label)
 })

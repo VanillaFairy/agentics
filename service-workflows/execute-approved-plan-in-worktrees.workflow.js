@@ -52,6 +52,10 @@ function fnv1a(text) {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
+// lib/store.mjs's nameKey, copied because a script cannot import, and pinned to it by the suite.
+const NAME_KEY_MAX = 40
+const nameKey = (text) => (text.length <= NAME_KEY_MAX ? text : text.slice(0, NAME_KEY_MAX - 9) + '_' + fnv1a(text))
+
 const ARGS = {
   preflight: {
     root: 'one', retry: 'many', confirmed_duplicate: 'bool', confirmed_gaps: 'bool', plan_only: 'bool',
@@ -272,11 +276,12 @@ function answered(id) {
 /**
  * Where the agent behind `label` writes what a record points at: a question for the user, a
  * review, a rulings file. One file per dispatch — the invocation, a count within it and the label,
- * a node id's `/` written `.` — so no later dispatch overwrites what an open stop points at.
+ * a node id's `/` written `.`, bounded by nameKey — so no later dispatch overwrites what an open
+ * stop points at, and no label outgrows its file name.
  */
 let saidN = 0
 const saidPath = (label, ext) => (saidDir
-  ? saidDir + '/' + invocation + '-' + (++saidN) + '-' + label.split('/').join('.').replace(/[^A-Za-z0-9._-]+/g, '-') + '.' + ext
+  ? saidDir + '/' + invocation + '-' + (++saidN) + '-' + nameKey(label.split('/').join('.').replace(/[^A-Za-z0-9.-]+/g, '-')) + '.' + ext
   : '')
 
 // ---------------------------------------------------------------- boundaries

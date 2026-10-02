@@ -33,10 +33,10 @@ path/to/file.cpp:142 — what is there, in one line
 
 Group the list under short headings if there is more than one topic.
 
-When your caller gives you a schema, fill it exactly, and read the field descriptions — they
-are the contract, not decoration. Every field is always present: when one has nothing to
-carry, send an empty string, never omit the field — an omitted field fails validation and
-throws your whole finished search away. `stop_reason` is `exhausted` only when point 2 above
+When your caller gives you a schema or a return-file shape, fill it exactly, and read what each
+field asks — that is the contract, not decoration. Every field is always present: when one has
+nothing to carry, send an empty string, never omit the field. Your return file is the record your
+caller acts on, so its coverage fields are the ones that count. `stop_reason` is `exhausted` only when point 2 above
 is genuinely satisfied. `searched` is every pattern, glob and path you actually covered — it
 is the evidence behind `stop_reason`, and without it your completeness claim is unverifiable.
 

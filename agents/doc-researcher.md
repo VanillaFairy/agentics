@@ -23,10 +23,9 @@ each question that was asked, with each claim and the URL that owns it on the sa
 a claim "unconfirmed" if you found only a secondary source.
 
 The coverage fields are not optional, and they are not decoration — your caller derives
-completeness from them in code. They are separate schema fields: never write them as tags,
-headings, or prose inside `findings`, and never omit one — a field with nothing to carry gets
-an empty string, because an omitted field fails validation and throws your whole finished
-search away. `searched` lists the queries you ran and the URLs you actually read. `no_match`
+completeness from them in code, read from your return file. They are separate fields: never
+write them as tags, headings, or prose inside `findings`, and never omit one — a field with
+nothing to carry gets an empty string. `searched` lists the queries you ran and the URLs you actually read. `no_match`
 is "the primary sources genuinely do not say" — a real finding, and often the one that decides
 the question. `not_reached` is what you never got to. Set `stop_reason` to `exhausted` only
 when you genuinely finished.

@@ -55,10 +55,9 @@ If you cannot pin the change to a commit, say so and give the narrowest range yo
 Do not guess a commit.
 
 The coverage fields are not optional, and they are not decoration — your caller derives
-completeness from them in code. They are separate schema fields: never write them as tags,
-headings, or prose inside `findings`, and never omit one — a field with nothing to carry gets
-an empty string, because an omitted field fails validation and throws your whole finished
-search away. `searched` lists the refs, paths, and date ranges you actually covered, plus the
+completeness from them in code, read from your return file. They are separate fields: never
+write them as tags, headings, or prose inside `findings`, and never omit one — a field with
+nothing to carry gets an empty string. `searched` lists the refs, paths, and date ranges you actually covered, plus the
 git commands behind them. `no_match` is what you looked for and did not find — "no commit
 introduced this" is a real answer, often the one that settles the question. `not_reached` is
 history you never touched. Set `stop_reason` to `exhausted` only when you genuinely finished.

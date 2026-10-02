@@ -50,10 +50,9 @@ export const meta = {
 // Two levers follow, and they are of different sizes. The Locate and Ground phases below remove
 // the duplicated locating and are the ones worth having: one scout finds what the document talks
 // about and what the repository asks reviewers to check, one script reads it all, and the
-// analysts — who carry `Read` and nothing that searches — judge what they are handed. The derived-axis cap is a dial: 110 findings
-// landed on 21 sections of a four-claim document, fourteen axes independently attacked the same
-// finding, and yield per axis is flat (3–10, mean 6.9) — so cutting axes buys less coverage
-// rather than less waste, and it says so in the result instead of in a log line.
+// analysts — who carry `Read` and nothing that searches — judge what they are handed. Cutting
+// axes is not a lever: yield per axis is flat, so dropping one buys less coverage rather than less
+// waste, and every axis the guidance yields is probed.
 //
 // Trimming what analysts READ is worth almost nothing, and an earlier reading of this cost
 // that blamed large-file ingestion pointed straight at that lever. The transcripts refuted it.
@@ -62,8 +61,8 @@ export const meta = {
 // Every analyst pays its own locating and its own turns, so twelve analysts on a 120-line
 // document is twelve readers of a document one reader holds whole. The axes are a CHECKLIST for
 // a reader, not a head count: by default one analyst carries every axis, and a second is bought
-// only when the artefact is long enough that one reader would not get through it on all of them
-// — `LINES_PER_ANALYST` below. A reader that still stops short is continued on exactly what it
+// only when the artefact, or the checklist, is long enough that one reader would not get through
+// it — `LINES_PER_ANALYST` and `AXES_PER_ANALYST` below. A reader that still stops short is continued on exactly what it
 // never reached (IRON LAW §3), which is the fan-out earned by measurement rather than predicted.
 // `per_axis: true` restores one analyst per axis for a caller who wants the independent-heads
 // shape and says so.
@@ -170,22 +169,15 @@ if (input.since && !since) log(`since ${JSON.stringify(input.since)} is not a sn
 // first root: a citation is repo-relative and there is one repository it is relative TO.
 const groundRepo = String(roots).split(/[,;\n]/)[0].trim() || '.'
 
-// How many DERIVED axes run. The standing four are never capped: each names a defect class that
-// reaches implementation unnoticed, and dropping one of those would change what a probe IS.
-//
-// This is a dial and not a saving. Per-axis yield is flat, so a cap buys less coverage rather
-// than less waste — which is why what it drops is named in the result. The number is the
-// standing four doubled: a starting default to be revised against measurement, never a finding.
-const DEFAULT_DERIVED_AXES = 8
-const maxDerivedAxes = Number.isInteger(input.max_derived_axes) && input.max_derived_axes >= 0
-  ? input.max_derived_axes
-  : DEFAULT_DERIVED_AXES
-
 // How many lines of artefact one analyst is asked to attack on every axis it holds. The measured
 // probe that set this was 120 lines under seventeen analysts; one reader holds that whole. A
 // starting default to be revised against measurement, never a finding — and the continuation
 // below catches a reader it overestimated, so erring high costs a sequential round, not coverage.
 const LINES_PER_ANALYST = 400
+// How many axes one analyst holds as a checklist before another is bought, so a long checklist buys
+// readers in proportion and no axis goes unprobed. A starting default to be revised against
+// measurement, never a finding; the continuation catches a reader it overloaded.
+const AXES_PER_ANALYST = 12
 const perAxis = input.per_axis === true
 
 // Where `lib/` lives, resolved the way every other workflow here resolves a plugin path: the
@@ -647,7 +639,6 @@ if (!artifact) {
   return {
     artifact: '',
     axes: [],
-    axes_dropped: [],
     analysts: [],
     shared_ground: null,
     findings: [],
@@ -740,7 +731,6 @@ if (narrow && narrow.changed.length === 0) {
   return {
     artifact,
     axes: [],
-    axes_dropped: [],
     analysts: [],
     shared_ground: null,
     guidance_read: [],
@@ -850,26 +840,15 @@ if (located && (!discovered || discovered.stop_reason === 'unreadable')) {
   log('This repository states no review guidance; probing on the standing axes.')
 }
 
-// The cap, applied to the DERIVED axes only. What it drops is a declared narrowing rather than
-// a coverage failure, so it does not flip `coverage.complete`, which stays what it has always
-// been: axes this probe COMMISSIONED and did not get a report from. It is named in `unreached`
-// and in `resumable.remaining` all the same, because "an axis nobody ran" and "an axis that
-// found nothing" are the same empty list, and a caller who wants them can re-run with a higher
-// cap and get exactly them.
-const derived = repoAxes.slice(0, maxDerivedAxes)
-const axesDropped = repoAxes.slice(maxDerivedAxes).map((a) => a.key)
-
-if (axesDropped.length > 0) {
-  log(`Derived axes capped at ${maxDerivedAxes}: not probing ${axesDropped.join(', ')}. This ` +
-    `buys a NARROWER probe, not a cheaper equivalent one — raise max_derived_axes to get them.`)
-}
-
-const axes = STANDING.concat(derived)
+// Every derived axis runs: an axis nobody ran and an axis that found nothing are the same empty
+// list, so the probe asks everything the guidance asks.
+const axes = STANDING.concat(repoAxes)
 
 phase('Probe')
 
-// How many analysts the artefact's length earns. An unknown length — the ground read failed —
-// earns one, because the continuation below is what a reader that stops short buys anyway.
+// How many analysts the artefact's length and the axis count earn, whichever earns more. An
+// unknown length — the ground read failed — earns none by length, because the continuation below
+// is what a reader that stops short buys anyway.
 const artifactLines = ground.payload && Number.isInteger(ground.payload.artifact_lines)
   ? ground.payload.artifact_lines
   : 0
@@ -877,9 +856,11 @@ const artifactLines = ground.payload && Number.isInteger(ground.payload.artifact
 const attackLines = narrow
   ? narrow.changed.reduce((n, r) => n + (r.end - r.start + 1), 0)
   : artifactLines
+const byLength = Math.ceil(attackLines / LINES_PER_ANALYST)
+const byAxes = Math.ceil(axes.length / AXES_PER_ANALYST)
 const analysts = perAxis
   ? axes.length
-  : Math.max(1, Math.min(axes.length, Math.ceil(attackLines / LINES_PER_ANALYST)))
+  : Math.max(1, Math.min(axes.length, Math.max(byLength, byAxes)))
 
 // Dealt round-robin, so the standing four spread across analysts rather than all landing on one.
 const bundles = Array.from({ length: analysts }, () => [])
@@ -889,8 +870,8 @@ const bundleKey = (bundle) => bundle.map((a) => a.key).join('+')
 
 log(`Probing ${artifact} on ${axes.length} axes with ${analysts} analyst(s) — ` +
   (perAxis ? 'one per axis, as the caller asked'
-    : attackLines ? `${attackLines} line(s) earn ${analysts}`
-      : 'the artefact\'s length is unknown, so one') +
+    : (attackLines ? `${attackLines} line(s) earn ${byLength}` : 'the artefact\'s length is unknown') +
+      `, ${axes.length} axes earn ${byAxes}`) +
   `: ${bundles.map(bundleKey).join(', ')}.`)
 
 // One analyst's whole attack: a first pass, then continuations on what it never reached, for as
@@ -997,10 +978,6 @@ const coverage = {
          'four standing axes only and anything this project specifically asks reviewers to ' +
          'check went unchecked']
       : [])
-    .concat(axesDropped.map((key) =>
-      key + ': this axis was derived from the repository\'s own guidance and then not run, ' +
-      'because derived axes are capped at ' + maxDerivedAxes + '. Nothing was examined for it ' +
-      '— re-run with a higher max_derived_axes to buy it'))
     .concat(failedChannels.includes('repo-ground')
       ? ['nothing the document talks about without citing it was located in the repository, so ' +
          'the analysts — who cannot search — attacked the document and its own citations only']
@@ -1028,7 +1005,7 @@ const coverage = {
          probes.map((p) => p.file).join(', ') + '), so this result holds none of them']),
   resumable: {
     runId: RUN_ID,
-    remaining: unexamined.concat(incomplete).concat(axesDropped),
+    remaining: unexamined.concat(incomplete),
   },
 }
 
@@ -1041,9 +1018,6 @@ const unrecorded = scope && recorded && !recorded.recorded ? findings.filter((f)
 return {
   artifact,
   axes: axes.map((a) => ({ key: a.key, source: a.source || '' })),
-  // What the cap declined to buy, beside what it bought. An axis list that showed only the
-  // axes that ran would read identically whether the repository asked for four or forty.
-  axes_dropped: axesDropped,
   // Which analyst held which axes, so the head count is legible: one entry per analyst that ran.
   analysts: bundles.map((b) => b.map((a) => a.key)),
   // The shared-ground read, as a fact rather than as evidence: no finding rests on it, and a

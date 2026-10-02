@@ -309,26 +309,16 @@ test('a failed ground read degrades to "read it yourself" and never quietly narr
   assert.equal(result.coverage.complete, true, 'an unresolved shared ground costs turns, not coverage')
 })
 
-// ---------------------------------------------------------------- the derived-axis cap
+// ---------------------------------------------------------------- every derived axis runs
 
 const manyAxes = (n) => Array.from({ length: n }, (_, i) => ({ key: 'repo' + (i + 1), charge: 'attack thing ' + (i + 1), source: 'CLAUDE.md' }))
 
-test('derived axes are capped at eight by default, named in the coverage block, and no coverage failure', async () => {
-  const { result } = await runWorkflow(WF, { args: ARGS, agent: probeAgents({ axes: axesResult({ axes: manyAxes(12) }) }) })
+test('every axis the guidance yields is probed, however many it yields', async () => {
+  const { result, prompts } = await runWorkflow(WF, { args: ARGS, agent: probeAgents({ axes: axesResult({ axes: manyAxes(12) }) }) })
 
-  assert.equal(result.axes.length, 12, 'four standing plus eight derived')
-  assert.deepEqual(result.axes_dropped, ['repo9', 'repo10', 'repo11', 'repo12'])
-  assert.match(result.coverage.unreached.join(' '), /repo9: this axis was derived/)
-  assert.ok(result.coverage.resumable.remaining.includes('repo10'))
-  assert.deepEqual(result.coverage.dropped, [])
-})
-
-test('the cap is a caller\'s dial, and zero means the standing four alone', async () => {
-  const { result } = await runWorkflow(WF, {
-    args: { ...ARGS, max_derived_axes: 0 }, agent: probeAgents({ axes: axesResult({ axes: manyAxes(3) }) }),
-  })
-  assert.deepEqual(result.axes.map((a) => a.key), STANDING)
-  assert.deepEqual(result.axes_dropped, ['repo1', 'repo2', 'repo3'])
+  assert.deepEqual(result.axes.map((a) => a.key), STANDING.concat(manyAxes(12).map((a) => a.key)))
+  assert.equal(probesIn(prompts).length, 16)
+  assert.equal(result.coverage.complete, true)
 })
 
 // ------------------------------------------------------- the default: analysts earned by length
@@ -345,6 +335,17 @@ test('one analyst holds every axis on a document one reader can hold', async () 
   const prompt = probesIn(prompts)[0].prompt
   for (const key of STANDING.concat(['repo1', 'repo2', 'repo3'])) assert.match(prompt, new RegExp('\\d+\\. ' + key))
   assert.equal(result.ratifiable, true)
+})
+
+test('more axes than one reader holds are spread over more analysts, each axis held once and the load even', async () => {
+  const short = await runWorkflow(WF, { args: DEFAULT_ARGS, agent: sized(120, { axes: axesResult({ axes: manyAxes(3) }) }) })
+  const { result } = await runWorkflow(WF, { args: DEFAULT_ARGS, agent: sized(120, { axes: axesResult({ axes: manyAxes(40) }) }) })
+
+  assert.ok(result.analysts.length > short.result.analysts.length, 'the axis count buys analysts on a short document')
+  assert.deepEqual(result.analysts.flat().sort(), result.axes.map((a) => a.key).sort())
+  const sizes = result.analysts.map((a) => a.length)
+  assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1)
+  assert.equal(result.coverage.complete, true)
 })
 
 test('an unknown length earns one analyst, not one per axis', async () => {

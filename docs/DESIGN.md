@@ -922,8 +922,13 @@ past it would never attack its lines again, and an empty `since` buys a full pro
 scope and the recorder run with `--root` set to the probe's first root, so a probe in a linked
 worktree reads and anchors the worktree's text.
 
-One analyst holds every axis as a checklist; more are bought only when the document is long
-enough to earn them. A second round is earned only by a resolution that reshaped the design.
+Every axis the repository's guidance yields is probed, beside the standing four: an axis nobody
+ran and an axis that found nothing leave the same empty findings list, so dropping one would pass
+an unasked question off as answered. One analyst holds every axis as a checklist; more are bought
+when the document is long enough (one per 400 lines) or the checklist is (one per 12 axes),
+whichever buys more, never more than one per axis, the axes dealt evenly. A probe label names its
+axes bounded by `nameKey`, so a long checklist never overruns a path. A second round is earned
+only by a resolution that reshaped the design.
 
 ### What a probe costs
 
@@ -2488,8 +2493,8 @@ with `renamed_from`.
   planner or a synthesis to Read ('' when it could not be written, which fails coverage with
   `context`); `reused` the reused items' ids; `unrecorded` the topic keys whose items were not
   recorded; `history` and `docs` the channels' return files, null when the channel did not run.
-- **`attack-document-with-independent-reviewers`** — takes `artifact, roots, context, plugin_root, max_derived_axes, per_axis,
-  since`. Returns `{artifact, axes, axes_dropped, analysts, shared_ground{resolved, cited, files,
+- **`attack-document-with-independent-reviewers`** — takes `artifact, roots, context, plugin_root, per_axis,
+  since`. Returns `{artifact, axes, analysts, shared_ground{resolved, cited, files,
   excerpts, unresolved, context} | {resolved: false, why}, guidance_read, repo_ground{located,
   complete, unresolved}, findings[{id, item, severity, axis, section, carried}], findings_file,
   ambiguities, ratifiable, snapshot, scope{full, changed}, unrecorded, lost, review, coverage}`. `findings`

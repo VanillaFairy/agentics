@@ -62,16 +62,13 @@ rather than coverage, because each analyst then locates what it needs exactly as
 before.
 
 **How many analysts.** One, by default, holding every axis as a checklist. The workflow buys
-another for each 400 lines of document, never more than one per axis, and continues an analyst
-that stops short on exactly what it never reached. `result.analysts` says who held what. Pass
+another for each 400 lines of document or each 12 axes, whichever buys more, never more than one
+per axis, and continues an analyst that stops short on exactly what it never reached. `result.analysts` says who held what. Pass
 `per_axis: true` only when the user asks for independent heads per axis; it multiplies the bill
 by the axis count.
 
-**`max_derived_axes`** caps the axes derived from the repository's guidance, at 8 by default.
-The standing four are never capped. Raising it buys more axes; it does not buy proportionally
-more coverage, because per-axis yield is flat and what bounds a probe is the document's claim
-count rather than the axis. What the cap declines to buy comes back in `axes_dropped` and in
-the coverage block, so a narrower probe never reads like a clean one.
+**Every derived axis runs.** The probe attacks on every axis the repository's guidance yields,
+beside the standing four; nothing caps them.
 
 ### What a probe costs, and what the workflow report does not tell you
 

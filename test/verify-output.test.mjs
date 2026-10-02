@@ -8,7 +8,8 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
-import { verify, parseArgs, isTestPath, extractFailures } from '../lib/verify.mjs'
+import { verify, parseArgs, extractFailures } from '../lib/verify.mjs'
+import { isTestPath } from '../lib/store.mjs'
 import { BUILD, options, order, SUITE, SUITE_TAP, TEST_ONE, WIDGET_TEST } from './harness/verify-fixture.mjs'
 
 // ---------------------------------------------------------------- verbatim output

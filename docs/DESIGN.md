@@ -393,8 +393,8 @@ command, `show`: nothing outside compile calls `addNodes`, and there is no CLI v
       nodes.jsonl                 node revisions, append-only
       events.jsonl                node events, append-only
       ledger.jsonl                approvals, preparations, compiles, dispositions, rulings
-      specs/                      the text each folder was compiled from, <folder>@<hash>.md
-      respec/                     a changed spec's brief and its rulings, <folder>@<hash>-<basis>.*
+      specs/                      the text each folder was compiled from, <key>@<hash>.md
+      respec/                     a changed spec's brief and its rulings, <key>@<hash>-<basis>.*
       seq, .lock                  the counter and the effort mutex
       branch.json                 where the effort branch was cut, written once
       cites.jsonl                 each folder's evidence citations ([Cites](#cites))
@@ -412,6 +412,18 @@ leaf recording from a linked worktree writes where the next session reads. A dir
 the top of a working tree is its own root. Names of efforts, folders and entries follow the
 segment rule: `^[a-z0-9][a-z0-9-]*$`, at most 120 characters, no `--`; so no file the store writes
 can pass for one. Worktrees live under `.claude/worktrees/`.
+
+Every name minted from something that grows is bounded (`nameKey`). A node appears in a branch,
+worktree or file name as its **key**: its id with `/` spelled `.`, kept whole up to 40 characters
+and otherwise cut to its first 31, `_` and the `fnv1a` digest of the whole. A dispatch label in a
+return-file or said-file name is bounded the same way; a commit in a file name is its sha's first
+10 characters. Ids and labels carry no `_`, so a cut key never equals a whole one. **Why:** a name
+built from a nested id or a label that lists every axis outgrows what a filesystem takes — 255
+characters for one path component, and Windows' MAX_PATH of 260 for the whole path, which an
+agent's `Write` meets with a `.tmp.<pid>.<hex>` suffix on top. Bounded, the longest id the id
+rule admits leaves every path the plugin mints within both under a checkout as long as
+`C:/Users/<first.last>/source/repos/<project>` and a 60-character effort name
+(`test/name-limits.test.mjs`).
 
 ### Specs, approval and compile
 
@@ -552,11 +564,12 @@ leaf's. Every leaf-open reports it, and the workflow measures each round from th
 handed.
 
 The effort root's integration branch, `agentics/<effort>`, is the effort branch: the one landed
-into the user's branch. Every other node's branch is its sibling, `agentics/<effort>--<flat>`,
-where `flat` spells the id's `/` as `.`. **Why not `agentics/<effort>/<id>`:** git stores a branch
-as a file under `refs/heads/`, so `agentics/e` and `agentics/e/auth` — or `auth` and
+into the user's branch. Every other node's branch is its sibling, `agentics/<effort>--<key>`,
+the node's key as [Storage](#storage) mints it. **Why not `agentics/<effort>/<id>`:** git stores a
+branch as a file under `refs/heads/`, so `agentics/e` and `agentics/e/auth` — or `auth` and
 `auth/session` — cannot both exist. Node-id segments carry no dot and effort names carry no `--`,
-so the spelling is reversible. Worktrees follow the same names under `.claude/worktrees/`.
+so no two nodes share a name; nothing reads an id back out of one. Worktrees follow the same names
+under `.claude/worktrees/`.
 
 A leaf's worktree lives until the leaf merges. merge-batch removes it, clean, with the merge
 (`detach` in `lib/integration.mjs`); its branch stays until [landing](#landing-and-drift) sweeps
@@ -1222,11 +1235,11 @@ merge-batch's results) or is a node the user must act on (a stopped node).
 **A payload carries handles only.** `handleEnvelope` refuses to print anything else. What a
 prompt or a later boundary needs and that is not a handle is in a file the lib wrote: a launch's
 card (`cards/`), a close's record (`closes/<stem>.json`, every measurement and the decision with
-its failures and their evidence), a merge's (`merges/<target>-<pre>.json`), a review round's
+its failures and their evidence), a merge's (`merges/<key>-<pre>.json`), a review round's
 (`reviews/`). An error is `{kind}`; where its detail matters, the boundary records it on the stop
 itself. Whoever decides a node's next round — leaf-close or leaf-review on `fix`, merge-batch for a
 leaf that fails on the integration head alone — writes what that round must clear, with its
-evidence, to `fixes/<node>-r<round>.json`, and leaf-open builds that round's brief from it. A close
+evidence, to `fixes/<key>-r<round>.json`, and leaf-open builds that round's brief from it. A close
 that decides anything but `fix` removes the file for the round after it.
 
 **What an agent says or decides, it writes itself.** Preflight names the execution's `said/`
@@ -1514,7 +1527,7 @@ without asking; the user's tree is not involved.
 
 After each merge-batch, the landed diff is intersected with the `consumes` path prefixes of every
 pending designed node. Merge-batch writes the ruler one brief
-(`merges/<target>-<pre>.drift.md`): per consumer, the node as its executor will be briefed (intent,
+(`merges/<key>-<pre>.drift.md`): per consumer, the node as its executor will be briefed (intent,
 context, criteria, what it writes, reads and consumes) and the merged change to the files it
 consumes. One ruler reads it and rules each consumer `unaffected` or `affected`, with the one
 question its owner must answer; either ruling is a `drift-ruled` state line. A consumer is not
@@ -1983,7 +1996,7 @@ effort store exists.
   repository (a reader, through the snapshot).
 
 One JSON document per dispatch, beside its report:
-`.state/reports/<stamp>-<id>-<role>-r<round>.progress.json`, rewritten whole by the executor.
+`.state/reports/<stamp>-<key>-<role>-r<round>.json`, rewritten whole by the executor.
 `{items: [{name, state}]}`, `name` a non-empty string, `state` one of `pending`, `working`,
 `done`, in the order the executor does them. Anything else reads as unreadable, with the reason.
 
@@ -2231,7 +2244,7 @@ Every call also takes `dispatch[]`: the dispatches it closes and its own courier
   judged). On `fix` it writes the open findings to the next round's fixes file as `{source:
   "review <severity> <id>", claim, evidence}`.
 - **merge-batch** — takes `target, card`. Prints `status`, `target`, `head_sha`, `verified`,
-  `record` (the path of `merges/<target>-<pre>.json`, with the measurement, `conflict`,
+  `record` (the path of `merges/<key>-<pre>.json`, with the measurement, `conflict`,
   `combination`, `failed_alone` with each failure's evidence, and `drift[{node, contract, files,
   stopped?}]`), `merged[{id, merged_sha}]`, `failed_alone[{id, card, row, facts}]` (a single leaf's
   fix-round launch, whose `fixes/` file merge-batch writes), `drift[{node, contract, stopped}]` (a
@@ -2241,7 +2254,7 @@ Every call also takes `dispatch[]`: the dispatches it closes and its own courier
   could not check).
 - **suite-gate** — takes `target`. Prints `status` (`done | pending`), `target`, `head_sha`, `ran`,
   `passed`, `review` (`earned | not_earned`, `''` when the gate failed), `record` (the path of
-  `gates/<target>-<head>.json`, with the measurement and each failure's evidence; `''` when nothing
+  `gates/<key>-<head>.json`, with the measurement and each failure's evidence; `''` when nothing
   ran).
 - **folder-review** — takes `target, card, review_file`. Prints `status` (`recorded | no_review`),
   `claims_n`, `findings_n`.

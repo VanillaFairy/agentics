@@ -48,6 +48,15 @@ test('resume: a preflight after a lost invocation names each leaf\'s next undone
   assert.deepEqual(heldBy(r).slots, [], 'the dead invocation\'s slots were freed')
 })
 
+test('a resume under another root is refused, and the refusal names the root the execution recorded', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/a.mjs'] })])
+  B(r, 'preflight', { root: 'a', commands: COMMANDS })
+  const wrong = B(r, 'preflight', { root: '.', commands: COMMANDS })
+  assert.equal(wrong.error.kind, 'wrong_root')
+  assert.equal(wrong.root, 'a')
+})
+
 test('a leaf the ladder finds measured green, with no approval standing and no review loop of its own, is approved by the tick that launches it', () => {
   const nodes = new Map([['a', normalizeNode({ id: 'a', kind: 'leaf', rigor: 'tdd' })], ['p', normalizeNode({ id: 'p', kind: 'leaf', rigor: 'tdd-pair', role: 'red' })]])
   const facts = new Map([['a', { next_action: 'merge', head_sha: 'h1' }], ['p', { next_action: 'merge', head_sha: 'h2' }]])

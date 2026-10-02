@@ -1085,7 +1085,7 @@ try {
 
 if (pf.error) {
   note('preflight refused: ' + pf.error.kind)
-  return result({ reason: pf.error.kind || 'preflight_refused', detail: '' }, null)
+  return result({ reason: pf.error.kind || 'preflight_refused', detail: pf.root ? 'execution ' + execution + ' is rooted at ' + pf.root : '' }, null)
 }
 invocation = pf.invocation
 saidDir = pf.said_dir || ''

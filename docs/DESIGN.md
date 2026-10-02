@@ -2175,7 +2175,8 @@ Every call also takes `dispatch[]`: the dispatches it closes and its own courier
   execution's agents write what a boundary or a record reads), `stale {nodes, now, brief, record}`
   (null unless the base moved under a leaf since its anchor; `brief` what the ruler reads, `record`
   `{kind: stale, now, nodes}`), `counts {nodes, leaves, gaps, untraced}`, `dirty_worktrees`,
-  `max_parallel`.
+  `max_parallel`. A relaunch under a root other than the one its envelope recorded is refused
+  `wrong_root`, with that recorded `root`.
 - **schedule** — takes `running[]` (`<unit>:<id>`), `planning[]`, `stopping`, `fault[]`
   (`<node>:<channel>`). Prints `launch[]`, `idle`, `max_parallel`. A launch is `{unit: plan, id,
   why: '' | spec_changed, card, row}`, `{unit: leaf, id, card, row, facts, waits_on}` (its

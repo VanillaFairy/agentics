@@ -152,7 +152,7 @@ finding in full. Never soften a finding and never merge two into one.
 opinion, and it is false whenever an axis went unexamined as well as when an ambiguity is
 open. **You may not report a clean probe while `coverage.complete` is false** — an axis whose
 prober died examined nothing, and "nobody looked" and "nothing there" are different answers
-that look identical in a findings list.
+that look identical in a findings list. A non-empty `result.lost` means run the probe again.
 
 ## Step 3 — Disposition, with the user
 

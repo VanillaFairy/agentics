@@ -368,9 +368,9 @@ you; `context` is one line on what the spec is for, never your defence of it:
 Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/attack-document-with-independent-reviewers.workflow.js', args: { artifact: '<the DESIGN.md path>', roots: '.', context, plugin_root } })
 ```
 
-After every return, before anything else, record how much of the spec it examined and the
-settlement id of every ambiguity it returned, carried ones included, so a later session's Next
-line knows a partial review from a whole one and the gate knows what is open:
+A return whose `lost` names files lost a prober's findings on the way back: a plugin fault, not a
+partial review, so run it again, asking nothing. After every other return, first record how much
+of the spec it examined and every ambiguity's settlement id, carried ones included:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" reviewed --repo . --effort <e> --folder <id> --complete <coverage.complete> --remaining "<coverage.resumable.remaining, comma-separated; empty when complete>" --ambiguities "<each ambiguity's finding id, comma-separated>"

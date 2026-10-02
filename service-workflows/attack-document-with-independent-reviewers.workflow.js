@@ -686,6 +686,7 @@ if (!artifact) {
     snapshot: '',
     scope: { full: true, changed: [] },
     unrecorded: [],
+    lost: [],
     review: '',
   }
 }
@@ -773,6 +774,7 @@ if (narrow && narrow.changed.length === 0) {
     snapshot: out && out.recorded ? scope.snapshot : '',
     scope: { full: false, changed: [] },
     unrecorded: [],
+    lost: [],
     review: out ? out.return || '' : '',
   }
 }
@@ -985,6 +987,10 @@ const recorded = await recordRound(probes)
 if (!recorded) failedChannels.push('record')
 const findings = recorded ? recorded.findings : carriedHandles()
 const unread = recorded && Array.isArray(recorded.unread) ? recorded.unread.map((i) => probes[i]).filter(Boolean) : []
+// A prober that reported and whose return file lib could not read lost what it found on the way
+// back, and so did every prober when the record itself failed: the plugin's fault, never a gap in
+// the artefact's review. The caller reruns the round; coverage still names what is missing.
+const lost = (recorded ? unread : probes).map((p) => p.file)
 
 const severities = (s) => findings.filter((f) => f.severity === s).length
 log(`${findings.length} finding(s): ${severities('ambiguity')} ambiguity, ${severities('gap')} gap, ` +
@@ -1086,5 +1092,6 @@ return {
   snapshot: scope && recorded && recorded.recorded ? scope.snapshot : '',
   scope: scope ? { full: scope.full, changed: scope.changed } : { full: true, changed: [] },
   unrecorded,
+  lost,
   review: recorded ? recorded.return || '' : '',
 }

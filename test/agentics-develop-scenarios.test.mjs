@@ -53,7 +53,7 @@ function probeReturn(over = {}) {
   const ambiguities = findings.filter((f) => f.severity === 'ambiguity')
   return {
     artifact: '', findings, ambiguities, ratifiable: ambiguities.length === 0 && coverage.complete === true,
-    coverage, snapshot: 'snapshot:s1', review: '20260926-120000-probe', scope: { full: true, changed: [] }, unrecorded: [], ...over,
+    coverage, snapshot: 'snapshot:s1', review: '20260926-120000-probe', scope: { full: true, changed: [] }, unrecorded: [], lost: [], ...over,
   }
 }
 
@@ -739,6 +739,18 @@ test('an incomplete review is recorded as partial, naming the axes it left, and 
   assert.deepEqual(sim.reviewed.map((r) => [r.node, r.complete, r.remaining]), [['p', false, ['growth']]])
   assert.deepEqual(result.escalations.map((e) => [e.id, e.reason]), [['p', 'review_incomplete']])
   assert.deepEqual(sim.prepared, [])
+})
+
+test('a review that lost a prober\'s return holds the folder on a plugin fault, and records no round', async () => {
+  const sim = plannerDesign()
+  const partial = { ...COVERED, complete: false, incomplete: ['ambiguity', 'growth'], resumable: { runId: 'r', remaining: ['ambiguity', 'growth'] } }
+  const probe = probes([probeReturn({ coverage: partial, lost: ['/inbox/probe-ambiguity-growth-1234abcd.json'] })])
+  const { result } = await run(sim, { 'plan:': written(row('p').spec_path) }, {}, { workflow: probe })
+  assert.deepEqual(result.faults.map((f) => [f.id, f.channel]), [['p', 'dispatch']])
+  assert.deepEqual(result.escalations, [])
+  assert.deepEqual(sim.reviewed, [], 'a lost return is not a review that left the spec unread')
+  assert.deepEqual(sim.prepared, [])
+  assert.equal(result.coverage.complete, false)
 })
 
 test('a planner\'s said file is named within the limits however deep its folder\'s id', async () => {

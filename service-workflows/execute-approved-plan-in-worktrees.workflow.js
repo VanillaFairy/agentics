@@ -625,6 +625,13 @@ async function reviewSpec(item, first) {
       hold(id, 'dispatch')
       return null
     }
+    if ((review.lost || []).length) {
+      // A prober reported and its return never reached lib: the plugin lost it, so the round is
+      // run again, never recorded as a review that left the spec unread.
+      note('the autonomous review of ' + id + ' lost ' + review.lost.join(', '))
+      hold(id, 'dispatch')
+      return null
+    }
     const whole = !!(review.coverage && review.coverage.complete === true)
     const remaining = whole ? [] : ((review.coverage && review.coverage.resumable && review.coverage.resumable.remaining) || [])
     const reviewed = await boundary('spec-reviewed', {

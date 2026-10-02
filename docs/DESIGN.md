@@ -928,7 +928,9 @@ passes. It runs inside `execute-approved-plan-in-worktrees`, one folder at a tim
    previous return's snapshot) narrows the review to the spans changed since. `spec-reviewed`
    reads the round's findings from the file the review names and records every round as a
    `reviewed` ledger line with the settlement ids of its ambiguities; an incomplete one escalates
-   `review_incomplete`. The findings still to settle are the ones no disposition on the ledger
+   `review_incomplete`. A round that lost a prober's return (`lost`) records nothing: the folder is
+   held on a `dispatch` fault and the relaunch reviews it again, because the review never failed to
+   read the spec, the plugin failed to carry what it found. The findings still to settle are the ones no disposition on the ledger
    has settled: a finding the probe carries from an earlier round stays settled.
 3. **Settle.** The planner gives every finding still to settle a disposition, written to the file
    its dispatch names: incorporated (the spec changed) or discarded. `spec-settle` reads it: an
@@ -986,7 +988,9 @@ dispatch rewrites the same file; a workflow has no clock and no randomness to na
 when lib records. A file that is missing or not JSON is a typed refusal (`return_unreadable`) where
 the record cannot stand without it (a survey's judges, a draft); where it is one agent's share among
 several (a prober, a researcher, the repository scan) it is a gap the result names; a re-judge's
-is every verdict `unsure`.
+is every verdict `unsure`. A prober that reported and whose file lib could not read is also a
+**lost return**, which the probe's result names in `lost`: what it found was lost on the way back,
+a plugin fault rather than a gap in the review, and its caller runs the round again.
 
 Free text the caller supplied — a survey's question, a sweep's capability — reaches lib through
 the first agent that writes a file: the survey's planner copies the question into its plan file,
@@ -2397,13 +2401,14 @@ with `renamed_from`.
   since`. Returns `{artifact, axes, axes_dropped, analysts, shared_ground{resolved, cited, files,
   excerpts, unresolved, context} | {resolved: false, why}, guidance_read, repo_ground{located,
   complete, unresolved}, findings[{id, item, severity, axis, section, carried}], findings_file,
-  ambiguities, ratifiable, snapshot, scope{full, changed}, unrecorded, review, coverage}`. `findings`
+  ambiguities, ratifiable, snapshot, scope{full, changed}, unrecorded, lost, review, coverage}`. `findings`
   are handles — `id` is `P<n>`, carried findings first; `item` the evidence item, '' when
   unrecorded; `section` the artefact's section name as a slug — and `findings_file` is the path of
   one JSON file, `{findings[]}`, holding every finding in full (claim, evidence, start, end) under
   its id, which spec-reviewed and spec-settle read and the settling planner Reads; `ambiguities`
   are the handles of severity `ambiguity`; `unrecorded` the ids of new findings the store did not
-  take.
+  take; `lost` the return files of probers that reported and whose file lib could not read — every
+  prober's when the record failed — [] when nothing was lost.
 - **`search-for-existing-solutions-before-building`** — takes `capability, roots, constraints, notes,
   max_angles, intelligence, plugin_root`. Returns `{capability, constraints, frame, summary,
   counts{present, candidates, viable, ruled_out, invented, lost, unanchored, unread, unsettled,

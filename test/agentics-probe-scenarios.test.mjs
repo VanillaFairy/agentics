@@ -64,7 +64,7 @@ const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(
  * record courier that reads those files back as lib does — carried findings first, then each
  * file's in order, an axis the prober did not hold credited to its bundle — and records them.
  */
-function lab({ refuse = false } = {}) {
+function lab({ refuse = false, unread = [] } = {}) {
   const written = new Map()
   const probe = (answer) => (prompt) => {
     const a = typeof answer === 'function' ? answer() : answer
@@ -86,7 +86,7 @@ function lab({ refuse = false } = {}) {
       recorded: Boolean(snapshot) && !refuse, return: snapshot && !refuse ? '20260926-120000-probe' : '',
       findings: carried.concat(fresh).map((f, i) => ({ id: 'P' + (i + 1), ...f })),
       findings_file: contextPath('findings'), refused_n: refuse ? fresh.length : 0,
-      refusals_file: refuse ? contextPath('refused') : '', unread: [],
+      refusals_file: refuse ? contextPath('refused') : '', unread,
     })
   }
   return { written, probe, record }
@@ -607,4 +607,21 @@ test('a probe holding every axis writes to a return file that fits on Windows', 
   const file = returnFileOf(probe.prompt)
   assert.ok(file.startsWith(LONG_ROOT + '/.agentics/.state/evidence/inbox/' + nameKey(probe.opts.label.replace(/[^A-Za-z0-9.-]+/g, '-')) + '-'), file)
   for (const p of prompts.filter((x) => returnFileOf(x.prompt))) assert.deepEqual(overruns(returnFileOf(p.prompt)), [], p.opts.label)
+})
+
+test('a prober whose return file lib could not read is a lost return, not only a gap', async () => {
+  const { result, prompts } = await runWorkflow(WF, { args: ARGS, agent: probeAgents({}, { unread: [1] }) })
+  assert.deepEqual(result.lost, [returnFileOf(promptOf(prompts, 'probe:invariants'))])
+  assert.equal(result.coverage.complete, false)
+  assert.ok(result.coverage.incomplete.includes('invariants'))
+})
+
+test('a record that failed loses the return of every prober', async () => {
+  const { result, prompts } = await runWorkflow(WF, { args: ARGS, agent: probeAgents({ record: failedCourier, 'record:': failedCourier }) })
+  assert.deepEqual(result.lost, probesIn(prompts).map((p) => returnFileOf(p.prompt)))
+})
+
+test('a round where nothing was lost says so', async () => {
+  const { result } = await runWorkflow(WF, { args: ARGS, agent: probeAgents() })
+  assert.deepEqual(result.lost, [])
 })

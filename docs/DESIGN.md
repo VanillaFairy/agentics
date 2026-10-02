@@ -719,10 +719,10 @@ Every leaf carries a `rigor`, set by its author. Walk the table top-down; the fi
 |---|---|---|---|
 | `verify` | writes nothing: confirms a premise, proves a criterion already holds, measures | no producer; the named checks run at leaf-close | the checks' results, recorded; a failure is a finding for the parent, not a fix round |
 | `trivial` | writes a change a test would only restate: literal values and user-visible text (a window title, a label, a message), config values, docs, assets, renames behind an unchanged interface, dependency versions, wiring of existing parts | one implementer leaf | the named check, when the leaf needs one to show it works (build, typecheck, the tests the change can reach, running it, a `HUMAN:` look); a test asserting the changed value is updated in the same leaf |
-| `tests-only` | only adds tests to code that is already correct | one test-author leaf | each new test passes now and fails under a mutation the test-author declared |
+| `tests-only` | only adds tests to code that is already correct | one test-author leaf | each new test passes now, and its file fails under a mutation the test-author declared |
 | `tdd` | adds behaviour whose expected results the criteria state exactly | one implementer leaf, test first | at least one test file adds a test case, and each that does fails at base and passes now; one that adds none (upkeep: existing tests kept working) passes now |
 | `tdd-pair` | adds behaviour where a wrong reading of the criteria would pass its author's own tests: edge-case rules, parsers, state machines, concurrency, contracts other nodes consume | a `red` test-author leaf, then a `green` implementer leaf | red: its tests fail for want of the implementation; green: they pass, tests untouched |
-| `tdd-triad` | as `tdd-pair`, and a miss ships silently into durable state or is costly to find: persistence formats, migrations, data loss, security, money | red, green, then an `audit` leaf | as `tdd-pair`, plus the auditor's declared mutations are killed |
+| `tdd-triad` | as `tdd-pair`, and a miss ships silently into durable state or is costly to find: persistence formats, migrations, data loss, security, money | red, green, then an `audit` leaf | as `tdd-pair`, plus every mutation the auditor declared and the measurement applied is killed — by the cycle's tests, or by the tests a test-author adds in the audit's later rounds |
 
 **Would a test only restate the diff?** A test of a `trivial` change asserts that the value
 written is the value written. A `tdd` change has a result the diff does not state literally — a
@@ -743,8 +743,24 @@ Unsure between `tdd` and `tdd-pair`: `tdd` when the leaf is small, `tdd-pair` wh
   tip, once the last member is approved, so the effort branch is never red.
 - **Mutations are declarations.** A test-author or auditor declares `{file, find, replace,
   expect_failing}` in its report; leaf-close applies them by script and restores the file. A
-  `find` matching zero or several times refuses, pointing at the declaration. Audit gaps return as
-  `decompose` with new `tests-only` or `tdd-pair` children.
+  `find` matching zero or several times refuses, pointing at the declaration.
+- **A mutation once applied is never dropped.** A leaf measured by its mutations (`tests-only`,
+  `audit`) is measured, every round, on each mutation an earlier round of it applied, beside the
+  round's own declarations (`heldMutations` in `lib/verdict.mjs`, from the journal), so a mutation
+  its tests let through stays until a test catches it: a gap-closing test is shown to fail on the
+  very break that found the gap. A declaration that could not be applied is not held: it is a
+  defect in the declaration, not evidence about the tests. Other rigors apply their round's
+  declarations alone, because their implementation moves and an old `find` with it.
+- **Every new test is shown to catch something.** A `tests-only` leaf's test file that adds a case
+  is named in the `expect_failing` of a mutation that bites, or the leaf fails.
+- **An audit gap is closed inside the cycle.** From the first measurement in which the cycle's
+  tests let an applied mutation through (`auditGap`), every later round of the audit goes to a
+  test-author instead of the auditor — leaf-open and leaf-close derive the round's role from the
+  journal, whatever the workflow asked — writing into the cycle's test files, which an audit's
+  writable locus includes (`writableLocus` in `lib/tree.mjs`). Its fix round lists each surviving
+  mutation, its text and the tests it names, and the audit approves only once every held mutation
+  bites. A fix round that went back to the auditor could only withdraw the mutation; one that
+  went to the planner as new children would test against mutations of their own choosing.
 - **Review follows rigor.** `tdd-pair`, `tdd-triad` and any leaf that `provides` a contract get a
   review loop of their own; `trivial`, `tests-only` and `tdd` leaves are reviewed at integration;
   `verify` leaves write nothing to review.
@@ -1635,9 +1651,10 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
 or fail from the observations against the leaf's profile (every profile needs a completed
 measurement, no failed build or typecheck and no blocking series finding; then per profile: a tdd
 leaf's test files that add a test case fail at base and pass now, and its upkeep files pass now —
-when none adds one, every file is held to the whole discriminator; a tests-only leaf's tests pass and every declared
-mutation bites; a red leaf's tests fail now and at base; a green leaf's cycle tests pass; an audit's
-mutations all bite over the cycle's tests; trivial, verify, tdd, tests-only and green need their
+when none adds one, every file is held to the whole discriminator; a tests-only leaf's tests pass, every held
+mutation bites and each test file that adds a case is one a biting mutation names; a red leaf's tests
+fail now and at base; a green leaf's cycle tests pass; an audit's held mutations all bite over the
+cycle's tests; trivial, verify, tdd, tests-only and green need their
 named checks and their own tests not to have failed). A named check fails for the change when it
 did not pass, unless it failed naming tests every one of which fails at its base too
 (`checkFailed`). A suite failed for the change only when one of its named failing tests is the
@@ -2195,7 +2212,8 @@ Every call also takes `dispatch[]`: the dispatches it closes and its own courier
   worktree, head, base}`, `children` and `unreviewed`; a merge's card is `{unit, id,
   children[{id, head_sha}], cycles[[id]]}`.
 - **leaf-open** — takes `node, role, round, tier` (`<model>/<effort>`), `wait_ms`. Prints `status`
-  (`opened | no_slot | locus_held | busy | refused`), `branch`, `worktree`, `base_sha`, `head_sha`,
+  (`opened | no_slot | locus_held | busy | refused`), `role` (the round's, which the workflow
+  dispatches: on an audit the journal's, not the one it was given), `branch`, `worktree`, `base_sha`, `head_sha`,
   `brief_path`, `brief_digest`, `report_path`, `slot`, `max_parallel`, `held_by[{node, status}]`.
 - **leaf-close** — takes `node, role, round, mode` (`fresh | continue | fix | resume`), `status`
   (the executor's, `''` when it returned nothing), `said`, `head_before`, `base_sha`. Prints

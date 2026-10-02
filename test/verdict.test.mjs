@@ -15,7 +15,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { closeDecision, fixNotConverging, integrationPark, measurementOk, ownFailing, profileOf, reviewExit, suiteFailed } from '../lib/verdict.mjs'
+import {
+  auditGap, closeDecision, fixNotConverging, heldMutations, integrationPark, measurementOk, ownFailing, profileOf, reviewExit, suiteFailed,
+} from '../lib/verdict.mjs'
 import { normalizeNode } from '../lib/tree.mjs'
 
 const leaf = (over = {}) => normalizeNode({
@@ -359,4 +361,33 @@ test('an integration review parks once, by class: a spec defect, then criticals 
   const defect = integrationPark([critical('F1')], [claim('cant_tell', 'a'), claim('spec_defect', 'b')], 'S')
   assert.equal(defect.why, 'spec_defect')
   assert.ok(defect.question.startsWith('the spec S: ') && ['F1: wrong', '[cant_tell] a', '[spec_defect] b'].every((s) => defect.question.includes(s)))
+})
+
+test('a tests-only file that adds a test no biting mutation names is not shown to catch anything', () => {
+  const twoFiles = m({ discriminator: [disc(false, true), disc(false, true, 'test/z.test.mjs')], mutations: [bites] })
+  const failures = measurementOk(twoFiles, LEAVES['tests-only']).failures
+  assert.deepEqual(failures.map((f) => f.claim), ['test/z.test.mjs adds a test no biting mutation names'])
+  const named = m({ discriminator: [disc(false, true), disc(false, true, 'test/z.test.mjs')], mutations: [bites, { ...bites, expect_failing: ['test/z.test.mjs'], observed_failing: ['test/z.test.mjs'] }] })
+  assert.equal(measurementOk(named, LEAVES['tests-only']).ok, true)
+  assert.equal(measurementOk(m({ discriminator: [disc(false, true), upkeep(true)], mutations: [bites] }), LEAVES['tests-only']).ok, true, 'an upkeep file adds no test to catch anything')
+})
+
+test('a leaf measured by its mutations is held to every one an earlier round applied; others are not', () => {
+  const declared = (x) => ({ file: x.file, find: x.find, replace: x.replace, expect_failing: x.expect_failing })
+  const old = { ...survives, find: 'a < b', replace: 'a <= b' }
+  const lost = { ...stale, find: 'typo', replace: 'x' }
+  const fresh = { file: 'src/x.mjs', find: 'return 1', replace: 'return 0', expect_failing: ['test/x.test.mjs'] }
+  const measured = [m({ mutations: [old, lost] })]
+  for (const profile of ['tests-only', 'audit']) {
+    assert.deepEqual(heldMutations(LEAVES[profile], measured, [fresh]), [declared(old), fresh], profile + ': an applied one stays, an unapplied one does not')
+  }
+  assert.deepEqual(heldMutations(LEAVES.tdd, measured, [fresh]), [fresh], 'a tdd leaf\'s implementation moves, and an old find with it')
+  const renamed = { ...declared(old), expect_failing: ['test/new.test.mjs'] }
+  assert.deepEqual(heldMutations(LEAVES.audit, measured, [renamed]), [renamed], 'a redeclared mutation takes this round\'s tests')
+})
+
+test('an audit gap opens with the first applied mutation its tests let through, and stays open', () => {
+  assert.equal(auditGap([]), false)
+  assert.equal(auditGap([m({ mutations: [bites, stale] })]), false, 'an unapplied declaration is the auditor\'s, not a gap')
+  assert.equal(auditGap([m({ mutations: [survives] }), m({ mutations: [bites] })]), true)
 })

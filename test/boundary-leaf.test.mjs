@@ -173,6 +173,52 @@ test('a red/green cycle: green is cut from red, measured on red\'s tests, and th
   assert.equal(merged.verified, true)
 })
 
+test('an audit mutation the tests let through goes to a test-author, in the cycle\'s tests, and the audit closes only once that mutation bites', () => {
+  const r = repo()
+  seedTree(r, 'e1', [root(),
+    leaf('r', { rigor: 'tdd-triad', role: 'red', locus: ['test/r.test.mjs'] }),
+    leaf('g', { rigor: 'tdd-triad', role: 'green', deps: ['r'], locus: ['src/r.mjs'] }),
+    leaf('au', { rigor: 'tdd-triad', role: 'audit', deps: ['g'], locus: ['docs/audit.md'] })])
+  B(r, 'preflight', { root: '.', commands: COMMANDS })
+  const head = "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { r } from '../src/r.mjs'\n"
+  const red = B(r, 'leaf-open', { node: 'r', role: 'test-author', round: 1 })
+  writeFileSync(join(red.worktree, 'test', 'r.test.mjs'), head + "test('doubles 2', () => assert.equal(r(2), 4))\n")
+  writeFileSync(red.report_path, '```agentics-commit\nPin r\n```\n')
+  B(r, 'leaf-close', { node: 'r', role: 'test-author', round: 1, status: 'done', base_sha: red.base_sha })
+  B(r, 'leaf-review', { node: 'r', round: 1, review_round: 1, review_file: wrote(CLEAN_REVIEW) })
+  const green = B(r, 'leaf-open', { node: 'g', role: 'implementer', round: 1 })
+  commitIn(green.worktree, { 'src/r.mjs': 'export const r = (x) => x * 2\n' }, 'Implement r')
+  B(r, 'leaf-close', { node: 'g', role: 'implementer', round: 1, status: 'done', base_sha: green.base_sha })
+  B(r, 'leaf-review', { node: 'g', round: 1, review_round: 1, review_file: wrote(CLEAN_REVIEW) })
+
+  const audit = B(r, 'leaf-open', { node: 'au', role: 'auditor', round: 1 })
+  assert.equal(audit.role, 'auditor')
+  const survives = { file: 'src/r.mjs', find: 'x * 2', replace: 'x + 2', expect_failing: ['test/r.test.mjs'] }
+  writeFileSync(audit.report_path, 'x + 2 doubles 2 too.\n```agentics-mutations\n' + JSON.stringify([survives]) + '\n```\n')
+  const gap = B(r, 'leaf-close', { node: 'au', role: 'auditor', round: 1, status: 'done', base_sha: audit.base_sha })
+  assert.equal(gap.decision.next, 'fix', 'r(2) is 4 under x + 2 as well: the mutation survives')
+
+  const author = B(r, 'leaf-open', { node: 'au', role: 'auditor', round: 2 })
+  assert.equal(author.role, 'test-author', 'the gap is the tests\', so the round is a test-author\'s')
+  const brief = readFileSync(author.brief_path, 'utf8')
+  assert.match(brief, /test\/r\.test\.mjs/, 'its locus holds the cycle\'s tests')
+  assert.match(brief, /x \* 2/, 'and the fix round names the mutation to catch')
+
+  // Declaring a different, easier mutation does not drop the one that survived.
+  const easy = { file: 'src/r.mjs', find: '(x) =>', replace: '() =>', expect_failing: ['test/r.test.mjs'] }
+  writeFileSync(author.report_path, '```agentics-commit\nPin r on 3\n```\n```agentics-mutations\n' + JSON.stringify([easy]) + '\n```\n')
+  const dodged = B(r, 'leaf-close', { node: 'au', role: 'auditor', round: 2, status: 'done', base_sha: author.base_sha })
+  assert.equal(dodged.decision.next, 'fix', 'the surviving mutation is still measured, so dropping it does not pass')
+
+  const closing = B(r, 'leaf-open', { node: 'au', role: 'auditor', round: 3 })
+  assert.equal(closing.role, 'test-author')
+  writeFileSync(join(closing.worktree, 'test', 'r.test.mjs'), head + "test('doubles 2', () => assert.equal(r(2), 4))\ntest('doubles 3', () => assert.equal(r(3), 6))\n")
+  writeFileSync(closing.report_path, '```agentics-commit\nPin r on 3\n```\n')
+  const closed = B(r, 'leaf-close', { node: 'au', role: 'auditor', round: 3, status: 'done', base_sha: closing.base_sha })
+  assert.equal(closed.decision.next, 'review', JSON.stringify(closed.decision) + readFileSync(closed.record, 'utf8'))
+  assert.ok(git(closing.worktree, 'log', '--format=%s', closing.base_sha + '..HEAD').includes('Pin r on 3'), 'the test-author\'s tests were committed in the cycle\'s test file')
+})
+
 test('a red leaf\'s major with a failure scenario blocks: its tests are the yardstick a green is coded against', () => {
   const r = repo()
   seedTree(r, 'e1', [root(),

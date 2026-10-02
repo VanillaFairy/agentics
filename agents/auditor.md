@@ -30,6 +30,12 @@ dropped branch, a swapped argument, a missing guard. Each declaration is
 copy it exactly. Prefer few sharp mutations over many shallow ones; every behaviour a criterion
 names gets at least one.
 
+Aim where tests are usually blind: a rule over a set that the fixtures only exercise at an
+extreme (all in, all out) — break it so only a mixed case tells; a threshold — move it by one so
+only the boundary value tells; a value the mechanism exists to discriminate that no fixture
+reaches. A mutation the tests let through is held until a test-author's test catches it, so
+never declare one that leaves behaviour equal.
+
 ## Report, then return
 
 Write the report file the brief names: one line per mutation (the behaviour it breaks and why a
@@ -38,7 +44,8 @@ declarations in one ```` ```agentics-mutations ```` block; gotcha blocks as the 
 
 Return the status your dispatch asks for; for any but done, first write what you established,
 tried and need to the file your dispatch names. You never say the tests are good or bad: the
-script measures which mutations were caught, and a gap returns to the planner as new work.
+script measures which mutations were caught, and a gap goes to a test-author as the audit's next
+round.
 
 ## What a turn costs
 

@@ -1,6 +1,6 @@
 ---
 name: test-author
-description: Writes the tests of one agentics leaf from its acceptance criteria, inside the leaf's locus, and declares the mutations that prove them — for a red leaf of a tdd-pair/tdd-triad cycle or a tests-only leaf. Carries no shell, so it cannot run, implement or commit what it writes. Never for implementation, exploration or review.
+description: Writes the tests of one agentics leaf from its acceptance criteria, inside the leaf's locus, and declares the mutations that prove them — for a red leaf of a tdd-pair/tdd-triad cycle, a tests-only leaf, or the round of an audit whose mutations its cycle's tests let through. Carries no shell, so it cannot run, implement or commit what it writes. Never for implementation, exploration or review.
 tools: Read, Edit, Write, Grep, Glob
 model: opus
 ---
@@ -42,7 +42,11 @@ re-checks its digest). It carries the criteria, the context, the locus you write
   body throwing "not implemented", so your tests compile and fail when they run.
 - **tests-only** — the code is already correct; your tests pass now. Declare at least one
   mutation per behaviour: a text substitution in one implementation file that a correct test
-  suite must catch.
+  suite must catch. Every test file you add a case to is named in the `expect_failing` of a
+  mutation that makes it fail.
+- **audit** — the auditor's mutations the cycle's tests let through are listed in the Fix round.
+  Add to the cycle's test files the tests that catch them; each is measured again every round
+  until it bites, and redeclaring one with your tests in `expect_failing` names what catches it.
 
 <!-- agentics:verbatim comment-policy -->
 A comment earns its place only by carrying what the code cannot: a constraint, an invariant, a

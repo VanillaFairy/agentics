@@ -752,6 +752,8 @@ async function openLeaf(item, st) {
       { phase: 'Execute', label: 'open:' + id + '#' + st.round + (attempt > 1 ? '@' + attempt : '') })
     noteStops(opened)
     if (opened.status === 'opened') {
+      // The lib decides whom a round is for: an audit whose tests let a mutation through goes to a test-author.
+      if (opened.role) st.role = opened.role
       st.worktree = opened.worktree
       st.branch = opened.branch
       st.brief = opened.brief_path

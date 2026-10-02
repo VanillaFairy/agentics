@@ -17,6 +17,7 @@
 
 import { readFileSync } from 'node:fs'
 
+import { roundOf } from '../../lib/evidence.mjs'
 import { canonical, fnv1a } from '../../lib/plan-digest.mjs'
 
 const AsyncFunction = (async function () {}).constructor
@@ -92,13 +93,42 @@ export async function runWorkflow(path, opts = {}) {
 }
 
 /**
+ * What a scripted agent wrote to its return file when that differs from what it returned: an
+ * answer carrying `[WROTE]: {...}` returns itself and leaves that object in its file. Without it,
+ * the answer is both.
+ */
+export const WROTE = Symbol('wrote')
+
+/**
  * An agent handler routed by `opts.label`. `script` maps a label (exact, or a prefix
  * ending in ':') to a value, or to a function (prompt, opts, callIndex) — callIndex
  * counts calls PER LABEL, so a re-verified order can answer differently per round.
  * An unscripted label throws, so a scenario cannot silently feed undefined downstream.
+ *
+ * Every answer to a dispatch that names a return file is kept as that file's content, and an
+ * unscripted `round:` courier answers as `lib/evidence.mjs round` does, over those files.
  */
 export function scriptedAgents(script) {
   const counts = new Map()
+  const files = new Map()
+  const keep = (prompt, out) => {
+    const file = returnFileOf(prompt)
+    if (file && out && typeof out === 'object') files.set(file, out[WROTE] || out)
+    return out
+  }
+  const round = (prompt) => {
+    const command = courierCommand(prompt)
+    const read = (f) => (files.has(f) ? files.get(f) : null)
+    return carriedEnvelope(roundOf(read(flagValues(command, 'from')[0]), flagValues(command, 'earlier').map(read)))
+  }
+  const answer = scriptedAnswers(script, counts, round)
+  return (prompt, opts) => {
+    const out = answer(prompt, opts)
+    return out && typeof out.then === 'function' ? out.then((v) => keep(prompt, v)) : keep(prompt, out)
+  }
+}
+
+function scriptedAnswers(script, counts, round) {
   return (prompt, opts) => {
     const label = opts.label || ''
     const n = counts.get(label) || 0
@@ -109,6 +139,7 @@ export function scriptedAgents(script) {
     const key = Object.keys(script)
       .filter((k) => label === k || (k.endsWith(':') && label.startsWith(k)))
       .sort((a, b) => (b === label) - (a === label) || b.length - a.length)[0]
+    if (key === undefined && label.startsWith('round:')) return round(prompt)
     if (key === undefined) throw new Error('unscripted agent call: ' + (label || '(no label)'))
     const value = script[key]
     return typeof value === 'function' ? value(prompt, opts, n) : value

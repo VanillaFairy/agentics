@@ -12,7 +12,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import {
-  carriedEnvelope, contextPath, courierCommand, courierProblems, flagValues, returnFileOf, runWorkflow, scriptedAgents,
+  WROTE, carriedEnvelope, contextPath, courierCommand, courierProblems, flagValues, returnFileOf, runWorkflow, scriptedAgents,
 } from './harness/workflow-host.mjs'
 import { overruns } from './harness/path-limits.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
@@ -188,7 +188,7 @@ test('an axis whose prober died is unexamined, never a silent pass', async () =>
 })
 
 test('an axis that stopped halfway is not an axis that came back clean', async () => {
-  const { result } = await runWorkflow(WF, {
+  const { result, prompts } = await runWorkflow(WF, {
     args: ARGS,
     agent: probeAgents({
       'probe:yagni': stoppedShort({ not_reached: '§7 onward' }),
@@ -200,22 +200,36 @@ test('an axis that stopped halfway is not an axis that came back clean', async (
   assert.equal(result.ratifiable, false, 'a half-read artefact cannot compute a clean bill of health')
   assert.deepEqual(result.coverage.incomplete, ['yagni'])
   assert.deepEqual(result.coverage.dropped, [], 'it reported — it just did not finish')
-  assert.ok(result.coverage.unreached.some((u) => /§7 onward/.test(u)))
+  const last = returnFileOf(promptOf(prompts, 'probe:yagni:continued'))
+  assert.ok(result.coverage.unreached.some((u) => u.includes(`never reaching what ${last} names under not_reached`)))
 })
 
 test('a short read keeps the findings it did make', async () => {
   const { result } = await runWorkflow(WF, {
-    args: ARGS, agent: probeAgents({ 'probe:ambiguity': stoppedShort({ findings: [finding({ severity: 'ambiguity' })] }) }),
+    args: ARGS,
+    agent: probeAgents({
+      'probe:ambiguity': stoppedShort({ findings: [finding({ severity: 'ambiguity' })] }), 'probe:ambiguity:continued': stoppedShort(),
+    }),
   })
   assert.equal(result.ambiguities.length, 1, 'its findings stand')
   assert.equal(result.ratifiable, false)
-  assert.ok(result.coverage.unreached.some((u) => /without naming what it missed/.test(u)))
+  assert.ok(result.coverage.unreached.some((u) => /stopped "unfinished" without naming it/.test(u)))
 })
 
 test('a missing stop_reason normalizes toward unfinished, never toward done', async () => {
-  const { result } = await runWorkflow(WF, { args: ARGS, agent: probeAgents({ 'probe:invariants': { findings: [] } }) })
+  const silent = { findings: [] }
+  const { result } = await runWorkflow(WF, { args: ARGS, agent: probeAgents({ 'probe:invariants': silent, 'probe:invariants:continued': silent }) })
   assert.equal(result.ratifiable, false, 'silence is not exhaustion')
   assert.deepEqual(result.coverage.incomplete, ['invariants'])
+})
+
+test('a prober that echoes "exhausted" over a file that says otherwise is read by its file', async () => {
+  const { result, prompts } = await runWorkflow(WF, {
+    args: ARGS,
+    agent: probeAgents({ 'probe:yagni': { ...found(), [WROTE]: { findings: [], stop_reason: 'unfinished', not_reached: '§9' } } }),
+  })
+  assert.ok(promptOf(prompts, 'probe:yagni:continued'), 'what its file names as unreached is attacked')
+  assert.equal(result.coverage.complete, true)
 })
 
 test('ratifiable implies coverage.complete — the repo-axes hole included', async () => {
@@ -368,7 +382,7 @@ test('a reader that stops short is continued on what it never reached, and both 
   })
 
   const continued = promptOf(prompts, ALL + ':continued')
-  assert.match(continued, /Attack ONLY what it never reached:\n§5-§9 on yagni/)
+  assert.match(continued, /Attack ONLY what the last of them names under not_reached/)
   assert.ok(continued.includes(returnFileOf(promptOf(prompts, ALL))), 'the earlier pass is named, not retold')
   assert.deepEqual(result.findings.map((f) => f.axis), ['invariants', 'yagni'])
   assert.equal(result.coverage.complete, true)
@@ -427,12 +441,38 @@ test('an unfinished locating search is resumed from its reports, and a stuck one
   const { result, prompts } = await runWorkflow(WF, { args: DEFAULT_ARGS, agent: probeAgents({ locate: stalled, 'locate#2': stalled }) })
 
   const resumed = promptOf(prompts, 'locate#2')
-  assert.match(resumed, /STILL NOT REACHED[\s\S]*docs\/adr\/ never opened/)
+  assert.match(resumed, /STILL NOT REACHED — this is your job now: what the last of those reports names under not_reached/)
   assert.ok(resumed.includes(returnFileOf(promptOf(prompts, 'locate'))))
   assert.ok(!prompts.some((p) => p.opts.label === 'locate#3'), 'a round that gains nothing ends it')
   assert.deepEqual(flagValues(courierCommand(promptOf(prompts, 'ground-context')), 'hits').length, 2, 'both rounds are read')
   assert.ok(result.coverage.incomplete.includes('locate'))
   assert.equal(result.ratifiable, false)
+})
+
+test('a locating round is read from the report it wrote, not from what it echoed back', async () => {
+  const wrote = located({ stop_reason: 'unfinished', not_reached: 'Artefact lines 356-768 not read' })
+  const { result, prompts } = await runWorkflow(WF, {
+    args: DEFAULT_ARGS,
+    agent: probeAgents({
+      locate: { ...located({ stop_reason: 'unfinished', not_reached: undefined }), [WROTE]: wrote },
+      'locate#2': located({ hits: [{ path: 'src/save.ts', line: 3, kind: 'ground' }] }),
+    }),
+  })
+
+  const command = courierCommand(promptOf(prompts, 'round:locate'))
+  assert.deepEqual(flagValues(command, 'from'), [returnFileOf(promptOf(prompts, 'locate'))])
+  assert.ok(promptOf(prompts, 'locate#2'), 'the remainder its report names is searched')
+  assert.equal(result.repo_ground.complete, true)
+  assert.ok(!result.coverage.incomplete.includes('locate'))
+})
+
+test('a locating round that stops unfinished without naming what it missed is continued over what its reports never searched', async () => {
+  const { result, prompts } = await runWorkflow(WF, {
+    args: DEFAULT_ARGS,
+    agent: probeAgents({ locate: located({ stop_reason: 'unfinished' }), 'locate#2': located({ hits: [{ path: 'src/save.ts', line: 3, kind: 'ground' }] }) }),
+  })
+  assert.match(promptOf(prompts, 'locate#2'), /searched lists do not show/)
+  assert.equal(result.repo_ground.complete, true)
 })
 
 test('located ground the courier could not carry reaches the analysts as the scout\'s reports to follow', async () => {
@@ -603,7 +643,7 @@ test('a probe holding every axis writes to a return file that fits on Windows', 
   const axes = axesResult({ axes: MANY_AXES.map((key) => ({ key, charge: 'attack ' + key, source: 'CLAUDE.md' })) })
   const { prompts } = await runWorkflow(WF, { args: { artifact: 'docs/proposal.md', roots: LONG_ROOT }, agent: probeAgents({ axes }) })
   const [probe] = probesIn(prompts)
-  assert.equal(probe.opts.label, 'probe:' + STANDING.concat(MANY_AXES).join('+'))
+  assert.equal(probe.opts.label, 'probe:' + nameKey(STANDING.concat(MANY_AXES).join('+')))
   const file = returnFileOf(probe.prompt)
   assert.ok(file.startsWith(LONG_ROOT + '/.agentics/.state/evidence/inbox/' + nameKey(probe.opts.label.replace(/[^A-Za-z0-9.-]+/g, '-')) + '-'), file)
   for (const p of prompts.filter((x) => returnFileOf(x.prompt))) assert.deepEqual(overruns(returnFileOf(p.prompt)), [], p.opts.label)

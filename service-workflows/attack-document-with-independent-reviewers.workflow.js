@@ -96,54 +96,24 @@ const AXES = {
 // the same repository by the same reader, and neither needs the other's answer: `guidance` is what
 // this project asks a reviewer to check, `ground` is what the artefact talks about without citing
 // it by line — the modules it would change, and whatever already does what it proposes to build.
-// Its full report goes to its return file, which lib reads; the hits come back as handles, by path,
-// line and kind, so the script can tell the two kinds apart and measure progress.
-//
-// The coverage fields answer the contract every search in this plugin answers to (IRON LAW §2),
-// and only `hits` is required, so a finished search is never deadlocked on a field it had
-// nothing for.
+// Its whole report — hits by path, line and kind, and its coverage — goes to its return file, and
+// that file is the record: lib reads each round's (`evidence.mjs round`) and says whether the
+// search goes on, so nothing the script acts on is the scout's echo of what it wrote.
 const LOCATED = {
   type: 'object', additionalProperties: false,
-  required: ['hits'],
-  properties: {
-    hits: {
-      type: 'array',
-      description: 'Every location in your return file, by path, line and kind only.',
-      items: {
-        type: 'object', additionalProperties: false,
-        required: ['path', 'line', 'kind'],
-        properties: {
-          path: { type: 'string', description: 'Path to the file, relative to the repository.' },
-          line: { type: 'integer', description: 'Line number of the hit.' },
-          kind: {
-            type: 'string', enum: ['guidance', 'ground'],
-            description: '"guidance" for a passage of this repository\'s own review or design ' +
-              'guidance; "ground" for code or docs the artefact talks about.',
-          },
-        },
-      },
-    },
-    stop_reason: {
-      type: 'string', enum: ['exhausted', 'unfinished', 'stuck'],
-      description: 'Always include this field, the same value as in your return file. "exhausted" only when both ' +
-        'charges are covered and you can name the surface; "unfinished" hands back an honest partial and you will be ' +
-        'resumed; "stuck" when you found no way forward. The size of the work is never a reason.',
-    },
-    not_reached: {
-      type: 'string',
-      description: 'What you never searched, the same text as in your return file, named so someone else can pick ' +
-        'it up. An empty string when exhausted; never what you searched and did not find.',
-    },
-  },
+  required: ['hits_n'],
+  properties: { hits_n: { type: 'integer', description: 'How many hits your return file holds.' } },
 }
 
 const LOCATED_FILE = '{"hits": [{"path": "<repo-relative>", "line": <n>, "note": "<what is at that line, in one line>", ' +
-  '"kind": "guidance|ground"}], "searched": ["<every pattern, glob and path you actually searched>"], ' +
+  '"kind": "guidance (this repository\'s own review or design guidance) | ground (code or docs the artefact talks about)"}], ' +
+  '"searched": ["<every pattern, glob and path you actually searched>"], ' +
   '"no_match": "<what you searched for and genuinely did not find — a finding; empty when none>", ' +
-  '"not_reached": "<what you never searched; empty when exhausted>", "stop_reason": "exhausted|unfinished|stuck"}'
+  '"not_reached": "<what you never searched, named so someone else can pick it up; empty when exhausted>", ' +
+  '"stop_reason": "exhausted (both charges covered) | unfinished (an honest partial; you will be resumed) | stuck"}'
 
-// What a probing analyst hands back. Its findings go to its return file, on the design ladder,
-// and lib records them; the script branches only on whether it finished.
+// What a probing analyst hands back. Its findings and its `stop_reason` go to its return file, on
+// the design ladder, and lib reads them; whether it finished is lib's reading of that file.
 //
 // `stop_reason` is the same instrument every search-shaped output in this plugin carries, and
 // it is here for the same reason (IRON LAW §2). A prober that ran out of room halfway down a
@@ -154,13 +124,7 @@ const LOCATED_FILE = '{"hits": [{"path": "<repo-relative>", "line": <n>, "note":
 const PROBED = {
   type: 'object', additionalProperties: false,
   required: ['findings_n'],
-  properties: {
-    findings_n: { type: 'integer', description: 'How many findings your return file holds.' },
-    // Not `required`: an exhausted prober with nothing to say must never be deadlocked by a
-    // field it forgot. Absent, it is normalized below — toward "unfinished", never toward "done".
-    stop_reason: { type: 'string', enum: ['exhausted', 'unfinished', 'artefact_unreadable'] },
-    not_reached: { type: 'string' },
-  },
+  properties: { findings_n: { type: 'integer', description: 'How many findings your return file holds.' } },
 }
 
 // `severity` is the design ladder, not the code one. The code ladder is verbatim-diffed and
@@ -365,6 +329,30 @@ async function carry(command, label, phaseName) {
 
 const lib = (cli, verb) => `node "${pluginRoot}/lib/${cli}.mjs" ${verb} --repo "${groundRepo}"`
 
+/**
+ * One round of a resumed agent as lib reads it from the return files its rounds wrote, the last
+ * one this round's: `{next: done|continue|stop, why, stop_reason, named, gained_n, entries_n,
+ * kinds}`. A round lib's reading never came back from ends the search short (`uncarried`).
+ */
+async function readRound(files, label, phaseName) {
+  const held = await carry(`${lib('evidence', 'round')} --from "${files[files.length - 1]}"` +
+    files.slice(0, -1).map((f) => ` --earlier "${f}"`).join(''), 'round:' + label, phaseName)
+  return held.payload || { next: 'stop', why: 'uncarried', carried: held.why, stop_reason: '', named: false, gained_n: 0 }
+}
+
+/** What a search that ended short never reached, as a phrase the coverage block puts after "never reaching". */
+function shortOf(round, file) {
+  if (round.why === 'uncarried') return `what ${file} names under not_reached (lib's reading of it never came back: ${round.carried})`
+  if (round.why === 'unreadable') return `whatever ${file} would have named: that report could not be read`
+  return round.named
+    ? `what ${file} names under not_reached`
+    : `whatever ${file} did not search: it stopped "${round.stop_reason || 'unstated'}" without naming it`
+}
+
+const CONTINUE_ON =
+  `STILL NOT REACHED — this is your job now: what the last of those reports names under not_reached. ` +
+  `Where it names nothing, cover whatever the original request asks that the reports' searched lists do not show.`
+
 // An agent whose output lib/ reads writes it to a return file under the working root, named by its
 // dispatch label, bounded by nameKey, and the digest of what it was handed, so a retried dispatch
 // rewrites the same file.
@@ -436,23 +424,25 @@ const LOCATE_CHARGE =
   `The analysts that attack this artefact cannot search: what you locate is what they get to ` +
   `read. Search to exhaustion — stop when both charges are covered or you are genuinely stuck, ` +
   `never because the list is getting long. If one pass cannot cover it, report what you have, ` +
-  `set stop_reason "unfinished" and name exactly what remains in not_reached.`
+  `set stop_reason "unfinished" in your return file and name exactly what remains in its not_reached.`
 
 /**
- * The locating scout, driven to exhaustion (IRON LAW §3): continued on exactly what it names as
- * unreached for as long as a round brings back a new location or narrows the remainder. No
- * counter ends it (§1). Null when not one round reported — nothing was located at all. Each round
- * writes its own return file, and a continuation names every earlier one.
+ * The locating scout, driven to exhaustion (IRON LAW §3): each round is read from the report it
+ * wrote, and continued for as long as lib's reading says it goes on. No counter ends it (§1). Null
+ * when not one round reported — nothing was located at all. A continuation names every earlier
+ * round's file.
  */
 async function locate() {
-  const hits = []
   const files = []
-  const seen = new Set()
-  let remainder = ''
-  let prevKey = null
+  let read = null
   let round = 0
 
-  const result = (complete, notReached) => ({ hits, files, complete, notReached })
+  // Counts lib never read back are unknown (null), never zero: a reader is still handed the reports.
+  const result = (complete, notReached) => ({
+    files, complete, notReached,
+    guidance_n: read ? read.kinds.guidance || 0 : null,
+    ground_n: read ? read.entries_n - (read.kinds.guidance || 0) : null,
+  })
 
   for (;;) {
     round++
@@ -460,8 +450,7 @@ async function locate() {
       ? LOCATE_CHARGE
       : `Continue an unfinished search — do not start over.\n\nORIGINAL REQUEST:\n${LOCATE_CHARGE}\n\n` +
         `YOUR EARLIER ROUNDS' REPORTS — read them first: do not repeat what they searched, and do ` +
-        `not report again what they found:\n${files.join('\n')}\n\n` +
-        `STILL NOT REACHED — this is your job now:\n${remainder}`
+        `not report again what they found:\n${files.join('\n')}\n\n` + CONTINUE_ON
     const label = 'locate' + (round > 1 ? '#' + round : '')
     const file = returnFile(label, body)
     const out = await agent(toFile(body, file, LOCATED_FILE), {
@@ -470,28 +459,16 @@ async function locate() {
       log(`WARNING: locating round ${round} failed: ${e && e.message}`)
       return null
     })
-    if (!out) return round === 1 ? null : result(false, remainder || `round ${round} produced no result`)
+    if (!out) return round === 1 ? null : result(false, `round ${round} produced no result`)
     files.push(file)
 
-    let gained = false
-    for (const h of Array.isArray(out.hits) ? out.hits : []) {
-      const k = `${h.path}:${h.line}`
-      if (h && !seen.has(k)) { seen.add(k); hits.push(h); gained = true }
+    const r = await readRound(files, label, 'Locate')
+    if (r.kinds) read = r
+    if (r.next === 'done') return result(true, '')
+    if (r.next !== 'continue') {
+      log(`locate: round ${round} ends the search short (${r.why}).`)
+      return result(false, shortOf(r, file))
     }
-
-    if (out.stop_reason === 'exhausted') return result(true, '')
-
-    const next = (out.not_reached || '').trim()
-    if (!next) {
-      return result(false, `the search stopped as "${out.stop_reason || 'unstated'}" without naming what was missed`)
-    }
-    const key = next.replace(/\s+/g, ' ').toLowerCase()
-    if (!gained && key === prevKey) {
-      log('locate: a round brought back nothing new and left the same ground unreached — stopping as stuck.')
-      return result(false, next)
-    }
-    prevKey = key
-    remainder = next
     log(`locate: unfinished after round ${round}, resuming.`)
   }
 }
@@ -579,10 +556,10 @@ function repoGroundSection() {
   }
   return `REPOSITORY GROUND — what a scout located as the code and docs this document talks ` +
     `about, and whatever already exists here that does what it proposes:\n\n` +
-    (groundHits.length > 0 ? locatedBlock('ground', groundContext) : '(nothing located)') +
+    (groundN !== 0 ? locatedBlock('ground', groundContext) : '(nothing located)') +
     (located.complete
       ? ''
-      : `\n\nWARNING: this search did NOT finish; it never reached: ${located.notReached}. A ` +
+      : `\n\nWARNING: this search did NOT finish; it never reached ${located.notReached}. A ` +
         `finding resting on unlocated ground says so.`) +
     `\n\n`
 }
@@ -603,17 +580,19 @@ function axisBlock(bundle) {
     bundle.map((a, i) => `${i + 1}. ${one(a)}`).join('\n\n') + '\n\n'
 }
 
-function probePrompt(bundle, ground, earlier, remainder) {
+function probePrompt(bundle, ground, earlier) {
   const many = bundle.length > 1
   return `Attack this document on ${many ? 'the axes below' : 'ONE axis'}. You are a probe, ` +
     `not a reviewer: your job is to ` +
     `find where it is wrong, not to appraise it. A document that survives you is not thereby ` +
     `endorsed — you have no way to endorse anything, and your caller computes what your ` +
     `findings mean.\n\n` +
-    (remainder
+    (earlier.length
       ? `A CONTINUATION. An earlier probe held these same axes and stopped before it finished. ` +
         `Its findings are already in these files, and stand: ${earlier.join(', ')}. ` +
-        `Attack ONLY what it never reached:\n${remainder}\n` +
+        `Attack ONLY what the last of them names under not_reached. Where it names nothing, attack ` +
+        `the whole document again on every axis you hold, and report only what those files do not ` +
+        `already hold.\n` +
         `Read the rest of the document for context, but report only on that part.\n\n`
       : '') +
     (narrow
@@ -789,8 +768,10 @@ const groundHeld = carry(`${lib('citations', 'cited')} --file "${artifact}"`, 'g
 const located = await locate()
 
 const failedChannels = []
-const guidanceHits = located ? located.hits.filter((h) => h.kind === 'guidance') : []
-const groundHits = located ? located.hits.filter((h) => h.kind !== 'guidance') : []
+// How many locations of each kind lib read from the scout's reports; null when its reading never came
+// back, which still hands the reports to their readers.
+const guidanceN = located ? located.guidance_n : 0
+const groundN = located ? located.ground_n : 0
 
 if (!located) {
   // The analysts cannot search, so a scout that never reported leaves them the document and its
@@ -800,7 +781,7 @@ if (!located) {
   log('WARNING: nothing was located — the repository\'s guidance and the ground this document ' +
     'talks about are both unread; probing on the standing axes over the document alone.')
 } else {
-  log(`Located ${guidanceHits.length} guidance passage(s) and ${groundHits.length} ground ` +
+  log(`Located ${guidanceN ?? 'an uncounted number of'} guidance passage(s) and ${groundN ?? 'uncounted'} ground ` +
     `location(s)${located.complete ? '' : ' — the search did NOT finish'}.`)
 }
 
@@ -810,11 +791,11 @@ phase('Ground')
 // own context. Every probe Reads the same ground file: one read by a script, shared by all.
 const NOTHING = { path: '', why: '' }
 const [guidanceContext, groundContext] = await Promise.all([
-  guidanceHits.length > 0 ? assembleLocated('guidance', 'guidance-context') : NOTHING,
-  groundHits.length > 0 ? assembleLocated('ground', 'ground-context') : NOTHING,
+  guidanceN !== 0 ? assembleLocated('guidance', 'guidance-context') : NOTHING,
+  groundN !== 0 ? assembleLocated('ground', 'ground-context') : NOTHING,
 ])
-const locatedFailures = [[guidanceHits, guidanceContext, 'guidance'], [groundHits, groundContext, 'ground']]
-  .filter(([hits, ctx]) => hits.length > 0 && !ctx.path).map(([, ctx, kind]) => `the ${kind}: ${ctx.why}`)
+const locatedFailures = [[guidanceN, guidanceContext, 'guidance'], [groundN, groundContext, 'ground']]
+  .filter(([n, ctx]) => n !== 0 && !ctx.path).map(([, ctx, kind]) => `the ${kind}: ${ctx.why}`)
 if (locatedFailures.length > 0) {
   log(`The located ground was not all resolved (${locatedFailures.join('; ')}); the analysts ` +
     `read those locations themselves. More turns, not less evidence.`)
@@ -839,7 +820,7 @@ phase('Axes')
 
 // No guidance located after an exhausted search is the repository stating none; no analyst is
 // bought to say so. A search that did not finish is its own incompleteness, recorded below.
-const discovered = guidanceHits.length === 0
+const discovered = guidanceN === 0
   ? (located ? { stop_reason: 'no_guidance_found', axes: [], guidance_read: [], notes: '' } : null)
   : await agent(axesPrompt(locatedBlock('guidance', guidanceContext)), {
     agentType: 'agentics:analyst', effort: 'low', schema: AXES,
@@ -912,19 +893,18 @@ log(`Probing ${artifact} on ${axes.length} axes with ${analysts} analyst(s) — 
       : 'the artefact\'s length is unknown, so one') +
   `: ${bundles.map(bundleKey).join(', ')}.`)
 
-// One analyst's whole attack: a first pass, then continuations on exactly what it never
-// reached, for as long as each pass gets further than the last. No counter ends it (IRON LAW
-// §1). It ends when a pass is exhausted, or cannot say what it missed, or hands back the very
-// remainder it was given — a pass that made no progress buys no further pass, and what it
-// left stays in the coverage block as unreached. Each pass writes its own return file.
+// One analyst's whole attack: a first pass, then continuations on what it never reached, for as
+// long as lib's reading of each pass's return file says it goes on. No counter ends it (IRON LAW
+// §1). What a pass that ended short left stays in the coverage block as unreached. Each pass
+// writes its own return file; `last` is the latest pass lib read, with that reading.
 async function attack(bundle) {
-  const label = `probe:${bundleKey(bundle)}`
+  const label = `probe:${nameKey(bundleKey(bundle))}`
   const passes = []
-  let remainder = ''
+  let last = null
 
   for (;;) {
-    const body = probePrompt(bundle, ground, passes.map((p) => p.file), remainder)
-    const passLabel = remainder ? label + ':continued' : label
+    const body = probePrompt(bundle, ground, passes.map((p) => p.file))
+    const passLabel = passes.length ? label + ':continued' : label
     const file = returnFile(passLabel, body)
     const report = await agent(toFile(body, file, probeFile(bundle.map((a) => a.key))), {
       agentType: 'agentics:analyst', effort: 'medium', schema: PROBED, phase: 'Probe', label: passLabel,
@@ -932,14 +912,11 @@ async function attack(bundle) {
       log(`WARNING: ${passLabel} did not report: ${e && e.message}`)
       return null
     })
-    if (!report) return { passes, remainder }
+    if (!report) return { passes, last }
 
-    passes.push({ file, report })
-    const next = (report.not_reached || '').trim()
-    if (report.stop_reason !== 'unfinished' || !next || next === remainder) {
-      return { passes, remainder: next }
-    }
-    remainder = next
+    passes.push({ file })
+    last = { file, round: await readRound(passes.map((p) => p.file), passLabel, 'Probe') }
+    if (last.round.next !== 'continue') return { passes, last }
   }
 }
 
@@ -962,13 +939,13 @@ bundles.forEach((bundle, i) => {
   for (const p of passes) probes.push({ file: p.file, bundle: bundleKey(bundle) })
 
   // An axis that stopped short keeps whatever it found, but it is not an axis that came back
-  // clean. Anything other than an explicit "exhausted" counts as short, including an absent
+  // clean. Anything other than a file lib read as exhausted counts as short, including an absent
   // field: normalizing silence toward done is exactly how a half-read document earns a clean
   // bill of health.
-  const last = passes.length ? passes[passes.length - 1].report : null
-  if (last && last.stop_reason !== 'exhausted') {
+  const last = outcome ? outcome.last : null
+  if (last && last.round.next !== 'done') {
     for (const key of keys) {
-      partiallyExamined.push({ key, why: last.stop_reason || 'unstated', remainder: outcome.remainder })
+      partiallyExamined.push({ key, why: last.round.stop_reason || 'unstated', remainder: shortOf(last.round, last.file) })
     }
   }
 })
@@ -1011,8 +988,7 @@ const coverage = {
   unreached: unexamined.map((key) =>
     key + ': no probe reported on this axis, so nothing here was examined for it')
     .concat(partiallyExamined.map((a) =>
-      `${a.key}: the probe stopped "${a.why}" before exhausting the artefact` +
-      (a.remainder ? `, never reaching: ${a.remainder}` : ', without naming what it missed') +
+      `${a.key}: the probe stopped "${a.why}" before exhausting the artefact, never reaching ${a.remainder}` +
       ' — its findings stand, its silence does not'))
     .concat(unread.map((p) => `${p.bundle}: its analyst's return file ${p.file} could not be read, so what it ` +
       'found is in no finding here'))
@@ -1031,7 +1007,7 @@ const coverage = {
       : [])
     .concat(located && !located.complete
       ? ['locate: the search for the repository\'s guidance and the ground this document talks ' +
-         'about stopped before it was exhausted, never reaching: ' + located.notReached]
+         'about stopped before it was exhausted, never reaching ' + located.notReached]
       : [])
     .concat(locatedFailures.length > 0
       ? ['some located ground was not resolved for the analysts (' + locatedFailures.join('; ') +
@@ -1080,9 +1056,9 @@ return {
   // much of what the document talks about was located and handed over.
   guidance_read: discovered && (discovered.guidance_read || []).length > 0
     ? discovered.guidance_read
-    : [...new Set(guidanceHits.map((h) => String(h.path)))],
+    : [],
   repo_ground: located
-    ? { located: groundHits.length, complete: located.complete, unresolved: locatedFailures.length }
+    ? { located: groundN || 0, complete: located.complete, unresolved: locatedFailures.length }
     : { located: 0, complete: false, unresolved: 0 },
   findings,
   findings_file: recorded ? recorded.findings_file : '',

@@ -16,7 +16,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import {
-  carriedEnvelope, contextPath, courierCommand, courierProblems, flagValues, returnFileOf, runWorkflow, scriptedAgents,
+  WROTE, carriedEnvelope, contextPath, courierCommand, courierProblems, flagValues, returnFileOf, runWorkflow, scriptedAgents,
 } from './harness/workflow-host.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
 import { nameKey } from '../lib/store.mjs'
@@ -177,7 +177,7 @@ test('an exhausted search that found nothing says what it covered, and keeps com
   const { result } = await run({
     agent: happy({ 'find:': found(0, { no_match: 'no maintained npm package does per-key limiting' }), record: decided({ candidates: 0, viable: 0 }) }),
   })
-  assert.ok(result.coverage.unreached.some((u) => /searched and found nothing: no maintained npm package/.test(u)))
+  assert.ok(result.coverage.unreached.some((u) => /^stdlib searched and did not find what \S+ name under no_match$/.test(u)))
   assert.equal(result.coverage.complete, false, 'a no_match line is a finding worth reading, never a silent empty list')
 })
 
@@ -193,8 +193,8 @@ test('an unexhausted angle is carried as never-reached, worded apart from found-
     }),
   })
   assert.ok(result.coverage.incomplete.includes('registry'))
-  assert.ok(result.coverage.unreached.some((u) => /registry never reached: crates\.io and PyPI/.test(u)))
-  assert.ok(!result.coverage.unreached.some((u) => /registry searched and found nothing/.test(u)))
+  assert.ok(result.coverage.unreached.some((u) => /^registry never reached what \S+ names under not_reached$/.test(u)))
+  assert.ok(!result.coverage.unreached.some((u) => /registry searched and did not find/.test(u)))
   assert.ok(result.coverage.resumable.remaining.includes('registry'))
 })
 
@@ -207,7 +207,7 @@ test('an unexhausted angle is resumed from its own report rather than reported',
   })
   assert.equal(rounds, 2, 'IL1: an incomplete search is resumed, not reported')
   const resumed = byLabel(prompts, 'find:registry#2')
-  assert.match(resumed, /do not start over[\s\S]*STILL NOT REACHED[\s\S]*crates\.io/)
+  assert.match(resumed, /do not start over[\s\S]*STILL NOT REACHED — this is your job now: what the last of those reports names under not_reached/)
   assert.ok(resumed.includes(returnFileOf(byLabel(prompts, 'find:registry'))))
   assert.equal(flagValues(courierCommand(byLabel(prompts, 'record')), 'from').length, 3, 'both rounds\' reports reach lib')
   assert.equal(result.coverage.complete, true)
@@ -219,8 +219,29 @@ test('an angle that stops without naming what it missed is a dead end, not anoth
     agent: happy({ 'find:': byAngle(() => found(1), () => { rounds += 1; return found(0, { stop_reason: 'stuck', not_reached: '' }) }) }),
   })
   assert.equal(rounds, 1)
-  assert.ok(result.coverage.unreached.some((u) => /without naming what was missed/.test(u)))
+  assert.ok(result.coverage.unreached.some((u) => /stopped "stuck" without naming it/.test(u)))
   assert.equal(result.coverage.complete, false)
+})
+
+test('a researcher round is read from the report it wrote, not from what it echoed back', async () => {
+  let rounds = 0
+  const { result } = await run({
+    agent: happy({
+      'find:': byAngle(() => found(1), () => (++rounds === 1
+        ? { ...found(1), [WROTE]: found(1, { stop_reason: 'unfinished', not_reached: 'crates.io' }) }
+        : found(1))),
+    }),
+  })
+  assert.equal(rounds, 2, 'an echoed "exhausted" over an unfinished report is resumed')
+  assert.equal(result.coverage.complete, true)
+})
+
+test('a repo scan that echoes "exhausted" over a report that says otherwise is partial', async () => {
+  const { result } = await run({
+    agent: happy({ repo: { ...scouted(1), [WROTE]: scouted(1, { stop_reason: 'unfinished', not_reached: 'vendor/' }) } }),
+  })
+  assert.ok(result.coverage.incomplete.includes('repo'))
+  assert.ok(result.coverage.unreached.some((u) => /^the repository scan never reached what \S+ names under not_reached/.test(u)))
 })
 
 // --- the repo channel: the cheapest answer, and a real side channel --------------------------

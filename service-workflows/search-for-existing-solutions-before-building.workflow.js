@@ -44,42 +44,16 @@ export const meta = {
 // Field semantics go in `description`, never in a comment: comments are stripped before a
 // schema reaches the model, so a contract written only in a comment binds nobody.
 
-// The coverage contract every search channel answers to, identical in spirit to gather-evidence-without-concluding's.
-// `no_match` and `not_reached` stay apart on purpose, and here the distinction is the whole
-// point of the workflow: "I searched npm and nothing there does this" is a FINDING that
-// supports building. "I never searched npm" is a HOLE that supports nothing at all.
-// Every coverage field is ALWAYS present — an empty string is the correct value for "nothing
-// to carry", and each description says so outright: an omitted field fails validation and a
-// finished search is dropped whole.
-const coverageFields = () => ({
-  stop_reason: {
-    type: 'string',
-    enum: ['exhausted', 'unfinished', 'stuck'],
-    description:
-      'Always include this field, the same value as in your return file. "exhausted" — you ' +
-      'covered the surface you were asked to cover and can name it. "unfinished" — one pass could ' +
-      'not cover the surface; the caller will resume you. "stuck" — you could not find a way ' +
-      'forward. Cost and effort are never reasons to stop. Only "exhausted" counts as complete.',
-  },
-  no_match: {
-    type: 'string',
-    description:
-      'What you looked for and genuinely did not find, the same text as in your return file — a ' +
-      'FINDING, not a gap. Name the surface it is true of ("no maintained Rust crate on ' +
-      'crates.io"). Send an empty string — never omit the field — when everything you looked for was there.',
-  },
-  not_reached: {
-    type: 'string',
-    description:
-      'What you never searched at all, the same text as in your return file, named specifically ' +
-      'enough for someone else to pick it up. An empty string when stop_reason is "exhausted". ' +
-      'Never merge this with no_match.',
-  },
-})
-
+// The coverage contract every search channel answers to is in its return file: what it searched,
+// `no_match` and `not_reached`, and `stop_reason`. That file is the record — lib reads each round's
+// (`evidence.mjs round`) and says whether the search goes on — and the structured return is a count.
+// `no_match` and `not_reached` stay apart on purpose, and here the distinction is the whole point
+// of the workflow: "I searched npm and nothing there does this" is a FINDING that supports
+// building. "I never searched npm" is a HOLE that supports nothing at all.
 const coverageShape = '"searched": ["<every query you ran and every URL or path you actually read>"], ' +
-  '"no_match": "<what you looked for and genuinely did not find; empty when none>", ' +
-  '"not_reached": "<what you never searched; empty when exhausted>", "stop_reason": "exhausted|unfinished|stuck"'
+  '"no_match": "<what you looked for and genuinely did not find, naming the surface it is true of — a finding; empty when none>", ' +
+  '"not_reached": "<what you never searched, named so someone else can pick it up; empty when exhausted>", ' +
+  '"stop_reason": "exhausted (you covered the surface you were asked to) | unfinished (you will be resumed) | stuck"'
 
 const FRAME = {
   type: 'object',
@@ -115,7 +89,6 @@ const CANDIDATES = {
   required: ['candidates_n'],
   properties: {
     candidates_n: { type: 'integer', description: 'How many candidates your return file holds.' },
-    ...coverageFields(),
   },
 }
 
@@ -132,7 +105,6 @@ const PRESENT = {
   required: ['hits_n'],
   properties: {
     hits_n: { type: 'integer', description: 'How many locations your return file holds.' },
-    ...coverageFields(),
   },
 }
 
@@ -341,6 +313,32 @@ const toFile = (body, file, shape) => body +
   `\n\nRETURN FILE — write your full return to ${file} as one JSON object of exactly this shape:\n${shape}\n` +
   'Then return only what your schema asks for.'
 
+const lib = (cli, verb) => `node "${pluginRoot}/lib/${cli}.mjs" ${verb} --repo "${groundRepo}"`
+
+/**
+ * One round of a resumed agent as lib reads it from the return files its rounds wrote, the last
+ * one this round's: `{next: done|continue|stop, why, stop_reason, named, absent, gained_n,
+ * entries_n}`. A round lib's reading never came back from ends the search short (`uncarried`).
+ */
+async function readRound(files, label, phaseName) {
+  const held = await carry(`${lib('evidence', 'round')} --from "${files[files.length - 1]}"` +
+    files.slice(0, -1).map((f) => ` --earlier "${f}"`).join(''), 'round:' + label, phaseName)
+  return held.payload || { next: 'stop', why: 'uncarried', carried: held.why, stop_reason: '', named: false, absent: false }
+}
+
+/** What a search that ended short never reached, as a phrase a coverage line puts after "never reached". */
+function shortOf(round, file) {
+  if (round.why === 'uncarried') return `what ${file} names under not_reached (lib's reading of it never came back: ${round.carried})`
+  if (round.why === 'unreadable') return `whatever ${file} would have named: that report could not be read`
+  return round.named
+    ? `what ${file} names under not_reached`
+    : `whatever ${file} did not search: it stopped "${round.stop_reason || 'unstated'}" without naming it`
+}
+
+const CONTINUE_ON =
+  `STILL NOT REACHED — this is your job now: what the last of those reports names under not_reached. ` +
+  `Where it names nothing, cover whatever the original request asks that the reports' searched lists do not show.`
+
 // Angle keys are a model's words and become labels, so each is spelled as a slug.
 const slug = (text) => String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'angle'
 
@@ -472,15 +470,14 @@ phase('Search')
 // returns an object, and every incomplete exit records the angle — because here, more than
 // anywhere, an interrupted search that reads as a finished one licenses the wrong decision.
 //
-// No round counter ends this loop (§1): it runs until the angle is exhausted, dead-ends
-// without naming what is left, errors out, or a round leaves the very remainder it was handed —
-// the observable form of "stuck". Each round writes its own return file, and a continuation
-// names every earlier one, so a researcher reads what it already covered rather than being told.
+// No round counter ends this loop (§1): each round is read from the return file it wrote, and it
+// runs for as long as lib's reading says it goes on. Each round writes its own return file, and a
+// continuation names every earlier one, so a researcher reads what it already covered rather than
+// being told. `absent` are the rounds' files that name something looked for and not found.
 async function searchUntilComplete(angle) {
   const files = []
-  const noMatch = []
+  const absent = []
   let round = 0
-  let remainder = ''
 
   const charge =
     `Find existing solutions. FINDING-EXISTING-SOLUTIONS MODE.\n\n` +
@@ -502,7 +499,7 @@ async function searchUntilComplete(angle) {
 
   const incomplete = (notReached) => {
     partial.push(angle.key)
-    return { files, noMatch: noMatch.join('\n'), notReached }
+    return { files, absent, notReached }
   }
 
   for (;;) {
@@ -511,8 +508,7 @@ async function searchUntilComplete(angle) {
       ? charge
       : `Continue an unfinished search — do not start over.\n\nORIGINAL REQUEST:\n${charge}\n\n` +
         `YOUR EARLIER ROUNDS' REPORTS — read them first: do not repeat what they searched, and do ` +
-        `not report again the candidates they found:\n${files.join('\n')}\n\n` +
-        `STILL NOT REACHED — this is your job now:\n${remainder}`
+        `not report again the candidates they found:\n${files.join('\n')}\n\n` + CONTINUE_ON
     const label = `find:${angle.key}${round > 1 ? `#${round}` : ''}`
     const file = returnFile(label, body)
 
@@ -523,34 +519,24 @@ async function searchUntilComplete(angle) {
       })
     } catch (e) {
       log(`${angle.key}: round ${round} threw (${e && e.message}); keeping what was found.`)
-      return incomplete(`round ${round} failed before completion: ${e && e.message}`)
+      return incomplete(`what round ${round} was sent to search: it failed before completion (${e && e.message})`)
     }
 
     if (!found) {
       log(`${angle.key}: round ${round} returned nothing; keeping what was found.`)
-      return incomplete(`round ${round} produced no result`)
+      return incomplete(`what round ${round} was sent to search: it produced no result`)
     }
     files.push(file)
-    if ((found.no_match || '').trim()) noMatch.push(found.no_match.trim())
 
-    if (found.stop_reason === 'exhausted') return { files, noMatch: noMatch.join('\n'), notReached: '' }
-
-    // Not exhausted but nothing named as unreached: another round would be handed an empty
-    // task and would return "exhausted" having done nothing. Treat it as the dead end it is.
-    const next = (found.not_reached || '').trim()
-    if (!next) {
-      const reason = found.stop_reason || 'unstated'
-      log(`${angle.key}: stop_reason "${reason}" with nothing named as unreached — treating as a dead end.`)
-      return incomplete(`search stopped as "${reason}" without naming what was missed`)
+    const r = await readRound(files, label, 'Search')
+    if (r.absent) absent.push(file)
+    if (r.next === 'done') return { files, absent, notReached: '' }
+    if (r.next !== 'continue') {
+      log(`${angle.key}: round ${round} ends the search short (${r.why}).`)
+      return incomplete(shortOf(r, file))
     }
 
-    if (next.replace(/\s+/g, ' ').toLowerCase() === remainder.replace(/\s+/g, ' ').toLowerCase()) {
-      log(`${angle.key}: round ${round} left the same ground unreached — stopping as stuck rather than looping.`)
-      return incomplete(next)
-    }
-    remainder = next
-
-    log(`${angle.key}: unfinished after round ${round} (${found.stop_reason || 'unstated'}), resuming.`)
+    log(`${angle.key}: unfinished after round ${round} (${r.stop_reason || 'unstated'}), resuming.`)
   }
 }
 
@@ -598,28 +584,23 @@ for (let i = 0; i < angles.length; i++) {
 
   researched.push(...found.files)
 
-  if ((found.noMatch || '').trim()) {
-    unreached.push(`${angle.key} searched and found nothing: ${found.noMatch.trim()}`)
+  if (found.absent.length > 0) {
+    unreached.push(`${angle.key} searched and did not find what ${found.absent.join(', ')} name under no_match`)
   }
-  if ((found.notReached || '').trim()) {
-    unreached.push(`${angle.key} never reached: ${found.notReached.trim()}`)
+  if (found.notReached) {
+    unreached.push(`${angle.key} never reached ${found.notReached}`)
   }
 }
 
 if (repo.result) {
-  // Gated on stop_reason, not on not_reached alone — the same test the angle loop applies.
-  // A scan that stopped unfinished and left not_reached blank was reading as a finished one,
-  // and this is the channel whose answer the skill calls the cheapest and most decisive in
-  // the workflow: "you already depend on something that does this".
-  const repoDone = repo.result.stop_reason === 'exhausted'
-  const repoRemainder = (repo.result.not_reached || '').trim()
-
-  if (!repoDone || repoRemainder) {
+  // Read from the scan's own file, as the angles' rounds are. This is the channel whose answer the
+  // skill calls the cheapest and most decisive in the workflow — "you already depend on something
+  // that does this" — so a scan lib did not read as exhausted is partial, whatever it echoed.
+  const repoRound = await readRound([repoFile], 'repo', 'Search')
+  if (repoRound.next !== 'done') {
     partial.push('repo')
-    unreached.push(repoRemainder
-      ? `the repository scan never reached: ${repoRemainder}`
-      : `the repository scan stopped "${repo.result.stop_reason || 'unstated'}" without ` +
-        `naming what it missed, so what the tree already provides is only partly known`)
+    unreached.push(`the repository scan never reached ${shortOf(repoRound, repoFile)}, so what the tree already ` +
+      'provides is only partly known')
   }
 } else {
   failedChannels.push('repo')

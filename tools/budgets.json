@@ -28,6 +28,10 @@
     "roles/planner.md": 221,
     "roles/implementer.md": 99,
     "roles/test-author.md": 96,
-    "roles/investigator.md": 48
+    "roles/investigator.md": 48,
+    "roles/analyst.md": 96,
+    "roles/ruler.md": 52,
+    "roles/reviewer.md": 112,
+    "roles/auditor.md": 52
   }
 }

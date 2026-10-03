@@ -355,7 +355,7 @@ It spawns the host's CLI, `claude -p`, without a shell, and owns every flag:
 | the model | `--model` and `--effort` from the dispatch's tier ([Model tier](#model-tier)) | per task; a resumed session may change model |
 | the return | `--json-schema` with the role's return schema from `lib/schemas.mjs`; `--output-format stream-json --verbose` | the host validates the return, and the stream's final `result` event carries it; the events before it feed live activity ([Progress](#progress)) |
 | the session | `--session-id <uuid>` for a thread's first call, `--resume <uuid>` for every later one | a session outlives its round ([Conversations](#conversations)); a call cut off mid-turn is resumed, never restarted |
-| the environment | the parent's environment without the launching session's `CLAUDE_*` variables | a dispatch is nobody's child session |
+| the environment | the parent's environment without the launching session's `CLAUDE_CODE_*` variables, `CLAUDECODE` and `AI_AGENT`; `CLAUDE_CONFIG_DIR` is kept | a dispatch is nobody's child session, and reads the same host configuration as the user's sessions |
 
 A **thread** is one line of work a session carries: a leaf's producer, a cycle's test author, a
 planner's folder, a survey's judge. Its session id is minted from it (`sessionOf` in
@@ -368,17 +368,20 @@ is the executable `claude` resolves to on the `PATH` (`claude.exe` on Windows), 
 brief_digest, carries[], pid}` is appended when the CLI starts, `carries` naming the messages the
 call delivers ([Conversations](#conversations)); when it ends, the runner writes the output whole
 to `returns/<dispatch>.json` and appends `returned {dispatch, session, status, usage, cost_usd,
-denials}`. Usage and cost are the host's own figures for that call, so cost is measured per call
-(P4). No agent writes a file that code reads, except the work it was dispatched to do — a
+denials}`. Usage is the host's own figure for that call; the host's cost figure accumulates over
+every call of a session, so the runner records each call's cost as the difference from the
+session's previous call. Cost is measured per call (P4). No agent writes a file that code reads, except the work it was dispatched to do — a
 producer's edits in its worktree.
 
 **One driver per session.** The host lets two processes drive one session at once and interleaves
 their turns, so the runner keeps it to one: before a session is resumed, the runner makes sure no
 earlier call on it is alive, by the `pid` on its `dispatched` line, and ends one that is — it is an
-orphan of a program that died, and its session goes on only through the resume.
+orphan of a program that died, and its session goes on only through the resume. On Windows such
+orphans are rare, since a call started without `detached` dies with the program that started it.
 
-**A session the host no longer holds** — the host's cleanup removed it, or the thread began under
-4.x — refuses to resume (`No conversation found`). That is an observation, not a fault: the thread
+**A session the host no longer holds** — the host's cleanup removed it (by default 30 days after
+its last turn, `cleanupPeriodDays`; every resume renews it), or the thread began under 4.x —
+refuses to resume (`No conversation found`). That is an observation, not a fault: the thread
 goes on in a fresh session, briefed with the thread's brief and every message recorded on it.
 
 **A session that grew too large is not resumed.** When the last call's input tokens pass half of
@@ -512,8 +515,11 @@ sent where is the routing table (`ROUTES`):
 - **Turns are never interrupted.** A message waits until its recipient's turn has ended, and one
   process drives a session at a time ([The agent runner](#the-agent-runner)).
 
-A resumed session sends its conversation again: inside the host's cache window that is mostly
-cache reads, outside it full price. The runner's records show per thread what resuming cost.
+A resumed session sends its whole conversation again. The host caches it for an hour, and every
+call renews the hour: a resume inside it pays cache reads, and one after an hour idle pays to
+write the whole history again, an order of magnitude more. So the scheduler delivers a waiting
+message while its recipient's hour is still running whenever it can, and the runner's records
+show per thread what resuming cost.
 
 ### The user's word
 
@@ -546,9 +552,11 @@ A program started with `--detach` runs in a child process that outlives the tool
 it, and its records are how anything follows it: `lib/status.mjs watch` prints a line for every
 stop and for the run's end, and the session's monitor shows each as it comes. A run is alive while
 its pid lives and its heartbeat (`run.json`, rewritten every tick) is fresh; one whose pid is gone
-without `ended` shows as stopped, and starting the same program again resumes it. Whether a run
-outlives the session that started it is the host's business, so nothing depends on it: resuming
-from the records costs one relaunch. A relaunch that finds nothing recorded since the previous
+without `ended` shows as stopped, and starting the same program again resumes it. A run started
+with `detached` outlives both a headless session's exit and a background session's stop, and the
+host's own job does not kill it on close; one started without `detached` dies with the process
+that started it. Nothing depends on survival all the same: resuming from the records costs one
+relaunch. A relaunch that finds nothing recorded since the previous
 `run` started is a fault (`launch_failed`), reported and not relaunched again.
 
 A dispatch with `dispatched` and no `returned` is resumed in its own session ([The agent
@@ -2582,7 +2590,9 @@ unresolved[]}`, and leaf-close records them.
   60 KB on standard input beside 300 permission rules, `--effort` changing the thinking spent, a
   session resumed by id from another directory and on another model, a missing session refused as
   missing, a write outside the allowed paths and a compound command denied and reported, the usage
-  figures present, and the transcript shape and the session variable `verifyAnswer` reads.
+  figures present and a session's cost figure accumulating across its calls, a detached program
+  outliving the session that started it, and the transcript shape and the session variable
+  `verifyAnswer` reads.
   A host release that changes one of them fails here before it fails an execution.
 - **Real git.** Every boundary, the locus, the resume ladder, verification and landing are tested
   against real repositories and worktrees.

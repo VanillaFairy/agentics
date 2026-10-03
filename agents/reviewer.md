@@ -68,7 +68,7 @@ you keep: one `minor` per file, with the block's line count against the code it 
   (would pass without the change); a test that a correct implementation of the criteria
   would fail (an exact key set on an object the change may extend, a shape the change's own
   rule contradicts, a derivable fact written as a literal); behavior change inside a commit
-  presented as a refactor; any edit outside the declared locus.
+  presented as a refactor; any change outside the locus in the series' net diff.
 - **major** — real but mergeable: a genuine defect or hazard that does not fail an
   acceptance criterion (unhandled edge case beyond the spec, misleading name, duplicated
   logic). Reported in the result for the human gate; never loops — except on a leaf whose

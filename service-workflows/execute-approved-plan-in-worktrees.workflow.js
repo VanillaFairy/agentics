@@ -14,7 +14,7 @@ export const meta = {
 // run by a courier, scheduling and every decision record included: the boundary that closes a
 // dispatch reads what its agent wrote and records what it decides. This script holds only what a
 // script can hold without a filesystem — the units in flight — and hands each courier handles
-// (docs/DESIGN.md#gp6--couriers-carry-handles-data-stays-where-its-author-wrote-it).
+// (docs/DESIGN.md#p2--code-does-what-is-deterministic-models-only-judge).
 //
 // Schemas carry no bounds and no verdict booleans (lint: no-schema-bounds, no-self-verdict).
 

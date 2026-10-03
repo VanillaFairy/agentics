@@ -184,7 +184,7 @@ export function carriedEnvelope(payload, damage, notes = 'ran the command and pa
   return { stop_reason: 'carried', payload_raw: JSON.stringify(envelope), notes }
 }
 
-// ------------------------------------------------------------------ handles (docs/DESIGN.md#gp6--couriers-carry-handles-data-stays-where-its-author-wrote-it)
+// ------------------------------------------------------------------ handles (docs/DESIGN.md#p2--code-does-what-is-deterministic-models-only-judge)
 
 /** The one command a courier prompt hands its courier: the line after the instruction to run it. */
 export function courierCommand(prompt) {

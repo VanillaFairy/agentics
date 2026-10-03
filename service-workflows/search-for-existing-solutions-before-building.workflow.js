@@ -38,7 +38,7 @@ export const meta = {
 // decision migrates out of code and into a model's taste.
 //
 // Every agent here writes its full return to the file its dispatch names, and lib reads those
-// files (docs/DESIGN.md#gp6--couriers-carry-handles-data-stays-where-its-author-wrote-it); what
+// files (docs/DESIGN.md#p2--code-does-what-is-deterministic-models-only-judge); what
 // comes back to this script is what it branches on and what its coverage block says.
 //
 // Field semantics go in `description`, never in a comment: comments are stripped before a

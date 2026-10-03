@@ -100,20 +100,20 @@ test('every pointer into the document from the repository resolves', () => {
   assert.ok(pointers > 0, 'nothing points into the design document — the pointer scan is broken')
 })
 
-test('the guiding principles are stated, not merely referenced', () => {
+test('the principles are stated, not merely referenced', () => {
   // The sentences the rest of the codebase is a consequence of. If they go, the document has
   // become a table of contents. `\s+` because the document is hard-wrapped.
-  for (const gp of ['GP1', 'GP2', 'GP3', 'GP4', 'GP5']) assert.match(design, new RegExp('^### ' + gp + ' — ', 'm'))
+  for (const p of ['P1', 'P2', 'P3', 'P4', 'P5']) assert.match(design, new RegExp('^### ' + p + ' — ', 'm'))
   assert.match(design, /Leanness is legible/)
   assert.match(design, /Leanness never touches verdicts/)
-  assert.match(design, /Schedule by readiness/)
+  assert.match(design, /code moves the bytes/)
 })
 
-test('the parts that make agent-written durability safe are named', () => {
+test('the parts that keep judgment honest are named', () => {
   // Each of these is a property something else in the repo depends on, and each is the kind of
   // sentence that gets summarized away.
-  assert.match(design, /No agent records a\s+verdict/)
-  assert.match(design, /Bytes that cross a model carry a digest/)
+  assert.match(design, /No\s+agent approves anything/)
+  assert.match(design, /counts a unit nobody ruled on as open/)
   assert.match(design, /where the record and git agree/)
-  assert.match(design, /a reviewer has findings and no approval to give/)
+  assert.match(design, /No agent rules on its own work/)
 })

@@ -176,6 +176,28 @@ test('a line split across output chunks is streamed whole', async (t) => {
   assert.equal(got[2], SUCCESS.at(-1))
 })
 
+/** The lines `onLine` gets from a real child whose stdout is exactly `raw`. */
+async function linesOf(t, raw) {
+  const { dir, env } = scenario(t, [{ raw }])
+  const got = []
+  const res = await spawner(process.execPath, [FAKE])([], { stdin: '', env, cwd: dir, onSpawn: () => {}, onLine: (l) => got.push(l) })
+  assert.equal(res.code, 0)
+  return got
+}
+
+test('a final line with no trailing newline is streamed whole', async (t) => {
+  const last = SUCCESS.at(-1)
+  const got = await linesOf(t, [INIT, last].join('\n'))
+  assert.deepEqual(got, [INIT, last])
+  assert.equal(got.filter((l) => l === last).length, 1, 'the last line reaches onLine once')
+})
+
+test('lines ended by \\r\\n are streamed without the \\r', async (t) => {
+  const lines = [INIT, '{"type":"assistant","message":{"content":[]}}', SUCCESS.at(-1)]
+  const got = await linesOf(t, lines.map((l) => l + '\r\n').join(''))
+  assert.deepEqual(got, lines)
+})
+
 // ------------------------------------------------------------------ the call
 
 test('a first call starts its session with the brief', async () => {
@@ -276,6 +298,16 @@ test('a dispatched record is dispatchedEntry', async () => {
   assert.deepEqual(fieldsOf(row), dispatchedEntry(makeCall(), { pid: 4242, session: S }))
 })
 
+test('a dispatched record names its thread by key', () => {
+  const call = makeCall()
+  assert.equal(dispatchedEntry(call, { pid: 9876, session: S }).thread, call.thread.key)
+})
+
+test('a dispatched record names its role by name', () => {
+  const call = makeCall()
+  assert.equal(dispatchedEntry(call, { pid: 9876, session: S }).role, call.role.name)
+})
+
 test('a returned record is returnedEntry', async () => {
   const call = makeCall()
   const bare = returnedEntry(call, { session: S, status: 'returned' })
@@ -334,6 +366,24 @@ test('a call without a total has no cost', async () => {
   const [r] = rows(log, 'returned', D)
   assert.equal(r.cost_usd, null)
   assert.equal(r.cost_total, null)
+})
+
+test("a return with no total leaves the session's cost baseline alone", async () => {
+  const seed = [
+    earlierDispatched({ dispatch: OLDER, pid: 100 }), earlierReturned({ dispatch: OLDER, cost_total: 0.004 }),
+    earlierDispatched({ pid: 101 }), earlierReturned({ status: 'cut_off', cause: 'orphan_ended', cost_total: null, cost_usd: null }),
+  ]
+  const { log, out } = await run({ resume: true }, { seed })
+  const expected = RESULT.total_cost_usd - 0.004
+  close(out.cost_usd, expected)
+  close(rows(log, 'returned', D)[0].cost_usd, expected)
+})
+
+test('a call without a total has no cost even after a baseline', async () => {
+  const { log, out } = await run({ resume: true }, { seed: ENDED, script: [{ pid: 4242, lines: ok({ total_cost_usd: undefined }) }] })
+  assert.equal(out.status, 'returned')
+  assert.equal(out.cost_usd, null)
+  assert.equal(rows(log, 'returned', D)[0].cost_usd, null)
 })
 
 // ------------------------------------------------------------------ files
@@ -405,6 +455,36 @@ test('a dead earlier call is left alone', async () => {
   assert.equal(out.status, 'returned')
 })
 
+test("an earlier attempt's return does not answer a later dispatch of the same call", async () => {
+  const seed = [earlierDispatched({ pid: 101 }), earlierReturned(), earlierDispatched({ pid: 202 })]
+  const { log, killed, out } = await run({ resume: true }, { seed, alive: [202] })
+  assert.deepEqual(killed, [202])
+  const cut = log.entries().filter((e) => e.kind === 'returned' && e.status === 'cut_off')
+  assert.equal(cut.length, 1)
+  assert.equal(cut[0].dispatch, PREV)
+  assert.equal(cut[0].cause, 'orphan_ended')
+  const [, second] = rows(log, 'dispatched', PREV)
+  assert.ok(cut[0].seq > second.seq, 'the cut-off answers the second dispatch')
+  assert.equal(out.status, 'returned')
+})
+
+test('a dispatch whose CLI never started is not killed', async () => {
+  const r = rig({ script: [{ pid: 4242, lines: SUCCESS }], seed: [earlierDispatched({ pid: 0 })] })
+  const killed = []
+  r.ports.proc = { alive: () => true, kill: (pid) => killed.push(pid) }
+  const out = await runAgent(makeCall({ resume: true }), r.ports)
+  assert.ok(!killed.includes(0), 'pid 0 is no process')
+  assert.equal(r.log.entries().filter((e) => e.kind === 'returned' && e.status === 'cut_off').length, 0)
+  assert.equal(out.status, 'returned')
+})
+
+test('a first call ends no orphan', async () => {
+  const { log, killed, out } = await run({ resume: false }, { seed: [earlierDispatched({ pid: 501 })], alive: [501] })
+  assert.deepEqual(killed, [])
+  assert.equal(log.entries().filter((e) => e.kind === 'returned' && e.status === 'cut_off').length, 0)
+  assert.equal(out.status, 'returned')
+})
+
 test('a call cut off and resumed records both calls', async () => {
   const log = memoryLog()
   const first = rig({ script: [{ pid: 333, hang: true }], log })
@@ -441,6 +521,20 @@ test('a host stop records a stop and no return', async () => {
   assert.equal(stops[0].until, expected.until)
   assert.equal(rows(log, 'returned', D).length, 0, 'a stopped call stays in progress')
   assert.equal(spawns.length, 1, 'the runner does not wait and ask again itself')
+})
+
+test('a ref that moved during a host stop fails the call', async () => {
+  const stderr = 'Claude AI usage limit reached; resets at 5pm (Europe/London).'
+  const moved = ['refs/heads/main']
+  const { log, out } = await run({}, { script: [{ pid: 4242, lines: [INIT], code: 1, stderr }], checkout: { moved, changed: [] } })
+  assert.equal(out.status, 'failed')
+  assert.equal(out.cause, 'checkout')
+  assert.deepEqual(out.checkout.moved, moved)
+  const last = log.entries().filter((e) => e.dispatch === D).at(-1)
+  assert.equal(last.kind, 'returned', 'the call does not stay in progress')
+  assert.equal(last.status, 'failed')
+  assert.equal(last.cause, 'checkout')
+  assert.equal(rows(log, 'host_stop', D).length, 0, 'the fault names the call, so no stop is recorded')
 })
 
 test('a host error records a failed return', async () => {

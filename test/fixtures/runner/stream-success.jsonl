@@ -1,0 +1,5 @@
+{"type":"system","subtype":"init","session_id":"0f0e0d0c-0b0a-4000-8000-000000000001","tools":["Read","Bash"]}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"C:/w/src/a.ts"}}]},"session_id":"0f0e0d0c-0b0a-4000-8000-000000000001"}
+{"type":"user","message":{"content":[{"type":"tool_result","content":"..."}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npm test"}}]},"session_id":"0f0e0d0c-0b0a-4000-8000-000000000001"}
+{"type":"result","subtype":"success","is_error":false,"num_turns":3,"session_id":"0f0e0d0c-0b0a-4000-8000-000000000001","structured_output":{"status":"done","text":"ok"},"usage":{"input_tokens":10,"cache_read_input_tokens":4000,"cache_creation_input_tokens":200,"output_tokens":50},"total_cost_usd":0.0123,"permission_denials":[{"tool_name":"Write","tool_input":{"file_path":"C:/w/other/b.ts"}}]}

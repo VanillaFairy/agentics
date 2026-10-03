@@ -6,9 +6,10 @@ import { applies, check, id } from '../tools/rules/size-budget.mjs'
 
 const budgets = JSON.parse(readFileSync(new URL('../tools/budgets.json', import.meta.url), 'utf8')).files
 
-test('the rule id matches its file and it applies to agents and skills only', () => {
+test('the rule id matches its file and it applies to agents, roles and skills only', () => {
   assert.equal(id, 'size-budget')
   assert.ok(applies.test('agents/courier.md'))
+  assert.ok(applies.test('roles/scout.md'))
   assert.ok(applies.test('skills/develop/landing.md'))
   assert.ok(!applies.test('docs/DESIGN.md'))
   assert.ok(!applies.test('lib/tree.mjs'))
@@ -28,6 +29,7 @@ test('a definition with no budget is a finding', () => {
 test('every shipped agent and skill file has a budget, and no budget names a file that is gone', () => {
   const shipped = [
     ...readdirSync(new URL('../agents/', import.meta.url)).filter((f) => f.endsWith('.md')).map((f) => 'agents/' + f),
+    ...readdirSync(new URL('../roles/', import.meta.url)).filter((f) => f.endsWith('.md')).map((f) => 'roles/' + f),
     ...readdirSync(new URL('../skills/', import.meta.url)).flatMap((d) =>
       readdirSync(new URL('../skills/' + d + '/', import.meta.url)).filter((f) => f.endsWith('.md')).map((f) => 'skills/' + d + '/' + f)),
   ].sort()

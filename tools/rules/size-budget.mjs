@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 
 export const id = 'size-budget'
 
-export const applies = /^(agents\/[^/]+\.md|skills\/.+\.md)$/
+export const applies = /^((agents|roles)\/[^/]+\.md|skills\/.+\.md)$/
 
 let budgets = null
 const load = () => {

@@ -73,6 +73,20 @@ test('the CLI is found on the PATH', () => {
   }
 })
 
+test('a CLI named claude is found without claude.exe', () => {
+  const dir = join('E:', 'unix')
+  const result = resolveCli({ config: {}, env: { PATH: [join('E:', 'empty'), dir].join(delimiter) }, isFile: (p) => p === join(dir, 'claude') })
+  assert.equal(result.ok, true)
+  assert.equal(result.path, join(dir, 'claude'))
+})
+
+test('a CLI named claude.exe is found without claude', () => {
+  const dir = join('E:', 'win')
+  const result = resolveCli({ config: {}, env: { PATH: [join('E:', 'empty'), dir].join(delimiter) }, isFile: (p) => p === join(dir, 'claude.exe') })
+  assert.equal(result.ok, true)
+  assert.equal(result.path, join(dir, 'claude.exe'))
+})
+
 test('no CLI anywhere is refused', () => {
   const dirs = [join('E:', 'a'), join('E:', 'b')].join(delimiter)
   refusal(resolveCli({ config: {}, env: { PATH: dirs }, isFile: () => false }), 'host_missing')
@@ -153,6 +167,16 @@ test('a result without answers yields nothing', () => {
   assert.deepEqual(answersIn(fixtureLines[0]), [])
 })
 
+const bareAnswer = JSON.stringify({ type: 'user', toolUseResult: { answers: { ['1/1. Approve? ' + APPROVE_TOKEN]: 'Approve' } } })
+
+test('answers without questions are not read', () => {
+  assert.deepEqual(answersIn(bareAnswer), [])
+})
+
+test('answers without questions do not approve', () => {
+  refusal(verifyAnswer({ token: APPROVE_TOKEN, option: 'Approve', ...lookup, read: readerOf(bareAnswer + '\n') }),'not_approved')
+})
+
 test("a session's answer verifies", () => {
   assert.deepEqual(verifyAnswer({ token: LAND_TOKEN, option: 'Land', ...lookup }), { ok: true, by: 'user' })
 })
@@ -177,6 +201,11 @@ test('a token nobody was asked about is not approved', () => {
   refusal(verifyAnswer({ token: 'land e9@00000000', option: 'Land', ...lookup }), 'not_approved')
   refusal(verifyAnswer({ token: 'land e2@eeeeeeee', option: 'Land', ...lookup }), 'not_approved')
   refusal(verifyAnswer({ token: LAND_TOKEN, option: 'Land', ...lookup, read: readerOf('') }), 'not_approved')
+})
+
+test('a latest answer to a question without the token is not approval', () => {
+  const text = answerLine('Name?', 'Land') + '\n'
+  refusal(verifyAnswer({ token: LAND_TOKEN, option: 'Land', ...lookup, read: readerOf(text) }), 'not_approved')
 })
 
 test('a typed answer is not the option', () => {

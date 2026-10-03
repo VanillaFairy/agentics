@@ -33,7 +33,7 @@
 export const id = 'no-self-verdict'
 
 /** RegExp tested against the POSIX-style repo-relative path. */
-export const applies = /\.workflow\.js$/
+export const applies = /(\.workflow\.js|^lib\/schemas\.mjs)$/
 
 const BANNED_KEYS = [
   'approved', 'approve', 'passed', 'ok', 'accepted', 'lgtm', 'complete', 'success', 'valid',

@@ -364,13 +364,14 @@ name), so a program that died and was relaunched finds every session it started.
 is the executable `claude` resolves to on the `PATH` (`claude.exe` on Windows), or the path in
 `.agentics/config.json` (`claude_cli`); without one the runner refuses to start (`host_missing`).
 
-**The runner records as it goes.** `dispatched {thread, round, role, model, effort, session,
-brief_digest, carries[], pid}` is appended when the CLI starts, `carries` naming the messages the
+**The runner records as it goes.** `dispatched {dispatch, node, thread, round, role, model, effort,
+session, brief_digest, carries[], pid}` is appended when the CLI starts, `carries` naming the messages the
 call delivers ([Conversations](#conversations)); when it ends, the runner writes the output whole
-to `returns/<dispatch>.json` and appends `returned {dispatch, session, status, usage, cost_usd,
-denials}`. Usage is the host's own figure for that call; the host's cost figure accumulates over
-every call of a session, so the runner records each call's cost as the difference from the
-session's previous call. Cost is measured per call (P4). No agent writes a file that code reads, except the work it was dispatched to do — a
+to `returns/<dispatch>.json` and appends `returned {dispatch, session, status, cause, usage, cost_total,
+cost_usd, denials}`, `cause` naming why a call that did not return failed or was cut off. Usage is
+the host's own figure for that call; the host's cost figure (`cost_total`) accumulates over every
+call of a session, so the runner records each call's cost as the difference from the session's
+previous call. Cost is measured per call (P4). No agent writes a file that code reads, except the work it was dispatched to do — a
 producer's edits in its worktree.
 
 **One driver per session.** The host lets two processes drive one session at once and interleaves
@@ -411,7 +412,7 @@ commands, runs any command in a throwaway worktree, under the same watch ([Roles
 
 The runner classifies a call that failed. A usage or rate limit, an overloaded or unavailable host
 and a network failure are **host stops**: the dispatch stays in progress, the runner records
-`host_stop {dispatch, kind, until}` (`until` when the host said when), and the program waits and
+`host_stop {dispatch, cause, until}` (`until` when the host said when), and the program waits and
 then resumes the same session. When it asks again is a count's decision; nothing about the work is
 (L2). The status shows what the run waits on and since when. A return that fails its schema is
 resumed in its own session with the validation error as the message; the same failure again is no
@@ -2340,9 +2341,9 @@ affected, why, question, fix}]}`, one per node of the brief.
 - **Restated in:** `lib/resume.mjs` and `lib/status.mjs` (readers).
 
 `state.jsonl` (what the execution decided and what its calls cost): `run {program, scope, pid}`,
-one per program start; `returned {dispatch, session, status, usage{<model id>: {input,
-cache_write, cache_read, output}}, cost_usd, denials[]}`, one per call the runner made, written
-when the call ends; `host_stop {dispatch, kind, until}`; `batch {target, merged[], head_sha,
+one per program start; `returned {dispatch, session, status, cause, usage, cost_total, cost_usd,
+denials[]}` (`usage` the host's own figure for the call), one per call the runner made, written
+when the call ends; `host_stop {dispatch, cause, until}`; `batch {target, merged[], head_sha,
 verified, failed_alone[], combination[], conflict}`; `gate {target, head_sha, passed}`, one per
 suite gate that ran; `checkpoint {reason, detail, executions?, gaps?}` (the lists the checkpoint
 found; `lib/status.mjs checkpoint` prints them); `checkpoint-confirmed {gaps?}`; `closed

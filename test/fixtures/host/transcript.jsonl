@@ -1,0 +1,6 @@
+{"type":"user","message":{"role":"user","content":"Approve the api spec, please."},"uuid":"u-1"}
+{{not json
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t-1","content":"answered"}]},"toolUseResult":{"questions":[{"question":"1/1. Approve? approve api@0a1b2c3d"}],"answers":{"1/1. Approve? approve api@0a1b2c3d":"Change it"}},"uuid":"u-3"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t-2","content":"answered"}]},"toolUseResult":{"questions":[{"question":"1/1. Approve? approve api@0a1b2c3d"}],"answers":{"1/1. Approve? approve api@0a1b2c3d":"Approve"}},"uuid":"u-4"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t-3","content":"answered"}]},"toolUseResult":{"questions":[{"question":"land e1@ffffffff"},{"question":"Name?"}],"answers":{"land e1@ffffffff":"Land","Name?":"x"}},"uuid":"u-5"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t-4","content":"done"}]},"toolUseResult":{"questions":[{"question":"land e2@eeeeeeee"}]},"uuid":"u-6"}

@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init","session_id":"0f0e0d0c-0b0a-4000-8000-000000000001","tools":["Read","Bash"]}
+{"type":"result","subtype":"error_max_structured_output_retries","is_error":true,"num_turns":2,"session_id":"0f0e0d0c-0b0a-4000-8000-000000000001","total_cost_usd":0.004}

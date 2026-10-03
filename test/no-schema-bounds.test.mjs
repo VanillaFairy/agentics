@@ -11,10 +11,12 @@ import { id, applies, check } from '../tools/rules/no-schema-bounds.mjs'
 
 const FILE = 'workflows/agentics-survey.workflow.js'
 
-test('it applies to workflow scripts and nothing else', () => {
+test('it applies to workflow scripts and the return schemas, and nothing else', () => {
   assert.ok(applies.test('workflows/agentics-survey.workflow.js'))
   assert.ok(!applies.test('agents/scout.md'))
   assert.ok(!applies.test('tools/lint.mjs'))
+  assert.ok(applies.test('lib/schemas.mjs'))
+  assert.ok(!applies.test('lib/runner.mjs'))
 })
 
 test('flags maxItems and reports its line', () => {

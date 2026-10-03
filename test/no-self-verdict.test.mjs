@@ -13,10 +13,12 @@ import { id, applies, check } from '../tools/rules/no-self-verdict.mjs'
 
 const FILE = 'workflows/agentics-develop.workflow.js'
 
-test('it applies to workflow scripts and nothing else', () => {
+test('it applies to workflow scripts and the return schemas, and nothing else', () => {
   assert.ok(applies.test('workflows/agentics-develop.workflow.js'))
   assert.ok(!applies.test('agents/reviewer.md'))
   assert.ok(!applies.test('tools/lint.mjs'))
+  assert.ok(applies.test('lib/schemas.mjs'))
+  assert.ok(!applies.test('lib/runner.mjs'))
 })
 
 test('flags approved declared as a boolean schema property', () => {

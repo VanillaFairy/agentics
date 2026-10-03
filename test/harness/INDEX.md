@@ -22,6 +22,8 @@ is too costly to repeat.
 - `develop-sim`'s `simulate` runs the real `schedule()`; only boundary I/O is faked. Answers
   round-trip through `carriedEnvelope`, the same digest-wrapped shape a courier produces, and
   `script.damage` corrupts one to prove the workflow re-checks the digest.
+- `memory-log.mjs`'s `memoryLog()` is the runner's `log` port in memory; `entries()` hands back copies, so a test cannot rewrite what it reads.
+- `fake-claude.mjs` stands in for `claude.exe` under `spawner(process.execPath, [FAKE])`; it counts calls in `<scenario>.n` beside the scenario file, so each test needs a fresh scenario file.
 
 ## CONCURRENCY MODEL
 

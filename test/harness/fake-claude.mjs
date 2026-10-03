@@ -2,6 +2,7 @@
 // FAKE_CLAUDE_SCENARIO names, and logs what it was given to FAKE_CLAUDE_LOG.
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 
+if (!process.env.FAKE_CLAUDE_SCENARIO) process.exit(0)
 const scenario = JSON.parse(readFileSync(process.env.FAKE_CLAUDE_SCENARIO, 'utf8'))
 const counter = process.env.FAKE_CLAUDE_SCENARIO + '.n'
 const n = existsSync(counter) ? Number(readFileSync(counter, 'utf8')) : 0

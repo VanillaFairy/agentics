@@ -67,6 +67,7 @@ test('a folder without a spec has no token', (t) => {
 
 test('an edited spec has a new token', (t) => {
   const repo = effort(t)
+  assert.equal(recordApproval(repo, 'e1', '.', { by: 'terminal' }).ok, true)
   const before = approvalState(repo, 'e1', '.').token
   writeFileSync(specPath(repo, 'e1', '.'), readFileSync(specPath(repo, 'e1', '.'), 'utf8') + '\nOne more line.\n')
   const after = approvalState(repo, 'e1', '.')

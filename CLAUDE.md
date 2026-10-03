@@ -4,63 +4,60 @@ Guidance for Claude Code when working in this repository.
 
 ## What this is
 
-A Claude Code plugin providing workflow-orchestrated design, investigation and development over a
-generic codebase. All work is **one execution tree**: an effort is a subtree of `design`,
-`composite` and `leaf` nodes, decomposed until every leaf is atomic, executed by readiness in
-framework-owned worktrees, reviewed by rigor, merged by composite, and landed into the user's
-branch only on their go. The design — the whole system, as it is today — is `docs/DESIGN.md`. Read
-its **Iron Laws** and **Guiding Principles** before changing anything: they bind every change to
-this plugin, and each names the mechanism that enforces it.
-
-Its runtime artifacts are declarative — agent markdown, workflow JS, `SKILL.md` — plus `lib/` CLIs
-for everything deterministic. They are validated in layers: `tools/lint.mjs` judges form, the
-scenario harness (`test/harness/workflow-host.mjs`, `test/harness/develop-sim.mjs`) executes the
-workflows' orchestration with scripted agents, real-git tests run every boundary, and pins keep
-restated contracts (`<!-- agentics:verbatim <id> -->` blocks), agent allowlists and pointers into
-the design from drifting. `test/liveness.test.mjs` fails anything defined and never consumed.
+A Claude Code plugin for designing, investigating and building changes in any codebase. All work
+is **one execution tree**: an effort is a subtree of `design`, `composite`, `group` and `leaf`
+nodes, decomposed until every leaf is atomic, executed by readiness in framework-owned worktrees,
+reviewed by rigor, merged by composite, and landed into the user's branch only on their go.
+Orchestration is code: programs in `lib/programs/` read and write the store themselves and start
+every agent through one runner (`lib/runner.mjs`), which launches a headless Claude Code session
+per dispatch. The design — the whole system — is `docs/DESIGN.md`. Read its **Laws** and
+**Principles** before changing anything: they bind every change, and each law names the mechanism
+that enforces it.
 
 Run the checks with:
 
     node tools/lint.mjs && node --test
 
+## Moving to 5.0.0
+
+Branch `v5` moves the plugin from 4.x to 5.0.0 in four phases: foundations, the evidence
+programs, execution, and removing what 4.x alone used. Until the last phase the 4.x runtime still
+lives here: `service-workflows/`, `agents/`, the courier, `test/harness/workflow-host.mjs` and
+`test/harness/develop-sim.mjs`, and the lint rules that guard them. Keep them working and never
+add to them. New code follows `docs/DESIGN.md` and the rules below. On this branch the design
+leads the code: where they disagree, the design is the target.
+
 ## Rules for changing this repository
 
-- **Redesign, never work around.** The plugin is young and any refactor is affordable. When a
-  limit — a host's output cap, a transport, a contract, a tool's shape — gets in the way, change
-  the design so the limit stops mattering. Never add a mechanism whose only job is to squeeze
-  past it: paging, chunking, size-tuned retries, a second path for the big case. If the clean,
-  efficient fix means reshaping workflows, the lib or the contracts, reshape them.
-- **Couriers carry handles, never data** (`docs/DESIGN.md#gp6--couriers-carry-handles-data-stays-where-its-author-wrote-it`).
-  A courier's command holds only paths, ids, shas, digests, enums and counts — no base64, no
-  JSON, no `printf`/heredoc body, no `--stdin`, no pipe — and it pastes back one bounded line of
-  the same. Data a lib CLI needs is a file its author wrote with its own Write tool; what an agent
-  needs to read is a file lib wrote. Never design a path where a model retypes a payload.
-- **Docs land with the code, in the same commit series.** `docs/DESIGN.md` is the single design
-  document: the whole system **as it is right now**. A behaviour-changing change is not done until
-  DESIGN.md says what the code now does. Agent definitions and skill texts count as code here. It
-  carries no history and no links to documents that no longer exist. Code, tests, skills and agents
-  point into it as `docs/DESIGN.md#<anchor>`, and `test/design-doc.test.mjs` fails on any pointer
-  whose heading is gone.
-- **Data contracts are registered in `docs/DESIGN.md#data-contracts`** — the node record and
-  events, the spec format, the ledger lines, the compile result, the state and journal lines,
-  `seq`, the verify payload, the progress file, the gotcha file, slots and locks, the boundary payloads, the
-  replanning returns, the coverage block and the workflow returns — each
-  with the code that owns it and every place it is restated. **Any change to one of those field
-  lists updates its entry there and edits every copy the entry names, in the same commit series;
-  any change to an agent's `tools:` line edits `test/agent-allowlists.test.mjs` in the same
-  commit** — nothing finds those copies for you.
-- **Capability is the agent's frontmatter tool allowlist and nothing else. There are no hooks, and
-  there will be none** (plugin hooks fire in every session on the machine). Restraint in an agent
-  with a shell is prose, audited post hoc; the criterion is zero breaches surviving to review.
-- **Runtime text holds instructions and contracts; reasons live in DESIGN.md.** Every skill and
-  agent file has a size budget in `tools/budgets.json`, enforced by the `size-budget` lint rule.
+- **Redesign, never work around.** When a limit — a host's behaviour, a transport, a contract, a
+  tool's shape — gets in the way, change the design so the limit stops mattering. Never add a
+  mechanism whose only job is to squeeze past it.
+- **Code does what is deterministic; models only judge** (P2). Code moves bytes between
+  programs: a brief goes into a prompt, a result comes back in a return, and no model carries
+  another program's output. A name a model types is resolved or refused (`resolveHandle`).
+- **No agent rules on its own work** (L3). A producer declares, a judge rules per unit, code
+  combines. Never give a producer's or searcher's return schema a ruling field.
+- **Docs land with the code, in the same commit series.** A behaviour-changing change is not
+  done until `docs/DESIGN.md` says what the code now does. Role files and skill texts count as
+  code. The design carries no history and no links to documents that no longer exist, and
+  `test/design-doc.test.mjs` fails on a pointer whose heading is gone.
+- **Data contracts are registered in `docs/DESIGN.md#data-contracts`**, each with its owner and
+  every place it is restated; a change to a field list edits every copy the entry names, in the
+  same commit series. A change to a role's `tools:` or `commands:` edits its pin test in the same
+  commit.
+- **Capability is the role's tool list plus the permissions the runner computes. There are no
+  hooks, and there will be none** (plugin hooks fire in every session on the machine). The
+  runner confines every agent to its worktree, its paths and its commands; what it cannot
+  prevent, it detects.
+- **Runtime text holds instructions and contracts; reasons live in DESIGN.md.** Every skill,
+  role and agent file has a size budget in `tools/budgets.json`, enforced by the `size-budget`
+  lint rule.
 - **A format change ships a one-shot migration script, never a permanent second reader**
-  (`tools/migrate-legacy.mjs`, `tools/migrate-node-keys.mjs` and `tools/migrate-worktree-keys.mjs`
-  are the current ones).
-- `docs/superpowers/` is gitignored scratch for the vf-superpowers planning skills; nothing in the
-  repository may point into it.
+  (`tools/migrate-*.mjs`).
+- `docs/superpowers/` is gitignored scratch for the vf-superpowers planning skills; nothing in
+  the repository may point into it.
 
-Whoever decides a dispatch — a skill's session, or you writing a workflow — works to this:
+Whoever decides a dispatch — a program's author, or a session — works to this:
 
 <!-- agentics:verbatim dispatch-economy -->
 A dispatch costs context × turns, and every agent pays its own. Tool calls are what make turns;
@@ -99,7 +96,7 @@ one.
 1. **Configurable intelligence per task.** Intelligence level is balanced and configurable at
    task granularity — not one dial for the whole run.
 2. **Completion is mandatory.** If a task is set, it must be done, regardless of cost. This is
-   IL1 in `docs/DESIGN.md#iron-laws`, mechanically enforced by the rules in the table below.
+   L1 in `docs/DESIGN.md#laws`, mechanically enforced by the rules in the table below.
 3. **Minimize cost within the chosen level.** Given the selected intelligence level, any
    available cost reduction must be taken. Cheap where cheap suffices.
 4. **Judge the effort's shape.** Development tasks differ: some need strict red-green-refactor
@@ -113,20 +110,17 @@ one.
 
 ---
 
----
+## Which mechanism enforces which law
 
-## Which rule enforces which law
-
-The laws themselves are in `docs/DESIGN.md#iron-laws`.
+The laws themselves are in `docs/DESIGN.md#laws`.
 
 | Law | Enforced by |
 |---|---|
-| IL1 — a set task is finished; no counter ends anything | `tools/rules/no-turn-caps.mjs`; typed escalations on every agent; the resume ladder (`lib/resume.mjs`) |
-| IL2 — a partial result never looks like a whole one | `tools/rules/coverage-block.mjs`; `stop_reason` in every search's return file; continuation loops keyed on `lib/evidence.mjs`'s `roundOf`; a `.catch` on every side channel; `tools/rules/task-tool-fallback.mjs` |
-| IL3 — nothing judges itself | `tools/rules/no-self-verdict.mjs`; `lib/verdict.mjs`, whose `reviewExit` computes the review-loop exit |
-| IL4 — the user owns decisions and their tree | `lib/boundary.mjs land` behind the session's gate; `lib/verify.mjs`'s linked-worktree refusal; `decisionProblems` in `lib/tree.mjs`, which admits a decision only from compile, against the approved copy on the ledger (`lib/approval.mjs`), and refuses a replan that changes a contract or drops a realised decision; `lib/respec.mjs`, which approves a changed spec without the user only on rulings that are all `unaffected`, each recorded on the ledger |
-| GP2 — nothing outlives its consumer | `test/liveness.test.mjs`; `tools/rules/size-budget.mjs` |
-| GP6 — couriers carry handles, never data | `tools/rules/courier-handles.mjs` |
+| L1 — honest state | `tools/rules/coverage-block.mjs`; the coverage every searcher's and judge's return schema requires (`test/schemas.test.mjs`); `resolveHandle` in `lib/store.mjs`; status derived on read |
+| L2 — states end work, counts don't | `tools/rules/no-turn-caps.mjs`; the convergence predicates in `lib/verdict.mjs`; `askAfter` in `lib/programs/converge.mjs`; the runner's host-stop classes |
+| L3 — separate judges | the role kinds in `lib/roles.mjs`; `judgeAllowed` and `dispatchJudge` in `lib/programs/common.mjs`; `tools/rules/no-self-verdict.mjs`; `verdictOf` in `lib/verdict.mjs` |
+| L4 — the user owns decisions and their branch | `verifyAnswer` and `confirmAct` in `lib/host.mjs`; `userBound` in `lib/respec.mjs`; `decisionProblems` in `lib/tree.mjs`; the runner's confinement and its watch on the user's checkout; `lib/verify.mjs`'s linked-worktree refusal; `land`'s refusals |
+| P4 — everything earns its place | `test/liveness.test.mjs`; `tools/rules/size-budget.mjs` |
 
 ## Build
 
@@ -136,12 +130,15 @@ The laws themselves are in `docs/DESIGN.md#iron-laws`.
 
 ## Architecture
 
-- `lib/` — deterministic CLIs: tree, ledger, compile, boundary, verify (`lib/INDEX.md`)
-- `tools/` — lint, its rules, size budgets, one-shot migration (`tools/INDEX.md`)
-- `agents/` — subagent definitions; allowlist is capability (`docs/kb/agents.md`)
-- `service-workflows/` — sandboxed orchestration scripts; reach lib via courier (`service-workflows/INDEX.md`)
+- `lib/` — deterministic modules and CLIs: the store, tree, ledger, compile, boundary, verify,
+  runner, host, locus and conversation modules (`lib/INDEX.md`)
+- `lib/programs/` — the programs that orchestrate
+- `roles/` — agent roles: instructions, tools and kind, read by the runner alone
 - `skills/` — user entry points: design, develop, task, investigate, next (`docs/kb/skills.md`)
-- `test/harness/` — runs workflows offline with scripted agents (`test/harness/INDEX.md`)
+- `tools/` — lint, its rules, size budgets, one-shot migrations (`tools/INDEX.md`)
+- `test/` — the `node --test` suite; `test/harness/` holds the scripted runner and the fake CLI
+- 4.x, until the last phase: `service-workflows/` (`service-workflows/INDEX.md`), `agents/`
+  (`docs/kb/agents.md`)
 
 ## Knowledge base
 

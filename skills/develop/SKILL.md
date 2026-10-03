@@ -21,8 +21,8 @@ Invoking this skill **is** the user's opt-in for the `Workflow` tool. Do not ask
   folder; every folder below it is a **sub-effort**, and is also an entry in its parent's plan.
 - **spec**: a folder's `DESIGN.md`, written for the user, with the sections Intent, Decisions,
   Design, Plan, Open questions and Evidence. It never holds status.
-- **`.state/`**: machine state, written only by scripts: an effort's `.state/` (nodes, events,
-  ledger, executions) and the project-wide `.agentics/.state/` (slots, context files, evidence
+- **`.state/`**: machine state, written only by code: an effort's `.state/` (nodes, events,
+  ledger, executions) and the project-wide `.agentics/.state/` (slots, program runs, evidence
   items).
 - **segment rule**: names of efforts, folders and entries match `^[a-z0-9][a-z0-9-]*$`, at most 120
   characters, with no `--`.
@@ -40,7 +40,7 @@ Invoking this skill **is** the user's opt-in for the `Workflow` tool. Do not ask
 - **contract**: a named interface one entry `provides` and others `consumes`. Names are unique
   across the effort.
 - **approved**: the spec's current hash equals the hash on its latest `approved` ledger line,
-  written only after the user approves in so many words. **prepared**: the same against a
+  written only once the user's answer chose to approve it. **prepared**: the same against a
   `prepared` line, written only after a planner-written spec passed its autonomous review.
   **Edited since approval**: a line exists and the hash differs; compile leaves the spec out until
   it is approved again.
@@ -54,8 +54,16 @@ Invoking this skill **is** the user's opt-in for the `Workflow` tool. Do not ask
 - **finding**: one result of a review, graded `ambiguity` (blocks until settled), `gap` (designed
   away or accepted out loud) or `note` (advisory). To **settle** a finding is to incorporate it
   into the spec or to discard it.
-- **claim verdict**: `met`; `under`, `over` or `deviates` (drift); `spec_defect` (the claim can't
+- **claim ruling**: `met`; `under`, `over` or `deviates` (drift); `spec_defect` (the claim can't
   be met as written); `cant_tell` (the evidence doesn't decide it, and it is never a pass).
+- **observation, ruling, declaration, verdict**: an observation is what code can recompute; a
+  ruling is a judgment, made per unit by the user or by an agent that did not produce the work; a
+  declaration is a producer's word about its own work, which may steer what runs next but never
+  passes anything; a verdict is what code computes from observations and rulings.
+- **unit**: what one ruling is about: a criterion, a changed file, a spec claim, an axis against a
+  section. A unit nobody ruled on is open.
+- **dispatch, session**: a dispatch is one call to an agent; its session is the host's
+  conversation it runs in, which code may resume later with a message.
 - **evidence item**: one claim with the anchors it rests on: spans, queries, sources, or other
   items. Its state is derived on read: **standing** (no anchor changed, or it was re-judged as
   holding), **suspect** (an anchor changed and nobody has judged the change), **stale** (judged as
@@ -63,17 +71,13 @@ Invoking this skill **is** the user's opt-in for the `Workflow` tool. Do not ask
 - **park**: a node stops and waits for the user. The answer is a re-spec: edit the spec that owns
   the fault, approve it again, recompile.
 
-**The laws and principles.** IL1: a set task is finished. IL2: a partial result never looks whole.
-IL3: nothing judges itself. IL4: the user owns decisions and their tree. And:
-
-1. Specs are authored; state is derived. No status goes into a spec, and no render is edited by
-   hand.
-2. One writer per folder at a time, under the effort lock.
-3. Prevent, detect, correct. Detect with the cheapest sufficient instrument (a deterministic check,
-   then a fresh agent, then the user), name the fault's class, and apply the class's remedy where
-   the fault lives. A new stage, grade or rule is a last resort.
-4. Promoting to docs is plan work. When an effort changes what the project's docs describe, its
-   plan carries the entry that updates them.
+**The laws.** L1: honest state. L2: states end work, counts don't. L3: separate judges. L4: the
+user owns decisions and their branch. **The principles.** P1: fidelity at the chosen level, then
+cost, then time. P2: code does what is deterministic; models only judge. P3: state is derived;
+records are written as things happen. P4: everything earns its place. P5: faults are fixed in their
+class, where they live. **And three rules for specs:** no status goes into a spec and no render is
+edited by hand; one writer per folder at a time, under the effort lock; when an effort changes
+what the project's docs describe, its plan carries the entry that updates them.
 <!-- /agentics:verbatim -->
 
 ## Arguments

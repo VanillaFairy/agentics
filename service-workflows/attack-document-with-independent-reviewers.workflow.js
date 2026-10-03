@@ -203,7 +203,7 @@ const pluginRoot = resolvePluginRoot()
 // ---------------------------------------------------------------- the transport
 //
 // Every courier here carries handles both ways
-// (docs/DESIGN.md#gp6--couriers-carry-handles-data-stays-where-its-author-wrote-it): paths, ids,
+// (docs/DESIGN.md#p2--code-does-what-is-deterministic-models-only-judge): paths, ids,
 // snapshot ids and axis keys on its command, and a payload of the same that is re-digested here
 // before a field of it is believed. canonical and fnv1a are copies of `lib/plan-digest.mjs`'s:
 // scripts cannot import, and the suite pins them together.

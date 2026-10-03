@@ -75,8 +75,8 @@ what was established, what was tried, what remains and how to resume; or **done*
 its intent traced to work and to a passing check ([Traceability](#traceability)). Nothing reads as
 more complete than it is, and what stays incomplete leads every report.
 
-*Enforced by:* the `coverage-schema` lint rule (every searcher's and judge's return schema in
-`lib/schemas.mjs` carries its coverage); the `coverage-block` lint rule (every program result
+*Enforced by:* `test/schemas.test.mjs` (every searcher's and judge's return schema in
+`lib/schemas.mjs` requires its coverage); the `coverage-block` lint rule (every program result
 computes `complete` from its fields); `resolveHandle` in `lib/store.mjs`, the one way a CLI turns
 an argument into a thing, which refuses an unknown one as `unknown_<kind>`; status derived on read
 (P3).
@@ -2576,7 +2576,7 @@ unresolved[]}`, and leaf-close records them.
 
 - **Lint** (`tools/lint.mjs`, one module per rule under `tools/rules/`) checks form: no turn or
   spend cap on a dispatch and no loop bound in a program except through `askAfter` (L2); a coverage
-  block on every program result and coverage in every searcher's and judge's return schema (L1); no
+  block on every program result (L1); no
   ruling fields in a producer's or searcher's schema, and per-unit rulings in a judge's (L3); no
   bound in a return schema; role frontmatter (kind, tools, commands, schema); prompts built only by `lib/brief.mjs` and
   `renderMessage`, so no command or path for a model to carry reaches one (P2); no skill that

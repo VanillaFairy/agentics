@@ -18,7 +18,7 @@ export const meta = {
 
 // Design: docs/DESIGN.md#survey. Every agent whose output lib/ reads writes it to the return file
 // its dispatch names and hands back only handles; every courier carries handles both ways
-// (docs/DESIGN.md#gp6--couriers-carry-handles-data-stays-where-its-author-wrote-it). This script
+// (docs/DESIGN.md#p2--code-does-what-is-deterministic-models-only-judge). This script
 // holds only what a script can hold without a filesystem: what to dispatch next, and what each
 // typed return means.
 //

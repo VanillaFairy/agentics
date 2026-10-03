@@ -1,7 +1,7 @@
 // test/evidence-rounds.test.mjs — what one round of a resumed evidence agent established, read from
 // the return file it wrote, and whether its search goes on.
 //
-// Design: docs/DESIGN.md#resumed-rounds.
+// Design: docs/DESIGN.md#continued-searches.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

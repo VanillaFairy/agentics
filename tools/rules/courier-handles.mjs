@@ -1,6 +1,6 @@
 // tools/rules/courier-handles.mjs — GP6: couriers carry handles, never data.
 //
-// docs/DESIGN.md#gp6--couriers-carry-handles-data-stays-where-its-author-wrote-it
+// docs/DESIGN.md#p2--code-does-what-is-deterministic-models-only-judge
 //
 // A command a workflow, an agent or a skill hands to a model holds only paths, ids, shas,
 // digests, enums and counts. Each pattern below is a way to put data into a command instead:

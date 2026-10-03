@@ -18,7 +18,7 @@
 // quietly — and changing one means editing this file in the same commit, which puts the decision
 // in a diff a reviewer reads instead of in a frontmatter line nobody diffs twice.
 //
-// Design: docs/DESIGN.md#capability-layer.
+// Design: docs/DESIGN.md#the-agent-runner.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -112,7 +112,7 @@ test('every allowlist matches its pin exactly', () => {
       [...pinned].sort(),
       `agents/${name}.md grants ${tools.join(', ')} — pinned as ${pinned.join(', ')}. ` +
         `Widening an allowlist is a capability change: state why in ` +
-        `docs/DESIGN.md#capability-layer and edit this file in the same commit.`,
+        `docs/DESIGN.md#the-agent-runner and edit this file in the same commit.`,
     )
   }
 })

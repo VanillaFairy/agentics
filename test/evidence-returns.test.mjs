@@ -2,7 +2,7 @@
 // judges, a probe's analysts, a solutions sweep's assessor and scout, and the one file a survey's
 // reader opens afterwards.
 //
-// Design: docs/DESIGN.md#gp6--couriers-carry-handles-data-stays-where-its-author-wrote-it,
+// Design: docs/DESIGN.md#p2--code-does-what-is-deterministic-models-only-judge,
 // docs/DESIGN.md#survey, docs/DESIGN.md#probe, docs/DESIGN.md#existing-solutions.
 
 import { test } from 'node:test'

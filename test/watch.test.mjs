@@ -120,3 +120,9 @@ test('checkoutWatch pairs a snapshot with its comparison', (t) => {
   writeFileSync(join(dir, 'c.txt'), 'c\n')
   assert.deepEqual(watch.after(snap).changed, ['c.txt'])
 })
+
+test('a snapshot of a directory git cannot read throws rather than reading as clean', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentics-watch-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  assert.throws(() => snapshotCheckout(join(dir, 'missing')), /git/)
+})

@@ -24,6 +24,10 @@
     "skills/investigate/SKILL.md": 175,
     "skills/next/SKILL.md": 95,
     "skills/challenge-idea/SKILL.md": 255,
-    "skills/task/SKILL.md": 195
+    "skills/task/SKILL.md": 195,
+    "roles/planner.md": 221,
+    "roles/implementer.md": 99,
+    "roles/test-author.md": 96,
+    "roles/investigator.md": 48
   }
 }

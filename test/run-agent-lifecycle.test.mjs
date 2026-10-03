@@ -194,17 +194,31 @@ test('a session within half its window is resumed', async () => {
   assert.equal(out.session, S)
 })
 
-test('without a fresh brief a large session is resumed', async () => {
+test('without a fresh brief a large session is resumed', async (t) => {
   const window = 100000
-  const { spawns, mine, out } = await run({ resume: true, freshBrief: '', tier: { model: 'opus', effort: 'high', window } }, {
-    seed: endedWith(usageOf(10, window, 0)), script: [{ pid: 4242, lines: streamIn(S) }],
-  })
-  assert.equal(spawns.length, 1)
-  assert.equal(valueAfter(spawns[0].args, '--resume'), S)
-  assert.ok(!spawns[0].args.includes('--session-id'))
-  assert.equal(ofKind(mine, 'thread_renewed').length, 0)
-  assert.equal(out.status, 'returned')
-  assert.equal(out.session, S)
+  const tier = { model: 'opus', effort: 'high', window }
+  const withoutKey = async () => {
+    const r = rig({ seed: endedWith(usageOf(10, window, 0)), script: [{ pid: 4242, lines: streamIn(S) }] })
+    const call = makeCall({ resume: true, tier })
+    delete call.freshBrief
+    const out = await runAgent(call, r.ports)
+    return { ...r, out, mine: r.log.entries().filter((e) => e.seq > r.seeded) }
+  }
+  const cases = {
+    'an empty freshBrief': () => run({ resume: true, freshBrief: '', tier }, { seed: endedWith(usageOf(10, window, 0)), script: [{ pid: 4242, lines: streamIn(S) }] }),
+    'an absent freshBrief': withoutKey,
+  }
+  for (const [name, go] of Object.entries(cases)) {
+    await t.test(name, async () => {
+      const { spawns, mine, out } = await go()
+      assert.equal(spawns.length, 1)
+      assert.equal(valueAfter(spawns[0].args, '--resume'), S)
+      assert.ok(!spawns[0].args.includes('--session-id'))
+      assert.equal(ofKind(mine, 'thread_renewed').length, 0)
+      assert.equal(out.status, 'returned')
+      assert.equal(out.session, S)
+    })
+  }
 })
 
 test('the window defaults to 200000 tokens', async () => {
@@ -212,6 +226,8 @@ test('the window defaults to 200000 tokens', async () => {
   const large = await run({ resume: true, tier }, { seed: endedWith(usageOf(10, 120000 - 10, 0)), script: [{ pid: 4242, lines: streamIn(NEXT) }] })
   assertStartsFresh(large.spawns[0], NEXT, FRESH)
   assertRenewed(large.mine, 'too_large')
+  assert.equal(large.spawns.length, 1)
+  assert.ok(!large.spawns.some((sp) => sp.args.includes('--resume')), 'no spawn resumes the large session')
 
   const small = await run({ resume: true, tier }, { seed: endedWith(usageOf(10, 90000 - 10, 0)), script: [{ pid: 4242, lines: streamIn(S) }] })
   assert.equal(small.spawns.length, 1)

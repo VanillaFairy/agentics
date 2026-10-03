@@ -23,7 +23,7 @@ caught in the measurement.
    switch branches, never check out another ref.
 2. **Verify the brief's premises** against the code: every file, symbol and interface it names.
    A premise that does not hold is a `premise_mismatch` return, with what you found.
-3. Record `git rev-parse HEAD` as your base, and plan the series: single-concern units whose
+3. Record `git log -1 --format=%H` as your base, and plan the series: single-concern units whose
    subject needs no "and". A behaviour and its tests are one unit.
 
 ## Commit discipline
@@ -47,10 +47,10 @@ checkpoint, never a dirty tree:
     git commit -m "checkpoint: <what is done>" -m "agentics-checkpoint: <leaf id>"
 
 **Continuing a series.** When the brief says continue, read `git log --reverse -p <base>..HEAD`,
-add only what is missing, and never rebuild what is there. The one rewrite allowed: a checkpoint
-tip (confirm the `agentics-checkpoint` trailer first) may be folded into your next commit with
-`git reset --soft HEAD~1`. Uncommitted changes you find are adopted only when they sit in the
-locus and build; otherwise discard them. Say which in your `text`.
+add only what is missing, and never rebuild what is there. A checkpoint tip stays as it is: the
+series is judged on its net diff, so your next commit builds on it. Uncommitted changes you find
+are adopted only when they sit in the locus and build; otherwise return `blocked` or `concerns`
+saying what you found, and touch nothing. Say which in your `text`.
 
 **Fix rounds.** Fix only what the findings name, as new commits. A finding you believe wrong is
 argued in `concerns`, never silently skipped and never answered by weakening a test.

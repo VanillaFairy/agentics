@@ -1,0 +1,51 @@
+// test/role-allowlists.test.mjs — pins each role's kind, tools, commands and schemas. A change to
+// one is a deliberate edit of this table in the same commit (CLAUDE.md).
+//
+// Design: docs/DESIGN.md#roles.
+
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { readdirSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+import { loadRole } from '../lib/roles.mjs'
+
+const ROLES = fileURLToPath(new URL('../roles/', import.meta.url))
+
+const PINNED = {
+  scout: { kind: 'searcher', tools: ['Glob', 'Grep', 'Read'], commands: [], schemas: ['scout_hits', 'scout_located'] },
+  historian: {
+    kind: 'searcher', tools: ['Bash', 'Grep', 'Read'], commands: ['git log', 'git show', 'git blame', 'git diff'], schemas: ['historian'],
+  },
+  'doc-researcher': { kind: 'searcher', tools: ['Read', 'WebFetch', 'WebSearch'], commands: [], schemas: ['doc_research', 'candidates'] },
+}
+
+const files = () => readdirSync(ROLES).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3))
+
+test('every role file loads', () => {
+  for (const name of files()) {
+    const out = loadRole(name)
+    assert.equal(out.ok, true, name + ': ' + (out.error && out.error.message))
+  }
+})
+
+test('every role file is pinned', () => {
+  for (const name of files()) assert.ok(Object.hasOwn(PINNED, name), 'roles/' + name + '.md has no row here')
+})
+
+test('every role keeps its pinned kind, tools, commands and schemas', () => {
+  for (const [name, pin] of Object.entries(PINNED)) {
+    const { role } = loadRole(name)
+    assert.equal(role.kind, pin.kind, name)
+    assert.deepEqual([...role.tools].sort(), pin.tools, name)
+    assert.deepEqual(role.commands, pin.commands, name)
+    assert.deepEqual(role.schemas, pin.schemas, name)
+  }
+})
+
+test('no role prompt tells the agent to write a file for a reader', () => {
+  for (const name of files()) {
+    const { role } = loadRole(name)
+    assert.doesNotMatch(role.prompt, /return file|said file|report file|progress file|courier|the file your dispatch names/i, name)
+  }
+})

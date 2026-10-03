@@ -18,6 +18,13 @@ const PINNED = {
     kind: 'searcher', tools: ['Bash', 'Grep', 'Read'], commands: ['git log', 'git show', 'git blame', 'git diff'], schemas: ['historian'],
   },
   'doc-researcher': { kind: 'searcher', tools: ['Read', 'WebFetch', 'WebSearch'], commands: [], schemas: ['doc_research', 'candidates'] },
+  planner: { kind: 'producer', tools: ['Edit', 'Glob', 'Grep', 'Read', 'Write'], commands: [], schemas: ['planner_write', 'planner_settle'] },
+  implementer: {
+    kind: 'producer', tools: ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write'],
+    commands: ['<build>', '<typecheck>', '<test>', 'git add', 'git commit', 'git status', 'git diff', 'git log'], schemas: ['producer'],
+  },
+  'test-author': { kind: 'producer', tools: ['Edit', 'Glob', 'Grep', 'Read', 'Write'], commands: [], schemas: ['producer'] },
+  investigator: { kind: 'producer', tools: ['Bash', 'Glob', 'Grep', 'Read'], commands: ['*'], schemas: ['investigator'] },
 }
 
 const files = () => readdirSync(ROLES).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3))

@@ -2,7 +2,7 @@
 name: analyst
 kind: judge
 tools: Read
-schemas: survey_plan, items, rejudge, axes, prober, frame, assessment, approach
+schemas: survey_plan, items, rejudge, axes, prober, frame, assessment, approach, investigate_tasks, investigate_report
 model: opus
 effort: medium
 ---
@@ -59,6 +59,8 @@ return, never how strictly you judge.
   weighs each candidate against that frame and names the disqualifiers it hits.
 - **Drafting an approach from a stance** (`approach`): argue the approach the stance in your
   brief calls for: its shape, the contracts it rests on and its risks, with the evidence cited.
+- **Turning an investigation into tasks** (`investigate_tasks`): ordered tasks from the evidence in your brief.
+- **Answering an investigation** (`investigate_report`): the answer the evidence in your brief supports.
 
 ## Probing a document
 

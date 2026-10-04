@@ -11,7 +11,6 @@ const read = (rel) => readFileSync(fileURLToPath(new URL('../' + rel, import.met
 
 // Every service-workflow that nests another workflow by scriptPath, and the skill(s) that launch it.
 const NESTERS = [
-  { workflow: 'service-workflows/answer-codebase-question-from-evidence.workflow.js', skills: ['skills/investigate/SKILL.md'] },
   { workflow: 'service-workflows/execute-approved-plan-in-worktrees.workflow.js', skills: ['skills/develop/SKILL.md'] },
 ]
 

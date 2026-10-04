@@ -284,7 +284,7 @@ test('every part of a long return is recorded', async () => {
   assert.deepEqual(ofKind(calls, 'dispatched').map((e) => e.pid), LONG.map((s) => s.pid))
   for (const e of calls) assert.equal(e.session, S, 'every part is in the same session')
   const returned = ofKind(calls, 'returned')
-  for (const r of returned) assert.equal(r.status, 'returned')
+  assert.deepEqual(returned.map((r) => r.status), PARTS.map((p) => (p.more ? 'part' : 'returned')), 'a part returns as a part; the call that completes the return, as returned')
   assert.deepEqual(returned.map((r) => r.cost_total), TOTALS, 'each part records its own running total')
   returned.forEach((r, i) => close(r.cost_usd, TOTALS[i] - (i ? TOTALS[i - 1] : 0)))
 })

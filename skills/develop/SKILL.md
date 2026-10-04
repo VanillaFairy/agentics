@@ -404,9 +404,9 @@ re-spec**: edit the spec that owns the fault, have the change ruled (below), rel
 
 **Each spec you edited is ruled before anyone is asked to approve it**, a parent before its child,
 by the `rule` program, started detached and followed with the Monitor tool on
-`node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" watch --repo . --run <run>` until it prints its end;
-then act on its `result_file`'s `status` (on `stopped`, start it again; a `run_live` refusal names
-a ruling already going: watch that one):
+`node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" watch --repo . --run <run> --since 0`; on `ended done`
+read `result_file`'s `status`; on `stopped: …` start the command again; `ended failed` and
+`launch_failed` are plugin faults, retried once; a `run_live` refusal names a ruling going: watch it.
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" rule --repo . --detach --effort <e> --folder <id>

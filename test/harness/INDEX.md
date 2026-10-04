@@ -24,6 +24,7 @@ is too costly to repeat.
   `script.damage` corrupts one to prove the workflow re-checks the digest.
 - `memory-log.mjs`'s `memoryLog()` is the runner's `log` port in memory; `entries()` hands back copies, so a test cannot rewrite what it reads.
 - `fake-claude.mjs` stands in for `claude.exe` under `spawner(process.execPath, [FAKE])`; it counts calls in `<scenario>.n` beside the scenario file, so each test needs a fresh scenario file.
+- `scripted-runner.mjs` answers runner calls from a script and records as lib/runner.mjs does; programs are tested against it.
 
 ## CONCURRENCY MODEL
 

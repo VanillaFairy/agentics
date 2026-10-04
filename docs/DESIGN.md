@@ -776,8 +776,17 @@ compile of that text honours the ruling and no stop is written only to be cleare
 settle returns `needs_user` and approves nothing: the session makes each `fix` in the spec that
 owns the node and has that spec ruled the same way, asks the user the questions left, and once
 their answer is verified `rule --user-approved` records it `by: user`, naming the ruling
-it was approved over, and compile spares only what was ruled unaffected. An approval recorded and
+it was approved over, and compile spares only what was ruled unaffected. Before it asks, `rule
+--user-approved` checks that the latest ruled line still settles — its reach, its basis, the
+rulings on disk — and refuses as settle would without asking anyone. An approval recorded and
 not yet compiled is compiled by the next `settle`, or by any compile.
+
+A relaunched `rule` run replays only what was recorded for the text and reach that stand: it
+briefs the spec afresh, and the ruler's thread, the rulings it wrote and each settle are keyed by
+the brief's basis, so a relaunch over the same basis calls nothing and one over a moved basis
+rules the spec as it now stands. A relaunched `--user-approved` run asks for the token of the
+latest ruling, and its settle is keyed by that token, so it never reports an earlier word's
+settle.
 
 What cannot be ruled is refused with what to do next (`next`): a spec never compiled, or whose
 compiled text was not kept or cannot be diffed, is the user's to approve; one with problems is

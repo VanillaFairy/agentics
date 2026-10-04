@@ -419,7 +419,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" rule --repo . --detach --effort <e> --f
   change and its `reasons` and ask, the result's `token` in the question's own text, with exactly
   the options `Approve` and `Change it`. On `Approve`, run it attached, since it reads the answer:
   `node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" rule --repo . --effort <e> --folder <id> --user-approved`.
-  It prints `approved`, or `refused` with `next: ask_user` (ask again with its `token`) or `rule_it`.
+  It prints `approved`, `refused` with `next: ask_user` (ask again with its `token`), or another result, handled below.
 - `compile_refused` — its `problems` name file and line: the fix is an edit, ruled again.
 - `refused` — by its `next`: `user_approves`, show the change, then ask and approve as step 2 does
   and compile as step 3 does; `fix_spec`, edit what `problems` name; `rule_parent_first`, rule the

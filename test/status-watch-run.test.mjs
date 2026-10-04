@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { appendRun } from '../lib/ledger.mjs'
+import { appendRun, readRunLog } from '../lib/ledger.mjs'
 import { runWatchLines } from '../lib/status.mjs'
 import { runJsonPath, writeJson } from '../lib/store.mjs'
 
@@ -74,6 +74,18 @@ test('watch on a run whose process is gone prints how to resume it', (t) => {
   writeJson(runJsonPath(r, RUN), { run: RUN, pid: gone, heartbeat_at: new Date().toISOString() })
   appendRun(r, RUN, [{ kind: 'run', program: 'survey' }, { kind: 'fault', node: '', channel: 'program', detail: 'before' }])
   assert.equal(watch(r, RUN), 'stopped: start the same command again to resume run ' + RUN + '\n')
+})
+
+test('--since prints records appended before the watch started (a run)', (t) => {
+  const r = repo(t)
+  writeJson(runJsonPath(r, RUN), { run: RUN, pid: process.pid, heartbeat_at: new Date().toISOString() })
+  appendRun(r, RUN, [{ kind: 'run', program: 'survey' }])
+  const since = runWatchLines(readRunLog(r, RUN).entries, 0).seq_max
+  appendRun(r, RUN, [{ kind: 'fault', node: '', channel: 'program', detail: 'after since' }, ended(0)])
+  const out = execFileSync(process.execPath, [CLI, 'watch', '--repo', r, '--run', RUN, '--since', String(since)], {
+    encoding: 'utf8', env: { ...process.env, NODE_TEST_CONTEXT: '' }, timeout: 20000,
+  })
+  assert.equal(out, 'fault program: after since\nended done: complete=true result=/r/result.json\n')
 })
 
 test('watch on an unknown run prints the refusal and exits 0', (t) => {

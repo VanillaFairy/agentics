@@ -175,7 +175,7 @@ test('a probe given since attacks only the sections the changed lines touch', as
   assert.deepEqual(result.units.open, [])
   const calls = proberCalls(run)
   assert.ok(calls.length > 0, 'a prober was called')
-  const others = unitsOf(STANDING, sectionsOf(EDITED).filter((s) => !touched.includes(s)))
+  const others = unitsOf(STANDING, sectionsOf(EDITED).filter((s) => !touched.some((x) => x.slug === s.slug)))
   assert.ok(others.length > 0)
   for (const c of calls) {
     for (const u of expected) assert.ok(c.brief.includes(u), c.thread.key + ' names the unit ' + u)

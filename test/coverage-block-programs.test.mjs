@@ -85,7 +85,7 @@ test('a coverage block built outside resultOf does not satisfy the rule', () => 
 })
 
 test('a coverage key inside a string or a comment in resultOf does not count', () => {
-  for (const body of ["  return { note: 'coverage: none' }", '  return { drafts: drafted /* , coverage */ }']) {
+  for (const body of ["  return { drafts: drafted, note: ', coverage: x' }", '  return { drafts: drafted /* , coverage: x */ }']) {
     const lines = program(RESULT_OF, body, '}')
     assert.equal(lint(lines).length, 1, body)
   }
@@ -101,7 +101,7 @@ test('an empty or null coverage in resultOf is flagged', () => {
 })
 
 test('resultOf is read to its body past braces and parentheses in its parameters', () => {
-  const head = 'function resultOf({ question, lists = {}, resumable = null }, { rulerLost = false } = {}, at = now()) {'
+  const head = 'function resultOf({ question, lists = {}, resumable = null }, { rulerLost = false } = {}, at = now(), { extra = {} } = {}) {'
   assert.deepEqual(lint(program(head, '  return { question, coverage: coverageOf({ ...lists, resumable }) }', '}')), [])
   const lines = program(head, '  return { question }', '}')
   assert.deepEqual(lint(lines).map((f) => f.line), [lineOf(lines, head)])

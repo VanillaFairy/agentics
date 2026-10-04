@@ -24,6 +24,7 @@ judgment.
 | `skills/` | The commands a user invokes and one hidden service step (see [Skills](#skills)). |
 | `lib/` | Node modules and CLIs for everything deterministic: the store, the tree, the boundaries, the runner. |
 | `lib/programs/` | The programs that orchestrate: an execution, a survey, a probe, a solutions sweep, an investigation, a ruling, approach drafts, an inline review (see [Programs](#programs)). |
+| `lib/briefs/` | The prompts the programs build, one file per program: the survey's, the probe's, the solutions sweep's, the drafts', the inline review's and the investigation's; a ruling's is `lib/respec.mjs`'s (see [Briefs and returns](#briefs-and-returns)). |
 | `roles/` | One file per agent role: its instructions, tools and kind (see [Roles](#roles)). The host never loads them as agents: only the runner starts one. |
 | `tools/` | `lint.mjs`, its rules under `tools/rules/`, `budgets.json`, and the one-shot migrations. |
 | `test/` | The `node --test` suite, including the scripted runner. |
@@ -40,8 +41,9 @@ returns. No model carries another program's output, and no session starts an age
 |---|---|
 | `.agentics/<effort>/` | One effort: a `DESIGN.md` per folder, and its `.state/` — nodes, events, ledger, evidence, gotchas, executions and locks ([Storage](#storage)) |
 | `.agentics/.state/` | What every effort shares: the slot pool, the evidence pool and program runs outside an execution |
-| `.agentics/config.json` | The project's settings, edited by the user (`max_parallel`, `max_agents`, `claude_cli`) |
-| `.claude/worktrees/` | Integration and leaf worktrees |
+| `.agentics/config.json` | The project's settings, edited by the user (`max_parallel`, `max_agents`, `claude_cli`, `guidance`) |
+| `.claude/worktrees/` | Integration and leaf worktrees, and an inline review's throwaway worktree while it runs |
+| `refs/agentics/review/<run>` | An inline review's snapshot of the working tree, kept as the record its result names ([The simple task](#the-simple-task)) |
 
 Everything under `.agentics/` and `.claude/worktrees/` is local to the machine. `.agentics/`
 sits in the main checkout, where a writer in a linked worktree also lands, and it ignores itself:
@@ -302,55 +304,126 @@ user ⇄ session ── skills: design, develop, task, investigate, challenge-id
 ```
 
 A session is where the user is: it asks, it shows, it edits a spec with the user, and it calls
-lib. A program is where the work is orchestrated: it never asks the user anything; a question for
-the user becomes a park or an escalation the session's watch picks up ([Progress](#progress)). An
+lib. A program is where the work is orchestrated: it never asks the user a question; a question for
+the user becomes a park or an escalation the session's watch picks up ([Progress](#progress)), and
+`rule --user-approved` only confirms a word the user already gave, read from the starting session's
+transcript or typed back at the console ([The user's word](#the-users-word)). An
 agent is where judgment happens, and nowhere else.
 
 ### Programs
 
 A program is an async function over three ports: the store, git and the runner. A test hands it
-real git and a scripted runner ([Self-checks](#self-checks)). `node lib/run.mjs <program> …` is its
-CLI: it resolves its arguments (P2), takes the program's lock for its scope, records
-`run {program, scope, pid}` and runs it in this process, or with `--detach` in a child that
-outlives the call, printing the run's id, pid and log path at once ([Detached runs](#detached-runs)).
-A program's result is a JSON file under its run's directory, carrying a coverage block
-([Coverage block](#coverage-block)); the session reads it.
+real git and a scripted runner ([Self-checks](#self-checks)). `node lib/run.mjs <program> [--repo
+<checkout>] [--root <checkout to read>] [--detach] [--<arg> <value>]…` is its CLI: it resolves its
+arguments (P2), claims the run for the program's scope, records `run {program, scope, pid}` and
+runs it in this process, or with `--detach` in a child that outlives the call, printing the run's
+id, pid, log path and result path at once ([Detached runs](#detached-runs)). A program's result is
+a JSON file under its run's directory, carrying a coverage block ([Coverage block](#coverage-block));
+the session reads it.
 
 | program | does | started by |
 |---|---|---|
 | `execute` | runs an execution over a subtree: plans, dispatches, measures, reviews, merges ([Execution](#execution)) | develop |
-| `survey` | gathers evidence for one question and never concludes ([Survey](#survey)) | design, investigate, and `execute` for a node whose ground is unknown |
+| `survey` | gathers evidence for one question and never concludes ([Survey](#survey)) | design, the `investigate` program, and `execute` for a node whose ground is unknown |
 | `probe` | attacks a written artefact ([Probe](#probe)) | design, challenge-idea, and `execute` for the autonomous review |
-| `solutions` | searches for existing solutions before a capability is built ([Existing solutions](#existing-solutions)) | design |
-| `investigate` | answers a question from evidence | investigate |
+| `solutions` | searches for existing solutions before a capability is built ([Existing solutions](#existing-solutions)) | design, search-for-existing-solutions-before-building |
+| `investigate` | answers a question from evidence ([Investigations](#investigations)) | investigate |
 | `rule` | rules a changed spec and settles it ([A changed spec](#a-changed-spec)) | develop, design |
-| `drafts` | writes approach drafts, one per assigned stance, and records each | design |
-| `review` | one fresh review of an inline task's diff, its exit computed | task |
+| `drafts` | writes approach drafts, one per assigned stance, and records each ([Design](#design)) | design |
+| `review` | one fresh review of an inline task's change, its exit computed ([The simple task](#the-simple-task)) | task |
 
 The programs share their dispatching code (`lib/programs/common.mjs`): `dispatch` and
-`dispatchJudge` over the runner, `deliver` for messages, `askAfter` for convergence rulings. A
-program run keeps at most `max_agents` agent calls open at once (`.agentics/config.json`, default
-6), beside the slot pool that bounds leaves ([Scheduling](#scheduling)).
+`dispatchJudge` over the runner, `deliver` for messages, `searchRounds` for continued searches,
+`step` for side effects and `coverageOf` for the coverage block, beside `askAfter`
+(`lib/programs/converge.mjs`) for convergence rulings. A program run keeps at most `max_agents`
+agent calls open at once (`.agentics/config.json`, default 6), beside the slot pool that bounds
+leaves ([Scheduling](#scheduling)). A program nested in another — an investigation runs its survey
+— shares the run's context: one log, one `max_agents` bound, one result.
 
 **Why programs:** orchestration is deterministic, and deterministic work belongs to code that can
 read the records it decides from. An orchestrator that cannot read the disk needs a model to carry
 every lib result to it, and that carrying is the work P2 gives to code.
 
+**Arguments.** A program declares each argument it takes, with its kind, its default and whether
+it is required; `lib/run.mjs` reads it from `--<name>`, an `_` in the name written `-`, and hands
+the program the resolved values:
+
+| kind | given as | resolved to |
+|---|---|---|
+| `file` | a path, absolute or from the working directory | the absolute path of an existing file, and its text — `\r\n` read as `\n`, trimmed — under the name the program asks for, so a file's line endings never change a run's arguments or its scope |
+| `text` | a string | the string |
+| `list` | `a,b,c` | the entries, trimmed, empty ones dropped |
+| `int` | digits | a non-negative integer |
+| `bool` | the flag alone | `true`; absent, `false` |
+| `enum` | one of the program's values | that value |
+| `effort`, `folder`, `run` | a name | the name, once `resolveHandle` finds it (a folder inside the `effort` argument) |
+| `ref` | a ref or a sha | the commit's sha, read in `--root` |
+
+An absent argument takes its default, else its kind's empty value. A missing required argument
+refuses `missing_arg`; a value its kind refuses, an unknown flag, a flag without its value and a
+stray word refuse `bad_arg`; a name that resolves to nothing refuses `unknown_<kind>`, and a ref no
+commit answers to `unknown_ref`. The CLI also refuses an unknown program (`unknown_program`), a
+host it cannot find (`host_missing`), a live run over the same scope (`run_live`), a launch that
+failed (`launch_failed`), and `--detach` on arguments that take the user's word at the console
+(`attached_only`: `rule --user-approved`). `--repo` defaults to the working directory and `--root`
+to `--repo`. Every agent call goes through the production runner built on the main checkout, so
+its watch reads the user's checkout wherever the run was started.
+
+**The claim.** Under a short lock per program and scope (`runs/.claims/<program>-<scope
+digest>.lock`), a live run of the same program and scope refuses a second start (`run_live`, naming
+the run, its pid and its log, so the session watches that one); a stopped one whose resolved
+arguments digest the same is resumed under its own id, so every session it minted is found again;
+otherwise a new run is minted, `<stamp>-<program>`, numbered `-2`, `-3`… when that is taken. A run
+is live while the pid in its `run.json` is alive and its heartbeat fresh
+([Detached runs](#detached-runs)). The scope is what a second start is refused over:
+
+| program | scope | threads (roles) |
+|---|---|---|
+| `survey` | the question's digest, the roots, the ground | `plan` (analyst), `scout:<topic>` and `common` (scout), `history` (historian), `docs` (doc-researcher), `judge:<n>` and `rejudge:<n>` (analyst) |
+| `probe` | the artefact, by its absolute path | `locate` (scout), `axes` (analyst), `prober:<n>` (analyst) |
+| `solutions` | the capability's digest | `frame` (analyst), `research:<angle>` (doc-researcher), `repo` (scout), `assess` (analyst) |
+| `investigate` | the question's digest | the survey's, and `synthesis` (analyst) |
+| `drafts` | the question's digest | `draft:<stance>` (analyst) |
+| `rule` | the effort and the folder | `ruler:<basis>` (ruler) |
+| `review` | the checkout it reads (`--root`) and the base | `reviewer` (reviewer) |
+
+**The run log.** A run outside an execution keeps its own log, `runs/<run>/state.jsonl`, with its
+own `seq` under its own lock ([State and journal lines](#state-and-journal-lines)), and never
+writes an effort's event log, where a `dispatched` line would change the tree's derived status.
+The runner and the program append to it through one port.
+
+**A relaunch runs only what never returned.** `dispatch` hands back a call whose `returned` line
+and whole return are on disk without calling the runner; resumes every other call that was started
+in its own session, with the fixed `cut_off` message ([Conversations](#conversations)) — one that
+never returned, one that failed or was cut off, one whose stored return cannot be read;
+waits out a host stop and resumes the same call ([Host stops](#host-stops)); and reads every return
+from the store, so one it cannot read is a failed dispatch (`return_unreadable`). A side effect —
+recording items, writing a context, settling — is a `step {key, value}` record: a relaunch reads
+the value back instead of acting again, and a step cut off before its record runs again, so each
+is safe to repeat.
+
+**Results.** `lib/run.mjs` writes the result to `runs/<run>/result.json` with `run` and `cost`
+added — `{dispatches, tokens, usd, unmeasured}` over the run's `returned` lines, `usd` the host's
+own figures and `unmeasured` the calls that carry none (P4) — and records `ended {result: {status:
+done, file, complete}}`, `complete` the coverage block's. A program that throws records `fault`
+on channel `program` and `ended` with status `failed`, and the CLI prints `{error}` and exits 1.
+
 ### The agent runner
 
 `lib/runner.mjs` is the one way anything in agentics starts an agent:
 
-`runAgent({dispatch, thread, role, cwd, brief, tier: {model, effort}, permissions, carries}) →
-{status: returned | stopped | failed, output, usage, cost_usd, denials[], session, error}`
+`runAgent({dispatch, node, round, thread, role, cwd, brief, freshBrief, briefDigest, tier: {model,
+effort}, permissions, schema, carries, dir, resume}) → {status: returned | stopped | failed, cause,
+until, output, usage, cost_usd, denials[], session, checkout, message}`
 
 It spawns the host's CLI, `claude -p`, without a shell, and owns every flag:
 
 | what | how | why |
 |---|---|---|
-| the role | `--system-prompt-file` with the body of `roles/<role>.md` | the agent is told its role and nothing else |
+| the role | `--system-prompt-file` with the body of `roles/<role>.md`, written once under the run's directory as `roles/<role>-<digest>.md` | the agent is told its role and nothing else |
 | the brief | on standard input | a brief of any length reaches the agent whole; no command line holds it |
 | its tools | `--tools` from the role's frontmatter | capability is the tool list |
-| what it may touch | `--permission-mode dontAsk --permission-prompts none`; `--allowedTools` with the rules the program computes for this call (`Read`, `Edit(<path>)`, `Write(<path>)`, `Bash(<command>:*)`; a path is a gitignore-style pattern, so its glob characters are escaped and a root-level name is anchored with a leading `/`); `--disallowedTools` for paths another unmerged leaf holds, for the files a call must not read ([Conversations](#conversations)), and for the git options that reach past a worktree (`--amend`, `-C`, `--git-dir`, `--work-tree`, `--output`); `--amend` and `--output` are matched wherever they stand in the command | nothing prompts; what is not allowed is denied, and every denial comes back in `denials`. A compound command is matched whole, so `git status && …` is denied under a `git status` rule |
+| what it may touch | `--permission-mode dontAsk --permission-prompts none`; `--allowedTools` with the rules the program computes for this call: a role that writes nothing gets its read tools (`Read`, `Grep`, `Glob`, `WebSearch`, `WebFetch`) by their bare names and `Bash(<command>:*)` for each of its commands; a writer gets both `Edit(<path>)` and `Write(<path>)` for each path it may write, because the host's `Edit` rule admits the Write tool and its `Write` rule does not (a path is a gitignore-style pattern, so its glob characters are escaped and a root-level name is anchored with a leading `/`); `--disallowedTools` for paths another unmerged leaf holds, for the files a call must not read ([Conversations](#conversations)), and, when the role runs commands, for the git options that reach past a worktree (`--amend`, `-C`, `--git-dir`, `--work-tree`, `--output`); `--amend` and `--output` are matched wherever they stand in the command, so a command that only quotes one is denied too | nothing prompts; what is not allowed is denied, and every denial comes back in `denials`. A compound command is matched whole, so `git status && …` is denied under a `git status` rule |
 | settings | `--setting-sources ""`, `--strict-mcp-config`, `--disable-slash-commands` | nobody's settings, MCP servers, skills or `CLAUDE.md` reach a dispatch; the guidance it needs is in its brief ([Briefs and returns](#briefs-and-returns)) |
 | the model | `--model` and `--effort` from the dispatch's tier ([Model tier](#model-tier)) | per task; a resumed session may change model |
 | the return | `--json-schema` with the role's return schema from `lib/schemas.mjs`; `--output-format stream-json --verbose` | the host validates the return, and the stream's final `result` event carries it; the events before it feed live activity ([Progress](#progress)) |
@@ -359,16 +432,25 @@ It spawns the host's CLI, `claude -p`, without a shell, and owns every flag:
 
 A **thread** is one line of work a session carries: a leaf's producer, a cycle's test author, a
 planner's folder, a survey's judge. Its session id is minted from it (`sessionOf` in
-`lib/store.mjs`: a UUID v5 over the effort, the execution, the node, the role and the thread's
-name), so a program that died and was relaunched finds every session it started. The host's CLI
-is the executable `claude` resolves to on the `PATH` (`claude.exe` on Windows), or the path in
-`.agentics/config.json` (`claude_cli`); without one the runner refuses to start (`host_missing`).
+`lib/store.mjs`: a UUID v5 over the effort, the execution, the node, the role, the thread's name
+and its generation), so a program that died and was relaunched finds every session it started.
+The host's CLI is the file `.agentics/config.json` names in `claude_cli`, and one that names no
+file refuses (`host_missing`) without looking further; otherwise it is the first `claude.exe` or
+`claude` in a `PATH` directory. Without one, `lib/run.mjs` refuses to start the program
+(`host_missing`).
 
 **The runner records as it goes.** `dispatched {dispatch, node, thread, round, role, model, effort,
-session, brief_digest, carries[], pid}` is appended when the CLI starts, `carries` naming the messages the
-call delivers ([Conversations](#conversations)); when it ends, the runner writes the output whole
-to `returns/<dispatch>.json` and appends `returned {dispatch, session, status, cause, usage, cost_total,
-cost_usd, denials}`, `cause` naming why a call that did not return failed or was cut off. Usage is
+session, brief_digest, carries[], pid}` is appended when the CLI starts — with `pid` 0 when no CLI
+started (its spawn failed, or the watch's read before the call failed), so every call reads as
+started — `carries` naming the messages the call delivers
+([Conversations](#conversations)) and `brief_digest` the digest of the thread's brief
+on every call of the dispatch: its first, a schema retry, each continuation part and a renewal.
+When it ends, the runner appends `returned {dispatch, session, status, cause, usage, cost_total,
+cost_usd, denials}` — a host stop records `host_stop` instead ([Host stops](#host-stops)) —
+`status` `returned`, `part`, `failed` or `cut_off`, and `cause` naming why a call that did not
+return failed or was cut off. A call that returned has its output written whole to
+`returns/<dispatch>.json` first, so a `returned` line with status `returned` always has its whole
+return on disk. Usage is
 the host's own figure for that call; the host's cost figure (`cost_total`) accumulates over every
 call of a session, so the runner records each call's cost as the difference from the session's
 previous call. Cost is measured per call (P4). No agent writes a file that code reads, except the work it was dispatched to do — a
@@ -377,59 +459,85 @@ producer's edits in its worktree.
 **One driver per session.** The host lets two processes drive one session at once and interleaves
 their turns, so the runner keeps it to one: before a session is resumed, the runner makes sure no
 earlier call on it is alive, by the `pid` on its `dispatched` line, and ends one that is — it is an
-orphan of a program that died, and its session goes on only through the resume. On Windows such
-orphans are rare, since a call started without `detached` dies with the program that started it.
+orphan of a program that died, and its session goes on only through the resume; the call it ended
+is recorded `returned {status: cut_off, cause: orphan_ended}`. The process port reads a pid as
+alive, and ends it, only when its image is the host CLI's executable (`hostProcess` in
+`lib/host.mjs`), so a pid the system handed to another program after a crash is never killed. On
+Windows such orphans are rare, since a call started without `detached` dies with the program that
+started it.
 
 **A session the host no longer holds** — the host's cleanup removed it (by default 30 days after
 its last turn, `cleanupPeriodDays`; every resume renews it), or the thread began under 4.x —
 refuses to resume (`No conversation found`). That is an observation, not a fault: the thread
 goes on in a fresh session, briefed with the thread's brief and every message recorded on it.
 
-**A session that grew too large is not resumed.** When the last call's input tokens pass half of
-the model's context window, the thread goes on in a fresh session, briefed with the brief, the
-open findings and the messages not yet answered.
+**A session that grew too large is not resumed.** When the session's last returned call read more
+than half of a 200 000-token window — its input, cache-read and cache-written tokens together
+(`WINDOW` in `lib/runner.mjs`) — the thread goes on in a fresh session, briefed with the call's
+fresh brief: in a program, the thread's brief and every message recorded on it; in an execution,
+the brief, the open findings and the messages not yet answered. Either way the runner records
+`thread_renewed {thread, gen, why}`, `why` being `too_large` or `session_missing`, and the thread's
+next session id is minted from its new generation.
 
 **A return too large for one response** says so (`more: true`); the runner resumes the same
-session for the rest and stores the parts as one return. No return schema carries a bound that
-would make an agent drop what does not fit (the `no-schema-bounds` lint rule).
+session for the rest and stores the parts as one return. Each part is recorded `returned {status:
+part}` and stored nowhere; the call that completes the return stores the merged whole and only then
+records `returned`. A part that adds no array element the merged return lacks and changes no field
+ends the call failed, `no_progress`. The parts so far are kept only in the session: the runner
+holds them in memory, so a host stop or a relaunch between parts drops them, and the `cut_off`
+resume asks the session for its whole return again, from the start. No return schema carries a
+bound that would make an agent drop what does not fit (the `no-schema-bounds` lint rule).
 
 **Denials are observations.** Every tool call the permissions refused is in `denials`. A producer
 that needs a path it was denied returns `needs_locus` ([The locus](#the-locus)); a denial it did not
 report is still on the record, and leaf-close reads it.
 
-**The user's checkout is watched.** Before and after every call that may run commands, and every
-check, the runner reads the main checkout's `HEAD`, its branch refs and its status. A moved `HEAD`
-or ref is a fault naming the call; a changed working tree is recorded, `checkout_changed {dispatch,
-paths}`, and shown, not a fault, because the user may be working in it.
+**The user's checkout is watched.** Before and after every call of a role that runs commands (one
+with `Bash`), and every check, the runner reads the main checkout's `HEAD`, its branch refs and its
+status. A moved `HEAD` or ref ends the call failed (`cause: checkout`), ahead of any host stop, and
+is a fault naming the call ([Faults](#faults)); a changed working tree is recorded,
+`checkout_changed {dispatch, paths}`, and shown, not a fault, because the user may be working in it.
+A watch that cannot read the checkout cannot vouch for it, so the call ends failed,
+`watch_failed`: when the read before the call failed no CLI is started, and when the read after it
+failed a completed return is kept on disk, a continuation part is kept nowhere and handed back as
+no output, and the call still does not count as returned.
 
 **Confinement and what it leaves.** An agent runs in its worktree, may edit only the paths it was
-allowed and may run only its role's commands. Prevention ends where the repository's own commands
-begin: a build or test script a producer runs is the project's code, and what it writes outside the
-worktree is detected by the watch above, not prevented. The investigator, which has to discover
-commands, runs any command in a throwaway worktree, under the same watch ([Roles](#roles)).
+allowed and may run only its role's commands. An agent of a program run outside an execution runs
+in the checkout the program reads (`--root`), the `review` program's reviewer in its throwaway
+worktree, and none of them is allowed a path to write. Prevention ends where the repository's own
+commands begin: a build or test script a producer runs is the project's code, and what it writes
+outside the worktree is detected by the watch above, not prevented. The investigator, which has to
+discover commands, runs any command in a throwaway worktree, under the same watch ([Roles](#roles)).
 
 ### Host stops
 
 The runner classifies a call that failed. A usage or rate limit, an overloaded or unavailable host
 and a network failure are **host stops**: the dispatch stays in progress, the runner records
 `host_stop {dispatch, cause, until}` (`until` when the host said when), and the program waits and
-then resumes the same session. When it asks again is a count's decision; nothing about the work is
-(L2). The status shows what the run waits on and since when. A return that fails its schema is
-resumed in its own session with the validation error as the message; the same failure again is no
-progress, and a role fault ([Faults](#faults)). A failure the runner cannot classify is a
-`host_error` fault.
+then resumes the same session with the `cut_off` message. It asks again a minute past the time the
+host gave, when it gave one that reads as a date, and never sooner than a minute; otherwise after
+one minute, then two, four and so on, doubling up to thirty minutes (`waitFor` in
+`lib/programs/common.mjs`). When it
+asks again is a count's decision; nothing about the work is (L2). The status shows what the run
+waits on and since when. A return that fails its schema is
+resumed in its own session with the validation error as the message; a second failure ends the call
+failed (`schema_failed`): no progress, and a role fault ([Faults](#faults)). A failure the runner
+cannot classify ends the call failed (`host_error`), a `host_error` fault.
 
 ### Roles
 
 Every agent is one of these roles. A role is a file in `roles/`: frontmatter (`kind`, `tools`,
-`commands`, the return schema's name, a default tier) and a body that is its system prompt.
+`commands`, the names of the return schemas it may be dispatched with, a default tier) and a body
+that is its system prompt. A dispatch names one of its role's schemas, and `dispatch` refuses one
+the role does not list.
 
 | role | kind | does | tools | may run |
 |---|---|---|---|---|
 | scout | searcher | find locations for a topic, as far as it judges there is anything to find | Read, Grep, Glob | — |
 | historian | searcher | find when and why behaviour changed | Read, Grep, Bash | read-only git |
 | doc-researcher | searcher | find what vendors and specifications say | WebSearch, WebFetch, Read | — |
-| analyst | judge | judge what it is handed: plan a survey, judge evidence into items, draft an approach from a stance, rule as a prober | Read | — |
+| analyst | judge | judge what it is handed: plan a survey, judge evidence into items, re-judge suspect items, derive a review's axes, rule as a prober, frame and assess a solutions sweep, draft an approach from a stance, answer an investigation or turn it into tasks | Read | — |
 | ruler | judge | rule whether a change moved a node's premise; rule whether a loop converges | Read | — |
 | reviewer | judge | rule every unit of a span: findings with severity, a ruling per criterion, per file, per claim | Read, Grep, Glob, Bash | read-only git |
 | auditor | judge | declare mutations an implementation's tests must catch | Read, Grep, Glob | — |
@@ -440,7 +548,8 @@ Every agent is one of these roles. A role is a file in `roles/`: frontmatter (`k
 
 A producer returns its status and its declarations; a searcher the facts it found (locations,
 sources, what it searched) and its declared coverage; a judge a ruling per unit it was handed. A
-judge is never handed a unit its own session or role produced (`dispatchJudge`, L3). A role that
+judge is never handed a unit its own session or thread produced (`judgeAllowed`, which
+`dispatchJudge` applies, L3). A role that
 writes files writes only in its worktree, and the program commits a shell-less author's files
 itself. The roles' instructions are runtime text: reasons live here, and every role file has a
 size budget (`tools/budgets.json`).
@@ -459,6 +568,15 @@ it is the dispatch's prompt, whole: a dispatch loads no guidance on its own. No 
 file to learn what it is to do. Excerpts several agents need are resolved once
 (`lib/citations.mjs`) and put in each of their prompts. The brief's digest is on `dispatched`, so a
 relaunched program can tell whether a session was briefed with what the records now say.
+
+A program's own dispatches — a survey's, a probe's, a sweep's, the drafts', a review's, an
+investigation's synthesis — are briefed by that program's file in `lib/briefs/`, one per program,
+and a ruling's by `lib/respec.mjs`'s inline brief ([A changed spec](#a-changed-spec)). Each carries
+the repository's guidance from `guidanceOf` in `lib/brief.mjs`: every `CLAUDE.md` from the
+repository's root down to each root the program reads (the root alone when it names none), root
+first and each file once, then each file `.agentics/config.json` lists under `guidance`, in its
+order, a listed file that is missing shown as not found. Nothing else in a program builds a
+prompt; a message it sends is `renderMessage`'s.
 
 An agent's return is the JSON its role's schema states (`lib/schemas.mjs`), validated by the host
 and stored by the runner. A producer returns its status (`done`, `done_with_concerns`, `blocked`,
@@ -490,12 +608,16 @@ sent where is the routing table (`ROUTES`):
 | `brief_changed` | code, when a thread's brief no longer matches the records | the thread's session | the work goes on against the new brief, told what changed |
 | `findings` of a probe | the autonomous review | the planner session that wrote the spec | dispositions |
 | `problems` | the spec check (code) | the planner session that wrote the spec | a corrected spec |
-| `refusals` | the evidence recorder (code) | the judge session whose items it refused | corrected items |
+| `refusals` | the evidence recorder, or settling a changed spec (code) | the judge session whose items or rulings it refused | corrected items or rulings |
+| `continue_search` | code, when `roundOf` reads a search round as unfinished | the searcher's own session | the search's next round ([Continued searches](#continued-searches)) |
+| `cut_off` | code, for a call started and never returned, or one a host stop cut short | the thread's session | the turn finished and its whole structured output returned, from the start |
 
 - **Recorded before delivered, delivered once.** `message {thread, from, to, kind, ref}` is
-  appended before the recipient is resumed, and the call that delivers it names it in `carries`. A
+  appended before the recipient is resumed (in a program run's own log, `message {thread, from,
+  msg, payload, round}`, once per thread and round), and the call that delivers it names it in `carries`. A
   message is delivered once a `dispatched` line carries it; a carrier that never returned is
-  resumed, never sent the message again.
+  resumed, never sent the message again. `cut_off` alone is never recorded: it is the brief of
+  every resume of a started call, after a cut-off or a host stop.
 - **Judges are fresh and never argued with.** A judge's session is resumed only with what bears on
   its own return (its schema, its refused items). No producer's word reaches a judge as a message:
   a producer that holds a finding wrong says so in its `concerns`, and the next fresh reviewer reads
@@ -526,19 +648,40 @@ show per thread what resuming cost.
 
 Two acts are the user's alone: approving a spec — its first approval, or a ruled change the rulings
 found affected something — and landing. Each is a lib call the session makes after it asked the
-user, and each checks the asking. The state call the session reads first prints the act's token,
-which the question must contain: `approve <folder>@<hash8>` for a first approval, `approve
-<folder>@<hash8>#<seq>` for a ruled change (`seq` the `ruled` line the user was shown), `land
-<effort>@<head8>` for landing. The calls are `lib/approval.mjs approve`, `run.mjs rule
+user, and each checks the asking. The question must contain the act's token, which a call the
+session reads first prints: `lib/approval.mjs state` prints `approve <folder>@<hash8>` for a first
+approval, the `rule` run's `needs_user` result carries `approve <folder>@<hash8>#<seq>` for a ruled
+change (`seq` the `ruled` line the user was shown), and `lib/boundary.mjs land --action check`
+prints `land <effort>@<head8>` for landing. The calls are `lib/approval.mjs approve`, `run.mjs rule
 --user-approved` (which settles over the recorded `ruled` line and dispatches nothing) and
-`lib/boundary.mjs land --action merge`.
+`lib/boundary.mjs land --action merge`. Each confirms the word in its own CLI layer through
+`confirmAct` in `lib/host.mjs` — `approveAct` in `lib/approval.mjs`, `landAct` in
+`lib/boundary.mjs`, the `rule` program — and an act whose token is empty (a folder with no spec has
+none) refuses `no_token` before any word is read. `recordApproval` and `land`, the in-process
+functions that settling a ruled change and the tests call, take no word. Before anyone is asked,
+`approve` refuses a spec it could not record — one with problems or an open blocking question —
+and `rule --user-approved` a ruling that no longer settles ([A changed spec](#a-changed-spec));
+`land --action merge` confirms the word first and refuses an open escalation, a parked node or a
+dirty tree after it. `approve` and `land --action merge` read their token afresh and confirm the
+word for it, so a spec edited, or an effort branch moved, after the session read the token it asked
+with leaves no question naming the act's token and refuses `not_approved`: the session reads the
+token again and asks again. Each act is bound to what its token named: `approve` records the
+approval at the hash its token named and refuses (`spec_changed`) a spec edited while the word was
+being confirmed, and `land --action merge` merges the effort head its token named, never the branch
+as it stands when the merge runs, and refuses (`head_moved`) a branch that moved meanwhile;
+`landed` records `by`.
 
 - **From a session** (`CLAUDE_CODE_SESSION_ID` set), `verifyAnswer` in `lib/host.mjs` reads that
   session's transcript and refuses unless the latest answer to a question containing the token
-  chose the act's option, `Approve` or `Land` (`not_approved`). A transcript it cannot find or read
-  refuses (`answer_unverifiable`).
+  chose the act's option, exactly `Approve` or `Land` (`not_approved`). The token is matched whole:
+  a question holds it only where the text ends after it or the next character is outside
+  `[0-9A-Za-z#]`, so `approve api@0a1b2c3d#4` is not in a question about `#41`, and `land e1@` is
+  not in one about `land e1@abcdef12`. A transcript it cannot find or read refuses
+  (`answer_unverifiable`).
 - **From the user's own terminal** — no session, and standard input an interactive console — the
-  call asks for the token to be typed back, and records `by: terminal`.
+  call asks for the token to be typed back (`askLine` in `lib/host.mjs`: the prompt on standard
+  error, one line read from standard input), refuses (`not_approved`) anything else — input that
+  ends before a line included — and records `by: terminal`.
 - **Anything else refuses** (`answer_unverifiable`). A session's tool shells and every agent run
   with standard input redirected, so neither can take the terminal's path.
 
@@ -550,27 +693,46 @@ variable ([Self-checks](#self-checks)).
 ### Detached runs
 
 A program started with `--detach` runs in a child process that outlives the tool call that started
-it, and its records are how anything follows it: `lib/status.mjs watch` prints a line for every
-stop and for the run's end, and the session's monitor shows each as it comes. A run is alive while
-its pid lives and its heartbeat (`run.json`, rewritten every tick) is fresh; one whose pid is gone
-without `ended` shows as stopped, and starting the same program again resumes it. A run started
+it, and its records are how anything follows it. The parent claims the run, starts the same command
+with `--child <run>` as a detached child whose output goes to the run's `run.log`, writes the
+child's pid into `run.json` inside the claim, and prints `{run, pid, log, result_file}` at once.
+`lib/status.mjs watch --run <run>` prints a line for every `host_stop` and `fault` recorded after
+the `seq` its `--since <seq>` names, or after it began when it is given none
+(`host_stop <dispatch>: <cause> until <until or ->`, `fault <channel>: <detail>`), then
+`ended <status>: complete=<bool> result=<file>` at the run's end, the run's last `ended` wherever it
+stands, or `stopped: start the same command again to resume run <run>` when the run reads stopped;
+the session's monitor shows each line as it comes. A skill's monitor passes `--since 0`, so a
+fault recorded before the watch began, or between two of its re-arms, is printed all the same. A
+run is alive while its pid lives and its heartbeat — `heartbeat_at` in `run.json`, rewritten every
+10 seconds — is fresh, written within the last 120 seconds, longer than
+any lock wait or git call stalls the loop; one without `ended` whose pid is gone or whose heartbeat
+went stale shows as stopped, and starting the same command again resumes it. A run started
 with `detached` outlives both a headless session's exit and a background session's stop, and the
 host's own job does not kill it on close; one started without `detached` dies with the process
 that started it. Nothing depends on survival all the same: resuming from the records costs one
-relaunch. A relaunch that finds nothing recorded since the previous
-`run` started is a fault (`launch_failed`), reported and not relaunched again.
+relaunch. A relaunch that finds nothing recorded since the previous `run` started, and a run whose
+process never started, are a fault (`launch_failed`), recorded with `ended {status:
+launch_failed}`, reported and not relaunched again.
 
 A dispatch with `dispatched` and no `returned` is resumed in its own session ([The agent
-runner](#the-agent-runner)), with a fixed message saying it was cut off; whatever it did is in its
-session and its worktree. When its brief's digest no longer matches what the records now brief,
-the message is `brief_changed` instead ([Conversations](#conversations)).
+runner](#the-agent-runner)), with a fixed message saying it was cut off (`cut_off`); whatever it
+did is in its session and its worktree. In an execution, when its brief's digest no longer matches
+what the records now brief, the message is `brief_changed` instead ([Conversations](#conversations)).
+The evidence programs send no `brief_changed`: the claim resumes only a run whose arguments match,
+so a relaunch replays a returned call and resumes a cut-off one with `cut_off` even when the brief
+it would build now differs.
 
 ### Faults
 
 A plugin fault is never the user's decision. A fault is recorded where it is known, as
 `fault {node, channel, detail}`: `program` (a program threw), `role` (a return that failed its
 schema the same way twice, a dispatch that returned nothing), `host_error` (a failure the runner
-could not classify), `checkout` (the user's `HEAD` or a branch ref moved during a call). No
+could not classify), `checkout` (the user's `HEAD` or a branch ref moved during a call),
+`launch_failed` (a run that recorded nothing since it last started, or whose process never
+started). A fault in a run outside an execution names no node, and such a run records only those
+two channels: a call of its that failed — a moved ref, a schema failed twice, a failure the runner
+could not classify — is the `cause` on its `returned` line and a loss the program's coverage block
+reports ([Coverage block](#coverage-block)). No
 `escalated` event lands, so the node's status is what its last real record says. The node is held
 for the rest of the run, which goes on with everything else; develop relaunches at once, and the
 next run takes the node up where it stands. The same fault on the same node again is reported as a
@@ -650,12 +812,15 @@ command, `show`: nothing outside compile calls `addNodes`, and there is no CLI v
 ```
 .agentics/                        in the main checkout
   .gitignore                      `*`, written by mkdirState
-  config.json                     {max_parallel, max_agents, claude_cli}, edited by the user
+  config.json                     {max_parallel, max_agents, claude_cli, guidance}, edited by the user
   .state/
     seq, .lock                   the project-wide counter and mutex
     slots/                        the parallelism pool, shared by every execution (see Scheduling)
-    runs/<run>/                   one program run outside an execution: run.json, its result,
-                                  returns/<dispatch>.json
+    runs/<run>/                   one program run outside an execution: run.json, state.jsonl with
+                                  its seq and .lock, result.json, run.log (a detached child's
+                                  output), returns/<dispatch>.json, live/, roles/ (the system
+                                  prompts its calls ran with)
+    runs/.claims/                 one short lock per program and scope, taken to claim a run
     evidence/                     the evidence item store ([Evidence item store](#evidence-item-store)):
                                   items.jsonl, returns/<stamp>[-<n>]-<kind>.json, snapshots/<hash>.txt
   <effort>/
@@ -722,7 +887,7 @@ Approval is a ledger line holding the spec's hash: `fnv1a` over its text, with `
 `\n` and a byte-order mark dropped, so a checkout's line endings never read as an edit.
 `lib/approval.mjs` records it and derives the folder's state on every read: `approved` or
 `prepared` while the spec's hash equals the latest such line's, `edited` once it differs, `none`
-before. `approved` is recorded once the user's answer is verified
+before. `approved` is recorded once the user's answer is verified, at the hash its token named
 ([The user's word](#the-users-word)), or, for a change to a spec compiled before, by a ruling that the change moves nothing (`by: ruling`, naming its `ruled`
 line); `prepared` only for a planner-written spec, naming the review return it passed. The review gate is derived the same
 way (`approvalGate`): ratifiable once the latest review of the spec's current text ruled every
@@ -751,42 +916,53 @@ approved, so the two cannot disagree about a decision.
 ### A changed spec
 
 A spec that was compiled and is then edited — an answer to a parked question written into it, a
-criterion corrected — is ruled before anyone is asked to approve it. `lib/respec.mjs brief`
-previews the compile of the text as it stands (`compileEffort` with `preview`, which reads the
-edited spec as approved, validates the batch and writes nothing) and writes one brief: the change
-as a diff against the copy compile kept, and every node it reaches. The spec itself is one node,
+criterion corrected — is ruled before anyone is asked to approve it. The `rule` program has
+`lib/respec.mjs` brief it inline: it previews the compile of the text as it stands
+(`compileEffort` with `preview`, which reads the edited spec as approved, validates the batch and
+writes nothing) and writes one brief: the change as a diff against the copy compile kept, every
+node it reaches, and every spec it names, whole. The spec itself is one node,
 ruled with the work dispatched or merged under it and with every stop its approval would clear —
 a park compile answers because the spec owns the node, a stop on an entry that gets a new
 revision, wherever it is stated — each with its question. Every consumer of a contract it provides, merged ones
 included, and every node realising a decision whose text changed is a node of its own when another
 spec states it. Any other node that already waits on the user is listed and not ruled. The `rule`
-program hands the brief and the specs it names to one ruler, which returns a ruling per node: `unaffected`, or `affected` with the
-question its owner must answer, and a `fix` when the new text itself dictates the edit.
+program hands the brief, with the repository's guidance, to one ruler as its prompt, pointing it at
+no file; the ruler returns a ruling per node — `unaffected`, or `affected` with the question its
+owner must answer, and a `fix` when the new text itself dictates the edit — and the program writes
+the rulings to the brief's rulings file and settles. Rulings that settling refuses go back to the
+ruler's session as a `refusals` message, until a refusal repeats.
 
 Rulings are bound to a **basis**: a digest of the text ruled, the nodes and their revisions, the
 other specs the brief names, the work under the spec and the stops it would clear. The brief and
 the rulings file are named by it, so when any of that moves on there are no rulings to settle
-from and the change is briefed and ruled again. `lib/respec.mjs settle` takes the rulings only
-whole and records them as a `ruled` ledger line, a new one whenever the basis or a ruling
-differs. When every node is `unaffected`, and the change adds or alters no Decisions row and no
+from and the change is briefed and ruled again. Settling (`respecSettle`, as the `rule` program
+runs it) takes the rulings only whole and records them as a `ruled` ledger line, a new one
+whenever the basis or a ruling differs. When every node is `unaffected`, and the change adds or alters no Decisions row and no
 contract and clears no `needs_decision` or `contract_changed` park, it records the approval
 `by: ruling`, naming that line, and compiles. Compile reads the ruling the approval names and spares every node it found
 unaffected the `spec_changed` and `contract_changed` parks (`spared` in its result), so any
 compile of that text honours the ruling and no stop is written only to be cleared. Otherwise
-settle returns `needs_user` and approves nothing: the session makes each `fix` in the spec that
-owns the node and has that spec ruled the same way, asks the user the questions left, and once
-their answer is verified `rule --user-approved` records it `by: user`, naming the ruling
-it was approved over, and compile spares only what was ruled unaffected. Before it asks, `rule
---user-approved` checks that the latest ruled line still settles — its reach, its basis, the
-rulings on disk — and refuses as settle would without asking anyone. An approval recorded and
-not yet compiled is compiled by the next `settle`, or by any compile.
+settle returns `needs_user` — the affected nodes, and the reasons the change is the user's whatever
+the rulings: a decision added, changed or removed, a contract a provider changed, a
+`needs_decision` or `contract_changed` park answered — and approves nothing: the session makes
+each `fix` in the spec that owns the node and has that spec ruled the same way, asks the user the
+questions left, and once their answer is verified `rule --user-approved` records it `by: user` (or
+`terminal`), naming the ruling it was approved over, and compile spares only what was ruled
+unaffected. That call dispatches nothing and runs attached. It approves over the latest `ruled`
+line at the spec's current hash, which the token the user's word must carry names, and refuses
+(`rule_it`) when nothing was ruled at that hash. Before it asks, it checks that the latest ruled
+line still settles — its reach, its basis, the rulings on disk (`respecRefusal`) — and refuses as
+settle would without asking anyone: the reach's own refusal, or `rule_it` when the rulings on disk
+for the spec as it stands are not that line's (settle's `over`). It refuses `ask_user`, with the
+token, when the user's word is not confirmed. An approval recorded and not yet compiled is compiled
+by the next `settle`, or by any compile.
 
 A relaunched `rule` run replays only what was recorded for the text and reach that stand: it
-briefs the spec afresh, and the ruler's thread, the rulings it wrote and each settle are keyed by
-the brief's basis, so a relaunch over the same basis calls nothing and one over a moved basis
-rules the spec as it now stands. A relaunched `--user-approved` run asks for the token of the
-latest ruling, and its settle is keyed by that token, so it never reports an earlier word's
-settle.
+briefs the spec afresh, and the ruler's thread (`ruler:<basis>`), the rulings it wrote and each
+settle are keyed by the brief's basis, so a relaunch over the same basis calls no ruler that
+returned and one over a moved basis rules the spec as it now stands. A relaunched
+`--user-approved` run takes the word recorded for the latest ruling's token, or asks for it, and
+its settle is keyed by that token, so it never reports an earlier word's settle.
 
 What cannot be ruled is refused with what to do next (`next`): a spec never compiled, or whose
 compiled text was not kept or cannot be diffed, is the user's to approve; one with problems is
@@ -807,7 +983,9 @@ overturned by another edit.
 under the effort's lock — a script minting a counter, so no agent ever supplies one, and a
 `seq` that arrives on an entry is overwritten — and refuses a batch that does not parse, has an
 entry without a `kind`, or fails its caller's digest. Appends are all or nothing and never
-read-then-write. Readers are tolerant: a torn line is counted, never thrown on.
+read-then-write. Readers are tolerant: a torn line is counted, never thrown on. A log whose last
+line a killed writer tore gets a newline before the next record, so the next record stands whole on
+its own line, in every log `lib/ledger.mjs` appends to.
 
 No record of an execution reaches the ledger through a model. The code that decides or observes
 a line appends it, in the process that ran the action: a boundary recording what it computed from
@@ -990,6 +1168,24 @@ The inline mode has its own entry skill, `task`. Its rules:
   the task's traceability. No plan file, no worktree for the edit, no execution directory.
 - **Discriminate in a throwaway worktree.** A `tdd` leaf's fails-without-the-change check runs in a
   linked worktree at the pre-change commit, never in the user's tree.
+- **An independent reader from `tdd` up.** The session writes the criteria — the todo list, one
+  item per line with its check, `HUMAN:` lines kept — to a file outside the repository with its
+  Write tool, so the snapshot does not hold it, and starts
+  `run.mjs review --base <the commit the change started from> --criteria-file <file>`. The program
+  snapshots the working tree onto `HEAD` through a temporary index (`GIT_INDEX_FILE`, which `git`
+  in `lib/store.mjs` takes in its environment; `git add -A`, `write-tree`, `commit-tree`;
+  `.agentics/` and `.claude/worktrees/` left out) under `refs/agentics/review/<run>`,
+  so the user's tree, index and stash are never touched, and runs one fresh reviewer in a throwaway
+  worktree at the snapshot (`.claude/worktrees/review-<run>`, removed when the call ends; the ref is
+  kept as the record the result names). The reviewer's units are each criterion and each file the
+  change touches; a `HUMAN:` line is the user's and gets no unit. The exit is computed
+  (`reviewExit`): `approve`, `fix` or `escalate`. A unit the reviewer did not rule is an open
+  critical (`unit:<unit>`) and listed incomplete, so a reviewer that failed (the `reviewer`
+  channel) leaves every unit open; a `--prior` run that left no exit is named in `unreached`, and
+  its findings are not ruled again. Every critical is fixed before the task is claimed done, and
+  the re-check is the same review with `--prior <the previous review's run>`, whose open
+  findings the reviewer rules in `fix_rulings`, until it approves; `escalate` tells the user the
+  loop does not converge.
 - **Tripwire.** Raise it — recommending the dispatched mode or design — when the work needs
   design exploration, is cross-cutting, adds a dependency or technology, is ambiguous enough to
   iterate, is irreversible or risky, or outgrows the computed fit. An override is honoured without
@@ -1091,11 +1287,11 @@ at any depth, and each stage writes what it settles into the spec at once.
 
 | stage | what happens | gate |
 |---|---|---|
-| Analyze | write back the understanding; survey this layer's question, and search for existing solutions when it would build a capability | the user confirms or corrects the understanding |
+| Analyze | write back the understanding; survey this layer's question, and search for existing solutions when it would build a capability, the two programs side by side; cite every item their runs returned in one `lib/evidence.mjs cite --from-run` | the user confirms or corrects the understanding |
 | Grill | one question at a time, recommendation first; each answer is a Decisions row at once; a cheap choice nothing consumes is defaulted and ruled with the rest at Review; approach drafts when the decision space is open, from the `drafts` program, each recorded as it returns | no `blocking` question is open |
 | Draft | Design and Plan at this layer's level of detail, shown section by section | `check-plan-block` passes; no decision is unrealised |
-| Review | the `probe` program when earned (by length, or a contract other entries consume); every round recorded with its ambiguities; its findings settled with the user, incorporated or discarded, each a recorded disposition; then the user reads the spec | `lib/approval.mjs gate` ratifiable, or the review not earned; and the user's answer chose `Approve` |
-| Approve | `lib/approval.mjs approve`, which verifies the user's answer, then `lib/compile.mjs` | — |
+| Review | the `probe` program when earned (by length, or a contract other entries consume); a second round, earned by a resolution that reshaped the design, narrowed by `--since`, the previous round's snapshot, and the whole spec probed again for what a partial round left; every round recorded from its run (`lib/approval.mjs reviewed --from-run`); its findings settled with the user, incorporated or discarded, each a recorded disposition; then the user reads the spec | `lib/approval.mjs gate` ratifiable, or the review not earned; and the user's answer chose `Approve` |
+| Approve | a spec never compiled: `lib/approval.mjs approve`, which confirms the user's answer, then `lib/compile.mjs`; a spec compiled before: the `rule` program, which approves the change by ruling or hands back the questions the user must answer ([A changed spec](#a-changed-spec)) | — |
 | Move on | `lib/next.mjs` offers: design a sub-effort, develop, or stop | the user picks |
 
 - **Which folder.** `/agentics:design <words>` matches the words against every folder's name and
@@ -1110,6 +1306,18 @@ at any depth, and each stage writes what it settles into the spec at once.
   path.
 - **Level of detail.** A layer states only what the layer below needs: a high layer talks in parts
   and how they interact, a low one in interfaces and data shapes. Depth comes from folders.
+- **Approach drafts.** The `drafts` program runs one analyst per stance, all at once, each handed
+  the question file — the evidence excerpts, the decisions so far and the layer's question — and its
+  stance's charge: `minimal-change`, the smallest change that satisfies the decisions so far;
+  `long-horizon`, the approach that absorbs the growth axes the decisions name, at the cost of a
+  larger change now; `adopt-dont-build`, adopting what exists from the candidates the question names
+  and building only what none of them covers. Any other stance argues what its name calls for; a
+  stance name follows the segment rule, and one named twice is drafted once. An empty question, no
+  stance, or a stance name that breaks the rule starts no analyst and drafts nothing, and
+  `coverage.unreached` says why. Each draft is recorded as an `approach` return as it comes back;
+  a stance whose analyst failed has no draft (`draft:<stance>`), and one whose record failed keeps
+  its draft unrecorded (`record:<stance>`). The session shows each draft with its trade-offs, its
+  own recommendation first.
 - **Decisions are the user's and carry ids**: `D<n>` at the root, `<folder id with dots>.D<n>`
   below. Open questions are graded `blocking`, `parked (reopens at <x>)`, `lookup`, `compost`, and
   a spec with an open `blocking` question does not hand off. **The ancestor rule:** an answer that
@@ -1124,7 +1332,8 @@ at any depth, and each stage writes what it settles into the spec at once.
   again.
 - **The review gate is computed.** `lib/approval.mjs gate` (`approvalGate`) reads the latest
   `reviewed` ledger line at the spec's current hash and the folder's dispositions: ratifiable when
-  that review ruled every unit in scope and each ambiguity it returned, carried ones included, has a
+  that review was complete — one recorded from a probe run is complete when the run's coverage is
+  ([Ledger lines](#ledger-lines)) — and each ambiguity it returned, carried ones included, has a
   disposition from any round, an incorporated ambiguity counting only once a later round ruled its
   section clean. An edit leaves no review of the new text, so the gate shuts until one reads it. The design session and develop's autonomous review read the same gate.
 
@@ -1162,45 +1371,67 @@ repository's excerpts and nothing from the author. Findings sit on the design la
 advisory). When a person drives it there is no fix loop: the probe reports and a human rules. The
 one loop is the [autonomous review](#autonomous-review) of a planner-written spec. The ladder's and
 the disposition's wording are the verbatim blocks `design-severity-ladder` and `probe-disposition`
-in the `design` and `challenge-idea` skills.
+in the `design` and `challenge-idea` skills; every prober's brief carries the ladder word for word
+from `lib/briefs/probe.mjs`, which `test/program-probe.test.mjs` holds to the design skill's block.
 
-**The units of a probe** are each axis it attacks against each section of the artefact in scope.
-A prober rules every unit it holds: findings, each with its severity, claim, evidence and the
-artefact lines it rests on, or `clean` with a line of why. `ratifiable` is computed: every unit in
-scope ruled, and no ambiguity open. A unit nobody ruled on is open, so a prober that skipped a
-section leaves the review unratifiable, never quietly passed (L1, L3).
+**The units of a probe** are each axis it attacks against each section of the artefact in scope,
+the sections being its `##` headings outside fenced blocks: the lines before the first heading are
+a section of their own when they hold more than a title, and a document with no such heading is one
+section. A prober is handed the snapshot's text, line-numbered, in its prompt, and rules every unit
+it holds: findings, each with its severity, claim, evidence and the artefact lines it rests on, or
+`clean` with a line of why. A ruling counts only for a unit its prober was handed, and a prober is
+no searcher: it is never continued. `ratifiable` is computed: the coverage complete — every unit in
+scope ruled, no channel failed, the locating search done — and no ambiguity open. A unit nobody
+ruled on is open, so a prober that skipped a section leaves the review unratifiable, never quietly
+passed (L1, L3).
 
 Findings are evidence items too. The program first snapshots the artefact (`reviewScope`), and
 each new finding is recorded as a `behaviour` item anchored to its lines in that snapshot. Given
 `since` — the snapshot the last review judged — the probe attacks only the lines changed since, its
-units narrowed to the sections those lines fall in, and carries forward every earlier finding and
-ruling whose lines no hunk touched: the same anchor check as all other evidence, with no mechanism
-of its own. An artefact unchanged since `since` buys no analyst. A carried ambiguity is an open
-ambiguity.
+units narrowed to the sections those lines fall in, and carries forward every earlier finding whose
+lines no hunk touched, in the probers' prompts and in the round's record: the same anchor check as
+all other evidence, with no mechanism of its own. An earlier `clean` ruling is not carried: the
+sections no hunk touched are out of the round's scope. An artefact unchanged since `since` buys no
+agent at all and records one empty round, every earlier finding carried; a `since` the store does
+not hold intact makes the round whole. A carried ambiguity is an open ambiguity.
 
-When every prober has returned, the program records the round in-process (`recordProbe`): carried
-findings first and new ones after, numbered `P1…`; a finding whose axis its prober did not hold is
-credited to that prober's bundle; a range outside the snapshot is anchored to the whole document.
-It writes every finding and every unit's ruling in full to one findings file, records the round's
-`probe` return — an empty one when it found nothing new, so a `prepared` line always names a real
-review — and returns the snapshot to pass back as `since`. A finding the store refused is in no
+When every prober has returned, the program records the round in-process (`recordProbe`), once:
+carried findings first and new ones after, numbered `P1…`; a finding whose axis its prober did not
+hold is credited to that prober's bundle; a range outside the snapshot is anchored to the whole
+document. It writes every finding and every unit's ruling in full to one findings file, records the
+round's `probe` return — an empty one when it found nothing new, so a `prepared` line always names a
+real review — and returns the snapshot to pass back as `since`. A round with a failed prober records
+nothing: its findings are numbered into the findings file, unrecorded, and a relaunch resumes only
+that prober, the others replaying, and records the round then. A finding the store refused is in no
 pool, so the snapshot comes back empty, and the next round attacks the whole document again rather
 than narrowing past it. The scope and the recorder read the checkout the probe was started in, so a
-probe in a linked worktree reads and anchors the worktree's text.
+probe in a linked worktree reads and anchors the worktree's text. An artefact outside every
+checkout cannot be snapshotted: it is probed all the same, and its findings stay in the probers'
+stored returns, the round's `record` channel failed.
 
 Every axis the repository's guidance yields is probed, beside the standing four: an axis nobody ran
 and an axis that found nothing must not leave the same mark, and the per-unit rulings are what tell
-them apart. One analyst holds every axis as a checklist; more are bought when the document is long
-enough (one per 400 lines) or the checklist is (one per 12 axes), whichever buys more, never more
-than one per axis, the axes dealt evenly. A second round is earned only by a resolution that
-reshaped the design.
+them apart. One analyst holds every axis as a checklist; more are bought when the lines attacked are
+many enough (one per 400; a narrowed round counts its changed lines alone) or the checklist is (one
+per 12 axes), whichever buys more, never more than one per axis, the axes dealt round-robin;
+`--per-axis` buys one per axis. A second round is earned only by a resolution that reshaped the
+design.
+
+The coverage names what the probe could not do. The locating search is declared (`locate`) when it
+was exhausted and incomplete when it ended short. A locating search that returned no round fails
+`repo-axes` and `repo-ground`, and the standing axes probe the artefact and its own citations
+alone; the axes analyst is bought only when the search located guidance, and one that failed or
+could not read it fails `repo-axes`; a failed prober fails `probe`, its units open; an artefact
+that cannot be snapshotted fails `record`. A round whose findings the store refused fails no
+channel: its new findings are listed in `unrecorded`, and its snapshot is empty.
 
 ### What a probe costs
 
 **The cost of a probe is turn count, not payload**: every turn re-sends the accumulated context,
 and analysts that each locate the same lines pay for them once each. So the program resolves the
 document's cited evidence once (`lib/citations.mjs`) and puts the excerpts in every prober's
-prompt, and the head count is earned by length rather than by axis count.
+prompt, and the head count is earned by the lines attacked and the checklist's size, never one
+analyst per axis unless asked.
 
 The Ground phase resolves three bodies of text once: the document's own citations and the located
 repository ground, which go into every prober's prompt, and the located guidance, which goes to the
@@ -1292,17 +1523,20 @@ stored returns and decides what runs next:
   spacing aside;
 - `continue` otherwise.
 
-A round that stops `unfinished`, or states no stop reason, is continued in the searcher's own
-session, with a fixed message: its earlier rounds are in its session, so it covers what the
+A round read as `continue` — `unfinished`, `stuck` naming a remainder, any other stop reason or
+none — is continued in the searcher's own session, with a fixed message (`continue_search`, naming
+what the round said it did not reach): its earlier rounds are in its session, so it covers what the
 original request asks that it has not, and reports only what it did not report before. A slip in
-filling one field costs one more turn, never the search, and a round that gains nothing ends it.
+filling one field costs one more turn, never the search, and a round after the first that gains
+nothing and names the same remainder ends it.
 
 These are declarations, and they steer: they decide whether a searcher is asked again, never
 whether anything passes (L3). A search's coverage is shown as declared, in the coverage block and
 in every report that rests on it; where a verdict needs to know that something was examined, a
 judge rules it unit by unit ([Probe](#probe), [Executors and review](#executors-and-review)).
-`entries_n` and `kinds` count the distinct locations across the rounds and size their readers: the
-probe's ground and guidance, the survey's judges.
+`entries_n` and `kinds` count the distinct locations across the rounds: a survey topic's
+`entries_n` weighs it when judges are dealt, and in a probe a `guidance` entry buys the axes
+analyst and the `ground` count is reported as `repo_ground.located`.
 
 ### Items and anchors
 
@@ -1320,10 +1554,11 @@ An item's **kind** decides the anchor it must carry, and `checkItem` refuses an 
 A judge supplies the claim and what to anchor it to. The recorder (`recordItems`) makes the
 observations a judge can't: a span's `at` is HEAD when the file is unchanged against it, and
 otherwise a snapshot of the text it was read from; a query's result is `git grep` re-run; a
-source's retrieval date is the recorder's own. A batch with one refused item is refused whole and
-goes back to the judge that wrote it, so nothing unanchored enters the pool. An item's id is its
-question, topic and claim; a new revision of the same claim is appended, and the latest by `seq`
-wins.
+source's retrieval date is the recorder's own. A batch with one refused item is refused whole, so
+nothing unanchored enters the pool: a survey judge's refused items go back to that judge
+([Survey](#survey)), and a probe round or a sweep whose batch is refused records nothing
+([Probe](#probe), [Existing solutions](#existing-solutions)). An item's id is its question, topic
+and claim; a new revision of the same claim is appended, and the latest by `seq` wins.
 
 ### The drift ladder
 
@@ -1343,7 +1578,7 @@ stored:
    `--ignore-cr-at-eol`, so it changes nothing.
 2. **Re-judge.** Suspect items go, up to twenty per call, to an analyst on `haiku`, each claim and
    each changed anchor's old and new text in its prompt. It returns a ruling per id, and
-   `recordJudgement` records one per id it was handed: an id with no ruling is `unsure`. `holds` re-anchors the item where the text
+   `recordRulings` records one per id it was handed: an id with no ruling, or one off the ladder, is `unsure`. `holds` re-anchors the item where the text
    now is; `fails` and `unsure` make it **stale**, because an unsure check is never a pass. This is
    the stated exception to the intelligence tier: the question is narrow, and any doubt routes to
    the full-tier survey, so being too cheap can cost money but never correctness. Whether text
@@ -1369,43 +1604,78 @@ itself is always the main checkout's `.agentics/.state/evidence/`.
 The `survey` program gathers evidence for one question and never concludes.
 
 1. **Reuse.** When the caller names its `ground`, the program reads the items of earlier surveys
-   whose ground overlaps it (`itemsFor`). Standing items become known ground; suspect ones are
-   re-judged; stale ones, and any still suspect after the re-judge, send their topic to be searched
-   again, with what the topic used to claim in its scout's prompt.
+   whose ground overlaps it (`itemsFor`) into its own log as a `step` (`pool`), and again after the
+   re-judge (`pool:after`) when any was suspect, so a relaunch sees what the run saw. Standing
+   items become known ground; suspect ones are re-judged, twenty to a call, the calls side by side;
+   stale ones, and any not standing after the re-judge, send their topic to be searched again,
+   with what the topic used to claim in its scout's prompt — unless a newer standing item
+   superseded them. A re-judge that fails records nothing, so its items' topics are searched again.
+   A pool that cannot be read fails the `pool` channel, and nothing is reused.
 2. **Plan.** One analyst decomposes the question into topics, names each topic's subtree and the
    common ground, and is told what the pool already establishes and which topics are searched
    again regardless; it plans only what the pool leaves open, and returns the plan. A pool that
-   answers the question buys no search.
+   answers the question buys no search. A plan that fails searches nothing and fails the `plan`
+   channel, the topics due to be searched again named as dropped; the context still holds the
+   standing items the run reused.
 3. **Scout.** One scout per topic, the common ground scouted once, each handed its entry of the
    plan. Scouts return their locations with a note each, what they searched, `no_match`,
    `not_reached` and `stop_reason`, and are continued in their own sessions until `roundOf` reads a
    round as done or ending short ([Continued searches](#continued-searches)). History and docs
    channels run alongside when the plan asks, each failing alone.
-4. **Excerpts.** Judges are dealt first: one analyst for every topic, unless `pace` or more than 60
-   distinct locations earns more. Then, per judge, `lib/citations.mjs` reads its topics' and the
-   shared ground's scout returns once into one body of excerpts — every location with its note,
-   what each scout covered and declared absent, and the lines they point at — which is the judge's
-   prompt.
+4. **Excerpts.** Judges are dealt first: one analyst per 60 distinct locations the scouts found,
+   the common ground's counted in, at least one and never more than one per topic; `pace: fast`
+   buys one per topic. A topic weighs its scout's distinct locations, none when no round returned,
+   and topics go heaviest first to the lightest judge, a tie to the judge holding fewer topics.
+   Each judge holds its topics in topic order (the topics searched again first, then the plan's),
+   and the judges are numbered (`judge:<n>`, from 1) in the order of each one's first topic. Then,
+   per judge, `lib/citations.mjs` reads its topics' and the shared ground's scout returns once into
+   one body of excerpts — every location with its note, what each scout covered and declared
+   absent, and the lines they point at — which is the judge's prompt.
 5. **Judge.** Each analyst, **without search tools**, returns items — one claim each, with the
-   anchor its kind needs — and risks. A topic with neither is dropped.
-6. **Record.** The program records each judge's items (`recordSurvey`). Items the store refuses go
-   back to the judge's own session as a `refusals` message ([Conversations](#conversations)), until a
-   pass refuses no fewer; what never anchors is dropped and leaves its topic incomplete.
+   anchor its kind needs — risks, and a ruling per topic it holds, `anchored` or `unanchored`; a
+   topic's latest ruling stands. A topic given neither items nor risks is dropped.
+6. **Record.** The program records each judge's items (`recordSurvey`), all or none: while the
+   judge's latest answer holds an item the store refuses, nothing is recorded, and the refused items
+   go back to the judge's own session as a `refusals` message ([Conversations](#conversations)). A
+   pass that refuses none records every item the store accepts — a correction in place of the item it
+   corrects, a refused item the judge did not correct dropped — and a pass that refuses no fewer
+   than the one before records nothing, so every topic the judge was given items for is listed in
+   `unrecorded`. A judge is never continued as a searcher is: beyond the runner's own resumes
+   within a dispatch, its session is resumed for its refusals alone.
 7. **Context.** The program writes the survey's one file: every item it returns — the standing
-   items over the caller's ground, then every item its records stored — with the judges' risks and
-   the history and docs channels' returns. The session, or the planner's brief, reads it.
+   items over the caller's ground, this run's own among them where they overlap it, then every other
+   item its records stored — with the judges' risks and the history and docs channels' returns. The
+   session, or the planner's brief, reads it; the result lists the reused items first, then this
+   run's, by topic.
 
 Coverage is complete when every topic's search ended `done` and all its items stand; a topic's
-completeness is the scouts' declaration, and the result says so.
+completeness is the scouts' declaration, and the result says so: each searcher's stop is a declared
+line (`topic <key>: <stop reason>`, with what it did not reach and whether it ended short). A topic
+not dropped is incomplete when its search did not end `done`, its items went unrecorded, or it was
+given items and its judge never ruled it or ruled it last as anything but `anchored`; `common` is
+incomplete when the common-ground search did not end `done`, and `history` or `docs` when that
+channel ended short. A scout, a judge or a channel that failed is an unreached line naming what it
+cost, and a history or docs channel that failed is named in `failed_channels` as well.
 
 ### Existing solutions
 
 The `solutions` program frames the capability, sends researchers out by angle and a scout through
 the repository, has an assessor weigh the candidates against the frame, and records all of it
-in-process (`recordSolutions`); lib decides what the returns mean. A candidate is viable when it hit
+in-process (`recordSolutions`); lib decides what the returns mean. The researchers — one per angle
+the frame names, up to `max_angles`, the rest named as dropped — and the repository scan are
+continued searches ([Continued searches](#continued-searches)); a researcher's `no_match` is part of
+what it declares, never a loss. The assessor is a judge sharing no session or thread with any
+researcher, and its units are the candidate names the researchers reported, case aside: a name it
+did not rule `assessed` leaves the sweep incomplete (`assess:<name>`). A frame that fails or names
+no angle searches nothing and fails `frame`; a researcher that did not end `done` leaves
+`find:<angle>` incomplete; the repository scan fails `repo` when it failed and leaves it incomplete
+when it ended short; a failed assessor fails `assess`, and a record that failed fails `record`.
+A candidate is viable when it hit
 none of the frame's disqualifiers; a ground the frame never declared rules nothing out and is
 named; a candidate a researcher reported and the assessment dropped is named as lost; without an
-assessment the researchers' candidates are carried unmeasured, neither viable nor ruled out. Each
+assessment the researchers' candidates are carried unmeasured, neither viable nor ruled out. A lost
+candidate, a ground the frame never declared and notes the assessment left unsettled each add an
+`unreached` line, so the sweep is not complete; the summary names each of them. Each
 candidate with a source is recorded as an `external` item anchored at it, and each hit the
 repository already carries as a `behaviour` item anchored at that line, and all of it goes into one
 summary file the session reads. A record the store refuses costs no coverage. A sweep answers its
@@ -1413,11 +1683,28 @@ capability whole, so once a later sweep records items for a question and topic, 
 out every item an earlier sweep recorded for them. A sweep is dated by the `seq` its return first
 recorded at, and an item the later sweep repeats is the same item and stands.
 
+### Investigations
+
+The `investigate` program runs the survey of its question inside its own run — one log, one
+`max_agents` bound — with no `ground`, so it reuses nothing from earlier surveys, and then one
+analyst, `synthesis`, handed the survey's context whole (`readContext` in `lib/citations.mjs` reads
+back every part `writeContext` wrote) with a caveat per
+gap in the survey's coverage: topics dropped, topics or channels not searched to exhaustion, a
+failed history or docs channel, what was never reached. With `--as-tasks` the analyst returns an
+ordered task list (`investigate_tasks`: a summary, the gaps the evidence cannot settle, and tasks
+that each stand on their own, ordered by `blocked_by`); otherwise a written answer
+(`investigate_report`). Nothing caps the tasks: a count that dropped some would hide work (L2). A
+survey that established nothing still gets its synthesis, which says so and names what would have
+to be gathered; an empty question searches nothing and starts no synthesis, and the survey's
+coverage says why. A synthesis that failed leaves the evidence in the result and names its loss
+(`synthesis`).
+
 ### Cites and evidence.md
 
 A folder records the items it rests on, with the coverage gaps it rests on them despite, as a
 `cites` line (`evidence.mjs cite`). The folder's latest line by `seq` is its whole citation, never
-merged with its earlier lines, so Analyze cites everything the folder rests on each time. Its
+merged with its earlier lines, so Analyze cites everything the folder rests on each time, in one
+`cite` naming every run the folder rests on. Its
 `evidence.md` is rendered from that line and the items' states at render time (`render.mjs
 evidence`): grouped by topic, each item with its state and anchors, and every gap named. It is
 never edited and never read back. `effort.mjs rename` carries each renamed folder's latest line to
@@ -1664,9 +1951,13 @@ Anything else is asked for. Existing files stay listed one by one, because they 
 leaves contend for; a test the leaf adds beside its source contends with nothing.
 
 **Checked at the spec.** A producing task whose criterion's `check:` names a path its locus does not
-admit is refused by `checkSpec`, with the file and the line, so a test the plan itself runs is in the
-plan's locus before anything is dispatched. A test that lives outside every listed directory — a
-`tests/` tree, a mirrored layout — is listed by name.
+admit, no locus entry starts with and no file the repository tracks starts with is refused by
+`checkFolder`, with the file and the line — approval, compile and the spec check all read it — so a
+test the plan itself creates and runs is in the plan's locus before anything is dispatched. A test
+that lives outside every listed directory — a `tests/` tree, a mirrored layout — is listed by name.
+Only a word of the command holding a `/` is read as a path, and not one that starts with `-`, holds
+`://`, leaves the repository or carries shell syntax — a redirection, a pipe, a variable, an
+operator, a glob, a brace; quotes around it and a trailing `;`, `,` or `)` are not part of it.
 
 **Prevented.** leaf-open turns the locus into the call's permissions: `Edit` and `Write` for each
 listed file and under each directory entry; `Edit` and `Write` for test-file names in each listed
@@ -1789,13 +2080,16 @@ other ([Merging](#merging)).
 
 The node's author sets `dispatch` per stage, because it holds the context. Defaults: **producers**
 (implementer, test-author) run the cheaper model, with effort scaled to the leaf's difficulty;
-**gates** (reviewer, planner, analyst, ruler) run the stronger model at moderate effort. A leaf whose
+**gates** (reviewer, auditor, planner, analyst, ruler: `GATES` in `lib/roles.mjs`, which `tierFor`
+reads) run the stronger model at moderate effort. A leaf whose
 output is a yardstick — `red`, `audit`, or one that `provides` a contract — runs its producer on the
 stronger model too. A fix round that failed to clear its blockers raises the producer one step, and
 that step may exceed the user's ceiling. The user's intelligence dial is otherwise a ceiling,
 derived from the session's model unless the user moves it (`low` → sonnet gates, `normal` and `max`
-→ opus, `max` one effort step deeper). Effort follows the model a dispatch resolves to: opus at
-medium, sonnet one step above its call site's base. A raised round is a fresh session on the stronger model
+→ opus, `max` one effort step deeper). A gate's effort follows the model it resolves to: opus at
+medium (high at `max`), sonnet one step above its call site's base, or above its role's own effort
+when the call site gives none; any other role runs at its call site's base, else at its role's own
+effort. A raised round is a fresh session on the stronger model
 ([Conversations](#conversations)); a resumed session keeps its thread's tier.
 
 ### Landing and drift
@@ -1854,17 +2148,22 @@ session runs `lib/boundary.mjs land --action check`: how the user's branch drift
 effort branch was cut, open escalations and parked nodes, every `HUMAN:` criterion verbatim, the
 root's claim rulings (`root_claims`) and the **landing view** (`landing`, from
 `lib/render.mjs renderLanding`: the root spec's success criteria beside those rulings, what did
-not hold first, a `cant_tell` counted apart from `met`). The session shows it, asks with the landing token, and
-runs `--action merge`, which verifies the user's answer ([The user's word](#the-users-word)),
-merges the effort branch into the user's checked-out branch and appends `landed`. It refuses over an open escalation, a parked node or a dirty tree; untracked state under
-`.claude/` and `.agentics/` is not dirt. The same call then sweeps: every branch of the effort that
-the landed head holds, and the clean worktree still on it — composites' integration worktrees; a
-leaf's went with its merge — is removed, with `git branch -d` and never `-D`, after a `git
+not hold first, a `cant_tell` counted apart from `met`) and the act's `token`. The session shows it, asks with that token, and
+runs `--action merge`, which runs the check again, confirms the user's word for its token
+([The user's word](#the-users-word)), merges the effort head that check read into the user's
+checked-out branch and appends `landed {into, merged_sha, by}`. It refuses over an open escalation,
+a parked node or a dirty tree; nothing changed under `.claude/` or `.agentics/`, tracked or
+untracked, is dirt. An effort head the user's branch already holds is not merged again: when the
+effort has no `landed` record — a landing killed before it, a merge made by hand — the call records
+`landed` with that `HEAD` and its own `by`, and one landed before keeps its record. The same call
+then sweeps: every branch of the effort that the landed head holds, and the clean worktree still
+on it — composites' integration worktrees; a leaf's went with its merge — is removed, with `git branch -d` and never `-D`, after a `git
 worktree prune`. It sweeps from the checkout that took the merge because that is the one call that
 holds it: "merged" is read against that checkout's `HEAD`, and a sweep run elsewhere would read it
 against a head that never took the merge. What it keeps — a branch git does not see merged, a dirty
 worktree, one git would not remove — it names with why. A `merge` run again over a landed effort
-merges nothing and sweeps again, so a sweep a locked file stopped is finished by asking twice.
+merges nothing and sweeps again, so a sweep a locked file stopped is finished by asking twice; with
+the effort branch gone, the token it asks with is `land <effort>@`.
 
 ---
 
@@ -2022,7 +2321,9 @@ prints, and when the program ends.
 
 **Questions are asked while the run goes on.** A park or an escalation stops only its node; the
 session watches for them with `lib/status.mjs watch`, which prints one line per `escalated` or
-`parked` event after the watch began and exits on the run's `ended`. The session asks the user at
+`parked` event after the `seq` its `--since <seq>` names — the one the session read before it
+launched, so nothing raised in between goes unseen — or after the watch began when it is given
+none, and exits on the run's `ended`. The session asks the user at
 once and records the answer: a re-spec's approval and compile clears a park (`replanned`,
 `answered`), and `lib/boundary.mjs retry --node <id>` clears an escalation (`replanned`,
 `retry_escalated`). The running program reads the records on every tick, so a stop the session
@@ -2109,6 +2410,16 @@ runs it when asked in chat.
 
 **A skill starts no agent.** Every agent a skill needs is a program's: the skill starts the program
 and reads its result, so every dispatch is recorded, confined and judged as the laws ask.
+The session writes every text longer than a phrase that a program takes — a question, a capability,
+criteria, the drafts' excerpts — to a file outside the repository with its Write tool, so no
+snapshot holds it, and passes the path; a phrase (`--notes`, `--context`, `--constraints`) is the
+flag's value. It starts each program with `--detach`, keeps the `run` printed, follows it with
+`lib/status.mjs watch --run <run> --since 0` on its monitor, re-armed until the run's end, and reads
+the result from the printed `result_file`. A `run_live` refusal names a run already going over the same
+scope, which the session watches instead; starting the same command again resumes a stopped run.
+An `ended failed` or a `launch_failed` is a plugin fault: the session says so and starts the command
+once more, and the same fault again is reported as a plugin defect. `rule --user-approved` runs
+attached, because the user's word may be typed at the console.
 
 **A stopped node named to develop is a question, not a launch.** Words that name a parked or
 escalated node (a pasted Next line, the viewer's prompt) take develop straight to asking the user
@@ -2169,7 +2480,7 @@ question, said?}` (`said` is the dispatch whose stored return holds the agent's 
 either)
 (`return` is a replanning return, `needs_design`, `needs_respec`, `integration_critical`,
 `spec_defect`, `cant_tell` or `contract_drift`) ·
-`landed {into, merged_sha}` · `claims {head_sha, review: done | not_earned, claims[{claim, ruling}],
+`landed {into, merged_sha, by}` (`by` who confirmed the word: `user` or `terminal`) · `claims {head_sha, review: done | not_earned, claims[{claim, ruling}],
 said?}` (each ruling's evidence is in the reviewer's stored return) · `noted {by, text}` (what a
 session learned about the node; no status is derived from it) · `message {thread, from, to, kind,
 ref}` (a message code delivered between sessions, [Conversations](#conversations)).
@@ -2312,7 +2623,14 @@ and `reviewed.ambiguities` both use it. A folder's approval state and its review
 never stored, and a spec with an open `blocking` question is refused approval.
 `node lib/approval.mjs approve|prepare|dispose|skip-review|reviewed|state|gate --repo <r>
 --effort <e> --folder <id>` prints each function's result; `state` prints the folder's act token,
-and `approve` verifies the user's answer to it ([The user's word](#the-users-word)).
+and `approve` verifies the user's answer to it ([The user's word](#the-users-word)). `reviewed
+--from-run <run>` records a probe run's round from its result, so no list passes through a model:
+`complete` as its coverage says; `remaining` its open units, then `channel:<c>` for each failed
+channel, then its coverage's incomplete entries; `ambiguities` by settlement id. It refuses a run
+that resolves to nothing (`unknown_run`) or left no result (`no_result`), a result that rules no
+units (`not_a_probe`), a probe of another artefact than the folder's spec (`not_this_spec`), a
+snapshot of text the spec has moved on from (`spec_changed`: probe it again), and `--from-run`
+beside `--complete`, `--remaining` or `--ambiguities` (`bad_args`).
 
 ### Compile result
 
@@ -2332,22 +2650,32 @@ read as approved, and writes nothing.
   `roles/ruler.md` (the rulings it returns).
 
 `node lib/run.mjs rule --repo <r> --effort <e> --folder <id> [--user-approved]` briefs the
-change, dispatches one ruler with the brief as its prompt, and settles. Its result is
+change inline, dispatches one ruler with the brief as its prompt, writes its rulings and settles;
+with `--user-approved` it dispatches nothing, runs attached (`--detach` refuses `attached_only`)
+and settles over the latest `ruled` line once the user's word is confirmed. Its result is
 `{status: approved, folder, hash, ruled, by: ruling | user | terminal, written[], retired[],
 flagged[], spared[], parked[], answered[]}`, `{status: needs_user, folder, hash, ruled,
-affected[{node, ruling, why, question, fix}], token}` (`token` the act the user's answer must
-choose, [The user's word](#the-users-word)), `{status: compile_refused, folder, hash, ruled,
-problems[]}` or `{status: refused, next: user_approves | fix_spec | rule_parent_first | rule_it |
-planner | nothing, why, problems[]}`. The ruler returns `{rulings: [{node, ruling: unaffected |
-affected, why, question, fix}]}`, one per node of the brief.
+affected[{node, ruling, why, question, fix}], reasons[], token}` (`reasons` what makes the change
+the user's whatever the rulings; `token` the act the user's answer must choose,
+[The user's word](#the-users-word)), `{status: compile_refused, folder, hash, ruled, problems[]}`
+or `{status: refused, next: user_approves | fix_spec | rule_parent_first | rule_it | planner |
+nothing | ask_user, why, problems[], token?}` (`ask_user` carries the token the unconfirmed word was
+asked for), each with its coverage block: a ruler that returned nothing, or whose rulings settling
+refused the same way twice, fails `ruler`. The ruler returns `{rulings: [{node, ruling: unaffected
+| affected, why, question, fix}]}`, one per node of the brief.
 
 ### State and journal lines
 
 - **Owner:** `lib/boundary.mjs` (`fault`, `drift-ruled`, `stale-ruled`, `batch`,
   `batch-started`, `gate`, `checkpoint`, `checkpoint-confirmed`, `closed`, `merge-observed`,
-  `series-done`, `authored`, `breach_reverted`); `lib/runner.mjs` (`returned`, `host_stop`);
-  `lib/run.mjs` (`run`, `ended`); `journalLine` in `lib/verify.mjs`.
-- **Restated in:** `lib/resume.mjs` and `lib/status.mjs` (readers).
+  `series-done`, `authored`, `breach_reverted`); `lib/runner.mjs` (`dispatched`, `returned`,
+  `host_stop`, `checkout_changed`, `thread_renewed`); `deliver` and `step` in
+  `lib/programs/common.mjs` (`message`, `step`); `lib/run.mjs` (`run`, `ended`, and `fault` on the
+  `program` and `launch_failed` channels); `journalLine` in `lib/verify.mjs`.
+- **Restated in:** `lib/resume.mjs` and `lib/status.mjs` (readers); `runState` in `lib/ledger.mjs`
+  (reads a run's `ended`); `claim` and `costOf` in `lib/run.mjs` (read `run`, and `returned`'s
+  usage and cost); `dispatch` in `lib/programs/common.mjs` (reads `dispatched`, `returned`,
+  `message` and `thread_renewed`).
 
 `state.jsonl` (what the execution decided and what its calls cost): `run {program, scope, pid}`,
 one per program start; `returned {dispatch, session, status, cause, usage, cost_total, cost_usd,
@@ -2371,14 +2699,27 @@ subject}]}`, journalled by leaf-close from git when the producer declared it don
 role, round, sha}`, the commit leaf-close made for a shell-less author, read across executions by
 the series check of a green or an audit.
 
+A program run outside an execution keeps the same kind of log, `runs/<run>/state.jsonl`, with its
+own `seq` ([Programs](#programs)): `run {program, scope, pid}`, one per start or resume;
+`dispatched {dispatch, node, round, thread, role, model, effort, session, brief_digest, carries[],
+pid}`; `returned {dispatch, session, status: returned | part | failed | cut_off, cause, usage,
+cost_total, cost_usd, denials[]}`; `host_stop {dispatch, cause, until}`; `checkout_changed
+{dispatch, paths[]}`; `thread_renewed {thread, gen, why}`; `message {thread, from, msg, payload,
+round}`; `step {key, value}`, a side effect the program journaled; `fault {node, channel, detail}`
+with `node` empty; and `ended {result: {status: done | failed | launch_failed, file, complete}}`. No
+field of a record is named `kind`: the log's port sets it, so a call's failure or stop class is its
+`cause`.
+
 ### The seq counter
 
-- **Owner:** `append` in `lib/ledger.mjs`.
+- **Owner:** `append` and `appendRun` in `lib/ledger.mjs`.
 
 An integer, one counter per effort across the node log, the event log and every execution's state
 and journal, minted under the effort lock and never supplied by a caller. It is rebuilt from the
 highest `seq` on disk when the counter file is lost. What it decides is ordering: which revision is
-latest, and whether an escalation or park is newer than the replan that would clear it.
+latest, and whether an escalation or park is newer than the replan that would clear it. A program
+run outside an execution counts its own log the same way, under `runs/<run>/seq` and
+`runs/<run>/.lock`.
 
 ### Verify payload
 
@@ -2421,9 +2762,10 @@ paths}`, and the ones it found no longer hold by id.
 
 - **Owner:** `lib/locks.mjs`, `withLock` in `lib/store.mjs`.
 
-`.agentics/config.json {max_parallel, max_agents, claude_cli}`; `slots/<n>.lock {effort, execution, node}`;
+`.agentics/config.json {max_parallel, max_agents, claude_cli, guidance}`; `slots/<n>.lock {effort, execution, node}`;
 `locks/locus/<fnv1a(path)>.lock {path, node, execution}`; `.agentics/.state/locks/tests.lock`, the
-project's full-suite lock. Branch, test and mutex locks are taken by `withLock`: the lock is a directory
+project's full-suite lock; `.agentics/.state/runs/.claims/<program>-<scope digest>.lock`, a run's
+claim; `runs/<run>/.lock`, a run log's mutex. Branch, test, claim and mutex locks are taken by `withLock`: the lock is a directory
 holding one holder file, named for that acquisition, `{pid, host, at}`, built beside the lock and
 renamed into place, so a lock is never seen without its holder. A holder on this host is broken
 exactly when its pid is dead; one from another host after ten minutes. Breaking removes the holder
@@ -2434,16 +2776,23 @@ the taker waits.
 
 ### Session calls
 
-- **Owner:** `land`, `retry` and `note` in `lib/boundary.mjs`.
+- **Owner:** `land`, `landAct`, `retry` and `note` in `lib/boundary.mjs`.
 - **Restated in:** `skills/develop/SKILL.md` and its landing reference.
 
 Every other boundary is a function the `execute` program calls in-process; its result is a value,
 and its shape lives in `lib/boundary.mjs` alone. Three are the session's, called as CLIs:
 
-- **land** — `check`: `open_escalations`, `parked`, `human`, `drift {base_sha, base_moved,
+- **land** — `check`: `into` (the user's checked-out branch), `effort_branch`, `effort_head` (the
+  head its token names), `open_escalations`, `parked`, `human`, `drift {base_sha, base_moved,
   commits, overlap}`, `root_status`, `root_claims`, `landing`, `token` (the act the user's answer
-  must choose); `merge`: `merged_sha`, `already` (nothing left to merge), `removed[]` (the branches
-  swept), `kept[{branch, why}]`, after `verifyAnswer` ([The user's word](#the-users-word)).
+  must choose: `land <effort>@<head8>` over the effort branch's head, `land <effort>@` once the
+  branch is gone); `merge`: `merged_sha`, `already` (nothing left to merge), `removed[]` (the
+  branches swept), `kept[{branch, why}]`, once `landAct` has confirmed the user's word
+  ([The user's word](#the-users-word)); the `landed` event records `by`. A refused merge carries the
+  check's fields with `ok: false` and `error` (`head_moved: …`, an open escalation or park, a dirty
+  tree, no effort branch, a merge that failed and was aborted); a word not confirmed is
+  `confirmAct`'s refusal, `{ok: false, error: {kind, message}}` (`no_token`, `not_approved`,
+  `answer_unverifiable`).
 - **retry** — `retry --node <id>…`: `{retried[], error}`.
 - **note** — `note --node <id> --text <t>`: `{noted, error}`, `noted` the node a `noted` event was
   appended for, empty when the node is not live or the text is empty.
@@ -2463,22 +2812,29 @@ makes; [Conversations](#conversations) routes it.
 
 ### Coverage block
 
-- **Owner:** `resultOf` in each `lib/programs/*.mjs`. The `coverage-block` lint rule requires one
-  on every program result.
+- **Owner:** `resultOf` in each `lib/programs/*.mjs`, over `coverageOf` in
+  `lib/programs/common.mjs`. The `coverage-block` lint rule requires every program file but
+  `common.mjs` and `converge.mjs` to define `resultOf` and build its result with a `coverage` key
+  that is not an empty object or null.
 - **Restated in:** the skills that walk a result.
 
-`complete` (computed, per program; for `execute`: no checkpoint, every leaf in scope merged, the
+`complete` (computed: false whenever `dropped`, `incomplete`, `failed_channels` or `unreached`
+holds anything, and per program besides — a survey also needs every item it returns standing, an
+investigation its survey's `complete`; for
+`execute`: no checkpoint, every leaf in scope merged, the
 root integrated, nothing escalated or parked — carried from an earlier run or not — and no earned
 integration review or survey lost), `declared` (what rests on a searcher's own word, named),
 `dropped[]`, `incomplete[]`, `failed_channels[]`, `unreached[]` (prose, loss first),
-`resumable {program, scope, args}`.
+`resumable {program, scope, args}` (`args` the flags as given, by argument name).
 
 ### Evidence item store
 
-- **Owner:** `lib/evidence.mjs` (`checkItem`, `recordItems`, `recordJudgement`, and the mappers
-  from stored returns `recordSurvey`, `recordProbe`, `recordSolutions`); written through
+- **Owner:** `lib/evidence.mjs` (`checkItem`, `recordItems`, `recordJudgement`, `recordRulings`,
+  and the mappers from returns — objects in-process, or stored files — `recordSurvey`,
+  `recordProbe`, `recordSolutions`); written through
   `lib/ledger.mjs appendProject`, which mints a project-wide `seq` under `.agentics/.state/.lock`.
-- **Restated in:** the searcher and judge return schemas in `lib/schemas.mjs`.
+- **Restated in:** the searcher and judge return schemas in `lib/schemas.mjs`; the `effort-store`
+  block in the design, challenge-idea and develop skills (the `cite` call).
 
 `items.jsonl` holds `{kind: 'item', item, seq}` and `{kind: 'judged', id, ruling: holds | fails |
 unsure, at, seq}` (a `holds` that could not be re-anchored is stored as `unsure` with `requested`
@@ -2490,9 +2846,15 @@ draft or a clean `probe` round carries no items), spec snapshots in `snapshots/<
 
 The programs call the store in-process. A session calls two verbs: `items --ground <a,b>
 [--states <s,s>] [--return-kind <kind>]` → `{items[{id, state, topic, kind, seq, ground[]}],
-context}`, and `cite --effort <e> --folder <id> --from-run <run> [--exclude <id>…] [--gap <text>]…` →
-`{ok, seq, items_n}`, which cites every item the named survey or sweep run returned, so no list
-passes through a model.
+context}`, and `cite --effort <e> --folder <id> --from-run <run> [--from-run <run>]… [--exclude
+<id>]… [--gap <text>]…` → `{ok, seq, items_n}`, which cites every item the named runs' results list
+— a survey's or a sweep's `items`, an investigation's `evidence.items` — the union in run order,
+each once, less the excluded, so no list passes through a model. It refuses a run that resolves to
+nothing (`unknown_run`), left no readable result (`no_result`) or whose result carries no items list
+(`no_items`, as a probe's or the drafts' does); an `--exclude` no named run lists (`unknown_item`);
+`--exclude` without `--from-run` (`bad_args`); and whatever `recordCites` refuses, the whole cite
+(`refused`), a cite with no item and no gap among them. A folder cites once, naming every run it
+rests on, because its latest line is its whole citation.
 
 ### Cites
 
@@ -2517,28 +2879,68 @@ with `renamed_from`.
   reviews[{target, said}]}, drift[{node, contract}], cleanup_n, cost{dispatches, by_model, tokens,
   usd}, stopped, notes, coverage}`. A stop's text is its `said` dispatch's return, or the node's card.
   `coverage.unreached` names every stopped node and counts the rest.
-- **`survey`** — takes `question_file, roots, notes, prior, max_topics, intelligence, pace,
-  ground`. Returns `{question, topics, ground, items[{id, topic, kind, state}], reused, unrecorded,
-  context, risks[{topic, n}], history, docs, coverage}`: `context` is the path of the one file
-  holding every item it returns in full, the judges' risks and the channels' returns.
-- **`probe`** — takes `artifact, roots, context, per_axis, since`. Returns `{artifact, axes,
-  analysts, shared_ground{resolved, cited, files, excerpts, unresolved}, guidance_read,
-  repo_ground{located, unresolved}, units{total, ruled, open[]}, findings[{id, item, severity, axis,
-  section, carried}], findings_file, ambiguities, ratifiable, snapshot, scope{full, changed},
-  unrecorded, review, coverage}`: `findings_file` holds every finding and every unit's ruling in
-  full.
-- **`solutions`** — takes `capability_file, roots, constraints, notes, max_angles, intelligence`.
-  Returns `{capability, constraints, summary, counts{present, candidates, viable, ruled_out,
-  invented, lost, unanchored, unsettled}, measured, items[{id, topic, kind}], recorded, coverage}`.
-- **`investigate`** — takes `question_file, roots, notes, as_tasks, intelligence, pace`. Returns
-  `{question, mode, tasks, report, evidence, coverage}`.
-- **`rule`** — [Changed-spec results](#changed-spec-results).
-- **`drafts`** — takes `question_file, stances[], intelligence`. Returns `{drafts[{stance,
-  return}], coverage}`, each draft recorded as an `approach` return.
-- **`review`** — takes `repo, base, criteria_file`. Reviews the working tree's change against
-  `base`, snapshotted to a private ref (`refs/agentics/review/<run>`) so the user's tree is read and
-  never touched. Returns the review's `units`, `findings` and its computed exit, `{approved,
-  open[]}`.
+- **Every program `lib/run.mjs` starts** has its result written to `runs/<run>/result.json` by
+  `lib/run.mjs`, with `run` and `cost {dispatches, tokens, usd, unmeasured}` added
+  ([Programs](#programs)).
+- **`survey`** — takes `question_file` (required), `roots` (default `.`), `notes`, `prior`,
+  `max_topics` (default 8), `intelligence` (`low | normal | max`, default `normal`), `pace`
+  (`frugal | balanced | fast`, default `balanced`), `ground`. Returns `{question, topics[{key,
+  subtree, forced}], ground, items[{id, topic, kind, state}], reused[], unrecorded[], context,
+  risks[{topic, n}], history, docs, coverage}`: `context` is the path of the one file holding every
+  item it returns in full, the judges' risks and the channels' returns; a `forced` topic is searched
+  again for its stale items; `history` and `docs` are the path of that channel's last stored return,
+  or null when it did not run or returned no round.
+- **`probe`** — takes `artifact` (required), `roots` (default `.`), `context`, `per_axis`,
+  `since`. Returns `{artifact, axes[{key, source}], analysts[[axis]], shared_ground{resolved, cited,
+  files, excerpts, unresolved}, guidance_read, repo_ground{located, unresolved}, units{total, ruled,
+  open[]}, findings[{id, item, severity, axis, section, carried}], findings_file, ambiguities[],
+  ratifiable, snapshot, scope{full, changed}, unrecorded[], review, coverage}`: `artifact` is the
+  repo-relative path, or the absolute one for an artefact outside every checkout; a standing axis's
+  `source` is `''`; `findings_file` holds every finding and every unit's ruling in full;
+  `ambiguities` lists every open ambiguity, carried ones included; `snapshot` is empty when the
+  round was not recorded or a finding was refused, so the next round is whole; when
+  `coverage.complete` is false its loss is named in `units.open`, `coverage.failed_channels` or
+  `coverage.incomplete`, which `approval.mjs reviewed --from-run` reads.
+- **`solutions`** — takes `capability_file` (required), `roots` (default `.`), `constraints`,
+  `notes`, `max_angles` (default 4), `intelligence` (default `normal`). Returns `{capability,
+  constraints, summary, counts{present, candidates, viable, ruled_out, invented, lost, unanchored,
+  unsettled}, measured, items[{id, topic, kind}], recorded, coverage}`.
+- **`investigate`** — takes `question_file` (required), `roots` (default `.`), `notes`,
+  `as_tasks`, `intelligence` (default `normal`), `pace` (default `balanced`). Returns `{question,
+  mode: tasks | report, tasks: {summary, gaps[], tasks[{ref, subject, description, activeForm,
+  blocked_by[]}]} | null, report: <text> | null, evidence{items, context, risks, history, docs},
+  coverage}`: the survey's evidence is there whether or not the synthesis returned
+  ([Investigations](#investigations)).
+- **`rule`** — takes `effort` and `folder` (both required) and `user_approved`; its result is in
+  [Changed-spec results](#changed-spec-results).
+- **`drafts`** — takes `question_file` and `stances[]` (both required) and `intelligence`
+  (default `normal`). Returns `{drafts[{stance, return, draft}], coverage}`: `return` names the
+  recorded `approach` return and `draft` is the analyst's output; a stance whose analyst failed has
+  `''` and null, one whose record failed `''` and its draft.
+- **`review`** — takes `base` (a ref) and `criteria_file` (both required) and `prior` (a run).
+  Reviews the working tree's change against `base`, snapshotted to a private ref
+  (`refs/agentics/review/<run>`) so the user's tree is read and never touched
+  ([The simple task](#the-simple-task)). Returns `{base, snapshot{ref, sha}, units[{unit, ruling:
+  clean | findings, ids?, why}], findings, fix_rulings, approved, open[], next: approve | fix | escalate, reason, exit{open,
+  unfixed, clean_streak}, coverage}`: `exit` is what a later run's `--prior` reads, and a unit the
+  reviewer left unruled is incomplete.
+
+### Run directory
+
+- **Owner:** `launch` in `lib/run.mjs` (the claim, `run.json`, `result.json` and what it prints),
+  over the paths in `lib/store.mjs` (`runDir`, `runJsonPath`, `runLogPath`, `resultPath`,
+  `runLogFile`); read by `runState` in `lib/ledger.mjs` and `lib/status.mjs watch --run`.
+- **Restated in:** the skills that start a program (they keep `run`, follow it and read
+  `result_file`).
+
+`runs/<run>/run.json` is `{run, program, scope, scope_key, args, args_digest, raw, pid,
+started_at, heartbeat_at}`: `args` the resolved arguments, `raw` the flags as given, `scope_key`
+and `args_digest` the digests of `scope` and `args`. It is rewritten whole, `heartbeat_at` every 10
+seconds while the run's process lives. `result.json` is the program's result with `run` and `cost`.
+What `lib/run.mjs` prints: attached, `{ok: true, run, result_file, result}`; with `--detach`, at
+once, `{ok: true, run, pid, log, result_file}`; refused, `{ok: false, error: {kind, message, run?,
+pid?, log?}}`, a `run_live` naming the run already going; `{error}`, exiting 1, when the program
+threw.
 
 ### Review returns
 
@@ -2584,16 +2986,23 @@ unresolved[]}`, and leaf-close records them.
 ## Self-checks
 
 - **Lint** (`tools/lint.mjs`, one module per rule under `tools/rules/`) checks form: no turn or
-  spend cap on a dispatch and no loop bound in a program except through `askAfter` (L2); a coverage
-  block on every program result (L1); no
-  ruling fields in a producer's or searcher's schema, and per-unit rulings in a judge's (L3); no
-  bound in a return schema; role frontmatter (kind, tools, commands, schema); prompts built only by `lib/brief.mjs` and
-  `renderMessage`, so no command or path for a model to carry reaches one (P2); no skill that
-  starts an agent; gate clauses in gated skills; a stated task-tool fallback; and size budgets.
-- **The scripted runner** (`test/harness/scripted-runner.mjs`) stands in for the host: a program
-  runs against real git with a runner that answers each dispatch from a script keyed by role, node
-  and thread, and records exactly as the real one. Every claim about dispatches, messages, records
-  and resumes is an assertion against it, not prose.
+  spend cap on a dispatch and no loop bound in a program except through `askAfter` (L2; the
+  `no-turn-caps` rule reads `lib/programs/`, `lib/run.mjs`, every `SKILL.md`, the agents and the
+  workflows); a coverage block on every program
+  result (L1; the `coverage-block` rule requires every program file but `common.mjs` and
+  `converge.mjs` to build its result in a `resultOf` with a `coverage` key that is not an empty
+  object or null); no ruling fields in a producer's or searcher's schema, and per-unit rulings in a
+  judge's (L3); no bound in a return schema; role frontmatter (kind, tools, commands, schema);
+  prompts built only by `lib/brief.mjs`, `lib/briefs/` and `renderMessage`, so no command or path
+  for a model to carry reaches one (P2); no skill that starts an agent; gate clauses in gated
+  skills; a stated task-tool fallback; and size budgets.
+- **The scripted runner** (`test/harness/scripted-runner.mjs`) stands in for the host: it is the
+  real `runAgent` over a scripted CLI, each start of the CLI answered by the next step of a script
+  keyed by role, node and thread, so a program run against real git (`test/harness/program-rig.mjs`)
+  sees the records, stored returns, retries, continuations and renewals production does. It runs
+  without the checkout watch and with no live process, so it never yields `checkout_changed`, a
+  `checkout` or `watch_failed` cause, or an `orphan_ended` cut-off.
+  Every claim about dispatches, messages, records and resumes is an assertion against it, not prose.
 - **The host contract** (`test/host-contract.test.mjs`, run when `AGENTICS_HOST=1`) runs the real
   host CLI on the cheapest model in a scratch repository and checks every behaviour the runner rests
   on: a return validated against its schema and carried by the stream's final event, a brief of
@@ -2601,8 +3010,10 @@ unresolved[]}`, and leaf-close records them.
   session resumed by id from another directory and on another model, a missing session refused as
   missing, a write outside the allowed paths and a compound command denied and reported, the usage
   figures present and a session's cost figure accumulating across its calls, a detached program
-  outliving the session that started it, and the transcript shape and the session variable
-  `verifyAnswer` reads.
+  outliving the session that started it, the transcript shape and the session variable
+  `verifyAnswer` reads, a role that writes nothing reading and grepping its folder with no rule, its
+  bare `Read` rule reaching a file outside the folder and its bare `WebFetch` rule the web, each
+  without a denial under `dontAsk`, and `--effort xhigh` accepted.
   A host release that changes one of them fails here before it fails an execution.
 - **Real git.** Every boundary, the locus, the resume ladder, verification and landing are tested
   against real repositories and worktrees.

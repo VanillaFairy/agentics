@@ -1,28 +1,28 @@
 ---
 name: challenge-idea
-description: Use when a written artefact should be attacked before it is acted on — a design document, a proposal, a spec, an ADR, a plan. Dispatches independent analysts who receive the document and the repository but nothing from its author, and returns findings on the design severity ladder. Not for reviewing code (that is develop's reviewer) and not for answering a question (investigate).
+description: Use when a written artefact should be attacked before it is acted on — a design document, a proposal, a spec, an ADR, a plan. Starts the probe program, whose independent analysts receive the document and the repository but nothing from its author, and returns findings on the design severity ladder. Not for reviewing code (that is develop's reviewer) and not for answering a question (investigate).
 ---
 
 # challenge-idea
 
 Attack a document. Find where it is wrong before somebody builds it.
 
-Invoking this skill **is** the user's opt-in for the `Workflow` tool. Do not ask again.
+This skill starts no agent: the `probe` program dispatches every prober, and the skill starts it
+and reads its result.
 
-## Why this is a workflow and not just "go read it critically"
+## Why this is a program and not just "go read it critically"
 
-Two properties make a probe worth more than a careful reread, and neither survives being
-asked for politely — they have to be structural:
+Two properties make a probe worth more than a careful reread, and both are structural:
 
 - **The probers are not the author.** They receive the artefact and the repository. They do
   not receive the author's reasoning, summary, or intent. An author's account of what they
   meant talks a reader into reading the document as intended rather than as written, and what
   gets implemented is what is written. A passage that only parses once you assume what the
   author meant — that assumption *is* the finding.
-- **The verdict is computed.** Probers return findings on a fixed ladder and have no field
-  with which to bless anything. Whether the artefact is ratifiable is a count of open
-  ambiguities, computed in the workflow. The moment a schema offers a verdict, the exit
-  condition moves out of arithmetic and into a model's self-assessment.
+- **The verdict is computed.** Probers return findings on a fixed ladder and a ruling per unit,
+  and have no field with which to bless anything. Whether the artefact is ratifiable is computed
+  by the program: every unit ruled and no ambiguity open. The moment a schema offers a verdict,
+  the exit condition moves out of arithmetic and into a model's self-assessment.
 
 A self-probe is a legitimate fallback and a substantially weaker one: it reliably finds
 mechanical defects — wrong references, missing cases, contradictions — and reliably misses
@@ -36,52 +36,51 @@ premise defects, because the premises are the part not being questioned.
 - A document nobody will act on. A probe costs at least one analyst's full attack; a note to
   self does not earn one.
 
-## Step 1 — Invoke
+## Step 1 — Start the probe
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" probe --repo . --detach --artifact <path> --roots <roots> [--context "<one line>"] [--per-axis]
+```
+
+`--artifact` is the path to the document. `--roots` is the repository it would be implemented in,
+`.` when left out: probers read it, because a claim about what a document would do to a codebase is
+worth nothing if nobody looked. `--context` is one line on what the document is for, and it is
+optional; it must never become a channel for the author's defence of it.
+
+It prints `{ok, run, pid, log, result_file}` at once. Keep `run` and follow it with the Monitor
+tool, re-armed on expiry until it prints its end:
 
 ```
-Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/attack-document-with-independent-reviewers.workflow.js', args: { artifact, roots, context, plugin_root } })
+Monitor({ command: 'node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" watch --repo . --run <run>', description: 'probe <run>', timeout_ms: 3600000 })
 ```
 
-`artifact` is the path to the document. `roots` is the repository it would be implemented
-in — probers read it, because a claim about what a document would do to a codebase is worth
-nothing if nobody looked. `context` is one line on what the document is for, and it is
-optional; it must never become a channel for the author's defence of it. `plugin_root` is
-`${CLAUDE_PLUGIN_ROOT}`, and it is what lets the shared-ground read below find its script.
+It prints a line per host stop and fault, then `ended done: complete=<bool> result=<file>`: read
+`result_file` with the Read tool. On `stopped: …` start the same command again: it resumes the
+run, calling only the probers that never returned. A `run_live` refusal names a probe of this
+document already going: watch that one. `ended failed` and `launch_failed` are plugin faults: say
+so and start the command once more; the same fault again is a plugin defect. Another refusal's
+`message` says what to fix.
 
-The workflow reads the target repository's own review guidance first and derives its axes
-from that, so a project that mandates a particular review style is satisfied by this probe
-rather than double-probed. Four axes always run: contract ambiguity, unnamed invariants,
-YAGNI, and reinvention.
+The program reads the target repository's own review guidance first and probes every axis it
+yields, beside the four that always run (contract ambiguity, unnamed invariants, YAGNI and
+reinvention); nothing caps them. A project that mandates a particular review style is satisfied by
+this probe rather than double-probed.
 
-**Shared ground.** Before the analysts run, one script resolves the evidence the document
-cites — every `path:line` in it, read once, handed to every axis. It replaces the twenty-six
-searches each analyst was separately paying to arrive at the same lines. Two things travel
-with it and both matter on the way out: citations that resolve to **nothing** reach every
-analyst as evidence about the document, and a shared-ground read that fails costs turns
-rather than coverage, because each analyst then locates what it needs exactly as it did
-before.
+**Shared ground.** The program resolves every `path:line` the document cites once and puts the
+excerpts in every prober's prompt, beside the document numbered by line; a citation that resolves
+to **nothing** reaches every prober as evidence about the document.
 
-**How many analysts.** One, by default, holding every axis as a checklist. The workflow buys
+**How many analysts.** One, by default, holding every axis as a checklist. The program buys
 another for each 400 lines of document or each 12 axes, whichever buys more, never more than one
-per axis, and continues an analyst that stops short on exactly what it never reached. `result.analysts` says who held what. Pass
-`per_axis: true` only when the user asks for independent heads per axis; it multiplies the bill
-by the axis count.
+per axis. `result.analysts` says who held what. Pass `--per-axis` only when the user asks for
+independent heads per axis; it multiplies the bill by the axis count.
 
-**Every derived axis runs.** The probe attacks on every axis the repository's guidance yields,
-beside the standing four; nothing caps them.
+### What a probe costs
 
-### What a probe costs, and what the workflow report does not tell you
-
-Measured on one 17-agent probe of a 120-line document: **36.5M tokens billed** to return about
-538k of evidence. The bill is turn count — every turn re-sends the accumulated context — and
-it is superlinear in turns, not in what anybody read. That is why one analyst is the default:
-every extra analyst pays the same locating turns over the same document.
-
-The harness's own `subagent_tokens` field reported 1.31M for that run, low by a factor of 28.
-**Never quote it as what a probe cost**, and never let it stand as the basis for deciding
-whether a probe is worth buying. If the user asks what a run cost, say that the field
-under-reports it by more than an order of magnitude and that the real figure is in the agent
-transcripts.
+The bill is turn count — every turn re-sends the accumulated context — so one analyst is the
+default: every extra one pays the same locating turns over the same document. What a run cost is
+the result's `cost`: `usd` and `tokens` over its `dispatches`, with `unmeasured` the calls that
+gave no figure. Quote it as it stands.
 
 ## Where the findings go
 
@@ -125,9 +124,12 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/render.mjs" evidence --repo <repo> --effort <eff
 The program decides what stands, never the session.
 <!-- /agentics:verbatim -->
 
-Record the probe's whole return before the disposition below, not after. A disposition
-is a conversation, and a conversation that runs out of room takes the findings with it if
-they live nowhere else.
+The program records the round before it returns: every finding is an evidence item, and
+`findings_file` holds each in full with every unit's ruling. For a folder's spec, also record the
+round in its ledger, `node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" reviewed --repo . --effort <e> --folder <id> --from-run <run>`,
+before the disposition below, not after (`spec_changed`: the spec was edited while the probe ran,
+so probe again). A disposition is a conversation, and one that runs out of room takes the findings
+with it if they live nowhere else.
 
 ## Step 2 — Report
 
@@ -145,11 +147,12 @@ Lead with `ambiguities` — they block. Then gaps, then notes. For each: the axi
 the claim, and the evidence, read by its id from `result.findings_file`, which holds every
 finding in full. Never soften a finding and never merge two into one.
 
-`result.ratifiable` is the computed gate. Report it as computed; it is a count, not an
-opinion, and it is false whenever an axis went unexamined as well as when an ambiguity is
-open. **You may not report a clean probe while `coverage.complete` is false** — an axis whose
-prober died examined nothing, and "nobody looked" and "nothing there" are different answers
-that look identical in a findings list. A non-empty `result.lost` means run the probe again.
+`result.ratifiable` is the computed gate. Report it as computed; it is a count, not an opinion,
+and it is false whenever a unit went unruled as well as when an ambiguity is open. **You may not
+report a clean probe while `coverage.complete` is false** — "nobody looked" and "nothing there"
+look identical in a findings list. Name what was not examined: `units.open` (each axis against
+each section no prober ruled), `coverage.failed_channels` and `coverage.unreached`. A probe whose
+prober failed recorded nothing: start it again.
 
 ## Step 3 — Disposition, with the user
 
@@ -222,19 +225,19 @@ probe exists to check.
 
 **A second probe round is earned, never routine.** A finding the user ruled on, with the
 disposition written into the document, is cleared; re-probing to watch it clear buys nothing.
-Probe again only when a round returned an `ambiguity` whose resolution reshaped the design —
-a new system or interface, a data shape, which component owns a decision — and say which
-ambiguity earned it. Otherwise one round is the probe.
+Probe again only when a round returned an `ambiguity` whose resolution reshaped the design — a
+new system or interface, a data shape, which component owns a decision — and say which earned it,
+passing `--since <the first round's snapshot>`. Otherwise one round is the probe.
 
-## If the probe cannot dispatch
+## If the probe cannot run
 
-Some sessions run under a standing rule that subagents and workflows are not dispatched
-unless the user asked. Invoking this skill *is* that request, and routing through `Workflow`
-is what makes it unambiguous rather than a judgment call.
+Some sessions run under a standing rule that agents are not dispatched unless the user asked.
+Invoking this skill *is* that request, and the probe program is what it asked for.
 
-If dispatch genuinely fails anyway: **say so, and never substitute a self-probe silently.**
-Offer one, name it as the weaker instrument it is, and let the user decide. A self-probe
-presented as a probe is a partial result wearing a complete one's label.
+If the probe cannot run anyway — a refusal you cannot fix, a fault that repeats: **say so, and
+never substitute a self-probe silently.** Offer one, name it as the weaker instrument it is, and
+let the user decide. A self-probe presented as a probe is a partial result wearing a complete
+one's label.
 
 ## The Next line
 

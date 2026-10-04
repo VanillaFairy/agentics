@@ -228,12 +228,7 @@ The program decides what stands, never the session.
 
 Make sure `.claude/worktrees/` is gitignored; add the line yourself. `.agentics/` ignores itself.
 
-Propose a short effort name the user confirms or changes (`^[a-z0-9][a-z0-9-]*$`, no `--`, at
-most 120 characters), and open it:
-
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" open . <name> --about "<the request, in the user's words>" --roots .
-```
+Open the effort as that block says, with `--about "<the request, in the user's words>" --roots .`.
 
 Write its root spec, `.agentics/<name>/DESIGN.md`. There is no Grill and no challenge here: a
 settled request is its own design, and the user approves the spec before anything is built.
@@ -284,15 +279,17 @@ Check it until it prints no problems:
 node "${CLAUDE_PLUGIN_ROOT}/lib/spec.mjs" check --repo . --effort <e> --folder .
 ```
 
-Show the spec to the user in full and ask, with `AskUserQuestion`: **Approve and build**, or
-**Change it**. Nothing is recorded until the user approves in so many words. A change is an edit
-and a new ask. On approval:
+Show the spec to the user in full and ask with `AskUserQuestion`, the `token` that
+`node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" state --repo . --effort <e> --folder .` prints in the
+question's own text and exactly the options `Approve` and `Change it`, nothing added to either
+label. A change is an edit and a new ask, with the token `state` prints then. On `Approve`:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" approve --repo . --effort <e> --folder .
 ```
 
-Step 3's compile builds it.
+It refuses unless the answer to that token chose `Approve` on the spec as it stands. Step 3's
+compile builds it.
 
 ## Step 3 — Launch
 
@@ -405,25 +402,28 @@ re-spec**: edit the spec that owns the fault, have the change ruled (below), rel
 | `contract_drift` | merged work touched a contract the node consumes, and the planner could not take it: no ruler could rule, work already stood on the node's plan when it was ruled affected, or its replan faulted. The consumer's entry: the user rules it unaffected (then relaunch with `retry_escalated: [<id>]` and edit nothing), re-designs it, or re-slices it |
 | `spec_changed` | a folder you wrote was re-approved while work under it was under way, and no ruling found that work untouched: the user rules whether the dispatched work still stands, and re-specs what does not. A folder develop's planner wrote never reaches you with this return: the run hands it back to the planner, which re-derives it |
 
-**Each spec you edited is ruled before anyone is asked to approve it**, a parent before its child:
+**Each spec you edited is ruled before anyone is asked to approve it**, a parent before its child,
+by the `rule` program, started detached and followed with the Monitor tool on
+`node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" watch --repo . --run <run>` until it prints its end;
+then act on its `result_file`'s `status` (on `stopped`, start it again; a `run_live` refusal names
+a ruling already going: watch that one):
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/lib/respec.mjs" brief --repo . --effort <e> --folder <id>
+node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" rule --repo . --detach --effort <e> --folder <id>
 ```
-
-Dispatch `agentics:ruler` in the foreground with the printed `prompt`, verbatim, then run the
-same command with `settle` in place of `brief`:
 
 - `approved` — nothing the change reaches is moved by it: it is approved on that ruling and
   compiled, and what it reaches is spared its parks. Tell the user what changed in one line; ask nothing.
 - `needs_user` — for each `affected` with a `fix`, make that edit in the spec owning the node, rule
-  that spec the same way, then brief this one again. Ask the user each `question` left; show the
-  change and, on their approval in so many words, run `settle --user-approved`.
+  that spec the same way, then rule this one again. Ask the user each `question` left; then show the
+  change and its `reasons` and ask, the result's `token` in the question's own text, with exactly
+  the options `Approve` and `Change it`. On `Approve`, run it attached, since it reads the answer:
+  `node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" rule --repo . --effort <e> --folder <id> --user-approved`.
+  It prints `approved`, or `refused` with `next: ask_user` (ask again with its `token`) or `rule_it`.
 - `compile_refused` — its `problems` name file and line: the fix is an edit, ruled again.
-- `refused` — by its `next`: `user_approves`, show the change and on the user's approval in so many
-  words run `approval.mjs approve` and the compile of step 3; `fix_spec`, edit what `problems`
-  name; `rule_parent_first`, rule the spec `why` names; `rule_it`, brief and dispatch again;
-  `planner`, leave it to the run; `nothing`, it is approved as it stands.
+- `refused` — by its `next`: `user_approves`, show the change, then ask and approve as step 2 does
+  and compile as step 3 does; `fix_spec`, edit what `problems` name; `rule_parent_first`, rule the
+  spec `why` names; `rule_it`, rule it again; `planner`, leave it to the run; `nothing`: approved.
 
 A park no re-spec cleared (a `contract_drift` ruled unaffected) is cleared by relaunching with
 `retry_escalated: [<id>]`. Then relaunch with the **same** `execution`.

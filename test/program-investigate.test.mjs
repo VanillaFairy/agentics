@@ -11,7 +11,7 @@ import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { readContext, writeContext } from '../lib/citations.mjs'
-import { liveItems } from '../lib/evidence.mjs'
+import { liveItems, recordItems, recordJudgement } from '../lib/evidence.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
 import { investigate, scopeOf } from '../lib/programs/investigate.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
@@ -73,6 +73,14 @@ test('the survey runs inside this run, on its log', async (t) => {
   assert.deepEqual(r.calls.map((c) => c.thread.key), ['plan', 'scout:loader', 'judge:1', 'synthesis'])
   const dispatched = r.log.entries().filter((e) => e.kind === 'dispatched').map((e) => e.thread)
   assert.deepEqual(dispatched, ['plan', 'scout:loader', 'judge:1', 'synthesis'])
+})
+
+test("the survey's steps are recorded on this run's log", async (t) => {
+  const r = rig(t, script(REPORT))
+  await investigate(r.ctx, argsOf())
+  const steps = r.log.entries().filter((e) => e.kind === 'step').map((e) => e.key)
+  assert.ok(steps.includes('context'), JSON.stringify(steps))
+  assert.ok(steps.some((k) => k.startsWith('record:')), JSON.stringify(steps))
 })
 
 test('the survey is asked the question, with the roots, notes, intelligence and pace', async (t) => {
@@ -189,6 +197,22 @@ test("the coverage carries the survey's lists and the run's resumable", async (t
   assert.deepEqual(out.coverage.dropped, ['loader'])
   assert.deepEqual(out.coverage.resumable, r.ctx.resumable)
   assert.ok(out.coverage.declared.some((d) => d.startsWith('topic loader')))
+  assert.equal(out.coverage.complete, false)
+})
+
+test("the coverage is not complete when the survey's is not, every list empty", async (t) => {
+  const r = rig(t, {})
+  const old = recordItems(r.repo, '20250101-000000-survey', [{
+    question: 'An older question?', topic: 'old', ground: ['src'], kind: 'behaviour', claim: 'the old claim',
+    spans: [{ path: 'src/a.js', start: 3, end: 3 }], queries: [], sources: [], rests_on: [],
+  }])
+  assert.equal(old.ok, true, JSON.stringify(old))
+  assert.equal(recordJudgement(r.repo, old.ids[0], 'fails').ok, true)
+  const derived = { topic: 'loader', kind: 'derived', claim: 'derived from the old claim', spans: [], queries: [], sources: [], rests_on: [old.ids[0]] }
+  const again = r.relaunch(script(REPORT, { 'analyst||judge:1': [{ output: judged([derived]) }] }))
+  const out = await investigate(again.ctx, argsOf())
+  assert.ok(out.evidence.items.some((i) => i.state !== 'standing'), JSON.stringify(out.evidence.items))
+  for (const list of ['dropped', 'incomplete', 'failed_channels', 'unreached']) assert.deepEqual(out.coverage[list], [], list)
   assert.equal(out.coverage.complete, false)
 })
 

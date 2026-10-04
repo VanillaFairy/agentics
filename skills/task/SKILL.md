@@ -130,33 +130,41 @@ checks out or resets the user's tree.
 
 ## Step 6 — Review, from `tdd` up
 
-When any item is `tdd`, dispatch one fresh `agentics:reviewer` over the diff with the Agent tool.
-Hand it, inline: the todo list with each item's check, the pre-change sha, the repository path, and
-that the change is `git diff <pre-change sha>` in the working tree (its shell is read-only git).
-Ask for this return and nothing else:
-`{findings: [{id, severity, claim, evidence, failure_scenario}], fix_verdicts: [{id, status, evidence}], notes}`.
+When any item is `tdd`, the change is reviewed by the `review` program. It snapshots your working
+tree to a private ref and runs one fresh reviewer in a throwaway worktree at that snapshot, so your
+tree, index and stash are never touched. Write the criteria file with the Write tool, outside the
+repository so no snapshot holds it: the todo list, one item per line, each with its check, and a
+`HUMAN:` item kept with its prefix, which the reviewer leaves to the user. Start it detached:
 
-<!-- agentics:verbatim dispatch-economy -->
-A dispatch costs context × turns, and every agent pays its own. Tool calls are what make turns;
-parallel agents share only the system prompt, so a prompt body handed to four agents is paid four
-times; and what an agent returns is re-read on every later turn of the session that dispatched
-it.
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" review --repo . --detach --base <the pre-change sha> --criteria-file <file>
+```
 
-- Grant tools only where the charge needs the tree. A question answerable from what you hand over
-  goes to an agent without tools and comes back in one turn.
-- Resolve evidence several agents need once — by script wherever that is deterministic — and hand
-  each agent the excerpts inline: never a path to go and read, never a whole source file.
-- Prefer fewer agents with disjoint charges. Split by head only where independence is the point,
-  and say that it is.
-- Ask for a typed return on a fixed shape. Narrative is context you pay for until the session
-  ends.
-- To check a change, re-dispatch narrowed to what changed and name the narrowing in coverage.
-  Never re-run the whole pass.
-<!-- /agentics:verbatim -->
+It prints `{ok, run, pid, log, result_file}` at once. Keep `run` and follow it with the Monitor
+tool, re-armed on expiry until it prints its end:
 
-Every `critical` is fixed before you claim done. Check the fix with a fresh reviewer narrowed to
-it, handed the open critical ids to rule `fixed`, `not_fixed` or `regressed`, and repeat until no
-critical is open. Majors and minors go to the user as reported.
+```
+Monitor({ command: 'node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" watch --repo . --run <run> --since 0', description: 'review <run>', timeout_ms: 3600000 })
+```
+
+It prints a line per host stop and fault, then `ended done: complete=<bool> result=<file>`: read
+`result_file` with the Read tool. On `stopped: …` start the same command again: it resumes the
+run. `ended failed` and `launch_failed` are plugin faults: say so and start the command once more;
+a second is a plugin defect. Another refusal's `message` says what to fix.
+
+The result's `findings` are the reviewer's, each with its severity, claim and evidence; `units` its
+ruling on each criterion and each changed file; `approved`, `next` and `open` the exit, computed
+from them. An `open` id starting `unit:` is a criterion or file nobody ruled. Every `critical` is
+fixed before you claim done. After the fix, review again, naming the previous review's run, so the
+reviewer rules each of its open findings `fixed`, `not_fixed` or `regressed`:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" review --repo . --detach --base <the pre-change sha> --criteria-file <file> --prior <the previous review's run>
+```
+
+Repeat until `approved` is true. `next: fix` means what is `open` still stands; `next: escalate`
+means the loop does not converge (`reason` says why): stop and tell the user. Majors and minors go
+to the user as reported.
 
 ## Step 7 — Verify, then report
 

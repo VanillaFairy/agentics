@@ -116,10 +116,10 @@ The laws themselves are in `docs/DESIGN.md#laws`.
 
 | Law | Enforced by |
 |---|---|
-| L1 — honest state | `tools/rules/coverage-block.mjs`; the coverage every searcher's and judge's return schema requires (`test/schemas.test.mjs`); `resolveHandle` in `lib/store.mjs`; status derived on read |
-| L2 — states end work, counts don't | `tools/rules/no-turn-caps.mjs`; the convergence predicates in `lib/verdict.mjs`; `askAfter` in `lib/programs/converge.mjs`; the runner's host-stop classes |
+| L1 — honest state | `tools/rules/coverage-block.mjs`, which requires a coverage block in every program's `resultOf` and every workflow's return; `coverageOf` in `lib/programs/common.mjs`; the coverage every searcher's return schema requires and the per-unit rulings every judge's requires (`test/schemas.test.mjs`); `resolveHandle` in `lib/store.mjs`, through which `lib/run.mjs` resolves every effort, folder, run and file argument (a ref is resolved by git or refused); status derived on read |
+| L2 — states end work, counts don't | `tools/rules/no-turn-caps.mjs`, over the programs, `lib/run.mjs`, skills, agents and workflows; the convergence predicates in `lib/verdict.mjs`; `askAfter` in `lib/programs/converge.mjs`; the runner's host-stop classes, waited out by `dispatch` in `lib/programs/common.mjs` |
 | L3 — separate judges | the role kinds in `lib/roles.mjs`; `judgeAllowed` and `dispatchJudge` in `lib/programs/common.mjs`; `tools/rules/no-self-verdict.mjs`; `verdictOf` in `lib/verdict.mjs` |
-| L4 — the user owns decisions and their branch | `verifyAnswer` and `confirmAct` in `lib/host.mjs`; `userBound` in `lib/respec.mjs`; `decisionProblems` in `lib/tree.mjs`; the runner's confinement and its watch on the user's checkout; `lib/verify.mjs`'s linked-worktree refusal; `land`'s refusals |
+| L4 — the user owns decisions and their branch | `verifyAnswer` and `confirmAct` in `lib/host.mjs`, called by `approveAct` in `lib/approval.mjs`, `landAct` in `lib/boundary.mjs` and the `rule` program; `userBound` in `lib/respec.mjs`, which the `rule` program applies; `decisionProblems` in `lib/tree.mjs`; the runner's confinement and its watch on the user's checkout; the `review` program's snapshot, which leaves the user's tree, index and stash untouched; `lib/verify.mjs`'s linked-worktree refusal; `land`'s refusals |
 | P4 — everything earns its place | `test/liveness.test.mjs`; `tools/rules/size-budget.mjs` |
 
 ## Build
@@ -132,7 +132,9 @@ The laws themselves are in `docs/DESIGN.md#laws`.
 
 - `lib/` — deterministic modules and CLIs: the store, tree, ledger, compile, boundary, verify,
   runner, host, locus and conversation modules (`lib/INDEX.md`)
-- `lib/programs/` — the programs that orchestrate
+- `lib/programs/` — the programs that orchestrate, started by `lib/run.mjs`
+- `lib/briefs/` — the prompts the programs build, one file per program (a ruling's is
+  `lib/respec.mjs`'s)
 - `roles/` — agent roles: instructions, tools and kind, read by the runner alone
 - `skills/` — user entry points: design, develop, task, investigate, next (`docs/kb/skills.md`)
 - `tools/` — lint, its rules, size budgets, one-shot migrations (`tools/INDEX.md`)

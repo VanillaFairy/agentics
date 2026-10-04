@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
-import { permissionsFor } from '../lib/locus.mjs'
+import { permissionsFor, readOnlyPermissions } from '../lib/locus.mjs'
 import { answersIn, projectsDir, resolveCli, transcriptOf } from '../lib/host.mjs'
 import { buildArgs, classifyCall, cleanEnv, parseStream, spawner } from '../lib/runner.mjs'
 
@@ -124,6 +124,75 @@ for (const [name, listed, allowedFile, otherFile, folders] of [
     assert.ok(other.denied.length > 0, 'the other write was refused, not skipped: ' + other.why)
   })
 }
+
+// A role that writes nothing runs on bare allow rules for its read tools (readOnlyPermissions); each must
+// work under dontAsk with no denial. Inside its working folder the host reads and greps with no rule at
+// all; the bare rules are what reach a file outside it and the web.
+
+/** The tools a call's stream shows it used, in order. */
+const toolsUsed = (stdout) => stdout.split(/\r?\n/).flatMap((line) => {
+  let e
+  try {
+    e = JSON.parse(line)
+  } catch {
+    return []
+  }
+  return e.type === 'assistant' ? ((e.message && e.message.content) || []).filter((c) => c.type === 'tool_use').map((c) => c.name) : []
+})
+
+/** One call under the rules readOnlyPermissions gives `tools`, with its denials and last tool for a failure's message. */
+async function readOnly(dir, { tools, prompt, schema = SCHEMA, model = 'haiku', effort = '' }) {
+  const { allowed, disallowed } = readOnlyPermissions({ tools })
+  const r = await call(dir, { prompt, session: randomUUID(), tools, allowed, disallowed, schema, model, effort })
+  const used = toolsUsed(r.out.stdout)
+  const why = 'denials: ' + JSON.stringify(r.parsed.denials) + ', tools used: ' + JSON.stringify(used) + ', last tool: ' +
+    JSON.stringify(r.parsed.lastTool) + ', stderr: ' + r.out.stderr.slice(-400)
+  return { ...r, used, why }
+}
+
+test('a read role reads and greps a file in its folder with no denial', { skip, timeout: 180000 }, async (t) => {
+  const dir = scratch(t)
+  writeFileSync(join(dir, 'notes.txt'), '7\nalpha 1\nbeta 42\n')
+  const schema = { type: 'object', additionalProperties: false, properties: { first: { type: 'integer' }, found: { type: 'integer' } }, required: ['first', 'found'] }
+  const r = await readOnly(dir, {
+    tools: ['Read', 'Grep', 'Glob'], schema,
+    prompt: 'Use the Read tool to read notes.txt and set first to the number on its first line. Then use the Grep tool to search notes.txt for the word beta and set found to the number written after beta on the line it matches.',
+  })
+  assert.deepEqual(r.parsed.denials, [], r.why)
+  assert.ok(r.used.includes('Read') && r.used.includes('Grep'), r.why)
+  assert.equal(r.cls.status, 'returned', r.why)
+  assert.deepEqual([r.parsed.structured.first, r.parsed.structured.found], [7, 42], r.why)
+})
+
+test('the bare Read rule reads a file outside the folder with no denial', { skip, timeout: 180000 }, async (t) => {
+  const dir = scratch(t)
+  const elsewhere = scratch(t)
+  writeFileSync(join(elsewhere, 'secret.txt'), '1234\n')
+  const r = await readOnly(dir, { tools: ['Read'], prompt: 'Use the Read tool to read the file ' + join(elsewhere, 'secret.txt') + ' and return x = the number in it.' })
+  assert.deepEqual(r.parsed.denials, [], r.why)
+  assert.ok(r.used.includes('Read'), r.why)
+  assert.equal(r.cls.status, 'returned', r.why)
+  assert.equal(r.parsed.structured.x, 1234, r.why)
+})
+
+test('the bare WebFetch rule fetches a page with no denial', { skip, timeout: 180000 }, async (t) => {
+  const dir = scratch(t)
+  const schema = { type: 'object', additionalProperties: false, properties: { heading: { type: 'string' } }, required: ['heading'] }
+  const r = await readOnly(dir, { tools: ['WebFetch'], schema, prompt: "Use the WebFetch tool to fetch https://example.com and return heading = the page's main heading, exactly as written." })
+  assert.deepEqual(r.parsed.denials, [], r.why)
+  assert.ok(r.used.includes('WebFetch'), r.why)
+  assert.equal(r.cls.status, 'returned', r.why)
+  assert.match(r.parsed.structured.heading, /example domain/i, r.why)
+})
+
+test('the CLI accepts --effort xhigh', { skip, timeout: 180000 }, async (t) => {
+  const dir = scratch(t)
+  const r = await readOnly(dir, { tools: ['Read'], model: 'sonnet', effort: 'xhigh', prompt: 'Return x = 1.' })
+  assert.ok(!/unknown --effort/i.test(r.out.stderr), 'the CLI ignored the effort: ' + r.why)
+  assert.deepEqual(r.parsed.denials, [], r.why)
+  assert.equal(r.cls.status, 'returned', r.why)
+  assert.equal(r.parsed.structured.x, 1, r.why)
+})
 
 test('a missing session is refused as missing', { skip, timeout: 120000 }, async (t) => {
   const dir = scratch(t)

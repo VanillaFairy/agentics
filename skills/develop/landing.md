@@ -10,7 +10,8 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" land --repo . --effort <e> --actio
 ```
 
 It prints the report as JSON: `open_escalations`, `parked`, `human`,
-`drift: {base_moved, commits, overlap}`, `root_claims` and `landing`. It reads; it writes nothing.
+`drift: {base_moved, commits, overlap}`, `root_claims`, `landing` and `token`, the act the user's
+answer must choose. It reads; it writes nothing.
 
 ## 2. Present — gaps first
 
@@ -30,16 +31,19 @@ It prints the report as JSON: `open_escalations`, `parked`, `human`,
 
 ## 3. Ask
 
-One `AskUserQuestion`: **Land now** or **Not yet**. Silence is not a go, and nothing lands while
-an escalation is open.
+One `AskUserQuestion`, the check's `token` in the question's own text, offering exactly the options
+`Land` and `Not yet` with nothing added to either label. Silence is not a go, and nothing lands
+while an escalation is open.
 
-## 4. Merge, on a go
+## 4. Merge, on `Land`
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" land --repo . --effort <e> --action merge
 ```
 
-It runs `git merge --no-ff agentics/<effort>` in the user's checkout, records `landed`, and then
+It first finds the user's answer to the token and refuses unless it chose `Land` on the effort
+branch as the check saw it: run the check again and ask with its new `token`. Then it runs
+`git merge --no-ff agentics/<effort>` in the user's checkout, records `landed`, and then
 sweeps the effort's merged branches and the clean worktrees on them (`removed`), with `git branch
 -d` only. It refuses over an open escalation or a dirty tree: report the refusal as it came. A
 dirty tree is the user's to commit or stash, never yours. A conflict stops the merge: surface the
@@ -49,6 +53,7 @@ paths, and resolve nothing without the user.
 
 Read `kept` out loud, each branch with its `why`: unmerged branches and dirty worktrees are the
 escalated and parked nodes' resumable state, and the user decides their fate. Delete nothing
-yourself. Where a `why` says a worktree could not be removed, run the same `--action merge` again
-once the user has closed what held it: it merges nothing and sweeps again. Nothing under
+yourself. Where a `why` says a worktree could not be removed, once the user has closed what held
+it, run the check again, ask with its `token` as in 3, and on `Land` run the same `--action merge`:
+it merges nothing and sweeps again. Nothing under
 `.agentics/<effort>/` is removed: it is the only record of what was decided and done.

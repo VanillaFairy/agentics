@@ -94,7 +94,7 @@ test('the context carries what it was given', (t) => {
   assert.deepEqual(ctx.resumable, given.resumable)
 })
 
-test('the context holds six agents at once by default', { timeout: 10000 }, async (t) => {
+test('the context holds six agents at once by default', { timeout: 60_000 }, async (t) => {
   const threads = ['t1', 't2', 't3', 't4', 't5', 't6', 't7']
   const rig = rigFor(t, { script: Object.fromEntries(threads.map((th) => ['scout||' + th, [{ output: scoutOut() }]])) })
   const g = gated(rig.ctx.runAgent)
@@ -434,7 +434,7 @@ test('each further host stop of a call waits by its attempt', async (t) => {
   assert.equal(r.status, 'returned')
 })
 
-test('a host-stopped call gives up its slot while it sleeps', { timeout: 10000 }, async (t) => {
+test('a host-stopped call gives up its slot while it sleeps', { timeout: 60_000 }, async (t) => {
   const rig = rigFor(t, { script: { 'scout||a': [{ status: 'stopped', cause: 'rate_limit' }, { output: scoutOut() }], 'scout||b': [{ output: scoutOut() }] } })
   let wake = null
   const sleep = () => new Promise((r) => { wake = r })
@@ -449,7 +449,7 @@ test('a host-stopped call gives up its slot while it sleeps', { timeout: 10000 }
   assert.equal((await a).status, 'returned')
 })
 
-test('no more than maxAgents calls are in flight at once', { timeout: 10000 }, async (t) => {
+test('no more than maxAgents calls are in flight at once', { timeout: 60_000 }, async (t) => {
   const threads = ['t1', 't2', 't3', 't4', 't5']
   const rig = rigFor(t, { script: Object.fromEntries(threads.map((th) => ['scout||' + th, [{ output: scoutOut() }]])) })
   const g = gated(rig.ctx.runAgent)

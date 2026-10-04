@@ -298,5 +298,8 @@ test('the CLI prints each result under its digest', () => {
   assert.equal(brief.payload_digest, fnv1a(canonical(brief.payload)))
   rule(repo, brief.payload, { api: { ruling: 'affected', why: 'contradicts its Intent', fix: 'say "frozen" in the Intent too' } })
   assert.equal(run('settle').payload.status, 'needs_user')
-  assert.equal(run('settle', '--user-approved').payload.status, 'approved')
+  const refusal = run('settle', '--user-approved').payload
+  assert.deepEqual([refusal.status, refusal.next], ['refused', 'ask_user'])
+  assert.ok(refusal.why.includes('run.mjs rule --user-approved'), refusal.why)
+  assert.equal(approvalState(repo, E, 'api').state, 'edited')
 })

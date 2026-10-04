@@ -8,19 +8,18 @@ user-invocable: false
 
 Answer one question, with evidence: **does this already exist?**
 
-Invoking this skill **is** the user's opt-in for the `Workflow` tool. Do not ask again.
+This skill starts no agent: the `solutions` program frames, searches, scans and assesses, and the
+skill starts it and reads its result.
 
 ## How this differs from `investigate`
 
-`investigate` searches the code you already have. This searches the world outside it. Same
-evidence discipline, opposite direction — and mixing them up wastes a whole run, because a
-scout with `Grep` and `Glob` cannot see a package registry, and a documentation researcher
-cannot see your repo.
+`investigate` searches the code you already have. This searches the world outside it. Same evidence
+discipline, opposite direction — and mixing them up wastes a whole run, because a scout with `Grep`
+and `Glob` cannot see a package registry, and a documentation researcher cannot see your repo.
 
-One exception, and it is deliberate: this workflow also runs a single scout over your tree,
-asking only *do we already depend on something that does this*. A capability already on the
-dependency list beats every candidate the external search returns, and it costs one agent to
-check.
+One exception, and it is deliberate: this program also runs a single scout over your tree, asking
+only *do we already depend on something that does this*. A capability already on the dependency
+list beats every candidate the external search returns, and it costs one agent to check.
 
 ## When not to use it
 
@@ -31,7 +30,7 @@ check.
 ## Step 1 — Read the invocation
 
 **Capability.** What they are thinking of building. Take it in their words, and do not
-sharpen it into an implementation — the workflow's first agent restates it
+sharpen it into an implementation — the program's first agent restates it
 implementation-neutrally on purpose, because a framing that names an architecture finds only
 that architecture and turns the search into a confirmation.
 
@@ -61,22 +60,26 @@ judgment nobody asked it for. Only the user moves it off that mapping — a bare
 
 ## Step 2 — Run it
 
+Write the capability, in the user's words, to a file outside the repository with the Write tool,
+and start the program detached from the repository root:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" solutions --repo . --detach --capability-file <file> --roots <roots> --constraints "<constraints>" [--notes "<notes>"] --intelligence <tier>
 ```
-Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/search-for-existing-solutions-before-building.workflow.js', args: { capability, roots, constraints, notes, intelligence } })
+
+It prints `{ok, run, pid, log, result_file}` at once. Keep `run` and follow it with the Monitor
+tool, re-armed on expiry until it prints its end:
+
+```
+Monitor({ command: 'node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" watch --repo . --run <run> --since 0', description: 'solutions <run>', timeout_ms: 3600000 })
 ```
 
-Launch it by its path under the plugin root, the same `${CLAUDE_PLUGIN_ROOT}` that `plugin_root`
-carries. Record the `runId` from the launch result — the script cannot read its own id, and
-`runId` is what pairs with `coverage.resumable.remaining` if the sweep needs resuming.
-
-Let it run in the background. Tell the user they can watch with `/workflows`. Do not poll, and
-do not guess at results before the notification arrives.
-
-**Resuming an interrupted sweep: re-pass the args.** A resume re-executes the script, which
-reads nothing from the prior run, so `resumeFromRunId` on its own runs it with no capability
-to search for — an empty result in milliseconds, and the interrupted run's cached agents out
-of reach. Pass `Workflow({ scriptPath, resumeFromRunId, args })`, `scriptPath` the same path
-the launch used, with the args from `coverage.resumable.args`.
+It prints a line per host stop and fault, then `ended done: complete=<bool> result=<file>`: read
+`result_file` with the Read tool, and guess at nothing before that line. On `stopped: …` start the
+same command again, with the same file: it resumes the run. A `run_live` refusal names a sweep of
+this capability already going: watch that one. `ended failed` and `launch_failed` are plugin
+faults: say so and start the command once more; a second is a plugin defect. Another refusal's
+`message` says what to fix.
 
 ## Step 3 — Present it, in this order
 
@@ -102,17 +105,21 @@ by a model — report it as the count it is, and never upgrade it into a recomme
 
 This step is not optional, and in this skill it is load-bearing in a way it is not elsewhere.
 
-Everywhere else in this plugin, an incomplete search means a weaker conclusion. Here, "we
-found nothing" is the input to a decision to spend weeks writing code — and an ecosystem
-nobody searched produces the identical sentence to an ecosystem that genuinely has nothing.
+Here, "we found nothing" is the input to a decision to spend weeks writing code, and an ecosystem
+nobody searched reads exactly like one that genuinely has nothing.
 
 So, **binding**:
 
 - You may not report "nothing exists, build it" while `coverage.complete === false`. Say what
   was not reached, and say plainly that the sweep did not finish.
-- `unreached` carries both halves and they mean opposite things. A line reading
-  *"crates.io searched and found nothing"* is **evidence for building**. A line reading
-  *"crates.io never reached"* is **evidence of nothing at all**. Present them apart.
+- Two lists carry the two halves, and they mean opposite things. `declared` says how each search
+  ended and what it found nothing for: *"find:crates: exhausted; found nothing: no such parser"*
+  is **evidence for building**. `unreached` says what a search never reached: *"find:crates
+  stopped (…) and never reached crates.io"* is **evidence of nothing at all**. Present them apart.
+- `dropped` names the angles the frame gave beyond `--max-angles` (4 unless passed): nobody
+  searched them. `incomplete` naming `find:<angle>` or `repo` is a search that stopped short, and
+  `assess:<candidate>` a candidate the assessment did not rule on.
+- `failed_channels` naming `frame` means nothing was searched at all.
 - `failed_channels` naming `repo` means nobody checked what you already depend on. Any claim
   that this capability is missing from the codebase is unsupported.
 - `failed_channels` naming `assess` means candidates were found and never measured. The summary
@@ -128,8 +135,6 @@ Then the one-line finding: what exists, or what genuinely does not.
 The decision is the user's, and it rests on things no agent can see — dependency appetite,
 licence policy, whether they want to own this code. Present the evidence and let them rule.
 
-When this ran inside a `design` session, the settled facts — the candidate chosen or the
-`no_match` lines that justify building — go into the design document's Evidence section, and the
-choice itself is a decision with an id, in the user's words. That is how the decision survives:
-written down with the evidence behind it, rather than re-argued three weeks later when somebody
-asks why this was not just a library.
+When this ran inside a `design` session, the settled facts — the candidate chosen or the `found
+nothing` lines in `declared` that justify building — go into the design document's Evidence
+section, and the choice itself is a decision with an id, in the user's words.

@@ -6,6 +6,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -31,6 +32,8 @@ const SUB = read('sub.md')
 // The spec of `planner-part`, a sub-effort the root spec gives `author: planner`: no Decisions rows.
 const PLANNED = SUB.replace(/\| store-layout\.D1 .*\n/, '').replace(', store-layout.D1', '').replace('# Store layout', '# Planner part')
 const E = 'e1'
+// The user's word for the CLI's approve: a transcript under its own config folder, never the suite's session.
+const SESSION = randomUUID()
 
 function effort(files) {
   const repo = mkdtempSync(join(tmpdir(), 'agentics-approval-'))
@@ -308,9 +311,27 @@ test('the ledger shares the effort\'s one seq counter', () => {
   assert.equal(append(repo, E, 'cites', { kind: 'cites', folder: '.', items: [] }).ok, true, 'cites is an effort log too')
 })
 
-test('the CLI approves and reads state under its digest', () => {
+/** The env of a session whose transcript answers `answer` to a question holding `token`. */
+function answered(t, token, answer) {
+  const config = mkdtempSync(join(tmpdir(), 'agentics-approval-config-'))
+  t.after(() => rmSync(config, { recursive: true, force: true }))
+  const question = '1/1. Approve the spec? ' + token
+  mkdirSync(join(config, 'projects', 'p'), { recursive: true })
+  writeFileSync(join(config, 'projects', 'p', SESSION + '.jsonl'), JSON.stringify({
+    type: 'user', toolUseResult: { questions: [{ question }], answers: { [question]: answer } },
+  }) + '\n')
+  const env = { ...process.env, NODE_TEST_CONTEXT: '' }
+  delete env.CLAUDE_CODE_SESSION_ID
+  delete env.CLAUDE_CONFIG_DIR
+  return { ...env, CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_CONFIG_DIR: config }
+}
+
+test('the CLI approves and reads state under its digest', (t) => {
   const repo = effort({ '.': ROOT })
-  const approved = cli('approve', '--repo', repo, '--effort', E, '--folder', '.')
+  const env = answered(t, approvalState(repo, E, '.').token, 'Approve')
+  const approved = JSON.parse(execFileSync(process.execPath, [CLI, 'approve', '--repo', repo, '--effort', E, '--folder', '.'], {
+    encoding: 'utf8', env, input: '',
+  }))
   assert.equal(approved.payload.ok, true)
   assert.equal(approved.payload_digest, fnv1a(canonical(approved.payload)))
   const state = cli('state', '--repo', repo, '--effort', E, '--folder', '.')

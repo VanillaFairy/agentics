@@ -14,7 +14,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync, spawn } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -304,17 +304,46 @@ test('a watch sees each question an execution raises after it started, and stops
   assert.equal(questionsSince(repo, E, X1, start).ended, true)
 })
 
-test('the watch command prints each question as it lands and exits when the invocation ends', async () => {
+const CHILD_ENV = { ...process.env, NODE_TEST_CONTEXT: '' }
+
+test('the watch command prints each question as it lands and exits when the invocation ends', { timeout: 20000 }, async (t) => {
   const repo = effortWith(TREE)
-  const child = spawn(process.execPath, [CLI, 'watch', '--repo', repo, '--effort', E, '--execution', X1])
+  const since = seqMax(repo, E)
+  const child = spawn(process.execPath, [CLI, 'watch', '--repo', repo, '--effort', E, '--execution', X1, '--since', String(since)], { env: CHILD_ENV })
+  const exited = new Promise((resolve) => child.on('close', resolve))
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill()
+    await exited
+  })
   let out = ''
   child.stdout.on('data', (d) => { out += d })
-  const exited = new Promise((resolve) => child.on('exit', resolve))
-  await new Promise((resolve) => setTimeout(resolve, 1500))
   append(repo, E, 'events', { kind: 'escalated', node: 'a', execution: X1, reason: 'blocked', detail: 'needs a key' })
   append(repo, E, 'state:' + X1, { kind: 'ended' })
   assert.equal(await exited, 0)
   assert.equal(out.trim(), 'escalated a (blocked): needs a key')
+})
+
+test('--since prints records appended before the watch started (an execution)', () => {
+  const repo = effortWith(TREE)
+  const since = seqMax(repo, E)
+  append(repo, E, 'events', { kind: 'escalated', node: 'a', execution: X1, reason: 'blocked', detail: 'needs a key' })
+  append(repo, E, 'state:' + X1, { kind: 'ended' })
+  const out = execFileSync(process.execPath, [CLI, 'watch', '--repo', repo, '--effort', E, '--execution', X1, '--since', String(since)], {
+    encoding: 'utf8', env: CHILD_ENV, timeout: 20000,
+  })
+  assert.equal(out, 'escalated a (blocked): needs a key\n')
+})
+
+test('watch refuses a --since that is not a non-negative integer', () => {
+  const repo = effortWith(TREE)
+  append(repo, E, 'state:' + X1, { kind: 'ended' })
+  for (const tail of [['--since', 'abc'], ['--since', '-1'], ['--since', '1.5'], ['--since']]) {
+    const r = spawnSync(process.execPath, [CLI, 'watch', '--repo', repo, '--effort', E, '--execution', X1, ...tail], {
+      encoding: 'utf8', env: CHILD_ENV, timeout: 20000,
+    })
+    assert.equal(r.status, 1, tail.join(' '))
+    assert.match(JSON.parse(r.stdout).error, /--since/, tail.join(' '))
+  }
 })
 
 test('a question its author wrote to a file reaches the watch and the snapshot from that file', () => {

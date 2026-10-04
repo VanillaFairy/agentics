@@ -9,20 +9,56 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { lintSource } from '../tools/lint.mjs'
 import { id, applies, check } from '../tools/rules/no-turn-caps.mjs'
+
+const ROOT = fileURLToPath(new URL('..', import.meta.url))
 
 const WF = 'workflows/agentics-survey.workflow.js'
 const SKILL = 'skills/investigate/SKILL.md'
 
-test('it applies to workflow scripts, SKILL.md, and agent charters — not to tools', () => {
+test('it applies to workflow scripts, SKILL.md, agent charters, the programs and lib/run.mjs — not to tools or the rest of lib', () => {
   // Agent charters were originally out of scope; the self-audit widened the rule, since
   // CLAUDE.md's clause table assigns IL1 to this rule alone and a cap written
-  // into a charter reaches every dispatch of that agent.
+  // into a charter reaches every dispatch of that agent. The programs and lib/run.mjs start
+  // every dispatch, so they are in scope too.
   assert.ok(applies.test(WF))
   assert.ok(applies.test(SKILL))
   assert.ok(applies.test('agents/scout.md'))
+  assert.ok(applies.test('lib/programs/survey.mjs'))
+  assert.ok(applies.test('lib/programs/common.mjs'))
+  assert.ok(applies.test('lib/programs/converge.mjs'))
+  assert.ok(applies.test('lib/run.mjs'))
+  assert.ok(!applies.test('lib/store.mjs'))
+  assert.ok(!applies.test('lib/briefs/survey.mjs'))
   assert.ok(!applies.test('tools/lint.mjs'))
   assert.ok(!applies.test('docs/superpowers/plans/x/tasks/T05-agents.md'))
+})
+
+test('flags a max_turns in a program file and in lib/run.mjs, on its line', () => {
+  const src = ['const call = {', '  max_turns: 30,', '}'].join('\n')
+  for (const path of ['lib/programs/survey.mjs', 'lib/run.mjs']) {
+    const found = lintSource(src, path, [{ id, applies, check }])
+    assert.deepEqual(found.map((f) => [f.file, f.rule, f.line]), [[path, id, 2]], path)
+  }
+})
+
+test('a loop that ends on a state is not a cap, however it counts', () => {
+  for (const src of ['  for (let n = 2; taken.has(key); n++) {', '  for (let round = 1; ; round++) {']) {
+    assert.deepEqual(check(src, 'lib/programs/probe.mjs'), [], src)
+  }
+})
+
+test('the shipped programs and lib/run.mjs are judged and carry no cap', () => {
+  const paths = [...readdirSync(join(ROOT, 'lib', 'programs')).map((name) => 'lib/programs/' + name), 'lib/run.mjs']
+  for (const path of paths) {
+    assert.ok(applies.test(path), path + ' is not judged')
+    assert.deepEqual(check(readFileSync(join(ROOT, path), 'utf8'), path), [], path)
+  }
 })
 
 test('flags maxTurns and reports its line', () => {

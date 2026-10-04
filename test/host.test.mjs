@@ -234,6 +234,38 @@ test('a question naming two acts answers only the act its option names', () => {
   refusal(verifyAnswer({ token: APPROVE_TOKEN, option: 'Approve', ...later }), 'not_approved')
 })
 
+// A question contains a token only where the token ends: at the end of the text, or before a character
+// outside [0-9A-Za-z#].
+
+const answered = (question, token, option = 'Approve') =>
+  verifyAnswer({ token, option, ...lookup, read: readerOf(answerLine(question, option) + '\n') })
+
+test('a token is not matched inside a longer seq', () => {
+  refusal(answered('1/1. Approve? approve api@0a1b2c3d#41', 'approve api@0a1b2c3d#4'), 'not_approved')
+})
+
+test('a token without a seq is not matched by one with a seq', () => {
+  refusal(answered('1/1. Approve? approve api@0a1b2c3d#4', APPROVE_TOKEN), 'not_approved')
+})
+
+test('a token with an empty head is not matched by one with a head', () => {
+  refusal(answered('1/1. Land? land e1@abcdef12', 'land e1@', 'Land'), 'not_approved')
+})
+
+test('a token followed by punctuation, a space, a newline or the end is matched', () => {
+  for (const after of ['?', '.', ')', ' now', '\nApprove it?', '']) {
+    assert.deepEqual(answered('1/1. Approve ' + APPROVE_TOKEN + after, APPROVE_TOKEN), { ok: true, by: 'user' }, JSON.stringify(after))
+  }
+})
+
+test('a token inside backticks is matched', () => {
+  assert.deepEqual(answered('1/1. Approve `' + APPROVE_TOKEN + '`?', APPROVE_TOKEN), { ok: true, by: 'user' })
+})
+
+test('a token is found whole after a longer lookalike in the same question', () => {
+  assert.deepEqual(answered('1/1. Not approve api@0a1b2c3d#41 but approve api@0a1b2c3d#4?', 'approve api@0a1b2c3d#4'), { ok: true, by: 'user' })
+})
+
 test('a lookalike token is not the token', () => {
   const lookalike = APPROVE_TOKEN.replace('a', 'а')
   assert.notEqual(lookalike, APPROVE_TOKEN)

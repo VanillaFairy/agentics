@@ -90,6 +90,12 @@ test('a trailing semicolon, comma or parenthesis is not part of the path', () =>
   assert.ok(out.problem.includes(' runs tests/test_x.py, which'), out.problem)
 })
 
+test('a path written from the current directory is read as the repository path it names', () => {
+  const isPrefix = (t) => 'test/other.test.mjs'.startsWith(t)
+  assert.deepEqual(criterionPathProblems(spec([task(['src/a/X.ts'], 'node --test ./test/other.test.mjs')]), { isPrefix }), [])
+  assert.deepEqual(criterionPathProblems(spec([task(['src/a/X.ts'], 'node --test ././src/a/X.test.mjs')]), { isPrefix: none }), [])
+})
+
 test('the locus is checked before the repository is listed', () => {
   const isPrefix = () => { throw new Error('the repository was listed for a path the locus admits') }
   const check = 'node --test src/a/X.test.mjs src/a/X'
@@ -136,6 +142,11 @@ test('checkFolder reports a criterion path no file starts with and the locus doe
 
 test('checkFolder does not report a path the repository has', (t) => {
   const repo = effortWith(t, 'node --test tests/x.test.mjs', { git: true, files: { 'tests/x.test.mjs': 'x\n' } })
+  assert.deepEqual(checkFolder(repo, 'e1', '.').problems, [])
+})
+
+test('checkFolder does not report a tracked path written from the current directory', (t) => {
+  const repo = effortWith(t, 'node --test ./tests/x.test.mjs', { git: true, files: { 'tests/x.test.mjs': 'x\n' } })
   assert.deepEqual(checkFolder(repo, 'e1', '.').problems, [])
 })
 

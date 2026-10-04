@@ -238,6 +238,19 @@ test('a call resumed after a crash mid-continuation stores its own return whole'
   assert.deepEqual(statusesOf(log.entries()), ['part', 'returned'])
 })
 
+test('a watch that fails on a part stores nothing and returns no output', async () => {
+  const r = rig({ script: LONG })
+  let afters = 0
+  r.ports.watch = { before: () => ({}), after() { afters += 1; if (afters === 2) throw new Error('git status failed'); return { moved: [], changed: [] } } }
+  const out = await runAgent(makeCall(), r.ports)
+  assert.equal(r.spawns.length, 2, 'the call ends at the part whose watch failed')
+  assert.equal(out.status, 'failed')
+  assert.equal(out.cause, 'watch_failed')
+  assert.equal(out.output, null, 'a return cut off mid-continuation is not handed back as whole')
+  assert.equal(r.store.has(returnPath(DIR, D)), false, 'nothing is stored for a part')
+  assert.deepEqual(statusesOf(r.mine()), ['part', 'failed'])
+})
+
 // ------------------------------------------------------------------ progress
 
 test('a part that only changes a scalar makes progress', async () => {

@@ -190,18 +190,21 @@ test('topic keys are slugged, and a repeated key is numbered', async (t) => {
     { key: 'Loader Path!', find: 'FIND-1', subtree: 'src/loader' },
     { key: '--Store__X--', find: 'FIND-2', subtree: 'src/store' },
     { key: 'loader path', find: 'FIND-3', subtree: 'src/cache' },
+    { key: 'LOADER  path', find: 'FIND-4', subtree: 'src/shared' },
   ]
   const { rig, result } = await runSurvey(t, {
     'analyst||plan': [{ output: plan({ topics }) }],
     'scout||scout:loader-path': [{ output: scoutOut({ hits: [hit(FILE.loader, 2)] }) }],
     'scout||scout:store-x': [{ output: scoutOut({ hits: [hit(FILE.store, 2)] }) }],
     'scout||scout:loader-path-2': [{ output: scoutOut({ hits: [hit(FILE.cache, 2)] }) }],
+    'scout||scout:loader-path-3': [{ output: scoutOut({ hits: [hit(FILE.shared, 2)] }) }],
     ...emptyJudges(),
   })
   const expected = [
     { key: 'loader-path', subtree: 'src/loader', forced: false },
     { key: 'store-x', subtree: 'src/store', forced: false },
     { key: 'loader-path-2', subtree: 'src/cache', forced: false },
+    { key: 'loader-path-3', subtree: 'src/shared', forced: false },
   ]
   assert.deepEqual(result.topics.map(({ key, subtree, forced }) => ({ key, subtree, forced })), expected)
   for (const { key } of expected) assert.equal(on(rig, 'scout:' + key).length, 1, key)

@@ -11,8 +11,9 @@ at any depth. Each stage writes what it settles into the spec at once, so the sp
 session's memory and nothing needed later lives only in the conversation.
 Design: `docs/DESIGN.md#design`.
 
-Invoking this skill **is** the user's opt-in for the `Workflow` tool. Do not ask again. It is
-session-driven because grilling is interactive: no workflow or agent can talk to the user.
+This skill starts no agent: every agent it needs runs in a program it starts and whose result it
+reads (Running a program, below). It is session-driven because grilling is interactive: no program
+or agent can talk to the user.
 
 ## Vocabulary
 
@@ -200,6 +201,32 @@ line. Entries above the first group heading belong to the folder; each one below
 to that group. A group holds tasks only, has no spec, and its `after` binds all its tasks. Names
 are unique across the plan, groups included, and `after` may name a group.
 
+## Running a program
+
+Every agent this skill needs runs in a program. Text longer than a phrase (a question, a
+capability, the drafts' excerpts) goes into a file you write outside the repository with the Write
+tool, and its path is the flag's value. Start a program detached, from the repository root:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" <program> --repo . --detach --<arg> <value> …
+```
+
+It prints `{ok, run, pid, log, result_file}` at once. Keep `run` and `result_file`, and follow the
+run with the Monitor tool, re-armed on expiry until it prints its end:
+
+```
+Monitor({ command: 'node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" watch --repo . --run <run>', description: '<program> <run>', timeout_ms: 3600000 })
+```
+
+It prints a line per host stop and fault, then `ended done: complete=<bool> result=<file>`: read
+`result_file` with the Read tool. `stopped: …` means the run's process died: start the same
+command again, with the same files, and it resumes under its own id, calling only what never
+returned. `ended failed` (the `fault program:` line says why) and a `launch_failed` refusal are
+plugin faults, never the user's decision: say so and start the command once more; the same fault
+again is a plugin defect, reported with what it left undone. A `run_live` refusal names a run of
+the same program and scope already going: watch that one. Any other refusal's `message` says what
+to fix.
+
 ## The loop
 
 Analyze → Grill → Draft → Review → Approve → Move on. Leave a stage only when its gate holds.
@@ -208,32 +235,38 @@ Analyze → Grill → Draft → Review → Approve → Move on. Leave a stage on
 
 Write the Intent back: what the user said, kept apart from what you assume. Then evidence for this
 layer's question: what it needs to know about the system as it is, never the design question
-itself, since the survey gathers and never concludes:
+itself, since the survey gathers and never concludes. Write the question to a file and start the
+`survey` program:
 
-```
-Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/gather-evidence-without-concluding.workflow.js', args: { question, roots, notes, ground, intelligence, plugin_root } })
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" survey --repo . --detach --question-file <file> --roots . --ground <path,path> --intelligence <tier>
 ```
 
-`ground` is the paths this layer's work touches, as far as they are known: it is what lets the
+`--ground` is the paths this layer's work touches, as far as they are known: it is what lets the
 survey reuse standing items from any effort instead of buying them again, and re-judge or
-re-survey only what drifted. It and the outward search below return `items` (ids) and `coverage`;
-read the survey's `context` file (every item in full, risks, history, docs) and the search's `summary`.
+re-survey only what drifted. Leave it out when none are known.
 
 When the layer would **build a capability** (a parser, a scheduler, a cache, a protocol client),
-launch the outward search in the same message, concurrently:
+write the capability to a file and start the `solutions` program in the same message, so both run
+at once:
 
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" solutions --repo . --detach --capability-file <file> --roots . --constraints "<language, runtime, licence policy>" --intelligence <tier>
 ```
-Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/search-for-existing-solutions-before-building.workflow.js', args: { capability, roots, constraints, notes, intelligence } })
-```
 
-Skip it for wiring or reshaping what exists, and read what the repo already carries first. Incomplete coverage
-on ground the design would build from scratch is a `blocking` question. Whatever the repository,
-its history or vendor documentation can answer is answered by evidence; the user is asked only
-what only the user knows: intent, priorities, taste, real-world limits.
+Skip it for wiring or reshaping what exists, and read what the repo already carries first. Watch
+both runs and read both results. The survey's `context` file holds every item in full, the risks,
+history and docs; its `items` are their ids and its `coverage` what it reached. The search's
+`summary` file holds every candidate with its facts, `counts` how many of each, and its `coverage`
+what it reached. Incomplete coverage on ground the design would build from scratch is a `blocking`
+question. Whatever the repository, its history or vendor documentation can answer is answered by
+evidence; the user is asked only what only the user knows: intent, priorities, taste, real-world
+limits.
 
-Once the user has confirmed the understanding, record what this folder rests on: `cite` the ids of
-the items it uses, passing every entry of the returns' `coverage.unreached` as a `--gap`, then
-render `evidence.md`. The commands are in the effort-store block below.
+Once the user has confirmed the understanding, record what this folder rests on: one `cite`
+naming the survey's run and, when it ran, the search's, each as a `--from-run`, with every entry
+of their results' `coverage.unreached` as a `--gap`, then render `evidence.md`. The commands are
+in the effort-store block below.
 
 <!-- agentics:verbatim intelligence-tier -->
 The dial follows the model this session is running, never how important the work feels:
@@ -317,22 +350,23 @@ never sees, does not count, nor does a re-ask that refers to one ("given those u
 - **Default what qualifies.** A choice that is cheap to reverse and that nothing else consumes is
   not asked. Record it under Open questions as `- **parked (reopens at Review):** default: <the
   choice> — <why you recommend it>`; the user rules on every default together at Review.
-- **Approach drafts, when the decision space is open.** Dispatch two or three `agentics:analyst`
-  in one message, each from an assigned stance: **minimal-change** (the smallest change that
-  satisfies the decisions so far), **long-horizon** (the growth axes the grilling named),
-  **adopt-don't-build** (only when the outward search found candidates). Hand each the same inline
-  excerpts (the evidence, the decisions so far, this layer's question) and ask for `{approach,
-  shape, contracts, cites, risks}`. Keep each draft as it returns, before you read it out:
-  write it verbatim to a file and record it as an `approach` raw return.
+- **Approach drafts, when the decision space is open.** Write one file holding the excerpts every
+  draft needs (the evidence, the decisions so far, this layer's question, and the candidates the
+  solutions run found when there are any) and start the `drafts` program with two or three
+  stances: `minimal-change` (the smallest change that satisfies the decisions so far),
+  `long-horizon` (the growth axes the grilling named), and `adopt-dont-build` only when the
+  solutions run found candidates:
 
   ```bash
-  node "${CLAUDE_PLUGIN_ROOT}/lib/evidence.mjs" record --repo . --kind approach --from <path.json>
+  node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" drafts --repo . --detach --question-file <file> --stances minimal-change,long-horizon,adopt-dont-build --intelligence <tier>
   ```
 
-  Show the drafts with their trade-offs, your recommendation first; a draft that cites no
-  evidence is an opinion. The one the user chooses shapes the Design section, and the choice is a
-  Decisions row. The rest are discarded. When the layer has one obvious shape, skip the panel and
-  say so.
+  Each stance's analyst drafts `{approach, shape, contracts, cites, risks}`, and the program
+  records every draft as an `approach` return as it comes back. Show each result's `draft` with
+  its trade-offs, your recommendation first. A stance whose `draft` is `null` failed, and
+  `coverage.failed_channels` names it; a draft that cites no evidence is an opinion. The one the
+  user chooses shapes the Design section, and the choice is a Decisions row. The rest are
+  discarded. When the layer has one obvious shape, skip the drafts and say so.
 - **Grade every open question**: `blocking` (this stage cannot be passed without it),
   `parked (reopens at <x>)`, `lookup` (go and look), `compost` (recorded, not pursued).
 - A changed decision is rewritten in place with its reason. A new answer contradicting a decision
@@ -357,7 +391,7 @@ realises nothing. The check reports a decision none realises at its row, and app
 spec until it is fixed. **Just in time**: a sub-effort's own spec is written when it is next, not
 now. Here it is one entry.
 
-### Review. Gate: `approval.mjs gate` ratifiable or the review not earned, and the user approves in so many words
+### Review. Gate: `approval.mjs gate` ratifiable or the review not earned, and the user's answer chose `Approve`
 
 **A review is earned** by the spec's length, or by a contract other entries consume (an entry
 `provides` one). Name what earned it. When nothing did, record that and why, and go straight to
@@ -367,31 +401,34 @@ the user's read:
 node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" skip-review --repo . --effort <e> --folder <id> --reason "<why it was not earned>"
 ```
 
-When earned, challenge the spec. The reviewers get the spec and the repository and nothing from
-you; `context` is one line on what the spec is for, never your defence of it:
-
-```
-Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/attack-document-with-independent-reviewers.workflow.js', args: { artifact: '<the DESIGN.md path>', roots: '.', context, plugin_root } })
-```
-
-A return whose `lost` names files lost a prober's findings on the way back: a plugin fault, not a
-partial review, so run it again, asking nothing. After every other return, first record how much
-of the spec it examined and every ambiguity's settlement id, carried ones included:
+When earned, challenge the spec with the `probe` program. Its probers get the spec and the
+repository and nothing from you; `--context` is one line on what the spec is for, never your
+defence of it:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" reviewed --repo . --effort <e> --folder <id> --complete <coverage.complete> --remaining "<coverage.resumable.remaining, comma-separated; empty when complete>" --ambiguities "<each ambiguity's finding id, comma-separated>"
+node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" probe --repo . --detach --artifact <the folder's DESIGN.md> --roots . --context "<one line>"
 ```
 
-The gate is computed, never read off the return and never judged by you:
+When it has ended, first record the round: how much of the spec it examined and every ambiguity's
+settlement id, carried ones included, all read from the run's result:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" reviewed --repo . --effort <e> --folder <id> --from-run <run>
+```
+
+A `spec_changed` refusal means the spec was edited while the probe ran: probe it again. Read every
+finding in full from the result's `findings_file`. The gate is computed, never read off the result
+and never judged by you:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" gate --repo . --effort <e> --folder <id>
 ```
 
-`ratifiable` is true once the latest review of the spec as it stands examined every axis and
+`ratifiable` is true once the latest review of the spec as it stands ruled every unit in scope and
 every ambiguity it returned has a disposition, from this round or an earlier one. `open` names the
-ambiguities still unsettled, `remaining` the axes a partial review left: re-run the probe for
-those. An edit leaves no review of the new text, so the gate stays shut until one reads it.
+ambiguities still unsettled, `remaining` what a partial review left: the units no prober ruled,
+each failed channel and each search that ended short. Probe the whole spec again for those, with
+no `--since`. An edit leaves no review of the new text, so the gate stays shut until one reads it.
 
 <!-- agentics:verbatim design-severity-ladder -->
 - **ambiguity** — a term, contract, or interface the design leaves readable two ways. Blocks
@@ -454,33 +491,79 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" dispose --repo . --effort <e> --fo
 ```
 
 The finding id is the finding's `item` (its evidence-item id), or `<hash>#<P<n>>` when it has
-none, `<hash>` being the spec's hash the review read (`approval.mjs state` prints it). Use the same
-id in `reviewed --ambiguities` and in `dispose`. A narrowed second round (`since` set to the first
-round's `snapshot`) carries a settled finding whose lines no edit touched: it stays settled and is
-not asked about again.
+none, `<hash>` being the spec's hash the review read (`approval.mjs state` prints it): the id
+`reviewed --from-run` recorded each ambiguity under. A narrowed second round (`--since` set to the
+first round's `snapshot`) carries a settled finding whose lines no edit touched: it stays settled
+and is not asked about again.
 
 Review leaves no document of its own: what the findings changed is in the spec, and the rest is
 gone. **A second round is earned** only by an ambiguity whose resolution reshaped the design (a new
 interface, a data shape, which part owns a decision); name the one that earned it, and pass
-`since: '<the first round's snapshot>'` so only the changed lines are attacked. If the review
-cannot dispatch, say so, offer a self-review as the weaker instrument it is, and let the user
-decide. Never substitute one silently.
+`--since <the first round's snapshot>` so only the changed lines are attacked (an empty `snapshot`
+means that round recorded nothing: probe the whole spec again). If the probe cannot run, say so,
+offer a self-review as the weaker instrument it is, and let the user decide. Never substitute one
+silently.
 
-**The HARD GATE.** Then the user reads the folder's `DESIGN.md`, the file itself, not your summary of it. Nothing
-is approved until they have read it and approved it in as many words: not "looks good so far", not
-silence, not your judgment that it is obviously right. `approval.mjs gate` ratifiable or the
-review not earned, no `blocking` question open, and the user's words: all three.
+**The HARD GATE.** Then the user reads the folder's `DESIGN.md`, the file itself, not your summary
+of it. Nothing is approved until they have read it and chosen `Approve` in the question below: not
+"looks good so far", not silence, not your judgment that it is obviously right. `approval.mjs
+gate` ratifiable or the review not earned, no `blocking` question open, and the user's answer: all
+three.
 
 ### Approve
+
+Read the folder's state:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" state --repo . --effort <e> --folder <id>
+```
+
+**Already approved** (`state` is `approved`, only the compile left): run the compile below alone.
+
+**A spec never compiled** (`compiled_hash` empty): ask with `AskUserQuestion`, the state's `token`
+in the question's own text, offering exactly the options `Approve` and `Change it` with nothing
+added to either label. On `Approve`:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" approve --repo . --effort <e> --folder <id>
 node "${CLAUDE_PLUGIN_ROOT}/lib/compile.mjs" --repo . --effort <e> --folder <id>
 ```
 
-`approve` records the spec's hash and its decisions in the ledger. Any later edit un-approves it
-and sends it back to Review. Compile builds the folder's entries into the execution tree; a
+`approve` finds the user's answer to the token and records the spec's hash and its decisions in
+the ledger. It refuses when the answer did not choose `Approve`, or the spec changed since the
+token was printed: read `state` again and ask with its new token. Any later edit un-approves the
+spec and sends it back to Review. Compile builds the folder's entries into the execution tree; a
 refusal names file and line, and the fix is an edit, which goes back through Review.
+
+**A spec compiled before** (`compiled_hash` set) is ruled before anyone is asked: start the `rule`
+program and watch it.
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" rule --repo . --detach --effort <e> --folder <id>
+```
+
+By the result's `status`:
+
+- `approved`: nothing the change reaches is moved by it, so it is approved on that ruling and
+  compiled. Tell the user what changed in one line and move on.
+- `needs_user`: for each entry of `affected` with a `fix`, make that edit in the spec that owns
+  its node and have that spec ruled the same way, then start `rule` for this one again. Once no
+  `fix` is left, ask the user each `question` in `affected`; an answer that changes a spec is an
+  edit, ruled again. Then show the change with its `reasons` and ask for approval, the result's
+  `token` in the question's own text and exactly the options `Approve` and `Change it`. On
+  `Approve`, record it attached, since the program reads your answer:
+
+  ```bash
+  node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" rule --repo . --effort <e> --folder <id> --user-approved
+  ```
+
+  It prints its result: `approved`, or `refused` with `next: ask_user` when the answer did not
+  choose `Approve` (ask again with the `token` it prints), or `rule_it` when the spec moved on
+  since it was ruled (start `rule` again).
+- `compile_refused`: its `problems` name file and line; the fix is an edit, ruled again.
+- `refused`, by its `next`: `user_approves`, the never-compiled path above; `fix_spec`, edit what
+  `problems` name; `rule_parent_first`, rule the spec `why` names first; `rule_it`, start `rule`
+  again; `nothing`, it is approved as it stands.
 
 ### Move on. Gate: the user picks
 

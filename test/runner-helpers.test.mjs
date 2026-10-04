@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { LEAN_FLAGS, PERMISSION_FLAGS, buildArgs, classifyCall, cleanEnv, parseStream } from '../lib/runner.mjs'
+import { KEPT_HOST_VARIABLES, LEAN_FLAGS, PERMISSION_FLAGS, buildArgs, classifyCall, cleanEnv, parseStream } from '../lib/runner.mjs'
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'runner')
 const SUCCESS = readFileSync(join(fixtures, 'stream-success.jsonl'), 'utf8')
@@ -148,19 +148,39 @@ test('a call without a schema is refused', () => {
   assert.throws(() => buildArgs(noSchema))
 })
 
+const SESSION_OWNED = ['CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SSE_PORT', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_HOST_SESSION_ID',
+  'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_CODE_EXECPATH', 'CLAUDE_CODE_MESSAGING_SOCKET', 'CLAUDE_CODE_MESSAGING_TOKEN',
+  'CLAUDE_CODE_ACCOUNT_UUID', 'CLAUDE_CODE_ORGANIZATION_UUID', 'CLAUDE_CODE_OAUTH_SCOPES', 'CLAUDE_CODE_SESSION_ATTENDED',
+  'CLAUDE_CODE_DESKTOP_APP_VERSION', 'CLAUDE_CODE_A_FUTURE_HOST_MARKER']
 const ENV = {
-  CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDE_CODE_SSE_PORT: '51234', CLAUDE_CODE_GIT_BASH_PATH: 'C:/git/bash.exe',
+  ...Object.fromEntries(SESSION_OWNED.map((k) => [k, 'x'])),
+  ...Object.fromEntries(KEPT_HOST_VARIABLES.map((k) => [k, 'kept'])),
   CLAUDECODE: '1', AI_AGENT: 'claude-code',
   CLAUDE_CONFIG_DIR: 'C:/Users/u/.claude', PATH: 'C:/bin;C:/tools', HOME: 'C:/Users/u',
   ANTHROPIC_MODEL: 'opus', CLAUDE_PLUGIN_ROOT: 'C:/plugin', CLAUDECODE_EXTRA: 'x', MY_CLAUDE_CODE_NOTE: 'y',
 }
-const DROPPED = (k) => k.startsWith('CLAUDE_CODE_') || k === 'CLAUDECODE' || k === 'AI_AGENT'
+const DROPPED = (k) => (k.startsWith('CLAUDE_CODE_') && !KEPT_HOST_VARIABLES.includes(k)) || k === 'CLAUDECODE' || k === 'AI_AGENT'
 
 test("the launching session's variables are dropped", () => {
   const out = cleanEnv({ ...ENV })
   const dropped = Object.keys(ENV).filter(DROPPED)
-  assert.ok(dropped.length >= 5)
+  assert.ok(dropped.length >= SESSION_OWNED.length + 2)
   for (const k of dropped) assert.ok(!(k in out), `${k} kept`)
+})
+
+test('a session-owned CLAUDE_CODE_ variable is dropped, and so is one no one listed', () => {
+  const out = cleanEnv({ ...ENV, CLAUDE_CODE_NEXT_RELEASE_MARKER: '1' })
+  for (const k of [...SESSION_OWNED, 'CLAUDE_CODE_NEXT_RELEASE_MARKER']) assert.ok(!(k in out), `${k} kept`)
+})
+
+test("the user's CLAUDE_CODE_ settings are kept", () => {
+  assert.ok(KEPT_HOST_VARIABLES.length > 0)
+  for (const k of ['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_GIT_BASH_PATH']) {
+    assert.ok(KEPT_HOST_VARIABLES.includes(k), `${k} is listed`)
+  }
+  for (const k of SESSION_OWNED) assert.ok(!KEPT_HOST_VARIABLES.includes(k), `${k} is the session's own`)
+  const out = cleanEnv({ ...ENV })
+  for (const k of KEPT_HOST_VARIABLES) assert.equal(out[k], 'kept', `${k} not kept as is`)
 })
 
 test('the host configuration and the rest are kept', () => {

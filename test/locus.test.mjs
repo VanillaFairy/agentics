@@ -106,11 +106,44 @@ test('an unrelated file is not admitted', () => {
 })
 
 test('a listed file becomes edit and write rules', () => {
-  const locus = ['src/a/X.ts', 'lib/y.mjs', 'README.md']
+  const locus = ['src/a/X.ts', 'lib/y.mjs']
   const { allowed } = permissionsFor({ locus, baseFiles: ['src/a/X.ts'] })
   for (const file of locus) {
     for (const rule of editWrite(file)) assert.ok(allowed.includes(rule), rule)
   }
+})
+
+test('a root-level file is anchored to the root, so it never reaches a file of the same name deeper down', () => {
+  const { allowed, disallowed } = permissionsFor({ locus: ['package.json', 'src/a/X.ts'], held: ['README.md'], denyRead: ['.env'] })
+  for (const rule of editWrite('/package.json')) assert.ok(allowed.includes(rule), rule)
+  for (const rule of editWrite('package.json')) assert.ok(!allowed.includes(rule), `${rule} would match packages/x/package.json too`)
+  for (const rule of editWrite('/README.md')) assert.ok(disallowed.includes(rule), rule)
+  assert.ok(disallowed.includes('Read(/.env)'))
+  const rules = [...allowed, ...disallowed]
+  const bare = rules.filter((r) => !r.slice(r.indexOf('(') + 1).includes('/') && /^(Edit|Write|Read)\(/.test(r))
+  assert.deepEqual(bare, [], 'no path rule is left without a slash')
+})
+
+test('glob characters in a listed path are escaped, so the rule names that path and no other', () => {
+  const locus = ['app/[slug]/page.tsx', 'app/(auth)/', 'lib/a*b/c?.ts']
+  const baseFiles = ['app/[slug]/page.tsx', 'app/[slug]/old.test.ts']
+  const { allowed, disallowed } = permissionsFor({ locus, baseFiles, held: ['app/[id]/x.ts', 'lib/(held)/'], denyRead: ['data/[a]/k.json'] })
+  for (const rule of editWrite('app/\\[slug\\]/old.test.ts')) assert.ok(disallowed.includes(rule), `an existing test: ${rule}`)
+  for (const rule of editWrite('lib/\\(held\\)/**')) assert.ok(disallowed.includes(rule), `a held folder: ${rule}`)
+  for (const rule of editWrite('app/\\[slug\\]/page.tsx')) assert.ok(allowed.includes(rule), rule)
+  for (const rule of editWrite('app/\\(auth\\)/**')) assert.ok(allowed.includes(rule), rule)
+  for (const rule of editWrite('lib/a\\*b/c\\?.ts')) assert.ok(allowed.includes(rule), rule)
+  for (const rule of editWrite('app/\\[id\\]/x.ts')) assert.ok(disallowed.includes(rule), rule)
+  assert.ok(disallowed.includes('Read(data/\\[a\\]/k.json)'))
+  for (const rule of allowed) assert.ok(!rule.includes('[slug]') && !rule.includes('(auth)') && !rule.includes('a*b'), `unescaped: ${rule}`)
+  const beside = permissionsFor({ locus: ['app/[slug]/page.tsx'] }).allowed
+  for (const rule of editWrite('app/\\[slug\\]/*.test.*')) assert.ok(beside.includes(rule), `the folder's test globs: ${rule}`)
+})
+
+test('glob characters are escaped in a barred producer\'s test denials too', () => {
+  const { disallowed } = permissionsFor({ locus: ['app/[slug]/'], tests: false })
+  for (const rule of editWrite('app/\\[slug\\]/**/*.test.*')) assert.ok(disallowed.includes(rule), rule)
+  for (const rule of editWrite('app/\\[slug\\]/**/test/**')) assert.ok(disallowed.includes(rule), rule)
 })
 
 test('a directory entry becomes a subtree rule', () => {
@@ -216,6 +249,31 @@ test('commands become bash rules', () => {
   const all = permissionsFor({ locus: ['src/a/X.ts'], commands: ['*'] })
   assert.ok(all.allowed.includes('Bash'))
   assert.ok(!all.allowed.includes('Bash(*:*)'))
+})
+
+/** The deny and allow rules as the host reads a Bash rule: `:*` is a prefix, any other `*` stands for any text. */
+const bashRuleMatches = (rule, command) => {
+  const body = rule.slice('Bash('.length, -1)
+  if (body.endsWith(':*')) return command.startsWith(body.slice(0, -2))
+  return new RegExp('^' + body.split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$').test(command)
+}
+
+test('a git option that reaches past a worktree is denied wherever it stands in the command', () => {
+  const reaching = [
+    'git diff --output=x', 'git diff HEAD --output=../../x', 'git diff HEAD~1 HEAD --output x', 'git log -p --output=x',
+    'git show --output=x', 'git commit --amend', 'git commit -a --amend', 'git commit -m "m" --amend --no-edit',
+    'git -C ../other status', 'git --git-dir=../x log', 'git --work-tree=../x status',
+  ]
+  const harmless = ['git diff HEAD', 'git log -p', 'git show HEAD', 'git commit -m "plain"', 'git status']
+  const { disallowed } = permissionsFor({ locus: ['src/a/X.ts'], commands: ['git diff', 'git log', 'git show', 'git commit', 'git status'] })
+  const denies = (command) => disallowed.some((r) => r.startsWith('Bash(') && bashRuleMatches(r, command))
+  for (const command of reaching) assert.ok(denies(command), `${command} is not denied`)
+  for (const command of harmless) assert.ok(!denies(command), `${command} is denied`)
+})
+
+test('a read-only git role gets the git denials too', () => {
+  const { disallowed } = permissionsFor({ locus: [], commands: ['git log', 'git show', 'git diff'] })
+  for (const rule of GIT_DENY) assert.ok(disallowed.includes(rule), rule)
 })
 
 test('git options that reach past a worktree are denied with any shell', () => {

@@ -5,11 +5,13 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
+import { permissionsFor } from '../lib/locus.mjs'
 import { answersIn, projectsDir, resolveCli, transcriptOf } from '../lib/host.mjs'
 import { buildArgs, classifyCall, cleanEnv, parseStream, spawner } from '../lib/runner.mjs'
 
@@ -86,14 +88,42 @@ test('an answered question lands where answersIn reads it', { skip }, (t) => {
   assert.ok(asked.some((text) => answersIn(text).length > 0), 'transcripts that asked questions record no answer answersIn reads')
 })
 
-test('a path with a space is allowed by its rule', { skip, timeout: 180000 }, async (t) => {
+/** What a Write-tool call did under the rules `permissionsFor` gives `locus`: the file's existence and why not, if it is absent. */
+async function writeUnder(t, locus, file, { folders = [] } = {}) {
   const dir = scratch(t)
-  mkdirSync(join(dir, 'my folder'))
+  for (const f of folders) mkdirSync(join(dir, f), { recursive: true })
+  const { allowed, disallowed } = permissionsFor({ locus })
   const { parsed } = await call(dir, {
-    prompt: 'Write my folder/a.txt containing A, then return x = 1.', session: randomUUID(), tools: ['Write'], allowed: ['Write(my folder/**)'],
+    prompt: 'Use the Write tool to create the file "' + file + '" containing A. Then return x = 1.',
+    session: randomUUID(), tools: ['Write'], allowed, disallowed,
   })
-  assert.equal(existsSync(join(dir, 'my folder', 'a.txt')), true)
+  const denied = parsed.denials.map((d) => d.tool_name + ' ' + JSON.stringify(d.tool_input))
+  return { wrote: existsSync(join(dir, file)), denied, why: 'denials: ' + JSON.stringify(denied) + ', last tool: ' + JSON.stringify(parsed.lastTool) }
+}
+
+test('a path with a space is allowed by its rule', { skip, timeout: 180000 }, async (t) => {
+  const r = await writeUnder(t, ['my folder/'], 'my folder/a.txt', { folders: ['my folder'] })
+  assert.deepEqual(r.denied, [], r.why)
+  assert.equal(r.wrote, true, r.why)
 })
+
+// The rules a locus becomes allow exactly the listed file: the glob characters of a Next.js route and the
+// root-level name are the cases a gitignore-style pattern reads differently from a plain path.
+for (const [name, listed, allowedFile, otherFile, folders] of [
+  ['brackets', 'app/[slug]/page.tsx', 'app/[slug]/page.tsx', 'app/s/page.tsx', ['app/[slug]', 'app/s']],
+  ['parentheses', 'app/(auth)/login.tsx', 'app/(auth)/login.tsx', 'app/auth/login.tsx', ['app/(auth)', 'app/auth']],
+  ['a root file', 'package.json', 'package.json', 'packages/x/package.json', ['packages/x']],
+]) {
+  test('a listed path with ' + name + ' is allowed, and only that path', { skip, timeout: 240000 }, async (t) => {
+    const [mine, other] = await Promise.all([
+      writeUnder(t, [listed], allowedFile, { folders }),
+      writeUnder(t, [listed], otherFile, { folders }),
+    ])
+    assert.equal(mine.wrote, true, 'the listed path: ' + mine.why)
+    assert.equal(other.wrote, false, 'another path the pattern might read as its own: ' + other.why)
+    assert.ok(other.denied.length > 0, 'the other write was refused, not skipped: ' + other.why)
+  })
+}
 
 test('a missing session is refused as missing', { skip, timeout: 120000 }, async (t) => {
   const dir = scratch(t)
@@ -102,18 +132,70 @@ test('a missing session is refused as missing', { skip, timeout: 120000 }, async
   assert.equal(cls.cause, 'session_missing')
 })
 
-test('writes outside the allowed paths and compound commands are denied and reported', { skip, timeout: 240000 }, async (t) => {
+/** A scratch folder that is a git repository with one commit. */
+function repo(t) {
+  const dir = scratch(t)
+  const git = (...args) => execFileSync('git', args, { cwd: dir, stdio: 'ignore' })
+  git('init', '-q'); git('config', 'user.email', 'a@b.c'); git('config', 'user.name', 'n'); git('commit', '-q', '--allow-empty', '-m', 'init')
+  return dir
+}
+
+test('a write outside the allowed paths is denied and reported', { skip, timeout: 180000 }, async (t) => {
   const dir = scratch(t)
   mkdirSync(join(dir, 'sub')); mkdirSync(join(dir, 'other'))
+  const { allowed, disallowed } = permissionsFor({ locus: ['sub/'] })
   const { parsed } = await call(dir, {
-    prompt: 'Do each step even if one fails: 1) write sub/a.txt containing A; 2) write other/b.txt containing B; ' +
-      '3) run exactly: git status && echo x > other/c.txt . Then return x = the number of steps that succeeded.',
-    session: randomUUID(), tools: ['Write', 'Bash'], allowed: ['Write(sub/**)', 'Bash(git status:*)'],
+    prompt: 'Use the Write tool to create the file "other/b.txt" containing B. Then return x = 1.',
+    session: randomUUID(), tools: ['Write'], allowed, disallowed,
   })
-  assert.equal(existsSync(join(dir, 'sub', 'a.txt')), true)
-  assert.equal(existsSync(join(dir, 'other', 'b.txt')), false)
-  assert.equal(existsSync(join(dir, 'other', 'c.txt')), false)
-  assert.ok(parsed.denials.length >= 2)
+  const why = 'denials: ' + JSON.stringify(parsed.denials) + ', last tool: ' + JSON.stringify(parsed.lastTool)
+  assert.equal(existsSync(join(dir, 'other', 'b.txt')), false, why)
+  assert.deepEqual(parsed.denials.map((d) => d.tool_name), ['Write'], why)
+})
+
+test('a compound command is denied whole under a rule for its first command', { skip, timeout: 180000 }, async (t) => {
+  const dir = repo(t)
+  mkdirSync(join(dir, 'other'))
+  const { parsed } = await call(dir, {
+    prompt: 'Use the Bash tool to run exactly this one command, then return x = 1: git status && echo x > other/c.txt',
+    session: randomUUID(), tools: ['Bash'], allowed: ['Bash(git status:*)'],
+  })
+  const why = 'denials: ' + JSON.stringify(parsed.denials) + ', last tool: ' + JSON.stringify(parsed.lastTool)
+  assert.equal(existsSync(join(dir, 'other', 'c.txt')), false, why)
+  assert.deepEqual(parsed.denials.map((d) => d.tool_name), ['Bash'], why)
+})
+
+// The git denials hold wherever the option stands: an allow rule for `git diff` is a prefix rule, so a deny rule that is
+// also a prefix rule misses `git diff HEAD --output=x`.
+for (const [name, command, file] of [
+  ['an option right after the subcommand', 'git diff --output=leading.txt HEAD', 'leading.txt'],
+  ['an option after other arguments', 'git diff HEAD --output=trailing.txt', 'trailing.txt'],
+  ['an option of git log', 'git log -p --output=logged.txt', 'logged.txt'],
+]) {
+  test('git --output is denied: ' + name, { skip, timeout: 180000 }, async (t) => {
+    const dir = repo(t)
+    const { allowed, disallowed } = permissionsFor({ locus: [], commands: ['git diff', 'git log', 'git commit'] })
+    const { parsed } = await call(dir, {
+      prompt: 'Use the Bash tool to run exactly this one command, then return x = 1: ' + command, session: randomUUID(), tools: ['Bash'], allowed, disallowed,
+    })
+    const why = 'denials: ' + JSON.stringify(parsed.denials) + ', last tool: ' + JSON.stringify(parsed.lastTool)
+    assert.equal(existsSync(join(dir, file)), false, why)
+    assert.ok(parsed.denials.length > 0, 'the call was refused, not skipped: ' + why)
+  })
+}
+
+test('git commit --amend is denied after other arguments, and a plain commit is allowed', { skip, timeout: 240000 }, async (t) => {
+  const { allowed, disallowed } = permissionsFor({ locus: [], commands: ['git commit', 'git log'] })
+  const run = async (command) => {
+    const dir = repo(t)
+    const { parsed } = await call(dir, { prompt: 'Use the Bash tool to run exactly this one command, then return x = 1: ' + command, session: randomUUID(), tools: ['Bash'], allowed, disallowed })
+    const count = Number(execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: dir }).toString().trim())
+    return { denials: parsed.denials, count, why: 'denials: ' + JSON.stringify(parsed.denials) }
+  }
+  const [amend, plain] = await Promise.all([run('git commit -a --allow-empty --amend -m again'), run('git commit --allow-empty -m plain')])
+  assert.ok(amend.denials.length > 0 && amend.count === 1, 'the amend: ' + amend.why + ', commits ' + amend.count)
+  assert.deepEqual(plain.denials, [], 'the plain commit: ' + plain.why)
+  assert.equal(plain.count, 2)
 })
 
 test('a detached program outlives the session that started it', { skip, timeout: 240000 }, async (t) => {

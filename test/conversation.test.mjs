@@ -164,14 +164,21 @@ test('findings name what was found', () => {
 
 test('surviving mutations name what survived', () => {
   const mutations = [
-    { file: 'lib/alpha-zebra.mjs', tests: ['alpha keeps its order', 'alpha refuses empty'] },
-    { file: 'lib/beta-quokka.mjs', tests: ['beta counts once'] },
+    { file: 'lib/alpha-zebra.mjs', find: 'a.length > 0', replace: 'a.length >= 0', expect_failing: ['alpha keeps its order', 'alpha refuses empty'] },
+    { file: 'lib/beta-quokka.mjs', find: 'n + 1', replace: 'n + 2', expect_failing: ['beta counts once'] },
   ]
   const text = renderMessage({ msg: 'surviving_mutations', payload: { mutations } })
   for (const m of mutations) {
     assert.ok(text.includes(m.file), `names ${m.file}`)
-    for (const t of m.tests) assert.ok(text.includes(t), `names the test ${t} for ${m.file}`)
+    assert.ok(text.includes(m.find), `shows what ${m.file} held`)
+    assert.ok(text.includes(m.replace), `shows what ${m.file} was changed to`)
+    for (const t of m.expect_failing) assert.ok(text.includes(t), `names the test ${t} for ${m.file}`)
   }
+})
+
+test('surviving mutations accept the tests under the name tests', () => {
+  const text = renderMessage({ msg: 'surviving_mutations', payload: { mutations: [{ file: 'lib/a.mjs', find: 'x', replace: 'y', tests: ['alpha counts once'] }] } })
+  assert.ok(text.includes('alpha counts once'))
 })
 
 test('a test request carries its text and forbids the code', () => {
@@ -205,7 +212,7 @@ test('a changed brief carries the change and the brief', () => {
 test('a rendered message is deterministic', () => {
   const inputs = [
     { msg: 'findings', payload: { findings: [{ id: 'F1', severity: 'blocker', claim: 'c1' }] } },
-    { msg: 'surviving_mutations', payload: { mutations: [{ file: 'lib/a.mjs', tests: ['t1'] }] } },
+    { msg: 'surviving_mutations', payload: { mutations: [{ file: 'lib/a.mjs', find: 'f', replace: 'r', expect_failing: ['t1'] }] } },
     { msg: 'needs_tests', payload: { text: 'pin the empty case' } },
     { msg: 'tests_ready', payload: { files: ['test/a.test.mjs'] } },
     { msg: 'declined', payload: { why: 'already pinned' } },
@@ -277,7 +284,7 @@ test('pending messages are delivered together', () => {
     message(T, 'needs_tests', { text: 'old request, delivered already' }, 'implementer'),
     dispatched('d-1', T, [1]),
     returned('d-1', 'done'),
-    message(T, 'surviving_mutations', { mutations: [{ file: 'lib/kiwi.mjs', tests: ['kiwi once'] }] }),
+    message(T, 'surviving_mutations', { mutations: [{ file: 'lib/kiwi.mjs', find: 'a', replace: 'b', expect_failing: ['kiwi once'] }] }),
     message('elsewhere', 'declined', { why: 'not for this thread' }, 'test-author'),
     message(T, 'findings', { findings: [{ id: 'F-9', severity: 'blocker', claim: 'kiwi twice' }] }, 'reviewer'),
     message(T, 'needs_tests', { text: 'pin the empty kiwi' }, 'implementer'),

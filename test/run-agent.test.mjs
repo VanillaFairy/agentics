@@ -449,6 +449,14 @@ test('an orphan on the session is ended before a resume', async () => {
   assert.equal(out.status, 'returned')
 })
 
+test('a host-stopped call is never killed, even when its pid is alive again', async () => {
+  const seed = [earlierDispatched({ pid: 499 }), ['host_stop', { dispatch: PREV, cause: 'usage_limit', until: '5pm' }]]
+  const { log, killed, out } = await run({ resume: true }, { seed, alive: [499] })
+  assert.deepEqual(killed, [], 'the runner saw that process exit: a live pid is a stranger that reused it')
+  assert.equal(log.entries().filter((e) => e.kind === 'returned' && e.status === 'cut_off').length, 0)
+  assert.equal(out.status, 'returned')
+})
+
 test('a dead earlier call is left alone', async () => {
   const { killed, out } = await run({ resume: true }, { seed: [earlierDispatched({ pid: 777 })], alive: [4242] })
   assert.deepEqual(killed, [])
@@ -637,4 +645,55 @@ test('a moved ref fails the call', async () => {
   assert.equal(last.kind, 'returned', 'the call does not stay in progress')
   assert.equal(last.status, 'failed')
   assert.equal(last.cause, 'checkout')
+})
+
+// A watch whose git read fails (lib/watch.mjs throws) cannot vouch for the checkout.
+
+const throwingWatch = ({ before = false, after = false } = {}) => ({
+  before() { if (before) throw new Error('git status failed in the checkout'); return { head: 'abc123' } },
+  after() { if (after) throw new Error('git hash-object failed in the checkout'); return { moved: [], changed: [] } },
+})
+
+test('a watch that fails after the call fails the call and keeps its return', async () => {
+  const r = rig({ script: [{ pid: 4242, lines: SUCCESS }] })
+  r.ports.watch = throwingWatch({ after: true })
+  const out = await runAgent(makeCall(), r.ports)
+  assert.equal(out.status, 'failed')
+  assert.equal(out.cause, 'watch_failed')
+  assert.ok(out.message.includes('hash-object'), `the failure is named: ${out.message}`)
+  const returned = rows(r.log, 'returned', D)
+  assert.equal(returned.length, 1, 'the call does not stay in progress')
+  assert.equal(returned[0].status, 'failed')
+  assert.equal(returned[0].cause, 'watch_failed')
+  assert.ok(returned[0].seq > rows(r.log, 'dispatched', D)[0].seq)
+  assert.deepEqual(r.store.get(returnPath(DIR, D)), OUT, 'the output the call paid for is stored')
+  close(returned[0].cost_usd, RESULT.total_cost_usd)
+})
+
+test('a watch that fails after a host stop fails the call as well', async () => {
+  const stderr = 'Claude AI usage limit reached; resets at 5pm (Europe/London).'
+  const r = rig({ script: [{ pid: 4242, lines: [INIT], code: 1, stderr }] })
+  r.ports.watch = throwingWatch({ after: true })
+  const out = await runAgent(makeCall(), r.ports)
+  assert.equal(out.status, 'failed')
+  assert.equal(out.cause, 'watch_failed')
+  assert.equal(rows(r.log, 'host_stop', D).length, 0, 'the checkout cannot be vouched for, so the stop is not recorded as resumable')
+  assert.equal(rows(r.log, 'returned', D).at(-1).cause, 'watch_failed')
+  assert.ok(!r.store.has(returnPath(DIR, D)), 'a call that returned nothing stores nothing')
+})
+
+test('a watch that fails before the call starts no CLI and records the failure', async () => {
+  const r = rig({ script: [{ pid: 4242, lines: SUCCESS }] })
+  r.ports.watch = throwingWatch({ before: true })
+  const out = await runAgent(makeCall(), r.ports)
+  assert.equal(r.spawns.length, 0, 'no agent runs on a checkout nobody can watch')
+  assert.equal(out.status, 'failed')
+  assert.equal(out.cause, 'watch_failed')
+  const dispatched = rows(r.log, 'dispatched', D)
+  assert.equal(dispatched.length, 1)
+  assert.equal(dispatched[0].pid, 0)
+  const returned = rows(r.log, 'returned', D)
+  assert.equal(returned.length, 1)
+  assert.equal(returned[0].cause, 'watch_failed')
+  assert.ok(returned[0].seq > dispatched[0].seq, 'no call is left looking in progress')
 })

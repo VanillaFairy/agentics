@@ -87,7 +87,7 @@ It prints `{ok, run, pid, log, result_file}` at once. Keep `run` and follow it w
 tool, re-armed on expiry until it prints its end:
 
 ```
-Monitor({ command: 'node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" watch --repo . --run <run>', description: 'investigate <run>', timeout_ms: 3600000 })
+Monitor({ command: 'node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" watch --repo . --run <run> --since 0', description: 'investigate <run>', timeout_ms: 3600000 })
 ```
 
 It prints a line per host stop and fault, then `ended done: complete=<bool> result=<file>`: read

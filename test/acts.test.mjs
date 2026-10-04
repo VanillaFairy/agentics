@@ -8,16 +8,17 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { actToken, approvalState, approveAct, recordApproval } from '../lib/approval.mjs'
 import { land, landAct } from '../lib/boundary.mjs'
-import { readLog } from '../lib/ledger.mjs'
+import { append, readLog } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import { revParse, specPath } from '../lib/store.mjs'
+import { seedTree } from './harness/seed-tree.mjs'
 
 const APPROVAL_CLI = fileURLToPath(new URL('../lib/approval.mjs', import.meta.url))
 const BOUNDARY_CLI = fileURLToPath(new URL('../lib/boundary.mjs', import.meta.url))
@@ -467,4 +468,189 @@ test('the land check CLI prints the token and needs no word', (t) => {
   const out = landResult(runCli(BOUNDARY_CLI, landArgs(repo, 'check'), {}))
   assert.equal(out.ok, true, JSON.stringify(out.error))
   assert.equal(out.token, landToken(repo))
+})
+
+// ================================================================== the CLIs at a console
+
+/** Run `cli` with no session, its stdin a pipe that reads as a console, holding `typed`. */
+function atConsole(t, cli, args, typed) {
+  const preload = join(temp(t, 'acts-tty'), 'tty.mjs')
+  writeFileSync(preload, 'process.stdin.isTTY = true\n')
+  return spawnSync(process.execPath, ['--import', pathToFileURL(preload).href, cli, ...args], {
+    encoding: 'utf8', env: childEnv(), input: typed, timeout: 30_000,
+  })
+}
+
+test('the approve CLI at a console refuses not_approved when stdin closes before a line, recording nothing', { timeout: 60_000 }, (t) => {
+  const repo = specRepo(t, ROOT)
+  const run = atConsole(t, APPROVAL_CLI, approveArgs(repo), '')
+  assert.equal(run.status, 0, run.stderr)
+  const lines = run.stdout.split('\n').filter(Boolean)
+  assert.equal(lines.length, 1, run.stdout)
+  const printed = JSON.parse(lines[0])
+  assert.equal(printed.payload_digest, fnv1a(canonical(printed.payload)))
+  refusedAs(printed.payload, 'not_approved')
+  assert.equal(approvedLines(repo).length, 0)
+})
+
+test('the land merge CLI at a console refuses not_approved when stdin closes before a line, merging nothing', { timeout: 60_000 }, (t) => {
+  const repo = landRepo(t)
+  const before = revParse(repo, 'HEAD')
+  const run = atConsole(t, BOUNDARY_CLI, landArgs(repo, 'merge'), '')
+  assert.equal(run.status, 0, run.stderr)
+  refusedAs(landResult(JSON.parse(run.stdout)), 'not_approved')
+  assert.equal(revParse(repo, 'HEAD'), before)
+  assert.equal(landedEvents(repo).length, 0)
+})
+
+test('the approve CLI at a console approves on the token typed back, by the terminal', { timeout: 60_000 }, (t) => {
+  const repo = specRepo(t, ROOT)
+  const { token, hash } = approvalState(repo, E, '.')
+  const run = atConsole(t, APPROVAL_CLI, approveArgs(repo), token + '\n')
+  assert.equal(run.status, 0, run.stderr)
+  const printed = JSON.parse(run.stdout)
+  assert.equal(printed.payload.ok, true, JSON.stringify(printed.payload))
+  const lines = approvedLines(repo)
+  assert.equal(lines.length, 1)
+  assert.equal(lines[0].hash, hash)
+  assert.equal(lines[0].by, 'terminal')
+})
+
+test('the land merge CLI at a console merges on the token typed back, by the terminal', { timeout: 60_000 }, (t) => {
+  const repo = landRepo(t)
+  const run = atConsole(t, BOUNDARY_CLI, landArgs(repo, 'merge'), landToken(repo) + '\n')
+  assert.equal(run.status, 0, run.stderr)
+  const out = landResult(JSON.parse(run.stdout))
+  assert.equal(out.ok, true, JSON.stringify(out.error))
+  const events = landedEvents(repo)
+  assert.equal(events.length, 1)
+  assert.equal(events[0].merged_sha, revParse(repo, 'HEAD'))
+  assert.equal(events[0].by, 'terminal')
+})
+
+// ================================================================== the word binds the head it named
+
+/**
+ * Move the effort head one commit on at `land`'s `git status`, after it reads the head and before
+ * it merges: a one-shot fsmonitor hook, outside the working tree so the tree stays clean. The later
+ * commit.
+ */
+function moveEffortHeadAtStatus(t, repo) {
+  const head = revParse(repo, 'refs/heads/' + EFFORT_BRANCH)
+  const later = git(repo, 'commit-tree', head + '^{tree}', '-p', head, '-m', 'later')
+  const at = repo.replace(/\\/g, '/')
+  const hook = join(temp(t, 'acts-hook'), 'fsmonitor.sh')
+  writeFileSync(hook, [
+    '#!/bin/sh',
+    'git -C "' + at + '" config --unset core.fsmonitor',
+    'git -C "' + at + '" update-ref refs/heads/' + EFFORT_BRANCH + ' ' + later,
+    'exit 1',
+    '',
+  ].join('\n'))
+  chmodSync(hook, 0o755)
+  git(repo, 'config', 'core.fsmonitor', hook.replace(/\\/g, '/'))
+  return later
+}
+
+test('an effort head that moves after land reads it never puts the later commit into the branch', (t) => {
+  const repo = landRepo(t)
+  const before = revParse(repo, 'HEAD')
+  const askedHead = revParse(repo, 'refs/heads/' + EFFORT_BRANCH)
+  const later = moveEffortHeadAtStatus(t, repo)
+  const out = land(repo, E, 'merge', { askedHead })
+  const head = revParse(repo, 'HEAD')
+  assert.ok(!holds(repo, head, later), 'the user\'s HEAD does not hold the later commit')
+  assert.equal(spawnSync('git', ['-C', repo, 'config', 'core.fsmonitor']).status, 1, 'the hook ran')
+  if (out.ok) {
+    const events = landedEvents(repo)
+    assert.equal(events.length, 1)
+    assert.equal(events[0].merged_sha, head)
+    assert.ok(holds(repo, head, askedHead), 'the landing holds the head the user was asked about')
+  } else {
+    assert.equal(landedEvents(repo).length, 0)
+    assert.equal(head, before)
+  }
+})
+
+test('a moved effort head is refused head_moved before a dirty tree is', (t) => {
+  const repo = landRepo(t)
+  const before = revParse(repo, 'HEAD')
+  const askedHead = revParse(repo, 'refs/heads/' + EFFORT_BRANCH)
+  moveEffortHead(repo)
+  writeFileSync(join(repo, 'stray.txt'), 'dirty\n')
+  const out = land(repo, E, 'merge', { askedHead })
+  assert.equal(out.ok, false, JSON.stringify(out))
+  assert.ok(String(out.error).startsWith('head_moved: '), out.error)
+  assert.equal(revParse(repo, 'HEAD'), before)
+  assert.equal(landedEvents(repo).length, 0)
+})
+
+test('a moved effort head is refused head_moved before an open escalation is', (t) => {
+  const repo = landRepo(t)
+  const before = revParse(repo, 'HEAD')
+  const askedHead = revParse(repo, 'refs/heads/' + EFFORT_BRANCH)
+  moveEffortHead(repo)
+  const leafA = { id: 'a', kind: 'leaf', title: 'do a', rigor: 'tdd', locus: ['a.mjs'], decisions: ['D1'], acceptance: [{ text: 'a works', check: 'node --test', decisions: ['D1'] }] }
+  assert.equal(seedTree(repo, E, [{ id: '.', kind: 'composite', title: 'the change', defines: [{ id: 'D1', text: 'do it' }] }, leafA]).ok, true)
+  assert.equal(append(repo, E, 'events', { kind: 'escalated', node: 'a', execution: '', reason: 'blocked', detail: '' }).ok, true)
+  assert.ok(land(repo, E, 'check').open_escalations.length > 0, 'the escalation is open')
+  const out = land(repo, E, 'merge', { askedHead })
+  assert.equal(out.ok, false, JSON.stringify(out))
+  assert.ok(String(out.error).startsWith('head_moved: '), out.error)
+  assert.equal(revParse(repo, 'HEAD'), before)
+  assert.equal(landedEvents(repo).length, 0)
+})
+
+// ================================================================== nobody is asked in vain
+
+test('an empty spec file at a terminal is refused as recordApproval refuses it, asking nobody', async (t) => {
+  const repo = specRepo(t, '')
+  const { token, hash } = approvalState(repo, E, '.')
+  assert.notEqual(token, '', 'an empty file still has a token')
+  const { opts, prompts } = terminal(token)
+  const out = await approveAct(repo, E, '.', opts)
+  assert.equal(out.ok, false, JSON.stringify(out))
+  assert.deepEqual(out, recordApproval(repo, E, '.', { by: 'terminal', hash }))
+  assert.equal(prompts.length, 0, 'nobody is asked to confirm a spec that cannot be approved')
+  assert.equal(approvedLines(repo).length, 0)
+})
+
+test('a spec with an open blocking question at a terminal is refused naming it, asking nobody', async (t) => {
+  const repo = specRepo(t, DRAFT)
+  const { opts, prompts } = terminal(approvalState(repo, E, '.').token)
+  const out = await approveAct(repo, E, '.', opts)
+  assert.equal(out.ok, false, JSON.stringify(out))
+  assert.ok(String(out.error).includes(BLOCKING_QUESTION), out.error)
+  assert.equal(prompts.length, 0, 'nobody is asked to confirm a spec that cannot be approved')
+  assert.equal(approvedLines(repo).length, 0)
+})
+
+// ================================================================== a landing whose record was lost
+
+test('over a merge with no landed record, a confirmed Land records it once, by the terminal', async (t) => {
+  const repo = landRepo(t)
+  git(repo, 'merge', '--no-ff', '--no-edit', EFFORT_BRANCH)
+  const head = revParse(repo, 'HEAD')
+  const { opts } = terminal(landToken(repo))
+  const out = await landAct(repo, E, opts)
+  assert.equal(out.ok, true, JSON.stringify(out.error))
+  assert.equal(out.already, true)
+  assert.equal(revParse(repo, 'HEAD'), head)
+  const events = landedEvents(repo)
+  assert.equal(events.length, 1)
+  assert.equal(events[0].into, 'main')
+  assert.equal(events[0].merged_sha, head)
+  assert.equal(events[0].by, 'terminal')
+})
+
+test('over a merge already recorded, a confirmed Land adds no second landed record', async (t) => {
+  const repo = landRepo(t)
+  const effortHead = revParse(repo, 'refs/heads/' + EFFORT_BRANCH)
+  assert.equal(land(repo, E, 'merge').ok, true)
+  git(repo, 'branch', EFFORT_BRANCH, effortHead)
+  const { opts } = terminal(landToken(repo))
+  const out = await landAct(repo, E, opts)
+  assert.equal(out.ok, true, JSON.stringify(out.error))
+  assert.equal(out.already, true)
+  assert.equal(landedEvents(repo).length, 1)
 })

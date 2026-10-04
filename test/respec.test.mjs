@@ -303,3 +303,15 @@ test('the CLI prints each result under its digest', () => {
   assert.ok(refusal.why.includes('run.mjs rule --user-approved'), refusal.why)
   assert.equal(approvalState(repo, E, 'api').state, 'edited')
 })
+
+test('the CLI hands a changed decision to the user however its rulings read', () => {
+  const repo = changed(null)
+  write(repo, '.', ROOT.replace('Unknown keys are an error.', 'Unknown keys are an error, named in the message.'))
+  const run = (...args) => JSON.parse(execFileSync(process.execPath, [CLI, ...args, '--repo', repo, '--effort', E, '--folder', '.'], { encoding: 'utf8' }))
+  rule(repo, run('brief').payload)
+  const out = run('settle').payload
+  assert.equal(out.status, 'needs_user', JSON.stringify(out))
+  assert.ok(out.reasons.length > 0, JSON.stringify(out))
+  assert.equal(approvalState(repo, E, '.').state, 'edited')
+  assert.equal(ledger(repo, 'approved').filter((l) => l.by === 'ruling').length, 0, 'nothing is approved by ruling')
+})

@@ -1958,6 +1958,8 @@ that lives outside every listed directory — a `tests/` tree, a mirrored layout
 Only a word of the command holding a `/` is read as a path, and not one that starts with `-`, holds
 `://`, leaves the repository or carries shell syntax — a redirection, a pipe, a variable, an
 operator, a glob, a brace; quotes around it and a trailing `;`, `,` or `)` are not part of it.
+A path written from the current directory (`./test/x.test.mjs`) is read as the repository path it
+names.
 
 **Prevented.** leaf-open turns the locus into the call's permissions: `Edit` and `Write` for each
 listed file and under each directory entry; `Edit` and `Write` for test-file names in each listed

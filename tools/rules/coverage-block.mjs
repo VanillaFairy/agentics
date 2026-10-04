@@ -48,12 +48,18 @@
 // file and the real return with it. Telling a regex literal from division is exactly the job
 // of the parser we do not have. No workflow in this plugin uses one today; if that changes,
 // hoist the pattern into `new RegExp('...')`.
+//
+// Programs (lib/programs/*.mjs, less the shared common.mjs and converge.mjs) are modules: a
+// program builds its result in a module-local `function resultOf`, so there the rule asks for
+// that function and for a substantive coverage key in an object it returns
+// (docs/DESIGN.md#coverage-block). V3 stays with workflows: a module's helper may end bare.
 
 export const id = 'coverage-block'
 
-export const applies = /\.workflow\.js$/
+export const applies = /(?:\.workflow\.js|^lib\/programs\/(?!(?:common|converge)\.mjs$)[^/]+\.mjs)$/
 
-export function check(source) {
+export function check(source, filePath = '') {
+  if (filePath.startsWith('lib/programs/')) return checkProgram(source)
   const code = blankStringsAndComments(source)
   const violations = []
 
@@ -105,6 +111,42 @@ export function check(source) {
   })
 
   return violations
+}
+
+/** A program's findings: no `function resultOf`, or a resultOf that returns no substantive coverage key. */
+function checkProgram(source) {
+  const code = blankStringsAndComments(source)
+  const head = /\bfunction\s+resultOf\s*\(/.exec(code)
+  if (!head) {
+    return [{
+      line: 0,
+      message:
+        `This program defines no function resultOf, so nothing builds its result's coverage ` +
+        `block. L1: a program result shows exactly how complete it is — build every result in ` +
+        `resultOf and return coverage: coverageOf({ ... }) from it.`,
+    }]
+  }
+  const open = code.indexOf('{', endOfParams(code, head.index + head[0].length - 1))
+  const verdict = open < 0 ? 'none' : coverageVerdict(code.slice(open, endOfObject(code, open)))
+  if (verdict === 'ok') return []
+  return [{
+    line: code.slice(0, head.index).split('\n').length,
+    message: verdict === 'none'
+      ? `resultOf returns no object carrying a "coverage" key. L1: a partial result must never ` +
+        `read as a whole one — return coverage: coverageOf({ ... }) from resultOf.`
+      : `Every "coverage" resultOf returns is an empty object literal or null. L1: an empty ` +
+        `coverage block is a partial result wearing the label.`,
+  }]
+}
+
+/** Index just past the `)` closing the parameter list that opens at `open`, or end of source. */
+function endOfParams(code, open) {
+  let depth = 0
+  for (let i = open; i < code.length; i++) {
+    if (code[i] === '(') depth++
+    else if (code[i] === ')' && --depth === 0) return i + 1
+  }
+  return code.length
 }
 
 /**

@@ -193,9 +193,8 @@ and everything scripts write for it — its nodes, their events and its executio
 sits in that directory's `.state/`. Design, challenge-idea and develop are separate sessions by
 recommendation, and this directory is how a later one reads what an earlier one established.
 
-Open one at the start. Propose a short name from the user's words and confirm it;
-`effort.mjs open` validates it. `effort.mjs slug` turns the words into a first proposal of at
-most four words:
+Open one at the start. Propose a short name from the user's words and confirm it; `effort.mjs
+open` validates it. `effort.mjs slug` turns the words into a first proposal of at most four words:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" slug "<the change or question, in the user's words>"
@@ -209,17 +208,18 @@ existing-solutions search and the challenge review record what they find themsel
 items in `.agentics/.state/evidence/`: one claim each, with the lines, searches, sources or other
 items it rests on. Nothing is recorded by hand, and no return is summarised into the store.
 
-An item's state is computed whenever it is used, never judged by the session. An item no edit
-has touched is **standing**. One whose anchored text changed is **suspect** until a cheap
-re-judge says whether the change matters. One that no longer holds is **stale**, and its topic
-is surveyed again. List what a ground holds with
-`node "${CLAUDE_PLUGIN_ROOT}/lib/evidence.mjs" items --repo <repo> --ground <path,path>`.
+An item's state is computed whenever it is used, never judged by the session. An item no edit has
+touched is **standing**. One whose anchored text changed is **suspect** until a cheap re-judge says
+whether the change matters. One that no longer holds is **stale**, and its topic is surveyed again.
+List what a ground holds with `node "${CLAUDE_PLUGIN_ROOT}/lib/evidence.mjs" items --repo <repo> --ground <path,path>`.
 
-A folder records the items it rests on, and the coverage gaps it rests on them despite. Its
-`evidence.md` is rendered from those records, never written:
+A folder records the items it rests on, and the coverage gaps it rests on them despite, in one
+cite naming every survey, solutions or investigate run it rests on: each run's items come from its
+result, less any you `--exclude`, so no list of ids passes through you. A folder's latest cite is
+its whole citation. Its `evidence.md` is rendered from those records, never written:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/lib/evidence.mjs" cite --repo <repo> --effort <effort> --folder <folder> --items <id,id> [--gap "<gap>"]
+node "${CLAUDE_PLUGIN_ROOT}/lib/evidence.mjs" cite --repo <repo> --effort <effort> --folder <folder> --from-run <run> [--from-run <run>]… [--exclude <id>]… [--gap "<gap>"]…
 node "${CLAUDE_PLUGIN_ROOT}/lib/render.mjs" evidence --repo <repo> --effort <effort> --folder <folder>
 ```
 

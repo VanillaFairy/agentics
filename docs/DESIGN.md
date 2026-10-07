@@ -1979,6 +1979,7 @@ a stray file out clears it. leaf-close takes every path outside the locus out it
 committed, in a commit of its own (`agentics: revert outside locus`), records `breach_reverted
 {paths}`, and measures the leaf without them. It measures the head before the revert as well, and
 raises `needs_locus` for the paths only when that head passed and the reverted one fails.
+A rename a producer left staged is two paths, and both are put back.
 
 Two leaves admitted the same new name meet as a merge conflict, which stops the batch like any
 other ([Merging](#merging)).

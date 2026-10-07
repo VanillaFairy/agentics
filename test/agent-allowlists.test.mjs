@@ -38,8 +38,6 @@ const ALLOWLISTS = {
   // which is the point of the role. Write only for the return file its dispatch names, which lib
   // reads so no courier retypes what it judged.
   analyst: ['Read', 'Write'],
-  // Writes only its report file; it declares mutations and a script applies them.
-  auditor: ['Glob', 'Grep', 'Read', 'Write'],
   // Runs one lib command, all handles, and pastes its one line. No Read: a courier that could
   // open files would be tempted to tidy what it carries.
   courier: ['Bash'],
@@ -47,17 +45,7 @@ const ALLOWLISTS = {
   // read; Write is for that file alone.
   'doc-researcher': ['Glob', 'Grep', 'Read', 'WebFetch', 'WebSearch', 'Write'],
   historian: ['Bash', 'Grep', 'Read', 'Write'],
-  implementer: ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write'],
-  // Write only for the commands file its dispatch names, which it records with the gotchas CLI.
-  investigator: ['Bash', 'Glob', 'Grep', 'Read', 'Write'],
-  planner: ['Bash', 'Glob', 'Grep', 'Read', 'Write'],
-  // Write only for its own review file, the JSON the boundary that closes its round reads.
-  reviewer: ['Bash', 'Glob', 'Grep', 'Read', 'Write'],
-  // Judges what it is handed, like the analyst; Write only for the rulings file its dispatch
-  // names, which the boundary that records the rulings reads.
-  ruler: ['Read', 'Write'],
   scout: ['Glob', 'Grep', 'Read', 'Write'],
-  'test-author': ['Edit', 'Glob', 'Grep', 'Read', 'Write'],
 }
 
 /**
@@ -66,12 +54,8 @@ const ALLOWLISTS = {
  *
  * Everything else in the roster carries Bash, and a shell subsumes writing — which is why the
  * read-only claims in those charters are discipline plus a post-hoc audit, and say so.
- *
- * `test-author` is the one whose membership was designed rather than inherited: it authors the
- * failing tests and must not be able to run, implement or commit them, so a Bash added here would
- * dissolve the separation the whole role exists for without changing a word of its charter.
  */
-const NO_SHELL = ['analyst', 'auditor', 'doc-researcher', 'ruler', 'scout', 'test-author']
+const NO_SHELL = ['analyst', 'doc-researcher', 'scout']
 
 /** `tools:` out of the frontmatter block. CR-stripped: core.autocrlf is true on Windows. */
 function toolsOf(source) {

@@ -85,3 +85,43 @@ test('a file with CRLF endings reads as LF', (t) => {
   const root = tree(t, { 'CLAUDE.md': 'one\r\ntwo\r\n' })
   assert.equal(guidanceOf(root), doc(block('CLAUDE.md', 'one\ntwo')))
 })
+
+/** A repository at `<base>/repo` with `files`, and the folder around it holding `outside`. */
+function nested(t, files, outside) {
+  const base = tree(t, outside)
+  const root = join(base, 'repo')
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, path)), { recursive: true })
+    writeFileSync(join(root, path), text)
+  }
+  return { base, root }
+}
+
+test('a directory outside the repository root is dropped', (t) => {
+  const { root } = nested(t, { 'CLAUDE.md': 'r', 'src/CLAUDE.md': 's' }, { 'CLAUDE.md': 'secret', 'other/CLAUDE.md': 'secret too' })
+  const shown = guidanceOf(root, { dirs: ['src', '../other', 'src/../..', '..'] })
+  assert.equal(shown, doc(block('CLAUDE.md', 'r'), block('src/CLAUDE.md', 's')))
+})
+
+test('a configured file outside the repository root is dropped', (t) => {
+  const { base, root } = nested(t, { 'CLAUDE.md': 'r' }, { 'CLAUDE.md': 'secret', 'notes.md': 'secret too' })
+  const config = { guidance: ['../CLAUDE.md', 'docs/../../notes.md', join(base, 'notes.md'), '/notes.md'] }
+  assert.equal(guidanceOf(root, { config }), doc(block('CLAUDE.md', 'r')))
+})
+
+test('a path inside the root that passes through .. reads as its one spelling', (t) => {
+  const root = tree(t, { 'CLAUDE.md': 'r', 'src/CLAUDE.md': 's', 'docs/style.md': 'style' })
+  assert.equal(guidanceOf(root, { dirs: ['docs/../src'] }), guidanceOf(root, { dirs: ['src'] }))
+  assert.equal(guidanceOf(root, { config: { guidance: ['src/../docs/style.md'] } }), doc(block('CLAUDE.md', 'r'), block('docs/style.md', 'style')))
+})
+
+test('a configured path is shown once in any spelling', (t) => {
+  const root = tree(t, { 'CLAUDE.md': 'r', 'docs/style.md': 'style' })
+  const config = { guidance: ['./CLAUDE.md', 'docs//style.md', './docs/style.md'] }
+  assert.equal(guidanceOf(root, { config }), doc(block('CLAUDE.md', 'r'), block('docs/style.md', 'style')))
+})
+
+test('a configured file that cannot be read shows as unreadable', (t) => {
+  const root = tree(t, { 'CLAUDE.md': 'r', 'docs/style.md': 'style' })
+  assert.equal(guidanceOf(root, { config: { guidance: ['docs'] } }), doc(block('CLAUDE.md', 'r'), block('docs', '(unreadable)')))
+})

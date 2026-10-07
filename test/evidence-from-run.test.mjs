@@ -383,11 +383,13 @@ test('a probe of another artefact refuses not_this_spec, recording nothing', (t)
   assert.deepEqual(reviewedLines(repo), [])
 })
 
-test('a round whose record kept no snapshot is recorded at the spec\'s current hash', (t) => {
+test('a round whose record kept no snapshot, its findings unrecorded, is recorded incomplete at the spec\'s current hash', (t) => {
   const repo = specRepo(t)
-  const out = reviewed(repo, '--from-run', result(repo, PROBE_RUN, probe(repo, { snapshot: '' })))
+  const findings = [{ ...ambiguity('P1', ''), severity: 'note' }]
+  const out = reviewed(repo, '--from-run', result(repo, PROBE_RUN, probe(repo, { findings, snapshot: '', unrecorded: ['P1'] })))
   assert.equal(out.ok, true, JSON.stringify(out))
-  assert.equal(reviewedLines(repo)[0].hash, hashSpec(SPEC_TEXT))
+  const [line] = reviewedLines(repo)
+  assert.deepEqual([line.hash, line.complete, line.remaining], [hashSpec(SPEC_TEXT), false, ['unrecorded:P1']])
 })
 
 test('a result whose coverage disagrees with what it names as left is refused, recording nothing', (t) => {

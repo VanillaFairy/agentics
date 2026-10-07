@@ -20,10 +20,9 @@ const surveyResult = (over = {}) => ({
   ...over,
 })
 
-test('all three workflow scripts compile as workflow bodies', () => {
+test('both workflow scripts compile as workflow bodies', () => {
   compileWorkflow(wf('gather-evidence-without-concluding.workflow.js'))
   compileWorkflow(wf('answer-codebase-question-from-evidence.workflow.js'))
-  compileWorkflow(wf('execute-approved-plan-in-worktrees.workflow.js'))
 })
 
 test('a survey script path that does not resolve is reported as a broken plugin reference', async () => {

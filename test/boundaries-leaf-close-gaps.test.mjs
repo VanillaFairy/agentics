@@ -317,6 +317,44 @@ describe('G3: [D1] a decline of a round that carried needs_tests and findings', 
   })
 })
 
+// ================================================================== G4
+
+describe('G4: the measurement before a revert is never read as the round\'s', { concurrency: 2 }, () => {
+  const GONE = { file: 'src/extra.mjs', find: 'x = 1', replace: 'x = 2', expect_failing: ['test/more.test.mjs'] }
+
+  const tests = scenario(async (t) => {
+    const { w, o } = testsOnly(t)
+    write(o.worktree, { 'test/more.test.mjs': MORE_TEST, 'src/extra.mjs': 'export const x = 1\n' })
+    await run(w, { node: 't', role: 'test-author', round: 1, ret: { status: 'done', text: 'one', commit: 'Test add', mutations: [ADD_BITE, GONE] }, base_sha: o.base_sha })
+    const afterOne = head(o.worktree)
+    write(o.worktree, { 'test/more.test.mjs': MORE_TEST + '// again\n' })
+    const { out } = await run(w, { node: 't', role: 'test-author', round: 2, ret: { status: 'done', text: 'two', commit: 'Test add again', mutations: [ADD_BITE] }, base_sha: o.base_sha, head_before: afterOne })
+    return { w, o, out }
+  })
+  after(() => tests.end())
+
+  test('G4.1 the next round does not apply a mutation the pre-revert measurement applied, and the close approves', SLOW, async () => {
+    const { w, o, out } = await tests.get()
+    const line = observed(w, 't').find((l) => l.head_sha === head(o.worktree))
+    assert.ok(line, 'the round measured its head')
+    assert.deepEqual(line.mutations.filter((m) => m.file === GONE.file), [])
+    assert.equal(out.decision.next, 'approve', JSON.stringify(out.decision))
+  })
+
+  test('G4.2 an audit failures go to the round thread when only the pre-revert measurement let a mutation through, however often the close is run', SLOW, async (t) => {
+    const c = cycle(t, { triad: true })
+    write(c.audit.worktree, { 'src/extra.mjs': 'export const x = 1\n' })
+    const unseen = { ...GONE, expect_failing: ['test/r.test.mjs'] }
+    const spec = { node: 'au', role: 'auditor', round: 1, thread: 'producer:au', ret: auditor([unseen]), base_sha: c.audit.base_sha, head_before: c.audit.base_sha }
+    const dispatch = stored(c.w, spec)
+    const first = await close(c.w, { ...spec, dispatch })
+    assert.equal(first.decision.next, 'fix', JSON.stringify(first.decision))
+    await close(c.w, { ...spec, dispatch })
+    assert.deepEqual(msgs(c.w, 'failures', 'au').map((m) => m.thread), ['producer:au'])
+    assert.deepEqual(msgs(c.w, 'surviving_mutations', 'au'), [])
+  })
+})
+
 // ================================================================== G5
 
 describe('G5: [D2] an implementer\'s needs_tests is answered by the test round that finally measures', { concurrency: 2 }, () => {

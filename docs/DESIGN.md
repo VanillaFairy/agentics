@@ -1246,7 +1246,10 @@ Unsure between `tdd` and `tdd-pair`: `tdd` when the leaf is small, `tdd-pair` wh
   defect in the declaration, not evidence about the tests. Other rigors apply their round's
   declarations alone, because their implementation moves and an old `find` with it. The mutations
   held, and the audit's gap below, are read from the leaf's `verify-observed` lines of every
-  execution, as resume reads them (`journalsOf`).
+  execution, as resume reads them (`journalsOf`). A measurement taken at the head before a
+  revert (the parent of an `agentics: revert outside locus` commit) is never one of them: it
+  judged a locus the breach had widened, and a mutation applied only to a file the revert took
+  out can never be applied again.
 - **Every new test is shown to catch something.** A `tests-only` leaf's test file that adds a case
   is named in the `expect_failing` of a mutation that bites, or the leaf fails.
 - **A cycle's test gap is closed inside the cycle.** A gap in the cycle's tests found after the red

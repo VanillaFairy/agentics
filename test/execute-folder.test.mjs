@@ -171,8 +171,7 @@ const sessionKey = (rig) => sessionOf({ effort: E, execution: rig.stamp, node: '
 
 const guidance = (rig) => guidanceOf(rig.repo, { config: readConfig(rig.repo) })
 /** The prompt `plannerBrief` gives for p as the tree holds it now. */
-function briefFor(rig, { mode, why = '', spec = '', request = null, context = '' }) {
-  const node = nodeOf(rig, 'p')
+function briefFor(rig, { mode, why = '', spec = '', request = null, context = '', node = nodeOf(rig, 'p') }) {
   assert.deepEqual(node.decisions, [], 'the fixture: p realises no decision, so its brief lists none')
   return plannerBrief({
     folder: { id: 'p', title: node.title, intent: node.intent, spec_path: specFile(rig), why },
@@ -253,10 +252,12 @@ test("the planner writes on planner:<folder> in the session the folder mints, at
 
 test("the first round of a fresh plan is the planner's write brief", async (t) => {
   const w = world(t, { steps: clean(), writes: { 1: S1 } })
+  // The first round's brief carries the folder as it stood before the run: compile rewrites its title and intent from the spec.
+  const before = nodeOf(w.rig, 'p')
   assert.equal((await w.run()).outcome, 'prepared')
   const [call] = plannerCalls(w.rig)
   assert.equal(call.resume, false, 'the first call starts a session')
-  sameBrief(call.brief, briefFor(w.rig, { mode: 'write' }))
+  sameBrief(call.brief, briefFor(w.rig, { mode: 'write', node: before }))
   assert.deepEqual(call.carries, [])
 })
 
@@ -754,12 +755,18 @@ test('a spec_changed park on a planner folder is re-derived from its spec as it 
 // ================================================================== beyond the acceptance lines
 
 test('planner rounds run on from the thread\'s latest round in the execution', async (t) => {
-  const first = folderSpec({ design: 'First answer to the verify finding.' })
-  const second = folderSpec({ design: 'Second answer to the verify finding.' })
+  // Each answer retitles p/x, so the asking leaf's revision moves: the second invocation has another
+  // basis (the same request over the leaf as it now stands), so it is a new plan and not a relaunch.
+  const first = folderSpec({ title: 'Add x, first answer to the verify finding.' })
+  const second = folderSpec({ title: 'Add x, second answer to the verify finding.' })
   const w = planned(t, { steps: { ...planner(written, written), ...probing(1, first), ...probing(2, second) }, writes: { 1: first, 2: second } })
   const ask = request('verify_finding', 'the suite fails')
+  const before = nodeOf(w.rig, 'p/x').seq
   assert.equal((await w.run({ request: ask })).outcome, 'prepared')
+  const between = nodeOf(w.rig, 'p/x').seq
+  assert.ok(between > before, 'the fixture: the first answer moved the asking leaf\'s revision')
   assert.equal((await w.run({ request: ask })).outcome, 'prepared')
+  assert.ok(nodeOf(w.rig, 'p/x').seq > between, 'the fixture: so did the second')
   const calls = plannerCalls(w.rig)
   assert.deepEqual(calls.map((c) => c.round), [1, 2])
   assert.equal(calls[1].resume, true, 'the second plan resumes the thread')

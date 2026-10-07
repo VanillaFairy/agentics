@@ -121,7 +121,7 @@ const rows = (log, kind, dispatch) => log.entries().filter((e) => e.kind === kin
 const fieldsOf = (row) => { const { kind, seq, ...rest } = row; return rest }
 const valueAfter = (args, flag) => { const i = args.indexOf(flag); return i < 0 ? undefined : args[i + 1] }
 const close = (actual, expected) => assert.ok(typeof actual === 'number' && Math.abs(actual - expected) < 1e-9, `${actual} is not ${expected}`)
-const DISPATCHED_FIELDS = ['dispatch', 'node', 'round', 'thread', 'role', 'model', 'effort', 'session', 'brief_digest', 'carries', 'pid']
+const DISPATCHED_FIELDS = ['dispatch', 'node', 'round', 'thread', 'role', 'model', 'effort', 'session', 'brief_digest', 'brief_parts', 'carries', 'pid']
 const RETURNED_FIELDS = ['dispatch', 'session', 'status', 'cause', 'usage', 'cost_total', 'cost_usd', 'denials']
 
 // ------------------------------------------------------------------ spawner
@@ -609,6 +609,51 @@ test('a schema retry carries what the call carried', async () => {
     assert.deepEqual(d.carries, [4, 7])
   }
   assert.deepEqual(dispatched.map((d) => d.pid), [4242, 4243])
+})
+
+// ------------------------------------------------------------------ brief parts
+
+const PARTS = { Intent: 'a1b2c3d4', Locus: 'e5f6a7b8' }
+
+test("a first call records its brief's parts on its dispatch", async () => {
+  const { log } = await run({ briefParts: PARTS })
+  const [d] = rows(log, 'dispatched', D)
+  assert.deepEqual(d.brief_parts, PARTS)
+})
+
+test("a schema retry records the brief's parts on each dispatch", async () => {
+  const { log, out } = await run({ briefParts: PARTS }, { script: [{ pid: 4242, lines: MISSED }, { pid: 4243, lines: SUCCESS }] })
+  assert.equal(out.status, 'returned')
+  const dispatched = rows(log, 'dispatched', D)
+  assert.equal(dispatched.length, 2)
+  for (const d of dispatched) assert.deepEqual(d.brief_parts, PARTS)
+})
+
+test("a continuation part records the brief's parts on each dispatch", async () => {
+  const part = ok({ structured_output: { status: 'blocked', text: 'first', more: true } })
+  const rest = ok({ structured_output: { status: 'done', text: 'second' } })
+  const { log, out } = await run({ briefParts: PARTS }, { script: [{ pid: 4242, lines: part }, { pid: 4243, lines: rest }] })
+  assert.equal(out.status, 'returned')
+  const dispatched = rows(log, 'dispatched', D)
+  assert.equal(dispatched.length, 2)
+  for (const d of dispatched) assert.deepEqual(d.brief_parts, PARTS)
+})
+
+test('a call given no brief parts records none', async () => {
+  const { log } = await run()
+  const [d] = rows(log, 'dispatched', D)
+  assert.deepEqual(d.brief_parts, {})
+})
+
+test('a call whose effort the CLI rejected fails and stores no return', async () => {
+  const stderr = "Warning: Unknown --effort value 'ultra' — ignoring it\n"
+  const { log, store, out } = await run({}, { script: [{ pid: 4242, lines: SUCCESS, stderr }] })
+  assert.equal(out.status, 'failed')
+  assert.equal(out.cause, 'host_error')
+  assert.equal(store.has(returnPath(DIR, D)), false)
+  const [r] = rows(log, 'returned', D)
+  assert.equal(r.status, 'failed')
+  assert.equal(r.cause, 'host_error')
 })
 
 test('a missing session without a fresh brief fails as missing', async () => {

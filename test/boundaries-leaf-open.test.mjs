@@ -19,7 +19,7 @@ import { append, executionLog, readLog } from '../lib/ledger.mjs'
 import { acquire, withBranchLockAsync } from '../lib/locks.mjs'
 import { TEST_GLOBS, permissionsFor } from '../lib/locus.mjs'
 import { loadRole, producerTier, raiseTier, roleCommands } from '../lib/roles.mjs'
-import { branchOf, closePath, configPath, dispatchKey, returnPath, reviewPath, worktreeOf, writeWhole } from '../lib/store.mjs'
+import { branchOf, closePath, configPath, dispatchKey, effortStateDir, returnPath, reviewPath, worktreeOf, writeWhole } from '../lib/store.mjs'
 import { addNodes, readTree } from '../lib/tree.mjs'
 import { COMMANDS, STAMP, commitIn, git, leaf, repo, root } from './harness/boundary-fixture.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
@@ -216,16 +216,41 @@ test('a 4.x execution\'s dispatch is no round: the close and review records besi
   assert.deepEqual([out.round, out.role, out.thread, out.owner, out.fresh], [1, 'implementer', 'producer:g', 'g', ''])
 })
 
-test('a green\'s round after a measured test round that answered needs_tests goes to the implementer', async (t) => {
+/** leaf-close's answer to the implementer's request: the close that measured the test round records `tests_ready` at the round after it. */
+const testsReady = (xc, round, node = 'g') =>
+  xc.log.append('message', { node, thread: 'producer:' + node, from: 'code', msg: 'tests_ready', payload: { files: ['test/r.test.mjs'] }, round })
+
+test('a green\'s round after a measured test round that recorded tests_ready goes to the implementer', async (t) => {
+  const { xc } = await cycle(t)
+  askedForTests(xc)
+  ran(xc, { node: 'g', round: 2, role: 'test-author', thread: 'producer:r', ret: { status: 'done' } })
+  closed(xc, { node: 'g', role: 'test-author', round: 2, measurement: { stop_reason: 'completed' }, decision: { next: 'review', reason: '', failures: [] } })
+  testsReady(xc, 3)
+  const out = await leafOpen(xc, { node: 'g' })
+  assert.deepEqual([out.round, out.role, out.thread, out.owner], [3, 'implementer', 'producer:g', 'g'])
+})
+
+test('a test round that failed only on its own mutations records no tests_ready: the red\'s session keeps the green', async (t) => {
   const { xc } = await cycle(t)
   askedForTests(xc)
   ran(xc, { node: 'g', round: 2, role: 'test-author', thread: 'producer:r', ret: { status: 'done' } })
   const own = { check: 'mutation', claim: 'the break survives', evidence: '' }
   closed(xc, { node: 'g', role: 'test-author', round: 2, measurement: { stop_reason: 'completed' }, decision: { next: 'fix', reason: '', failures: [own] } })
-  // The close that measured the round also records the answer, at the round after it.
-  xc.log.append('message', { node: 'g', thread: 'producer:g', from: 'code', msg: 'tests_ready', payload: { files: ['test/r.test.mjs'] }, round: 3 })
   const out = await leafOpen(xc, { node: 'g' })
-  assert.deepEqual([out.round, out.role, out.thread, out.owner], [3, 'implementer', 'producer:g', 'g'])
+  assert.deepEqual([out.round, out.role, out.thread, out.owner], [3, 'test-author', 'producer:r', 'r'])
+})
+
+test('a green's round after a test round that recorded tests_ready follows the review of that round', async (t) => {
+  const { xc } = await cycle(t)
+  askedForTests(xc)
+  ran(xc, { node: 'g', round: 2, role: 'test-author', thread: 'producer:r', ret: { status: 'done' } })
+  closed(xc, { node: 'g', role: 'test-author', round: 2, measurement: { stop_reason: 'completed' }, decision: { next: 'review', reason: '', failures: [] } })
+  testsReady(xc, 3)
+  const gap = { id: 'T1', severity: 'critical', claim: 'no test pins it', evidence: 'src/r.mjs:1', failure_scenario: 'x', remedy: 'tests' }
+  reviewed(xc, { node: 'g', round: 2, review_round: 1, open: [gap] })
+  assert.equal((await leafOpen(xc, { node: 'g' })).role, 'test-author', 'a review that left only test findings decides, whatever was recorded for the implementer')
+  reviewed(xc, { node: 'g', round: 2, review_round: 2, open: [{ ...gap, id: 'F1', remedy: 'code' }] })
+  assert.equal((await leafOpen(xc, { node: 'g' })).role, 'implementer')
 })
 
 test('a test round that answered no needs_tests, or was not measured, leaves the green\'s role to its close', async (t) => {
@@ -255,22 +280,6 @@ test('a measured implementer round is no test round answering a request, even wh
   const gap = { id: 'T1', severity: 'critical', claim: 'no test pins it', evidence: 'src/r.mjs:1', failure_scenario: 'x', remedy: 'tests' }
   reviewed(xc, { node: 'g', round: 3, review_round: 1, open: [gap] })
   assert.equal((await leafOpen(xc, { node: 'g' })).role, 'test-author')
-})
-
-for (const answer of ['tests_ready', 'declined']) test(`a needs_tests that a ${answer} answered is closed: a later test round leaves the role to its close`, async (t) => {
-  const { xc } = await cycle(t)
-  askedForTests(xc)
-  ran(xc, { node: 'g', round: 2, role: 'test-author', thread: 'producer:r', ret: { status: 'done' } })
-  const own = { check: 'mutation', claim: 'the break survives', evidence: '' }
-  closed(xc, { node: 'g', role: 'test-author', round: 2, measurement: { stop_reason: 'completed' }, decision: { next: 'fix', reason: '', failures: [own] } })
-  assert.equal((await leafOpen(xc, { node: 'g' })).role, 'implementer', 'the request is open while nothing answered it')
-
-  xc.log.append('message', { node: 'g', thread: 'producer:g', from: 'code', msg: answer, payload: { files: ['test/r.test.mjs'], why: 'already pinned' }, round: 3 })
-  ran(xc, { node: 'g', round: 3, role: 'implementer', thread: 'producer:g', ret: { status: 'done' } })
-  closed(xc, { node: 'g', role: 'implementer', round: 3 })
-  ran(xc, { node: 'g', round: 4, role: 'test-author', thread: 'producer:r', ret: { status: 'done' } })
-  closed(xc, { node: 'g', role: 'test-author', round: 4, measurement: { stop_reason: 'completed' }, decision: { next: 'fix', reason: '', failures: [own] } })
-  assert.equal((await leafOpen(xc, { node: 'g' })).role, 'test-author', 'a later test round answers no request that was answered')
 })
 
 test('an audit goes to the red\'s session once a measurement let an applied mutation through', async (t) => {
@@ -648,6 +657,36 @@ test('a held integration branch is waited for through the given sleep, then the 
   await holding
   assert.equal(out.status, 'opened')
   assert.ok(slept >= 3, 'it waited on the lock, ' + slept + ' sleeps')
+})
+
+test('a branch lock not taken in time answers busy, with no holder named', async (t) => {
+  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  let release
+  const gate = new Promise((done) => { release = done })
+  const holding = withBranchLockAsync(r, E, branchOf(E, '.'), () => gate)
+  let now = Date.now()
+  t.mock.method(Date, 'now', () => now)
+  const sleep = async () => { now += 60 * 60 * 1000 }
+  const out = await leafOpen(xc, { node: 'a', sleep })
+  release()
+  await holding
+  assert.deepEqual(out, { status: 'busy', held_by: [] })
+})
+
+test('a lock fault other than the timeout is thrown, never answered as busy', async (t) => {
+  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const locks = join(effortStateDir(r, E), 'locks')
+  mkdirSync(locks, { recursive: true })
+  writeFileSync(join(locks, 'branch'), 'a file where the branch locks go')
+  await assert.rejects(leafOpen(xc, { node: 'a' }), (err) => !/could not take the lock/.test(err.message))
+})
+
+test('a task in a group is cut from the group\'s folder: the group has no branch', async (t) => {
+  const { r, xc } = setup(t, [{ id: 'x', kind: 'group', title: 'gather x' }, leaf('x/a', { locus: ['src/a.mjs'] })])
+  const out = await leafOpen(xc, { node: 'x/a' })
+  assert.equal(out.status, 'opened')
+  assert.equal(out.base_sha, git(r, 'rev-parse', 'main'))
+  assert.equal(git(r, 'branch', '--list', branchOf(E, 'x')), '', 'no branch for the group')
 })
 
 test('a leaf decomposed in place releases its claim: its children open', async (t) => {

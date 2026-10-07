@@ -681,3 +681,238 @@ describe('G10: a staged rename', () => {
   })
 })
 
+// ================================================================== G11
+
+describe('G11: what a round answered', () => {
+  /** An implementer round carrying the messages `kinds` names, blocked so that nothing is measured. */
+  async function carrying(t, kinds) {
+    const { w, o } = tdd(t)
+    const carries = kinds.map((msg) => answered(w, { node: 'a', thread: 'producer:a', msg, payload: {}, round: 2 }))
+    await run(w, { node: 'a', role: 'implementer', round: 2, ret: { status: 'blocked', text: 'stuck' }, carries, base_sha: o.base_sha, head_before: o.base_sha })
+    return rec(w, 'a', 'implementer', 2).answering
+  }
+
+  test('G11.1 a dispatch carrying needs_tests and, later, findings closes answering needs_tests', SLOW, async (t) => {
+    assert.equal(await carrying(t, ['needs_tests', 'findings']), 'needs_tests')
+  })
+
+  test('G11.2 a dispatch carrying two messages, neither needs_tests, closes answering the later one', SLOW, async (t) => {
+    assert.equal(await carrying(t, ['findings', 'failures']), 'failures')
+  })
+})
+
+// ================================================================== G12
+
+describe('G12: commands', () => {
+  test('G12.1 a suite named by a command gotcha and by the envelope is run as the gotcha names it', SLOW, async (t) => {
+    const w = world(t, [root(), lfNode('a', { rigor: 'trivial', locus: ['README.md'] })], { commands: { ...COMMANDS, suite: 'echo envelope-suite' } })
+    const o = open(w, 'a')
+    commit(o.worktree, { 'README.md': 'hello\nmore\n' }, 'Edit the readme')
+    assert.equal(writeGotcha(w.r, E, command('suite', 'echo gotcha-suite'), { source: { role: 'investigator' } }).ok, true)
+    const handed = []
+    const ports = {
+      spawn: (cmd, args, opts) => {
+        const child = spawn(cmd, args, opts)
+        const end = child.stdin.end.bind(child.stdin)
+        child.stdin.end = (data, ...rest) => { handed.push(JSON.parse(String(data))); return end(data, ...rest) }
+        return child
+      },
+    }
+    await run(w, { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha, ports })
+    assert.ok(handed.length > 0, 'the close measured')
+    for (const options of handed) assert.equal(options.suite, 'echo gotcha-suite')
+  })
+})
+
+// ================================================================== G13
+
+describe('G13: locus admission', { concurrency: 2 }, () => {
+  test('G13.1 a green locus that shares a path with its red keeps the green implementer committed edit to it', SLOW, async (t) => {
+    const c = cycle(t, { redLocus: ['test/r.test.mjs', 'src/shared.mjs'], greenLocus: ['src/r.mjs', 'src/shared.mjs'], greenFiles: { 'src/r.mjs': R_SRC, 'src/shared.mjs': 'export const shared = 1\n' } })
+    await run(c.w, { node: 'g', role: 'implementer', round: 1, ret: DONE, base_sha: c.green.base_sha, head_before: c.green.base_sha })
+    assert.equal(holds(c.green.worktree, 'HEAD:src/shared.mjs'), true)
+    assert.deepEqual(recs(c.w, 'breach_reverted', 'g'), [])
+  })
+
+  test('G13.2 a new test file beside a listed file that only a merged leaf lists is inside the locus and kept', SLOW, async (t) => {
+    const w = world(t, [root(), lfNode('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] }), lfNode('b', { rigor: 'tests-only', locus: ['test/extra.test.mjs'] })])
+    w.xc.log.append('merged', { node: 'b' })
+    const o = open(w, 'a')
+    commit(o.worktree, { ...A_FILES, 'test/extra.test.mjs': A_TEST }, 'Add a')
+    await run(w, { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
+    assert.equal(holds(o.worktree, 'HEAD:test/extra.test.mjs'), true)
+    assert.deepEqual(recs(w, 'breach_reverted', 'a'), [])
+  })
+
+  test('G13.3 an auditor new test file is outside its locus and taken out', SLOW, async (t) => {
+    const c = cycle(t, { triad: true })
+    write(c.audit.worktree, { 'docs/notes.test.mjs': A_TEST })
+    await run(c.w, { node: 'au', role: 'auditor', round: 1, thread: 'producer:au', ret: auditor([R_BITES]), base_sha: c.audit.base_sha, head_before: c.audit.base_sha })
+    assert.equal(existsSync(join(c.audit.worktree, 'docs/notes.test.mjs')), false)
+    assert.ok(recs(c.w, 'breach_reverted', 'au').some((e) => e.paths.includes('docs/notes.test.mjs')))
+  })
+
+  test('G13.4 a path committed outside the locus and also modified uncommitted is named once', SLOW, async (t) => {
+    const s = await outside(t, { uncommitted: { 'README.md': 'hello\nedited again\n' } })
+    const reverted = recs(s.w, 'breach_reverted', 'a')
+    assert.equal(reverted.length, 1)
+    assert.deepEqual(reverted[0].paths, ['README.md'])
+    assert.deepEqual(rec(s.w, 'a', 'implementer', 1).breach.paths, ['README.md'])
+  })
+})
+
+// ================================================================== G14
+
+describe('G14: the pre-revert measurement\'s own outcomes', { concurrency: 2 }, () => {
+  const countdown = (first) => {
+    let calls = 0
+    return { before: () => { calls++; if (calls === 1 && first === 'unreadable') throw new Error('unreadable'); return {} }, after: () => ({ moved: calls === 1 && first === 'moved' ? [{ ref: 'refs/heads/main' }] : [] }) }
+  }
+
+  test('G14.1 the checkout moving during the pre-revert measurement is a checkout fault that stops the close before the revert', SLOW, async (t) => {
+    const s = await outside(t, { ports: { watch: countdown('moved') } })
+    assert.deepEqual([s.first.decision.next, s.first.decision.reason], ['stop', 'checkout'])
+    assert.equal(recs(s.w, 'fault', 'a').filter((f) => f.channel === 'checkout').length, 1)
+    assert.ok(!subjectsOver(s.o.worktree, s.o.base_sha).includes(REVERT))
+  })
+
+  test('G14.2 a watch that cannot read the checkout during the pre-revert measurement is a checkout fault', SLOW, async (t) => {
+    const s = await outside(t, { ports: { watch: countdown('unreadable') } })
+    assert.equal(recs(s.w, 'fault', 'a').filter((f) => f.channel === 'checkout').length, 1)
+    assert.ok(!subjectsOver(s.o.worktree, s.o.base_sha).includes(REVERT))
+  })
+
+  test('G14.3 a reverted measurement that could not be taken after a pre-revert head that passed escalates by its error kind, with no park and no route', SLOW, async (t) => {
+    let calls = 0
+    const ports = { spawn: (cmd, args, opts) => (++calls === 2 ? spawn(process.execPath, ['-e', 'process.exit(3)'], opts) : spawn(cmd, args, opts)) }
+    const s = await outside(t, { ports })
+    assert.equal(calls, 2, 'the head before the revert and the reverted head were each measured once')
+    assert.deepEqual([s.first.decision.next, s.first.decision.reason], ['stop', 'measure_failed'])
+    assert.deepEqual(recs(s.w, 'parked', 'a'), [])
+    assert.equal(s.first.route, undefined)
+  })
+})
+
+// ================================================================== G15
+
+describe('G15: the series and committed', { concurrency: 2 }, () => {
+  test('G15.1 a round that returned done with no commit over its base journals no series-done', SLOW, async (t) => {
+    const { w, o } = tdd(t)
+    await run(w, { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
+    assert.deepEqual(recs(w, 'series-done', 'a'), [])
+  })
+
+  test('G15.2 a test round that commits nothing after an earlier round authored commit has committed empty', SLOW, async (t) => {
+    const { w, o } = testsOnly(t)
+    write(o.worktree, { 'test/more.test.mjs': MORE_TEST })
+    await run(w, { node: 't', role: 'test-author', round: 1, ret: { status: 'done', text: 'one', commit: 'Test add', mutations: [ADD_BITE] }, base_sha: o.base_sha })
+    assert.equal(recs(w, 'authored', 't').length, 1)
+    await run(w, { node: 't', role: 'test-author', round: 2, ret: { status: 'done', text: 'nothing more', mutations: [ADD_BITE] }, base_sha: o.base_sha, head_before: head(o.worktree) })
+    assert.equal(rec(w, 't', 'test-author', 2).committed, '')
+  })
+})
+
+// ================================================================== G16
+
+describe('G16: the next round\'s messages and the raise', { concurrency: 2 }, () => {
+  const exists = (f) => `node -e "process.exit(require('fs').existsSync('${f}')?0:1)"`
+  const absent = (f) => `node -e "process.exit(require('fs').existsSync('${f}')?1:0)"`
+
+  test('G16.1 a close does not raise when the previous failures were two, one cleared and the other fails again beside a new one', SLOW, async (t) => {
+    const w = world(t, [root(), lfNode('a', {
+      locus: ['src/a.mjs', 'test/a.test.mjs', 'a.txt', 'b.txt', 'c.txt'],
+      acceptance: [
+        { text: 'a exists', check: exists('a.txt'), decisions: ['D1'] },
+        { text: 'b exists', check: exists('b.txt'), decisions: ['D1'] },
+        { text: 'c is absent', check: absent('c.txt'), decisions: ['D1'] },
+      ],
+    })])
+    const o = open(w, 'a')
+    const one = commit(o.worktree, A_FILES, 'Add a')
+    const first = await run(w, { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
+    assert.equal(claimsOf(first.out).length, 2, 'a and b fail')
+    commit(o.worktree, { 'a.txt': 'x\n', 'c.txt': 'x\n' }, 'Clear a, break c')
+    const second = await run(w, { node: 'a', role: 'implementer', round: 2, ret: DONE, base_sha: o.base_sha, head_before: one })
+    assert.equal(second.out.decision.next, 'fix', JSON.stringify(second.out.decision))
+    assert.equal(claimsOf(second.out).length, 2, 'b and c fail')
+    assert.equal(second.out.raise, false)
+    assert.equal(rec(w, 'a', 'implementer', 2).raise, false)
+  })
+
+  test('G16.2 a test round that answered needs_tests and sends its failures to the green records tests_ready beside them', SLOW, async (t) => {
+    const c = cycle(t, TABLE_GREEN)
+    const asked = answered(c.w, { node: 'g', thread: 'producer:r', msg: 'needs_tests', payload: { text: 'pin it' }, round: 3, from: 'implementer' })
+    write(c.green.worktree, { 'src/table.test.mjs': TABLE_TEST.replace('capacity, 1', 'capacity, 2') })
+    const ret = { status: 'done', text: 'pinned', commit: 'Pin the capacity', mutations: [CAPACITY_BITE] }
+    const { out } = await run(c.w, { node: 'g', role: 'test-author', round: 3, thread: 'producer:r', ret, carries: [asked], base_sha: c.green.base_sha, head_before: c.greenHead })
+    assert.equal(out.decision.next, 'fix', JSON.stringify(out.decision))
+    const sent = msgs(c.w, 'failures', 'g')
+    assert.equal(sent.length, 1)
+    assert.equal(sent[0].thread, 'producer:g')
+    assert.equal(msgs(c.w, 'tests_ready', 'g').length, 1)
+  })
+
+  test('G16.3 an audit fix close whose only non-biting mutation could not be applied records failures, not surviving_mutations', SLOW, async (t) => {
+    const c = cycle(t, { triad: true })
+    const { out } = await run(c.w, { node: 'au', role: 'auditor', round: 1, thread: 'producer:au', ret: auditor([R_STALE]), base_sha: c.audit.base_sha, head_before: c.audit.base_sha })
+    assert.equal(out.decision.next, 'fix', JSON.stringify(out.decision))
+    assert.equal(msgs(c.w, 'failures', 'au').length, 1)
+    assert.deepEqual(msgs(c.w, 'surviving_mutations', 'au'), [])
+  })
+
+  test('G16.4 surviving_mutations lists the survivor only when one mutation bit and one got through', SLOW, async (t) => {
+    const c = cycle(t, { triad: true })
+    await run(c.w, { node: 'au', role: 'auditor', round: 1, thread: 'producer:au', ret: auditor([R_BITES, R_SURVIVES]), base_sha: c.audit.base_sha, head_before: c.audit.base_sha })
+    const sent = msgs(c.w, 'surviving_mutations', 'au')
+    assert.equal(sent.length, 1)
+    assert.deepEqual(sent[0].payload.mutations.map((m) => m.replace), [R_SURVIVES.replace])
+  })
+
+  test('G16.5 an audit fix close with no surviving mutation sends its failures to the red when an earlier measurement let one through', SLOW, async (t) => {
+    const c = cycle(t, { triad: true })
+    await run(c.w, { node: 'au', role: 'auditor', round: 1, thread: 'producer:au', ret: auditor([R_SURVIVES]), base_sha: c.audit.base_sha, head_before: c.audit.base_sha })
+    write(c.audit.worktree, { 'test/r.test.mjs': R_TEST_TWO })
+    // The thread is whatever the caller passed; the cycle's test session is picked from the records.
+    const { out } = await run(c.w, { node: 'au', role: 'test-author', round: 2, thread: 'producer:au', ret: { status: 'done', text: 'a case more', commit: 'Pin r at 3', mutations: [R_STALE] }, base_sha: c.audit.base_sha, head_before: c.audit.base_sha })
+    assert.equal(out.decision.next, 'fix', JSON.stringify(out.decision))
+    assert.deepEqual(msgs(c.w, 'surviving_mutations', 'au').filter((m) => m.round === 3), [])
+    const sent = msgs(c.w, 'failures', 'au')
+    assert.equal(sent.length, 1)
+    assert.equal(sent[0].thread, 'producer:r')
+  })
+
+  test('G16.6 a green test-author round 2 failing as implementer round 1 did, at another head, escalates verify_not_converging', SLOW, async (t) => {
+    const c = cycle(t, { check: FAIL })
+    const first = await run(c.w, { node: 'g', role: 'implementer', round: 1, ret: DONE, base_sha: c.green.base_sha, head_before: c.green.base_sha })
+    assert.equal(first.out.decision.next, 'fix', JSON.stringify(first.out.decision))
+    write(c.green.worktree, { 'test/r.test.mjs': R_TEST_TWO })
+    const ret = { status: 'done', text: 'a case more', commit: 'Pin r at 3', mutations: [R_BITES] }
+    const second = await run(c.w, { node: 'g', role: 'test-author', round: 2, thread: 'producer:r', ret, base_sha: c.green.base_sha, head_before: c.greenHead })
+    assert.deepEqual([second.out.decision.next, second.out.decision.reason], ['stop', 'verify_not_converging'])
+  })
+
+  test('G16.6 a test-author round 2 failing as test-author round 1 did, at another head, escalates verify_not_converging', SLOW, async (t) => {
+    const w = world(t, [root(), lfNode('t', { rigor: 'tests-only', locus: ['test/more.test.mjs'], acceptance: crit('t', FAIL) })])
+    const o = open(w, 't')
+    write(o.worktree, { 'test/more.test.mjs': MORE_TEST })
+    const first = await run(w, { node: 't', role: 'test-author', round: 1, ret: { status: 'done', text: 'one', commit: 'Test add', mutations: [ADD_BITE] }, base_sha: o.base_sha })
+    assert.equal(first.out.decision.next, 'fix', JSON.stringify(first.out.decision))
+    write(o.worktree, { 'test/more.test.mjs': MORE_TEST + '// again\n' })
+    const second = await run(w, { node: 't', role: 'test-author', round: 2, ret: { status: 'done', text: 'two', commit: 'Test add again', mutations: [ADD_BITE] }, base_sha: o.base_sha, head_before: head(o.worktree) })
+    assert.deepEqual([second.out.decision.next, second.out.decision.reason], ['stop', 'verify_not_converging'])
+  })
+})
+
+// ================================================================== G17
+
+describe('G17: recordCommands', () => {
+  test('G17.1 each command gotcha recordCommands writes is observed at the repository HEAD', SLOW, async (t) => {
+    const w = world(t, [root(), lfNode('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })], { commands: null })
+    const commands = [command('suite', COMMANDS.suite), command('test_one', COMMANDS.test_one)]
+    const inv = stored(w, { node: 'a', role: 'investigator', round: 1, thread: 'investigator', dispatch: 'inv-1', ret: { commands, established: ['suite', 'test_one'], unresolved: [], text: 'found them' } })
+    const result = recordCommands(w.xc, { dispatch: inv })
+    assert.deepEqual([...result.written].sort(), commands.map(gotchaId).sort())
+    const tip = git(w.r, 'rev-parse', 'HEAD')
+    for (const id of result.written) assert.equal(listGotchas(w.r, E).find((g) => g.id === id).observed_at, tip)
+  })
+})

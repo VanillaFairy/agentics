@@ -3,11 +3,11 @@
 // What is pinned here:
 //
 //   efforts   root status, node counts per status, executions (closed / checkpoint / open), seq
-//   todos     the --no-progress list: one item per node of the execution's subtree, the stage as
-//             activeForm (implementing, writing tests, fix round N, held, awaiting merge, waiting
-//             on user, escalated: <reason>), and the ONGOING / DONE / NEEDS_INPUT header
-//   cost      dispatches per model and role, tokens and dollars per model where usage was
-//             recorded, dispatches counted where it was not, and the measured cost per merged leaf
+//   todos     one item per node of the execution's subtree, the stage as activeForm
+//             (implementing, writing tests, fix round N, held, awaiting merge, waiting on user,
+//             waiting on host, escalated: <reason>), and the ONGOING / DONE / NEEDS_INPUT header
+//   cost      the runner's returned lines joined to their dispatched: totals, per model, per leaf
+//             and per folder; unmeasured calls never read as zero; the measured cost per merged leaf
 //   CLI       --json prints the envelope; the default is for a person
 //
 // Design: docs/DESIGN.md#progress, docs/DESIGN.md#self-checks.
@@ -23,8 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { append, seqMax } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import { checkpointOf, costOf, efforts, questionsSince, renderTodos, snapshotOf, todosOf } from '../lib/status.mjs'
-import { effortDir, effortStateDir, executionDir, returnPath, writeJson } from '../lib/store.mjs'
-import { tokensOf, usdOf } from '../lib/usage.mjs'
+import { effortDir, effortStateDir, executionDir, executionRunId, posix, returnPath, runJsonPath, writeJson } from '../lib/store.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/status.mjs', import.meta.url))
 const fresh = () => mkdtempSync(join(tmpdir(), 'agentics-status-')).split('\\').join('/')
@@ -186,72 +185,160 @@ test('an effort with no tree yet reads as unplanned', () => {
   assert.equal(efforts(repo).efforts[0].root_status, 'unplanned')
 })
 
-test('the cost report counts per model and role, and never reads an unreported token as zero', () => {
-  const repo = effortWith([composite('.'), leaf('x'), leaf('y'), leaf('z')])
-  mkdirSync(executionDir(repo, E, X2), { recursive: true })
-  const SONNET = 'claude-sonnet-5'
-  const OPUS = 'claude-opus-5-5'
-  const spent = (input, cache_read, output) => ({ input, cache_write_5m: 0, cache_write_1h: 0, cache_read, output })
-  let agents = 0
-  const d = (stamp, node, role, model, models) => {
-    const label = role + ':' + node + '#1'
-    append(repo, E, 'state:' + stamp, { kind: 'dispatch', label, node, role, model, effort: 'medium' })
-    if (models) append(repo, E, 'state:' + stamp, { kind: 'usage', agent: 'a' + agents++, label, models })
+// ------------------------------------------------------------------ cost
+
+const usage = (input, output, cacheRead = 0, cacheWrite = 0) =>
+  ({ input_tokens: input, output_tokens: output, cache_read_input_tokens: cacheRead, cache_creation_input_tokens: cacheWrite })
+const tokensIn = (u) => u.input_tokens + u.output_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens
+let minted = 0
+
+/**
+ * One runner call on `node` in execution `stamp`: its `dispatched` event, and its `returned` line
+ * with `returned`'s fields unless `returned` is null (a call that never returned). Returns its dispatch.
+ */
+function call(repo, stamp, node, model, returned = {}) {
+  const dispatch = 'd' + ++minted
+  append(repo, E, 'events', { kind: 'dispatched', node, execution: stamp, dispatch, role: 'implementer', round: 1, model, effort: 'medium' })
+  if (returned) {
+    append(repo, E, 'state:' + stamp, {
+      kind: 'returned', dispatch, session: 's', status: 'returned', cause: '', usage: null, cost_total: null, cost_usd: null, denials: [], ...returned,
+    })
   }
-  const x1 = spent(100, 800, 100)
-  const x2 = spent(50, 400, 50)
-  const y = spent(200, 1600, 200)
-  const root = spent(30, 240, 30)
-  d(X1, 'x', 'implementer', 'sonnet', { [SONNET]: x1 })
-  d(X1, 'x', 'reviewer', 'opus', { [OPUS]: x2 })
-  d(X2, 'y', 'implementer', 'sonnet', { [SONNET]: y })
-  d(X2, 'z', 'implementer', 'sonnet', null)
-  d(X2, '.', 'reviewer', 'opus', { 'claude-next': root })
-  append(repo, E, 'state:' + X2, { kind: 'checkpoint', reason: 'x' })
-  for (const id of ['x', 'y', 'z']) ev(repo, 'merged', id, { into: 'agentics/eff', merged_sha: 'm', head_sha: 'h' })
+  return dispatch
+}
 
-  // A later line for the same agent replaces its earlier one.
-  append(repo, E, 'state:' + X1, { kind: 'usage', agent: 'a0', label: 'implementer:x#1', models: { [SONNET]: spent(1, 1, 1) } })
-  append(repo, E, 'state:' + X1, { kind: 'usage', agent: 'a0', label: 'implementer:x#1', models: { [SONNET]: x1 } })
-  // An agent whose dispatch was never recorded is still its leaf's spend, by its label.
-  const lost = spent(7, 70, 7)
-  append(repo, E, 'state:' + X2, { kind: 'usage', agent: 'lost', label: 'close:z#2#2', models: { [SONNET]: lost } })
-
-  const shown = (c, usd) => ({ input: c.input, cache_write: 0, cache_read: c.cache_read, output: c.output, usd })
-  const xUsd = usdOf(SONNET, x1) + usdOf(OPUS, x2)
-  const c = costOf(repo, E)
-  assert.equal(c.dispatches, 5)
-  assert.deepEqual(c.by_model, { sonnet: 3, opus: 2 })
-  assert.deepEqual(c.by_role, { implementer: 3, reviewer: 2 })
-  assert.equal(c.tokens, [x1, x2, y, root, lost].reduce((sum, s) => sum + tokensOf(s), 0))
-  assert.ok(Math.abs(c.usd - (xUsd + usdOf(SONNET, y) + usdOf(SONNET, lost))) < 1e-9, 'a model with no price adds no dollars')
-  assert.equal(c.usage['claude-next'].usd, null, 'and says so, never 0')
-  assert.deepEqual(c.usage[OPUS], shown(x2, usdOf(OPUS, x2)))
-  assert.equal(c.usage[SONNET].input, x1.input + y.input + lost.input)
-  assert.equal(c.tokens_unreported, 1)
-  assert.deepEqual(c.per_leaf.x, {
-    dispatches: 2, tokens: tokensOf(x1) + tokensOf(x2), usd: xUsd, tokens_unreported: 0,
-    usage: { [SONNET]: shown(x1, usdOf(SONNET, x1)), [OPUS]: shown(x2, usdOf(OPUS, x2)) }, status: 'merged',
+test('cost joins each returned line to its dispatched: totals, per model, per leaf and per folder', () => {
+  const repo = effortWith([composite('.'), composite('a'), leaf('a/x'), leaf('a/y'), leaf('z')])
+  mkdirSync(executionDir(repo, E, X2), { recursive: true })
+  const spent = [
+    { node: 'a/x', model: 'sonnet', usage: usage(100, 50, 800), usd: 0.25, stamp: X1 },
+    { node: 'a/x', model: 'opus', usage: usage(40, 20), usd: 1.5, stamp: X1 },
+    { node: 'a', model: 'opus', usage: usage(10, 5, 0, 30), usd: 0.5, stamp: X1 },
+    { node: 'z', model: 'sonnet', usage: usage(7, 3), usd: 0.125, stamp: X2 },
+  ]
+  for (const s of spent) call(repo, s.stamp, s.node, s.model, { usage: s.usage, cost_usd: s.usd })
+  const total = (list) => ({
+    dispatches: list.length, tokens: list.reduce((n, s) => n + tokensIn(s.usage), 0), usd: list.reduce((n, s) => n + s.usd, 0), unmeasured: 0,
   })
-  assert.equal(c.per_leaf.z.tokens_unreported, 1)
-  assert.equal(c.per_leaf.z.tokens, tokensOf(lost))
-  assert.equal(c.per_leaf.z.dispatches, 1)
-  assert.equal(c.per_leaf['.'], undefined, 'a composite\'s dispatch is cost, not a leaf\'s')
-  assert.equal(c.leaves_measured, 2, 'z has an unreported dispatch, so it is not measured')
+  const c = costOf(repo, E)
+  assert.deepEqual([c.dispatches, c.tokens, c.usd, c.unmeasured], Object.values(total(spent)))
+  for (const model of ['sonnet', 'opus']) assert.deepEqual(c.by_model[model], total(spent.filter((s) => s.model === model)), model)
+  const leafOf = (id) => { const { status: _s, ...rest } = c.per_leaf[id]; return rest }
+  assert.deepEqual(leafOf('a/x'), total(spent.filter((s) => s.node === 'a/x')))
+  assert.deepEqual(leafOf('z'), total(spent.filter((s) => s.node === 'z')))
+  assert.equal(c.per_leaf.a, undefined, 'a folder\'s own call is not a leaf\'s')
+  assert.deepEqual(c.per_folder.a, total(spent.filter((s) => s.node === 'a' || s.node.startsWith('a/'))), 'a folder holds every call at or below it')
+  assert.deepEqual(c.per_folder['.'], total(spent))
+  assert.equal(c.per_folder['a/x'], undefined, 'a leaf is no folder')
+})
+
+test('a call that never returned is unmeasured while its run is not live, and not counted while it runs', () => {
+  const repo = effortWith([composite('.'), leaf('x')])
+  call(repo, X1, 'x', 'sonnet', null)
+  const stopped = costOf(repo, E)
+  assert.deepEqual([stopped.dispatches, stopped.tokens, stopped.usd, stopped.unmeasured], [1, 0, 0, 1])
+  assert.equal(stopped.per_leaf.x.unmeasured, 1)
+  assert.equal(stopped.by_model.sonnet.unmeasured, 1)
+  const run = executionRunId(E, X1)
+  writeJson(runJsonPath(repo, run), { run, pid: process.pid, heartbeat_at: new Date().toISOString() })
+  const live = costOf(repo, E)
+  assert.deepEqual([live.dispatches, live.unmeasured], [0, 0], 'a call in flight is neither spent nor lost yet')
+})
+
+test('a call cut off and resumed in its own session counts once, by its returned line', () => {
+  const repo = effortWith([composite('.'), leaf('x')])
+  const d = call(repo, X1, 'x', 'sonnet', null)
+  append(repo, E, 'events', { kind: 'dispatched', node: 'x', execution: X1, dispatch: d, role: 'implementer', round: 1, model: 'sonnet', effort: 'medium' })
+  append(repo, E, 'state:' + X1, { kind: 'returned', dispatch: d, session: 's', status: 'returned', cause: '', usage: usage(5, 5), cost_total: 0.5, cost_usd: 0.5, denials: [] })
+  const c = costOf(repo, E)
+  assert.deepEqual([c.dispatches, c.tokens, c.usd, c.unmeasured], [1, 10, 0.5, 0])
+})
+
+test('a returned line with no numeric cost_usd is unmeasured, never zero, and its tokens still count', () => {
+  const repo = effortWith([composite('.'), leaf('x')])
+  call(repo, X1, 'x', 'sonnet', { usage: usage(30, 10), cost_usd: null })
+  const c = costOf(repo, E)
+  assert.deepEqual([c.dispatches, c.tokens, c.usd, c.unmeasured], [1, 40, 0, 1])
+})
+
+test('the leaf means average the merged leaves with nothing unmeasured, and are null when none qualifies', () => {
+  const repo = effortWith([composite('.'), leaf('x'), leaf('y'), leaf('z'), leaf('w')])
+  call(repo, X1, 'x', 'sonnet', { usage: usage(100, 100), cost_usd: 1 })
+  call(repo, X1, 'x', 'opus', { usage: usage(50, 50), cost_usd: 2 })
+  call(repo, X1, 'y', 'sonnet', { usage: usage(10, 10), cost_usd: 0.5 })
+  call(repo, X1, 'z', 'sonnet', { usage: usage(9, 9), cost_usd: null })
+  call(repo, X1, 'w', 'sonnet', { usage: usage(1, 1), cost_usd: 0.25 })
+  for (const id of ['x', 'y', 'z']) ev(repo, 'merged', id, { into: 'agentics/eff', merged_sha: 'm', head_sha: 'h' })
+  const c = costOf(repo, E)
+  assert.equal(c.leaves_measured, 2, 'z has an unmeasured call, w has not merged')
   assert.equal(c.leaf_mean_tokens, Math.round((c.per_leaf.x.tokens + c.per_leaf.y.tokens) / 2))
   assert.equal(c.leaf_mean_usd, (c.per_leaf.x.usd + c.per_leaf.y.usd) / 2)
+  assert.equal(c.per_leaf.x.status, 'merged')
 
   const bare = costOf(effortWith([composite('.')]), E)
   assert.equal(bare.leaf_mean_tokens, null, 'nothing measured is null, not 0')
   assert.equal(bare.leaf_mean_usd, null)
 })
 
+test('4.x dispatch and usage lines, and a dispatched event naming no dispatch, cost nothing', () => {
+  const repo = effortWith([composite('.'), leaf('x')])
+  dispatched(repo, 'x', 'implementer')
+  append(repo, E, 'state:' + X1, { kind: 'dispatch', label: 'implementer:x#1', node: 'x', role: 'implementer', model: 'sonnet', effort: 'medium' })
+  append(repo, E, 'state:' + X1, { kind: 'usage', agent: 'a0', label: 'implementer:x#1', models: { sonnet: { input: 5, cache_write_5m: 0, cache_write_1h: 0, cache_read: 0, output: 5 } } })
+  const c = costOf(repo, E)
+  assert.deepEqual([c.dispatches, c.tokens, c.unmeasured, c.by_model, c.per_leaf], [0, 0, 0, {}, {}])
+})
+
+test('a leaf whose latest dispatch waits out a host stop is waiting on host until it is dispatched again or returns', () => {
+  const repo = effortWith(TREE)
+  const d = 'c.implementer.producer-c.r1'
+  const again = () => ev(repo, 'dispatched', 'c', { dispatch: d, role: 'implementer', round: 1, model: 'sonnet', effort: 'medium' })
+  const hostStop = () => append(repo, E, 'state:' + X1, { kind: 'host_stop', dispatch: d, cause: 'rate_limit', until: '' })
+  const stage = () => byKey(todosOf(repo, E, X1)).c.activeForm
+  again()
+  assert.equal(stage(), 'implementing')
+  hostStop()
+  assert.equal(stage(), 'waiting on host')
+  assert.equal(snapshotOf(repo, E).nodes.find((n) => n.id === 'c').stage, 'waiting on host', 'the snapshot\'s stage is the same')
+  again()
+  assert.equal(stage(), 'implementing', 'the call made after the stop is not waiting')
+  hostStop()
+  append(repo, E, 'state:' + X1, { kind: 'returned', dispatch: d, session: 's', status: 'failed', cause: 'host_error', usage: null, cost_total: null, cost_usd: null, denials: [] })
+  assert.equal(stage(), 'implementing', 'a call that returned is not waiting')
+})
+
+test('an execution reads checkpoint while its latest checkpoint has no later confirmation, run or close', () => {
+  const repo = effortWith(TREE)
+  const status = () => efforts(repo).efforts[0].executions[0].status
+  const state = (kind, fields = {}) => append(repo, E, 'state:' + X1, { kind, ...fields })
+  state('run', { program: 'execute', pid: 1 })
+  state('checkpoint', { reason: 'blocking_gaps' })
+  state('ended', { result: { status: 'checkpoint', file: '', complete: false } })
+  assert.equal(status(), 'checkpoint', 'what the run recorded after its checkpoint leaves it standing')
+  state('checkpoint-confirmed')
+  assert.equal(status(), 'open')
+  state('checkpoint', { reason: 'overlap' })
+  assert.equal(status(), 'checkpoint')
+  state('run', { program: 'execute', pid: 2 })
+  assert.equal(status(), 'open', 'a later run of the execution')
+  state('checkpoint', { reason: 'overlap' })
+  state('closed', { status: 'done' })
+  assert.equal(status(), 'done')
+})
+
 const cli = (...args) => execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8' })
+
+test('the cost view counts a call that never returned as unmeasured, at no dollars', () => {
+  const repo = effortWith(TREE)
+  call(repo, X1, 'a/impl', 'sonnet', null)
+  const view = cli('cost', '--repo', repo, '--effort', E)
+  assert.match(view, /by model: sonnet 1 \(\$0\.00, 0 tokens\)/)
+  assert.match(view, /spent: +\$0\.00, 0 tokens \(\+ 1 dispatch\(es\) unmeasured\)/)
+})
 
 test('the CLI prints an envelope with --json and a readable view without it', () => {
   const repo = effortWith(TREE)
-  dispatched(repo, 'a/impl', 'implementer')
-  append(repo, E, 'state:' + X1, { kind: 'dispatch', label: 'l', node: 'a/impl', role: 'implementer', model: 'sonnet', effort: 'low' })
+  call(repo, X1, 'a/impl', 'sonnet', { usage: usage(10, 10), cost_usd: 0.5 })
 
   for (const verb of [['list'], ['show', '--effort', E], ['todos', '--effort', E, '--execution', X1], ['cost', '--effort', E]]) {
     const out = JSON.parse(cli(...verb, '--repo', repo, '--json'))
@@ -261,7 +348,7 @@ test('the CLI prints an envelope with --json and a readable view without it', ()
   assert.match(cli('list', '--repo', repo), /^eff — active — /)
   assert.match(cli('show', '--repo', repo, '--effort', E), /impl \[trivial\] — active — do a\/impl/)
   assert.match(cli('todos', '--repo', repo, '--effort', E, '--execution', X1), /\[>\] a\/impl — do a\/impl — implementing/)
-  assert.match(cli('cost', '--repo', repo, '--effort', E), /by model: sonnet 1/)
+  assert.match(cli('cost', '--repo', repo, '--effort', E), /by model: sonnet 1 \(\$0\.50, 20 tokens\)/)
 
   assert.throws(() => execFileSync(process.execPath, [CLI, 'todos', '--repo', repo, '--effort', E], { stdio: 'pipe' }),
     'todos without an execution is refused')
@@ -371,9 +458,12 @@ test('a folder\'s integration review entry leads with what its reviewer\'s store
   ev(repo, 'claims', '.', { head_sha: 'h', review: 'done', claims: [], said: d })
   const entry = snapshotOf(repo, E).nodes.find((n) => n.id === '@review')
   assert.deepEqual(entry.card.report, { dispatch: d, lead: 'The criteria hold.' })
-  assert.deepEqual(entry.files.reports, [], 'the stored return is no report file')
+  assert.deepEqual(entry.files.returns, [posix(returnPath(executionDir(repo, E, X1), d))], "its reviewer's stored return is the entry's file")
+  assert.equal(entry.live, null)
+  assert.equal(entry.card.checkout_changed, null)
   ev(repo, 'claims', '.', { head_sha: 'h2', review: 'done', claims: [], said: 'gone.reviewer.r1' })
   assert.equal(snapshotOf(repo, E).nodes.find((n) => n.id === '@review').card.report, null, 'a return never stored leads with nothing')
+  assert.deepEqual(snapshotOf(repo, E).nodes.find((n) => n.id === '@review').files.returns, [], 'and names no file')
 })
 
 test('the snapshot says who writes each node\'s spec', () => {

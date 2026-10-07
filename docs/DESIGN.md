@@ -1244,7 +1244,9 @@ Unsure between `tdd` and `tdd-pair`: `tdd` when the leaf is small, `tdd-pair` wh
   its tests let through stays until a test catches it: a gap-closing test is shown to fail on the
   very break that found the gap. A declaration that could not be applied is not held: it is a
   defect in the declaration, not evidence about the tests. Other rigors apply their round's
-  declarations alone, because their implementation moves and an old `find` with it.
+  declarations alone, because their implementation moves and an old `find` with it. The mutations
+  held, and the audit's gap below, are read from the leaf's `verify-observed` lines of every
+  execution, as resume reads them (`journalsOf`).
 - **Every new test is shown to catch something.** A `tests-only` leaf's test file that adds a case
   is named in the `expect_failing` of a mutation that bites, or the leaf fails.
 - **A cycle's test gap is closed inside the cycle.** A gap in the cycle's tests found after the red
@@ -2302,7 +2304,8 @@ listing. Committed work is salvaged by right and reported as salvaged. A dispatc
 finds its uncommitted edits where it left them; uncommitted work no resumable session owns is
 reported and adopted by nobody. Escalations carry forward until `retry` clears them. What a
 close reads of the rounds before it spans executions: the close record of the round before (found
-by the `execution` its dispatch names) and the state for the breaches reverted. A resume
+by the `execution` its dispatch names), the journals for the mutations held and the audit's gap,
+and the state for the breaches reverted. A resume
 adopts its envelope (base, dial, pace, commands) from `execution.json`.
 
 A checkpoint dispatches nothing new and says how to proceed. What it found — the overlapping

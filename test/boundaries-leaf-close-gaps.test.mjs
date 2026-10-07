@@ -372,6 +372,40 @@ describe('G7: the previous close and the breach record across executions', { con
   })
 })
 
+// ================================================================== G8
+
+describe('G8: [D4] held mutations and the audit gap across executions', { concurrency: 2 }, () => {
+  test('G8.1 a close in a later execution applies a mutation an earlier execution applied that did not bite, beside its own', SLOW, async (t) => {
+    const { w, o } = testsOnly(t)
+    write(o.worktree, { 'test/more.test.mjs': MORE_TEST })
+    const r1 = await run(w, { node: 't', role: 'test-author', round: 1, ret: { status: 'done', text: 'one', commit: 'Test add', mutations: [ADD_BITE, ADD_SURVIVES] }, base_sha: o.base_sha })
+    assert.equal(r1.out.decision.next, 'fix', JSON.stringify(r1.out.decision))
+    const later = elsewhere(w)
+    write(o.worktree, { 'test/more.test.mjs': MORE_TEST + '// again\n' })
+    await run(later, { node: 't', role: 'test-author', round: 2, ret: { status: 'done', text: 'two', commit: 'Test add again', mutations: [ADD_BITE_TOO] }, base_sha: o.base_sha, head_before: head(o.worktree) })
+    const line = observed(later, 't').find((l) => l.head_sha === head(o.worktree))
+    assert.ok(line, 'the later execution measured the head')
+    const replaces = line.mutations.map((m) => m.replace)
+    assert.ok(replaces.includes(ADD_SURVIVES.replace), 'the earlier mutation that got through is applied again: ' + replaces.join(', '))
+    assert.ok(replaces.includes(ADD_BITE_TOO.replace), 'and so is the new one')
+  })
+
+  test('G8.2 an audit fix close in a later execution with no surviving mutation sends its failures to the red when an earlier execution let one through', SLOW, async (t) => {
+    const c = cycle(t, { triad: true })
+    const r1 = await run(c.w, { node: 'au', role: 'auditor', round: 1, thread: 'producer:au', ret: auditor([R_SURVIVES]), base_sha: c.audit.base_sha, head_before: c.audit.base_sha })
+    assert.equal(r1.out.decision.next, 'fix', JSON.stringify(r1.out.decision))
+    const later = elsewhere(c.w)
+    write(c.audit.worktree, { 'test/r.test.mjs': R_TEST_TWO })
+    // The thread is whatever the caller passed; the cycle's test session is picked from the records.
+    const r2 = await run(later, { node: 'au', role: 'test-author', round: 2, thread: 'producer:au', ret: { status: 'done', text: 'a case more', commit: 'Pin r at 3', mutations: [R_STALE] }, base_sha: c.audit.base_sha, head_before: c.audit.base_sha })
+    assert.equal(r2.out.decision.next, 'fix', JSON.stringify(r2.out.decision))
+    assert.deepEqual(msgs(later, 'surviving_mutations', 'au').filter((m) => m.round === 3), [])
+    const sent = msgs(later, 'failures', 'au')
+    assert.equal(sent.length, 1)
+    assert.equal(sent[0].thread, 'producer:r')
+  })
+})
+
 // ================================================================== G10
 
 describe('G10: a staged rename', () => {

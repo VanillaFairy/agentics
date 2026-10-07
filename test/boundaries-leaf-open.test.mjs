@@ -240,7 +240,7 @@ test('a test round that failed only on its own mutations records no tests_ready:
   assert.deepEqual([out.round, out.role, out.thread, out.owner], [3, 'test-author', 'producer:r', 'r'])
 })
 
-test('a green's round after a test round that recorded tests_ready follows the review of that round', async (t) => {
+test('a green\'s round after a test round that recorded tests_ready follows the review of that round', async (t) => {
   const { xc } = await cycle(t)
   askedForTests(xc)
   ran(xc, { node: 'g', round: 2, role: 'test-author', thread: 'producer:r', ret: { status: 'done' } })
@@ -681,12 +681,15 @@ test('a lock fault other than the timeout is thrown, never answered as busy', as
   await assert.rejects(leafOpen(xc, { node: 'a' }), (err) => !/could not take the lock/.test(err.message))
 })
 
-test('a task in a group is cut from the group\'s folder: the group has no branch', async (t) => {
-  const { r, xc } = setup(t, [{ id: 'x', kind: 'group', title: 'gather x' }, leaf('x/a', { locus: ['src/a.mjs'] })])
-  const out = await leafOpen(xc, { node: 'x/a' })
+test('a composite in a group is cut from the group\'s folder: the group has no branch', async (t) => {
+  const { r, xc } = setup(t, [{ id: 'x', kind: 'group', title: 'gather x' },
+    { id: 'x/c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('x/c/a', { locus: ['src/a.mjs'] })])
+  const out = await leafOpen(xc, { node: 'x/c/a' })
   assert.equal(out.status, 'opened')
-  assert.equal(out.base_sha, git(r, 'rev-parse', 'main'))
   assert.equal(git(r, 'branch', '--list', branchOf(E, 'x')), '', 'no branch for the group')
+  assert.notEqual(git(r, 'branch', '--list', branchOf(E, 'x/c')), '', 'the composite has its own')
+  assert.equal(out.base_sha, git(r, 'rev-parse', branchOf(E, 'x/c')), 'the leaf is cut from the composite')
+  assert.equal(git(r, 'rev-parse', branchOf(E, 'x/c')), git(r, 'rev-parse', 'main'), 'the composite is cut from the effort branch, the group passed over')
 })
 
 test('a leaf decomposed in place releases its claim: its children open', async (t) => {

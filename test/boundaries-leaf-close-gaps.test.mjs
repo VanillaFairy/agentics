@@ -275,6 +275,41 @@ describe('G3: [D1] a decline of a round that carried needs_tests and findings', 
   })
 })
 
+// ================================================================== G5
+
+describe('G5: [D2] an implementer\'s needs_tests is answered by the test round that finally measures', { concurrency: 2 }, () => {
+  const s = scenario(async (t) => {
+    const c = cycle(t, { greenLocus: ['src/r.mjs', 'src/table.mjs'], greenFiles: { 'src/r.mjs': R_SRC, 'src/table.mjs': TABLE_LABELLED } })
+    const asked = answered(c.w, { node: 'g', thread: 'producer:r', msg: 'needs_tests', payload: { text: 'pin it' }, round: 3, from: 'implementer' })
+    write(c.green.worktree, { 'src/table.test.mjs': TABLE_TEST })
+    const one = { status: 'done', text: 'pinned', commit: 'Pin the capacity', mutations: [LABEL_UNBITTEN] }
+    const first = await run(c.w, { node: 'g', role: 'test-author', round: 3, thread: 'producer:r', ret: one, carries: [asked], base_sha: c.green.base_sha, head_before: c.greenHead })
+    const sent = msgs(c.w, 'failures', 'g')
+    write(c.green.worktree, { 'src/table.label.test.mjs': LABEL_TEST })
+    const two = { status: 'done', text: 'pinned the label', commit: 'Pin the label', mutations: [CAPACITY_BITE, LABEL_BITE] }
+    const second = await run(c.w, { node: 'g', role: 'test-author', round: 4, thread: 'producer:r', ret: two, carries: sent.map((m) => m.seq), base_sha: c.green.base_sha, head_before: head(c.green.worktree) })
+    return { c, first: first.out, second: second.out, sent }
+  })
+  after(() => s.end())
+
+  test('G5.1 the next test round, carrying only the failures, measures review and records tests_ready to the green at the round after', SLOW, async () => {
+    const { c, first, second, sent } = await s.get()
+    assert.deepEqual([first.decision.next, sent.length, sent[0].thread], ['fix', 1, 'producer:r'], 'the first round sent its failures back to the test session')
+    assert.equal(second.decision.next, 'review', JSON.stringify(second.decision))
+    assert.equal(rec(c.w, 'g', 'test-author', 4).answering, 'failures')
+    const ready = msgs(c.w, 'tests_ready', 'g')
+    assert.equal(ready.length, 1)
+    assert.deepEqual([ready[0].thread, ready[0].round], ['producer:g', 5])
+  })
+
+  test('G5.2 its files are the test files the cycle test session committed since the request', SLOW, async () => {
+    const { c } = await s.get()
+    const expected = recs(c.w, 'authored', 'g').flatMap((a) => filesOf(c.green.worktree, a.sha))
+    assert.equal(expected.length, 2)
+    assert.deepEqual([...msgs(c.w, 'tests_ready', 'g')[0].payload.files].sort(), [...expected].sort())
+  })
+})
+
 // ================================================================== G10
 
 describe('G10: a staged rename', () => {

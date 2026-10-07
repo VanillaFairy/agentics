@@ -2004,7 +2004,10 @@ other ([Merging](#merging)).
   the round's close record with `status: needs_tests`, and the request goes to the cycle's test
   session as a `needs_tests` message with the test findings, the failures and the implementer's
   account of what is unpinned ([Conversations](#conversations)); once the tests it adds are measured, the implementer's
-  session is resumed with `tests_ready`. From any other leaf it escalates, as `blocked` does: a plain implementer leaf
+  session is resumed with `tests_ready`. The request stays open until a test round of the green is
+  measured and goes to review, to approval or back to the implementer: that round records
+  `tests_ready` with the test files the cycle's test session committed since the request, whatever
+  the round itself carried (the failures of an earlier test round, say). From any other leaf it escalates, as `blocked` does: a plain implementer leaf
   owns its tests, and a test-author or an auditor never returns it.
 - **Verification failures** send the producer's session a fix round carrying the failures. A fix round
   that returns no commits escalates (`fix_without_commits`); two consecutive measurements failing

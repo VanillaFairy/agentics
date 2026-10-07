@@ -7,6 +7,8 @@
 //                   producer barred from tests
 //   permissionsFor  Edit/Write per entry, test globs per listed folder, the denials for held,
 //                   existing unlisted and barred tests, Read denials, Bash rules and GIT_DENY
+//   TEST_PATTERNS   one table: every name an entry matches is a test path and gets a test glob,
+//                   in each case the entry spells; a name no entry matches gets neither
 //
 // Design: docs/DESIGN.md#the-locus.
 
@@ -14,12 +16,13 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { GIT_DENY, TEST_GLOBS, admits, permissionsFor } from '../lib/locus.mjs'
+import { TEST_PATTERNS, isTestPath } from '../lib/store.mjs'
 
 const editWrite = (target) => [`Edit(${target})`, `Write(${target})`]
 const dirOf = (path) => path.slice(0, path.lastIndexOf('/'))
 const count = (list, item) => list.filter((x) => x === item).length
 const sorted = (list) => [...list].sort()
-const TEST_FOLDERS = ['test', 'tests', 'spec', '__tests__']
+const TEST_FOLDERS = TEST_PATTERNS.filter((t) => t.folder).map((t) => t.glob)
 
 test('a listed file is admitted', () => {
   const locus = ['src/a/X.ts', 'src/a/New.ts']
@@ -137,13 +140,19 @@ test('glob characters in a listed path are escaped, so the rule names that path 
   assert.ok(disallowed.includes('Read(data/\\[a\\]/k.json)'))
   for (const rule of allowed) assert.ok(!rule.includes('[slug]') && !rule.includes('(auth)') && !rule.includes('a*b'), `unescaped: ${rule}`)
   const beside = permissionsFor({ locus: ['app/[slug]/page.tsx'] }).allowed
-  for (const rule of editWrite('app/\\[slug\\]/*.test.*')) assert.ok(beside.includes(rule), `the folder's test globs: ${rule}`)
+  for (const glob of TEST_GLOBS) {
+    for (const rule of editWrite('app/\\[slug\\]/' + glob)) assert.ok(beside.includes(rule), `the folder's test globs: ${rule}`)
+  }
 })
 
 test('glob characters are escaped in a barred producer\'s test denials too', () => {
   const { disallowed } = permissionsFor({ locus: ['app/[slug]/'], tests: false })
-  for (const rule of editWrite('app/\\[slug\\]/**/*.test.*')) assert.ok(disallowed.includes(rule), rule)
-  for (const rule of editWrite('app/\\[slug\\]/**/test/**')) assert.ok(disallowed.includes(rule), rule)
+  for (const glob of TEST_GLOBS) {
+    for (const rule of editWrite('app/\\[slug\\]/**/' + glob)) assert.ok(disallowed.includes(rule), rule)
+  }
+  for (const folder of TEST_FOLDERS) {
+    for (const rule of editWrite('app/\\[slug\\]/**/' + folder + '/**')) assert.ok(disallowed.includes(rule), rule)
+  }
 })
 
 test('a directory entry becomes a subtree rule', () => {
@@ -154,8 +163,6 @@ test('a directory entry becomes a subtree rule', () => {
 })
 
 test('a listed file\'s folder admits test names once', () => {
-  assert.deepEqual(sorted(TEST_GLOBS),
-    sorted(['*.test.*', '*.spec.*', 'test_*', '*_test.*', '*Test.*', '*Tests.*', '*Spec.*']))
   const locus = ['src/a/X.ts', 'src/a/Y.ts', 'pkg/bar.go']
   const { allowed } = permissionsFor({ locus, baseFiles: ['src/a/X.ts', 'pkg/bar.go'] })
   for (const folder of new Set(locus.map(dirOf))) {
@@ -320,4 +327,95 @@ test('a locus written with backslashes reads as forward slashes', () => {
     assert.deepEqual(sorted(b.disallowed), sorted(f.disallowed))
   }
   assert.equal(admits({ locus: back, path: 'src/a/X.ts', baseFiles }), true, 'the forward form is not vacuous')
+})
+
+// ---------------------------------------------------------------- one test-file table
+
+/** A permission pattern as the host reads it, gitignore-style: `**` spans folders, `*` stays in one, `[..]` is one of a set. */
+const globMatches = (pattern, path) => {
+  const body = pattern.replace(/^\//, '').replace(/\*\*\/|\*\*|\*|\[[^\]]*\]|\\.|./g, (t) =>
+    t === '**/' ? '(?:.*/)?' : t === '**' ? '.*' : t === '*' ? '[^/]*' : t.startsWith('[') ? t
+      : t.slice(-1).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  return new RegExp('^' + body + '$').test(path)
+}
+/** Whether an Edit rule among `rules` reaches `path`. */
+const ruled = (rules, path) =>
+  rules.filter((r) => r.startsWith('Edit(')).some((r) => globMatches(r.slice('Edit('.length, -1), path))
+
+/** A name a glob matches: each `*` as `fill`, each letter set as its first member, or its last when `last`. */
+const nameOf = (glob, last = false, fill = '0') =>
+  glob.replace(/\*/g, fill).replace(/\[([^\]]*)\]/g, (_, set) => (last ? set.slice(-1) : set[0]))
+/** The names an entry matches: one per spelling its letter sets allow, each `*` as a digit or as dotted, dashed text. */
+const namesOf = ({ glob }) =>
+  [...new Set([false, true].flatMap((last) => ['0', 'a-1.min'].map((fill) => nameOf(glob, last, fill))))]
+/** Names one step from an entry's: the first letter dropped, and lower case for a glob with no letter sets. */
+const nearMisses = ({ glob }) => [false, true].map((last) => nameOf(glob, last)).flatMap((name) =>
+  [name.replace(/[a-z]/i, ''), ...(glob.includes('[') ? [] : [name.toLowerCase()])])
+const FILE_ENTRIES = TEST_PATTERNS.filter((t) => !t.folder)
+
+test('each file entry of the test-file table is a test path a listed file\'s folder may write', () => {
+  assert.ok(FILE_ENTRIES.length > 0)
+  const { allowed } = permissionsFor({ locus: ['src/a/X.ts'], baseFiles: ['src/a/X.ts'] })
+  for (const entry of FILE_ENTRIES) {
+    for (const rule of editWrite('src/a/' + entry.glob)) assert.ok(allowed.includes(rule), rule)
+    for (const name of namesOf(entry)) {
+      const path = 'src/a/' + name
+      assert.ok(globMatches(entry.glob, name), `${entry.glob} names ${name}`)
+      assert.equal(isTestPath(path), true, `${path} is a test path`)
+      assert.ok(ruled(allowed, path), `${path} gets a test glob`)
+    }
+  }
+})
+
+test('each entry of the test-file table is a test path a barred producer may not write under a directory entry', () => {
+  assert.ok(TEST_FOLDERS.length > 0)
+  const { disallowed } = permissionsFor({ locus: ['src/b/'], tests: false })
+  for (const entry of TEST_PATTERNS) {
+    for (const name of namesOf(entry)) {
+      const path = 'src/b/deep/' + name + (entry.folder ? '/0.js' : '')
+      assert.equal(isTestPath(path), true, `${path} is a test path`)
+      assert.ok(ruled(disallowed, path), `${path} is denied`)
+    }
+  }
+})
+
+test('an entry with letter sets matches in either case, one without in its own case only', () => {
+  const anyCase = TEST_PATTERNS.filter((t) => t.glob.includes('['))
+  const ownCase = TEST_PATTERNS.filter((t) => !t.glob.includes('[') && /[a-z]/i.test(t.glob))
+  assert.ok(anyCase.length > 0 && ownCase.length > 0)
+  for (const entry of anyCase) {
+    const [lower, upper] = [nameOf(entry.glob), nameOf(entry.glob, true)]
+    assert.notEqual(lower, upper, entry.glob)
+    for (const name of [lower, upper]) assert.equal(isTestPath('src/a/' + name + (entry.folder ? '/0.js' : '')), true, name)
+  }
+  for (const entry of ownCase) {
+    const name = nameOf(entry.glob)
+    assert.equal(isTestPath('src/a/' + name), true, name)
+    assert.equal(isTestPath('src/a/' + name.toLowerCase()), false, name.toLowerCase())
+  }
+})
+
+test('a name no entry of the test-file table matches is no test path and gets no test glob', () => {
+  const beside = permissionsFor({ locus: ['src/a/X.ts'], baseFiles: ['src/a/X.ts'] }).allowed
+  const barred = permissionsFor({ locus: ['src/b/'], tests: false }).disallowed
+  const misses = TEST_PATTERNS.flatMap((entry) => nearMisses(entry).map((name) => ({ entry, name })))
+  assert.ok(misses.length > TEST_PATTERNS.length)
+  for (const { entry, name } of misses) {
+    assert.ok(!TEST_PATTERNS.some((t) => globMatches(t.glob, name)), `${name} is matched by no entry`)
+    const file = 'src/a/' + name
+    const under = 'src/b/deep/' + name + (entry.folder ? '/0.js' : '')
+    assert.equal(isTestPath(file), false, file)
+    assert.equal(isTestPath(under), false, under)
+    assert.ok(!ruled(beside, file), `${file} gets no test glob`)
+    assert.ok(!ruled(barred, under), `${under} is not denied`)
+  }
+})
+
+test('a file entry matches the last segment of a path, not a folder it sits under', () => {
+  for (const entry of FILE_ENTRIES) {
+    for (const name of namesOf(entry)) {
+      assert.equal(isTestPath('src/a/' + name), true, name)
+      assert.equal(isTestPath('src/a/' + name + '/0.js'), false, `${name} as a folder`)
+    }
+  }
 })

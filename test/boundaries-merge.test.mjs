@@ -147,10 +147,16 @@ const addOne = (id, extra) => leaf(id, { rigor: 'trivial', locus: ['src/add.mjs'
 // A bisect costs three measurements: the tests that read one batch share it, built once and removed
 // when the file ends. A test that runs a shared batch again comes after every test that reads it.
 
+// A shared repository outlives the test that first awaits it: its cleanup is the file's, registered
+// here at module scope (the module's `after` called from inside a test would attach to that test).
+const sharedCleanups = []
+after(() => { for (const fn of sharedCleanups) fn() })
+const whenFileEnds = (fn) => sharedCleanups.push(fn)
+
 let bisectedP
 /** x breaks the suite alone, y does not; x has been dispatched twice. */
 const bisected = () => (bisectedP ??= (async () => {
-  const w = world(after, [root(), addOne('x'), leaf('y', { rigor: 'trivial', locus: ['README.md'] })])
+  const w = world(whenFileEnds, [root(), addOne('x'), leaf('y', { rigor: 'trivial', locus: ['README.md'] })])
   const x = ready(w, 'x', { 'src/add.mjs': BREAK_ADD }, 'Break add')
   dispatch(w, 'x', 2)
   const y = ready(w, 'y', { 'README.md': 'hello world\n' }, 'Greet the world')
@@ -163,7 +169,7 @@ const bisected = () => (bisectedP ??= (async () => {
 let passingP
 /** x passes: the one leaf of the root, merged. */
 const passing = () => (passingP ??= (async () => {
-  const w = world(after, [root(), addOne('x')])
+  const w = world(whenFileEnds, [root(), addOne('x')])
   const x = ready(w, 'x', { 'src/add.mjs': FLIP_ADD }, 'Add in the other order')
   const pre = headOf(w.r, '.')
   const children = handed(x)

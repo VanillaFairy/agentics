@@ -84,9 +84,13 @@ test('a planner folder parked spec_changed is re-derived once per park', () => {
   const first = launched(effort(nodes, [park]), 'plan')
   assert.deepEqual(first.map((l) => l.id), ['x'])
   assert.match(first[0].why, /^spec_changed/)
-  const parkSeq = nodes.length + 1
-  assert.deepEqual(launched(effort(nodes, [park], { state: [{ kind: 'dispatch', label: 'plan:x', seq: parkSeq + 1 }] }), 'plan'), [])
-  assert.equal(launched(effort(nodes, [park], { state: [{ kind: 'dispatch', label: 'plan:x', seq: parkSeq - 1 }] }), 'plan').length, 1)
+  const planner = { kind: 'dispatched', node: 'x', role: 'planner' }
+  assert.deepEqual(launched(effort(nodes, [park, planner]), 'plan'), [], 'a planner dispatch on the folder newer than the park answers it')
+  assert.equal(launched(effort(nodes, [planner, park]), 'plan').length, 1, 'a planner dispatch older than the park does not')
+  const withY = [...nodes, folder('y', { author: 'planner' }), leaf('y/a')]
+  assert.deepEqual(launched(effort(withY, [park, { ...planner, node: 'y' }]), 'plan').map((l) => l.id), ['x'], 'a planner dispatch on another folder does not')
+  assert.equal(launched(effort(nodes, [park, { ...planner, role: 'reviewer' }]), 'plan').length, 1, 'a dispatch of another role does not')
+  assert.equal(launched(effort(nodes, [park], { state: [{ kind: 'dispatch', label: 'plan:x', seq: 99 }] }), 'plan').length, 1, 'a 4.x dispatch state line counts for nothing')
   assert.deepEqual(launched(effort([folder('.'), folder('x'), leaf('x/a')], [park]), 'plan'), [])
 })
 

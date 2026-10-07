@@ -503,7 +503,7 @@ test('liveItems takes the highest seq whatever the line order, and skips every l
     rev(9, 9),
     rev(3, 3),
     '{"kind":"item","item":',
-    JSON.stringify({ kind: 'judged', id, verdict: 'holds', at: SHA, seq: 12 }),
+    JSON.stringify({ kind: 'judged', id, ruling: 'holds', at: SHA, seq: 12 }),
     JSON.stringify({ kind: 'item', item: { ...VALID.behaviour, id: 'not-an-id', claim: 'other' }, seq: 20 }),
     JSON.stringify({ kind: 'item', item: { ...VALID.behaviour, claim: 'no id' }, seq: 21 }),
   ].join('\n') + '\n')

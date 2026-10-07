@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path'
 
 import { checkAnchors, liveItems, recordJudgement } from '../lib/evidence.mjs'
 import { hashSpec } from '../lib/spec.mjs'
-import { configPath } from '../lib/store.mjs'
+import { configPath, evidenceItemsPath } from '../lib/store.mjs'
 import {
   commit, git, gitRepo, lines, logOf, record, span, spanFixture, stateOf, text, withLine, write,
 } from './harness/evidence-fixture.mjs'
@@ -119,13 +119,44 @@ test('fails and unsure both make an item stale, each a judged line at HEAD; an u
   assert.deepEqual([recordJudgement(repo, a, 'fails').state, recordJudgement(repo, b, 'unsure').state], ['stale', 'stale'])
   assert.deepEqual(checkAnchors(repo, [a, b]).map((s) => s.state), ['stale', 'stale'])
   const head = git(repo, 'rev-parse', 'HEAD')
-  assert.deepEqual(logOf(repo, 'judged').map((e) => [e.id, e.verdict, e.at]), [[a, 'fails', head], [b, 'unsure', head]])
+  assert.deepEqual(logOf(repo, 'judged').map((e) => [e.id, e.ruling, e.at]), [[a, 'fails', head], [b, 'unsure', head]])
 
   const judged = logOf(repo, 'judged').length
   assert.equal(recordJudgement(repo, 'I00000000', 'holds').ok, false)
   assert.equal(recordJudgement(repo, a, 'maybe').ok, false)
   assert.equal(logOf(repo, 'judged').length, judged, 'a refusal writes nothing')
   assert.equal(stateOf(repo, 'I00000000').state, 'stale', 'an id the store lacks is never standing')
+})
+
+test('a judged line carries its ruling and no verdict', () => {
+  const repo = gitRepo({ 'src/a.js': text(lines(30)) })
+  const a = record(repo, span('src/a.js', 2, 4))
+  const b = record(repo, span('src/a.js', 10, 14))
+  assert.equal(recordJudgement(repo, a, 'fails').ok, true)
+  write(repo, 'src/a.js', text(withLine(lines(30), 12, 'line twelve')))
+  commit(repo)
+  assert.equal(recordJudgement(repo, b, 'holds').state, 'standing')
+  rmSync(join(repo, 'src', 'a.js'))
+  assert.equal(recordJudgement(repo, b, 'holds').state, 'stale')
+
+  const judged = logOf(repo, 'judged')
+  assert.deepEqual(judged.map((j) => [j.id, j.ruling]), [[a, 'fails'], [b, 'holds'], [b, 'unsure']])
+  for (const j of judged) assert.equal(Object.hasOwn(j, 'verdict'), false, JSON.stringify(j))
+  assert.equal(stateOf(repo, a).why, 'judged fails')
+})
+
+test('a judged line is read by its ruling, never its verdict', () => {
+  const { repo, id } = spanFixture()
+  const [item] = logOf(repo, 'item')
+  const judgedAs = (fields) => writeFileSync(evidenceItemsPath(repo), [item, { kind: 'judged', id, at: '', seq: item.seq + 1, ...fields }]
+    .map((e) => JSON.stringify(e)).join('\n') + '\n')
+
+  judgedAs({ verdict: 'fails', ruling: 'holds' })
+  const held = stateOf(repo, id)
+  assert.deepEqual([held.state, held.why], ['standing', 'judged holds'])
+
+  judgedAs({ verdict: 'holds' })
+  assert.equal(stateOf(repo, id).state, 'stale', 'a judged line with no ruling never holds')
 })
 
 test('holds after fails re-anchors the item standing', () => {
@@ -154,7 +185,7 @@ function assertUnanchorable(repo, id, opts) {
   const out = recordJudgement(repo, id, 'holds', opts)
   assert.deepEqual([out.ok, out.state], [true, 'stale'], JSON.stringify(out))
   const last = logOf(repo, 'judged').at(-1)
-  assert.deepEqual([last.id, last.verdict, last.requested], [id, 'unsure', 'holds'])
+  assert.deepEqual([last.id, last.ruling, last.requested], [id, 'unsure', 'holds'])
   assert.equal(logOf(repo, 'item').length, revisions, 'no item revision is appended')
   assert.equal(stateOf(repo, id).state, 'stale')
 }

@@ -123,20 +123,23 @@ test('the items verb lists handles by ground, standing and suspect by default, a
   assert.deepEqual(run('items', '--ground', 'src', '--return-kind', 'probe').items, [], 'only the kind of return asked for')
 })
 
-test('the judge verb records a verdict for each id it is handed, from the file the analyst wrote', () => {
+test("the judge verb records the analyst's verdict for each id it is handed as that id's ruling", () => {
   const { repo, id } = spanFixture()
   write(repo, 'src/a.js', text(withLine(lines(30), 12, 'line twelve')))
   const from = returnFile(repo, { judgements: [{ id, verdict: 'holds', why: 'a comment' }, { id: 'I00000001', verdict: 'fails' }] })
   const judged = cli(repo)('judge', '--from', from, '--id', id, '--id', 'I00000000')
   assert.deepEqual(judged, { read: true, recorded_n: 1, standing_n: 1, failed_n: 1 }, 'an id it was not handed is not recorded; an unknown one fails')
   assert.equal(stateOf(repo, id).state, 'standing')
+  const recorded = logOf(repo, 'judged')
+  assert.deepEqual(recorded.map((j) => [j.id, j.ruling]), [[id, 'holds']])
+  assert.equal(Object.hasOwn(recorded[0], 'verdict'), false, 'the analyst file says verdict; the store says ruling')
 })
 
 test('the judge verb records unsure for every id when the analyst wrote no file', () => {
   const { repo, id } = spanFixture()
   const judged = cli(repo)('judge', '--from', join(repo, 'nobody-wrote-this.json'), '--id', id)
   assert.deepEqual([judged.read, judged.recorded_n], [false, 1])
-  assert.deepEqual(logOf(repo, 'judged').map((j) => j.verdict), ['unsure'])
+  assert.deepEqual(logOf(repo, 'judged').map((j) => j.ruling), ['unsure'])
   assert.equal(stateOf(repo, id).state, 'stale')
 })
 

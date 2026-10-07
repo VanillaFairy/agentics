@@ -84,8 +84,8 @@ test('G4: the latest judgement is the one with the highest seq, whatever the lin
   const [item] = logOf(repo, 'item')
   writeFileSync(evidenceItemsPath(repo), [
     item,
-    { kind: 'judged', id, verdict: 'fails', at: '', seq: item.seq + 2 },
-    { kind: 'judged', id, verdict: 'holds', at: '', seq: item.seq + 1 },
+    { kind: 'judged', id, ruling: 'fails', at: '', seq: item.seq + 2 },
+    { kind: 'judged', id, ruling: 'holds', at: '', seq: item.seq + 1 },
   ].map((e) => JSON.stringify(e)).join('\n') + '\n')
   assert.equal(stateOf(repo, id).state, 'stale', 'the fails line has the higher seq, though the holds line comes later')
 })

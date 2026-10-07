@@ -12,7 +12,7 @@ import { checkAnchors, itemsFor, recordCites, recordItems, recordJudgement } fro
 import { append, readLog } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import { renderEvidence, renderLanding } from '../lib/render.mjs'
-import { EVIDENCE_RENDER, evidenceItemsPath, folderDir, specPath } from '../lib/store.mjs'
+import { EVIDENCE_RENDER, evidenceItemsPath, executionDir, folderDir, returnPath, specPath, writeJson } from '../lib/store.mjs'
 
 const STAMP = '20260926-100000'
 const CRITERIA = ['Starting design never needs an id or a flag.', 'Every command ends with a Next line.']
@@ -314,13 +314,16 @@ test('after a rename, the folder\'s evidence renders under its new id, approved 
   assert.deepEqual(readLog(repo, EFFORT, 'cites').entries.slice(0, before.length), before, 'append-only')
 })
 
-test('the landing view points at the review holding the evidence, and says so when it was never written', () => {
+test('the landing view gives what the review said from its stored return, and says so when there is none', () => {
   const r = repo()
   writeRoot(r, rootSpec(WITH_CRITERIA))
-  const said = join(r, 'review.md')
-  writeFileSync(said, 'The criteria hold.\n')
-  claims(r, [{ claim: 'it builds', ruling: 'met' }], 'h1', { said })
-  assert.ok(renderLanding(r, 'e1').includes('in the review itself: ' + said))
-  claims(r, [{ claim: 'it builds', ruling: 'met' }], 'h2', { said: said + '.gone' })
-  assert.match(renderLanding(r, 'e1'), /evidence was not written down: .*review\.md\.gone is missing/)
+  const dispatch = 'root.reviewer.integration-.-1.r1'
+  const notes = 'The criteria hold: every command ends with a Next line.'
+  writeJson(returnPath(executionDir(r, 'e1', STAMP), dispatch), { units: [], findings: [], fix_rulings: [], claims: [], notes })
+  claims(r, [{ claim: 'it builds', ruling: 'met' }], 'h1', { said: dispatch })
+  assert.ok(renderLanding(r, 'e1').includes('\n' + notes + '\n'), 'the reviewer\'s words, whole')
+  claims(r, [{ claim: 'it builds', ruling: 'met' }], 'h2', { said: 'gone.reviewer.r1' })
+  assert.match(renderLanding(r, 'e1'), /evidence was not written down: the return of gone\.reviewer\.r1 is missing\./)
+  claims(r, [{ claim: 'it builds', ruling: 'met' }], 'h3')
+  assert.match(renderLanding(r, 'e1'), /evidence was not written down\.\n$/)
 })

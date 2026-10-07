@@ -266,3 +266,33 @@ test('a rule close run twice records nothing twice', (t) => {
   assert.equal(state(r, 'drift-ruled').length, 2)
   assert.equal(events(r, 'parked').length, 1)
 })
+
+test('a consumer already parked is left out of the ruling', (t) => {
+  const { r, xc } = setup(t, TREE)
+  xc.log.append('parked', { node: 'p/x', return: 'cant_tell', question: 'q', said: '' })
+  const dispatch = ruler(xc, [{ node: 'p/x', ruling: 'affected', why: 'moved', question: 'q2' }])
+  const out = ruleClose(xc, { kind: 'drift', record: driftRecord(xc, [drift('p/x')]), dispatch })
+  assert.deepEqual(out, { replan: [], stops: [] })
+  assert.equal(state(r, 'drift-ruled').length, 0)
+})
+
+test('a ruling with no question hands the planner its why', (t) => {
+  const { xc } = setup(t, TREE)
+  const dispatch = ruler(xc, [{ node: 'p', ruling: 'affected', why: 'the api moved', question: '' }])
+  const out = ruleClose(xc, { kind: 'drift', record: driftRecord(xc, [drift('p')]), dispatch })
+  assert.deepEqual(out.replan, [{ id: 'p', question: 'the api moved' }])
+})
+
+test('a review whose call ended failed is not read, though its return was kept', (t) => {
+  const { r, xc } = setup(t, [A])
+  const dispatch = dispatchKey({ node: '.', role: 'reviewer', thread: 'integration:.:1', round: 1 })
+  xc.log.append('dispatched', {
+    dispatch, node: '.', round: 1, thread: 'integration:.:1', role: 'reviewer', model: 'opus', effort: 'medium', session: 's',
+    brief_digest: 'd', brief_parts: {}, carries: [], pid: 1,
+  })
+  writeJson(returnPath(xc.dir, dispatch), { units: [], findings: [], fix_rulings: [], claims: [claim('met')], notes: '' })
+  xc.log.append('returned', { dispatch, session: 's', status: 'watch_failed', cause: 'watch_failed', usage: null, cost_total: null, cost_usd: null, denials: [] })
+  const out = folderReview(xc, { target: '.', head: 'h1', dispatch, spec_path: 'S' })
+  assert.equal(out.status, 'held')
+  assert.equal(events(r, 'claims').length, 0)
+})

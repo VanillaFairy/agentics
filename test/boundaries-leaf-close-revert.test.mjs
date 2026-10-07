@@ -71,4 +71,5 @@ test('a revert commit that fails is a note, and breach_reverted names no commit'
 test('an outside-paths commit that fails is a note', SLOW, async (t) => {
   const s = await breached(t, { refuse: 'agentics: outside locus', stray: true })
   assert.ok(s.record.notes.some((n) => n.includes('stray.txt') && n.includes('failed')), JSON.stringify(s.record.notes))
+  assert.deepEqual(s.reverted, [])
 })

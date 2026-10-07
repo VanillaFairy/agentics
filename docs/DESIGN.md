@@ -618,6 +618,12 @@ sent where is the routing table (`ROUTES`):
   message is delivered once a `dispatched` line carries it; a carrier that never returned is
   resumed, never sent the message again. `cut_off` alone is never recorded: it is the brief of
   every resume of a started call, after a cut-off or a host stop.
+- **A decline ends the conversation unless it answers only the implementer.** A cycle test round
+  that declines a dispatch carrying only the implementer's `needs_tests` answers the implementer
+  with `declined`. One that declines a reviewer's tests findings, surviving mutations or code's
+  failures, alone or beside `needs_tests`, escalates `tests_declined` and sends the implementer
+  nothing: the next request would be the same one sent again. The implementer's `needs_tests`
+  stays open, answered only by `tests_ready` or `declined`.
 - **Judges are fresh and never argued with.** A judge's session is resumed only with what bears on
   its own return (its schema, its refused items). No producer's word reaches a judge as a message:
   a producer that holds a finding wrong says so in its `concerns`, and the next fresh reviewer reads

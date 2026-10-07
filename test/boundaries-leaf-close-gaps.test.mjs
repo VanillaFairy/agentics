@@ -250,6 +250,31 @@ async function outside(t, { helper = false, failing = false, ret = DONE, ports, 
 const gotcha = (trigger, extra = {}) => ({ kind: 'pitfall', roles: ['implementer'], paths: [], trigger, action: 'do it differently', evidence: { command: 'node x.mjs', output: 'boom' }, ...extra })
 const command = (name, value) => ({ kind: 'command', roles: ['implementer', 'investigator'], paths: [], trigger: 'running ' + name, action: 'use it', evidence: { command: name, output: 'ok' }, command: { name, value } })
 
+// ================================================================== G3
+
+describe('G3: [D1] a decline of a round that carried needs_tests and findings', { concurrency: 2 }, () => {
+  const s = scenario(async (t) => {
+    const c = cycle(t)
+    const asked = answered(c.w, { node: 'g', thread: 'producer:r', msg: 'needs_tests', payload: { text: 'pin it' }, round: 3, from: 'implementer' })
+    const found = answered(c.w, { node: 'g', thread: 'producer:r', msg: 'findings', payload: { findings: [] }, round: 3 })
+    const ret = { status: 'declined', text: 'a test of that would pin an implementation detail' }
+    const { out, dispatch } = await run(c.w, { node: 'g', role: 'test-author', round: 3, thread: 'producer:r', ret, carries: [asked, found], base_sha: c.green.base_sha, head_before: c.greenHead })
+    return { c, out, dispatch }
+  })
+  after(() => s.end())
+
+  test('G3.1 the decline escalates tests_declined, said the dispatch, and stops', SLOW, async () => {
+    const { out, dispatch } = await s.get()
+    assert.equal(out.decision.next, 'stop')
+    assert.deepEqual(out.stops, [{ id: 'g', status: 'escalated', reason: 'tests_declined', said: dispatch }])
+  })
+
+  test('G3.2 that close records no declined message', SLOW, async () => {
+    const { c } = await s.get()
+    assert.deepEqual(msgs(c.w, 'declined', 'g'), [])
+  })
+})
+
 // ================================================================== G10
 
 describe('G10: a staged rename', () => {

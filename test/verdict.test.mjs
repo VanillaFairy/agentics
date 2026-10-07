@@ -402,7 +402,7 @@ test('a green\'s next round goes to a test-author only when what is left is the 
 })
 
 test('an integration review parks once, by class: a spec defect, then criticals and drift, then what it could not tell', () => {
-  const claim = (verdict, text = 't') => ({ claim: text, verdict, evidence: 'a:1' })
+  const claim = (ruling, text = 't') => ({ claim: text, ruling, evidence: 'a:1' })
   assert.equal(integrationPark([], [claim('met')], 'S'), null)
   for (const v of ['under', 'over', 'deviates']) assert.equal(integrationPark([], [claim(v)], 'S').why, 'integration_critical')
   assert.equal(integrationPark([critical('F1')], [claim('cant_tell')], 'S').why, 'integration_critical')

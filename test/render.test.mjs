@@ -53,13 +53,13 @@ test('the success criteria stand beside the verdicts, loss first', () => {
   const r = repo()
   writeRoot(r, rootSpec(WITH_CRITERIA))
   const list = [
-    { claim: 'it builds', verdict: 'met', evidence: 'ci' },
-    { claim: 'latency stays flat', verdict: 'cant_tell', evidence: 'no benchmark' },
-    { claim: 'the api matches the spec', verdict: 'deviates', evidence: 'src/api.js:4' },
-    { claim: 'the spec asks for two things at once', verdict: 'spec_defect', evidence: 'DESIGN.md:12' },
-    { claim: 'memory stays bounded', verdict: 'cant_tell', evidence: 'no load test' },
-    { claim: 'logging is scoped', verdict: 'over', evidence: 'src/log.js:2' },
-    { claim: 'retries are bounded', verdict: 'under', evidence: 'src/r.js:9' },
+    { claim: 'it builds', ruling: 'met', evidence: 'ci' },
+    { claim: 'latency stays flat', ruling: 'cant_tell', evidence: 'no benchmark' },
+    { claim: 'the api matches the spec', ruling: 'deviates', evidence: 'src/api.js:4' },
+    { claim: 'the spec asks for two things at once', ruling: 'spec_defect', evidence: 'DESIGN.md:12' },
+    { claim: 'memory stays bounded', ruling: 'cant_tell', evidence: 'no load test' },
+    { claim: 'logging is scoped', ruling: 'over', evidence: 'src/log.js:2' },
+    { claim: 'retries are bounded', ruling: 'under', evidence: 'src/r.js:9' },
   ]
   claims(r, list)
   const view = renderLanding(r, 'e1')
@@ -68,9 +68,9 @@ test('the success criteria stand beside the verdicts, loss first', () => {
   const rows = view.split('\n').filter((l) => /^\| (?!verdict \|)\w/.test(l))
   assert.equal(rows.length, list.length, 'every claim has its row')
   const rank = (v) => LOSS_FIRST.indexOf(v)
-  assert.deepEqual(rows.map((l) => l.split('|')[1].trim()), list.map((c) => c.verdict).sort((a, b) => rank(a) - rank(b)))
+  assert.deepEqual(rows.map((l) => l.split('|')[1].trim()), list.map((c) => c.ruling).sort((a, b) => rank(a) - rank(b)))
 
-  const count = (pass) => list.filter((c) => pass(c.verdict)).length
+  const count = (pass) => list.filter((c) => pass(c.ruling)).length
   const met = count((v) => v === 'met')
   const undecided = count((v) => v === 'cant_tell')
   const notMet = count((v) => v !== 'met' && v !== 'cant_tell')
@@ -89,8 +89,8 @@ test('no recorded verdicts: the criteria stand alone, with no table', () => {
 test('the latest claims event on the root is the one rendered', () => {
   const r = repo()
   writeRoot(r, rootSpec(WITH_CRITERIA))
-  claims(r, [{ claim: 'an old claim', verdict: 'under', evidence: 'x' }], 'h1')
-  claims(r, [{ claim: 'the new claim', verdict: 'met', evidence: 'y' }], 'h2')
+  claims(r, [{ claim: 'an old claim', ruling: 'under', evidence: 'x' }], 'h1')
+  claims(r, [{ claim: 'the new claim', ruling: 'met', evidence: 'y' }], 'h2')
   const view = renderLanding(r, 'e1')
   assert.ok(rowOf(view, 'the new claim') !== -1)
   assert.equal(rowOf(view, 'an old claim'), -1)
@@ -99,7 +99,7 @@ test('the latest claims event on the root is the one rendered', () => {
 test('a claim holding a pipe still renders two columns', () => {
   const r = repo()
   writeRoot(r, rootSpec(WITH_CRITERIA))
-  claims(r, [{ claim: 'a | b stays one claim', verdict: 'deviates', evidence: 'src/a.js:1' }])
+  claims(r, [{ claim: 'a | b stays one claim', ruling: 'deviates', evidence: 'src/a.js:1' }])
   const view = renderLanding(r, 'e1')
   const row = view.split('\n')[rowOf(view, 'stays one claim')]
   assert.equal(row.split(/(?<!\\)\|/).length, 4, row)
@@ -319,8 +319,8 @@ test('the landing view points at the review holding the evidence, and says so wh
   writeRoot(r, rootSpec(WITH_CRITERIA))
   const said = join(r, 'review.md')
   writeFileSync(said, 'The criteria hold.\n')
-  claims(r, [{ claim: 'it builds', verdict: 'met' }], 'h1', { said })
+  claims(r, [{ claim: 'it builds', ruling: 'met' }], 'h1', { said })
   assert.ok(renderLanding(r, 'e1').includes('in the review itself: ' + said))
-  claims(r, [{ claim: 'it builds', verdict: 'met' }], 'h2', { said: said + '.gone' })
+  claims(r, [{ claim: 'it builds', ruling: 'met' }], 'h2', { said: said + '.gone' })
   assert.match(renderLanding(r, 'e1'), /evidence was not written down: .*review\.md\.gone is missing/)
 })

@@ -134,14 +134,15 @@ test('gotchasFor filters by role and by locus overlap; unscoped gotchas reach ev
   assert.equal(gotchasFor(r, E, {}).length, 4)
 })
 
-test('commandsOf reads only command gotchas an investigator wrote', () => {
+test('commandsOf reads only command gotchas an investigator or the session wrote', () => {
   const r = repo()
   writeGotcha(r, E, command('suite', 'npm test'), { source: { node: 'a', role: 'implementer' } })
   writeGotcha(r, E, command('build', 'npm run build'), { source: { node: '', role: 'investigator' } })
   writeGotcha(r, E, command('typecheck', '', { command: { name: 'typecheck', absent: true } }), { source: { role: 'investigator' } })
+  writeGotcha(r, E, command('test_one', 'npm test -- {file}'), { source: { role: 'session' } })
   writeGotcha(r, E, pitfall(), { source: { role: 'investigator' } })
   assert.deepEqual(commandsOf(r, E), {
-    build: 'npm run build', typecheck: '', suite: '', suite_fast: '', test_one: '',
+    build: 'npm run build', typecheck: '', suite: '', suite_fast: '', test_one: 'npm test -- {file}',
     absent: { build: false, typecheck: true, suite: false, suite_fast: false },
   })
 })

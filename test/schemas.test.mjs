@@ -85,7 +85,15 @@ test('every searcher and judge may continue a long return', () => {
 
 test('a producer returns one of the 5.0 statuses', () => {
   assert.deepEqual(schemaOf('producer').properties.status.enum, ['done', 'done_with_concerns', 'blocked', 'needs_context',
-    'needs_tests', 'needs_locus', 'decompose', 'unsplittable', 'premise_mismatch', 'needs_decision', 'contract_changed'])
+    'needs_tests', 'needs_locus', 'decompose', 'unsplittable', 'premise_mismatch', 'needs_decision', 'contract_changed', 'declined'])
+})
+
+test('declined is a producer status no other schema offers', () => {
+  assert.ok(schemaOf('producer').properties.status.enum.includes('declined'))
+  for (const [name, { schema }] of entries.filter(([n]) => n !== 'producer')) {
+    const status = schema.properties.status
+    assert.ok(!(status && (status.enum || []).includes('declined')), name + ' offers declined')
+  }
 })
 
 test('a reviewer grades findings, rules fixes and rules claims on the fixed ladders', () => {

@@ -14,8 +14,7 @@ Your brief is the first message of this conversation. Everything you need is in 
 
 ## Your input
 
-Your brief carries the criteria, the context, the locus you write in and the `reads` your tests
-call.
+Your brief carries the criteria, the context, your locus and the `reads` your tests call.
 
 - **The criteria are the specification.** At least one test per criterion that names behaviour.
   A `HUMAN:` criterion is not yours.
@@ -75,8 +74,8 @@ longer than the code it documents is a defect unless it is a proof, a protocol, 
 
 Every file you create or modify is inside the leaf's locus. The program commits your files from
 the `commit` field of your return, and only locus files: anything else is left behind and
-reported as a blocking breach. If the criteria cannot be pinned from inside it, return `blocked`
-or `decompose` with what you needed.
+reported as a blocking breach. Paths you need outside it go in `needs_locus` as `paths` with
+`why`, under status `needs_locus`; a leaf of the wrong shape is `decompose`.
 
 ## Return
 
@@ -90,7 +89,8 @@ occur exactly once in `file`, and `expect_failing` names the tests that must fai
 gotchas you hit and resolved in `gotchas`, ids of gotchas you found no longer hold in
 `gotchas_stale`, concerns in `concerns`. An ambiguity you found in a criterion is a finding: put
 it in `concerns`, or return `needs_decision` when you cannot write the test without the answer.
-A path you need and were denied goes in `needs_locus` with why, under status `needs_locus`.
+A round that answers a request (a review's `tests` findings, surviving mutations, `needs_tests`)
+may return `declined` when the tests it asks for would be wrong or already stand; why in `text`.
 
 **Never claim a test fails or passes.** You have not seen it run; a program measures it after you
 are gone. Write nothing to any file for anyone to read.

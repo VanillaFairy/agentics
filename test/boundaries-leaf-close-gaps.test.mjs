@@ -326,6 +326,52 @@ describe('G6: [D3] a verify finding under a planner\'s folder', () => {
   })
 })
 
+// ================================================================== G7
+
+describe('G7: the previous close and the breach record across executions', { concurrency: 2 }, () => {
+  test('G7.1 a round-2 close in a later execution escalates verify_not_converging against the earlier execution round-1 close', SLOW, async (t) => {
+    const first = world(t, [root(), lfNode('a', { locus: ['src/a.mjs', 'test/a.test.mjs'], acceptance: crit('a', FAIL) })])
+    const o = open(first, 'a')
+    const one = commit(o.worktree, A_FILES, 'Add a')
+    const r1 = await run(first, { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
+    assert.equal(r1.out.decision.next, 'fix', JSON.stringify(r1.out.decision))
+    const later = elsewhere(first)
+    commit(o.worktree, { 'src/a.mjs': A_SRC + '// second try\n' }, 'Try again')
+    const r2 = await run(later, { node: 'a', role: 'implementer', round: 2, ret: DONE, base_sha: o.base_sha, head_before: one })
+    assert.deepEqual([r2.out.decision.next, r2.out.decision.reason], ['stop', 'verify_not_converging'])
+  })
+
+  test('G7.2 a round-2 close in a later execution that fails on every earlier key and one more raises', SLOW, async (t) => {
+    const ok1 = 'node -e "process.exit(require(\'fs\').existsSync(\'ok1.txt\')?0:1)"'
+    const bad2 = 'node -e "process.exit(require(\'fs\').existsSync(\'bad2.txt\')?1:0)"'
+    const first = world(t, [root(), lfNode('a', {
+      locus: ['src/a.mjs', 'test/a.test.mjs', 'ok1.txt', 'bad2.txt'],
+      acceptance: [{ text: 'ok1 exists', check: ok1, decisions: ['D1'] }, { text: 'bad2 is absent', check: bad2, decisions: ['D1'] }],
+    })])
+    const o = open(first, 'a')
+    const one = commit(o.worktree, A_FILES, 'Add a')
+    const r1 = await run(first, { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
+    const later = elsewhere(first)
+    commit(o.worktree, { 'bad2.txt': 'x\n' }, 'Break the second')
+    const r2 = await run(later, { node: 'a', role: 'implementer', round: 2, ret: DONE, base_sha: o.base_sha, head_before: one })
+    assert.ok(claimsOf(r2.out).length > claimsOf(r1.out).length, 'round 2 keeps the failure and adds one')
+    assert.equal(r2.out.raise, true)
+    assert.equal(rec(later, 'a', 'implementer', 2).raise, true)
+  })
+
+  test('G7.3 a close run again under a new execution records no second breach_reverted for the node and sha', SLOW, async (t) => {
+    const s = await outside(t)
+    const reverted = recs(s.w, 'breach_reverted', 'a')
+    assert.equal(reverted.length, 1)
+    const later = elsewhere(s.w)
+    const dispatch = stored(later, s.spec)
+    const second = await close(later, { ...s.spec, dispatch })
+    assert.equal(second.decision.next, s.first.decision.next)
+    assert.deepEqual(recs(later, 'breach_reverted', 'a'), [])
+    assert.deepEqual(recs(s.w, 'breach_reverted', 'a'), reverted)
+  })
+})
+
 // ================================================================== G10
 
 describe('G10: a staged rename', () => {

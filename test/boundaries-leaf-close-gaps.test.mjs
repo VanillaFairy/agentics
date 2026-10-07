@@ -310,6 +310,22 @@ describe('G5: [D2] an implementer\'s needs_tests is answered by the test round t
   })
 })
 
+// ================================================================== G6
+
+describe('G6: [D3] a verify finding under a planner\'s folder', () => {
+  test('G6.1 the folder replanned without the leaf leaves the leaf not escalated', SLOW, async (t) => {
+    const w = world(t, [root(), planner(), lfNode('c/v', { rigor: 'verify', locus: [], acceptance: crit('c/v', FAIL) })])
+    const o = open(w, 'c/v')
+    const out = await close(w, { node: 'c/v', role: '', round: 1, thread: '', dispatch: '', base_sha: o.base_sha })
+    assert.equal(out.decision.next, 'route')
+    assert.equal(out.route.request.status, 'verify_finding')
+    const replanned = addNodes(w.r, E, [{ ...planner(), title: 'c, rewritten by its planner' }], { by: 'planner', reason: 'verify_finding' })
+    assert.equal(replanned.ok, true, JSON.stringify(replanned.problems))
+    const tree = readTree(w.r, E)
+    assert.notEqual(tree.status.get('c/v').status, 'escalated')
+  })
+})
+
 // ================================================================== G10
 
 describe('G10: a staged rename', () => {

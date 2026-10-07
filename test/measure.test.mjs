@@ -54,6 +54,7 @@ function rig(t, checks = [PASS]) {
 }
 
 const journal = (dir) => readLog(dir, EFFORT, 'journal:' + EXECUTION).entries.filter((e) => e.kind === 'verify-observed')
+const markers = (dir) => readLog(dir, EFFORT, 'journal:' + EXECUTION).entries.filter((e) => e.kind === 'measure-done')
 const keyOf = (opts, worktree) => measureKey(opts, { status: snapshotCheckout(worktree).status })
 
 // ------------------------------------------------------------------ measureKey
@@ -152,6 +153,63 @@ test('a measurement journalled at the same key is not taken again', { timeout: 6
   assert.equal(again.payload.stop_reason, first.payload.stop_reason)
   assert.deepEqual(again.payload.checks, first.payload.checks)
   assert.equal(journal(dir).length, 1, 'and nothing journalled')
+  assert.equal(markers(dir).length, 1, 'and no second marker')
+})
+
+test('a measurement whose after-watch threw is measured again, not reused', { timeout: 60_000 }, async (t) => {
+  const { dir, worktree, xc, opts } = rig(t)
+  const counter = counted()
+  const failing = { before: () => ({}), after: () => { throw new Error('unreadable') } }
+  const first = await measure(xc, opts, { spawn: counter.spawn, watch: failing })
+  assert.equal(first.payload.error.kind, 'watch_failed')
+  assert.equal(journal(dir).length, 1, 'the child journalled before the watch failed')
+  assert.equal(markers(dir).length, 0, 'and the watch never vouched for it')
+  const again = await measure(xc, opts, { spawn: counter.spawn })
+  assert.equal(counter.calls.length, 2, 'the unmarked line is not a measurement taken')
+  assert.equal(again.reused, false)
+  assert.equal(again.payload.stop_reason, 'completed', JSON.stringify(again.payload.error))
+  assert.equal(markers(dir).length, 1)
+  assert.equal(markers(dir)[0].key, keyOf(opts, worktree))
+})
+
+test('a marker of another key does not vouch for an unmarked line', { timeout: 60_000 }, async (t) => {
+  const { dir, worktree, xc, opts } = rig(t)
+  const counter = counted()
+  const failing = { before: () => ({}), after: () => { throw new Error('unreadable') } }
+  await measure(xc, opts, { spawn: counter.spawn, watch: failing })
+  writeFileSync(join(worktree, 'notes.txt'), 'one\n')
+  await measure(xc, opts, { spawn: counter.spawn })
+  rmSync(join(worktree, 'notes.txt'))
+  const back = await measure(xc, opts, { spawn: counter.spawn })
+  assert.equal(counter.calls.length, 3, 'the first key was never marked, whatever marked the second')
+  assert.equal(back.reused, false)
+  assert.equal(markers(dir).length, 2)
+})
+
+test('a marker that precedes a later unmarked line at the same key does not vouch for it', { timeout: 60_000 }, async (t) => {
+  const { dir, worktree, xc, opts } = rig(t)
+  const counter = counted()
+  await measure(xc, opts, { spawn: counter.spawn })
+  const key = keyOf(opts, worktree)
+  const written = append(dir, EFFORT, 'journal:' + EXECUTION, { kind: 'verify-observed', node: NODE, key, stop_reason: 'completed', checks: [] })
+  assert.equal(written.ok, true, written.error)
+  const again = await measure(xc, opts, { spawn: counter.spawn })
+  assert.equal(counter.calls.length, 2, 'the newer line has no marker after it')
+  assert.equal(again.reused, false)
+})
+
+test('a measurement that saw a moved ref is reused with moved: true', { timeout: 60_000 }, async (t) => {
+  const { dir, head, xc, opts } = rig(t)
+  git(dir, 'branch', 'side', 'main')
+  const moving = { ...opts, checks: ["git -C '" + posix(dir) + "' update-ref refs/heads/side " + head] }
+  const counter = counted()
+  const first = await measure(xc, moving, { spawn: counter.spawn })
+  assert.equal(first.moved, true)
+  const again = await measure(xc, moving, { spawn: counter.spawn })
+  assert.equal(counter.calls.length, 1, 'nothing spawned the second time')
+  assert.equal(again.reused, true)
+  assert.equal(again.moved, true, 'the marker carries what the watch saw')
+  assert.equal(markers(dir).length, 1)
 })
 
 test('a broken measurement journalled at the same key is taken again', { timeout: 60_000 }, async (t) => {

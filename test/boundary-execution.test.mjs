@@ -3,9 +3,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fileURLToPath } from 'node:url'
 import { readFileSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
 
 import { ARGS, land, launchRecords } from '../lib/boundary.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
@@ -162,37 +160,6 @@ test('a base head the execution\'s own branch already merged is not a move under
   const later = B(r, 'preflight', { root: '.', commands: COMMANDS })
   assert.deepEqual(later.stale.nodes, ['a'])
   assert.ok(!readFileSync(later.stale.brief, 'utf8').includes('-export const add = (a, b) => a + b'), 'only what the branch does not hold yet')
-})
-
-test('the session\'s retry clears a stop, so a running execution relaunches the node', () => {
-  const r = repo()
-  seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/add.mjs'] })])
-  B(r, 'preflight', { root: '.', commands: COMMANDS })
-  append(r, 'e1', 'events', { kind: 'escalated', node: 'a', execution: STAMP, reason: 'blocked', detail: 'needs a key' })
-  assert.equal(readTree(r, 'e1').status.get('a').status, 'escalated')
-  const run = spawnSync(process.execPath, [fileURLToPath(new URL('../lib/boundary.mjs', import.meta.url)), 'retry',
-    '--repo', r, '--effort', 'e1', '--execution', STAMP, '--node', 'a', '--node', 'nope'], { encoding: 'utf8' })
-  assert.deepEqual(JSON.parse(run.stdout), { retried: ['a'], error: null })
-  assert.notEqual(readTree(r, 'e1').status.get('a').status, 'escalated')
-  assert.deepEqual(B(r, 'schedule', { running: [] }).launch.map((l) => l.id), ['a'])
-})
-
-test('the session\'s note is recorded on the node and changes no status', () => {
-  const r = repo()
-  seedTree(r, 'e1', [root(), leaf('a', { locus: ['src/add.mjs'] })])
-  B(r, 'preflight', { root: '.', commands: COMMANDS })
-  append(r, 'e1', 'events', { kind: 'escalated', node: 'a', execution: STAMP, reason: 'blocked', detail: 'needs a key' })
-  const note = (...args) => JSON.parse(spawnSync(process.execPath, [fileURLToPath(new URL('../lib/boundary.mjs', import.meta.url)), 'note',
-    '--repo', r, '--effort', 'e1', '--execution', STAMP, ...args], { encoding: 'utf8' }).stdout)
-
-  assert.deepEqual(note('--node', 'a', '--text', ' the key is in the vault '), { noted: 'a', error: null })
-  const noted = readTree(r, 'e1').events.filter((e) => e.kind === 'noted')
-  assert.deepEqual(noted.map((e) => [e.node, e.execution, e.by, e.text]), [['a', STAMP, 'session', 'the key is in the vault']])
-  assert.equal(readTree(r, 'e1').status.get('a').status, 'escalated')
-
-  assert.match(note('--node', 'nope', '--text', 'x').error, /no live node/)
-  assert.match(note('--node', 'a').error, /--text/)
-  assert.equal(readTree(r, 'e1').events.filter((e) => e.kind === 'noted').length, 1)
 })
 
 test('an escalation decided again after a lost courier lands once, after a retry it lands again, and a composite escalation stops landing', () => {

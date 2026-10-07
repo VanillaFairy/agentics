@@ -250,6 +250,48 @@ async function outside(t, { helper = false, failing = false, ret = DONE, ports, 
 const gotcha = (trigger, extra = {}) => ({ kind: 'pitfall', roles: ['implementer'], paths: [], trigger, action: 'do it differently', evidence: { command: 'node x.mjs', output: 'boom' }, ...extra })
 const command = (name, value) => ({ kind: 'command', roles: ['implementer', 'investigator'], paths: [], trigger: 'running ' + name, action: 'use it', evidence: { command: name, output: 'ok' }, command: { name, value } })
 
+// ================================================================== G1
+
+describe('G1: a close run again after a kill between a shell-less author\'s commit and its authored line', { concurrency: 2 }, () => {
+  const s = scenario(async (t) => {
+    const c = cycle(t, TABLE_GREEN)
+    // The close's own commit as it stands when the process died before it journalled `authored`.
+    const made = commit(c.green.worktree, { 'src/table.test.mjs': TABLE_TEST }, 'Pin the capacity')
+    const ret = { status: 'done', text: 'pinned', commit: 'Pin the capacity', mutations: [CAPACITY_BITE] }
+    const { out } = await run(c.w, { node: 'g', role: 'test-author', round: 2, thread: 'producer:r', ret, base_sha: c.green.base_sha, head_before: c.greenHead })
+    return { c, made, out }
+  })
+  after(() => s.end())
+
+  test('G1.1 the commit stands with no authored line: its test file is still at the head and no revert commit is made', SLOW, async () => {
+    const { c, made } = await s.get()
+    assert.equal(shown(c.green.worktree, 'HEAD:src/table.test.mjs'), shown(c.green.worktree, made + ':src/table.test.mjs'))
+    assert.ok(isAncestor(c.green.worktree, made, 'HEAD'), 'the commit is still in the series')
+    assert.ok(!subjectsOver(c.green.worktree, c.greenHead).includes(REVERT), subjectsOver(c.green.worktree, c.greenHead).join(' | '))
+  })
+
+  test('G1.2 that close records no breach_reverted', SLOW, async () => {
+    const { c } = await s.get()
+    assert.deepEqual(recs(c.w, 'breach_reverted', 'g'), [])
+    assert.equal(rec(c.w, 'g', 'test-author', 2).breach, null)
+  })
+
+  test('G1.3 that close journals authored naming the commit, and committed is that sha', SLOW, async () => {
+    const { c, made } = await s.get()
+    const authored = recs(c.w, 'authored', 'g')
+    assert.equal(authored.length, 1)
+    assert.deepEqual([authored[0].role, authored[0].round, authored[0].sha], ['test-author', 2, made])
+    assert.equal(rec(c.w, 'g', 'test-author', 2).committed, made)
+  })
+
+  test('G1.4 an implementer round commits are never journalled authored', SLOW, async (t) => {
+    const { w, o } = tdd(t)
+    commit(o.worktree, A_FILES, 'Add a')
+    await run(w, { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
+    assert.deepEqual(recs(w, 'authored', 'a'), [])
+  })
+})
+
 // ================================================================== G3
 
 describe('G3: [D1] a decline of a round that carried needs_tests and findings', { concurrency: 2 }, () => {

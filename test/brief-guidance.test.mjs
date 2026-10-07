@@ -125,3 +125,8 @@ test('a configured file that cannot be read shows as unreadable', (t) => {
   const root = tree(t, { 'CLAUDE.md': 'r', 'docs/style.md': 'style' })
   assert.equal(guidanceOf(root, { config: { guidance: ['docs'] } }), doc(block('CLAUDE.md', 'r'), block('docs', '(unreadable)')))
 })
+
+test('a directory that climbs out of the root is dropped even where its remainder exists inside', (t) => {
+  const { root } = nested(t, { 'CLAUDE.md': 'r', 'repo/CLAUDE.md': 'inner' }, {})
+  assert.equal(guidanceOf(root, { dirs: ['.', '../repo'] }), doc(block('CLAUDE.md', 'r')))
+})

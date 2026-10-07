@@ -13,6 +13,7 @@ import { leafBrief, measuresFor } from '../lib/brief.mjs'
 import { recordItems } from '../lib/evidence.mjs'
 import { writeGotcha } from '../lib/gotchas.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
+import { configPath } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 
@@ -39,6 +40,8 @@ function effort(t, files = {}) {
       locus: ['test/unknown.test.mjs'], acceptance: [{ text: 'An unknown key fails', check: 'node --test test/unknown.test.mjs', decisions: ['D2'] }] },
     { id: 'green', kind: 'leaf', title: 'Refuse unknown keys', rigor: 'tdd-pair', role: 'green', deps: ['red'], decisions: ['D2'],
       locus: ['src/api/unknown.js'], acceptance: [{ text: 'Every test red wrote passes', check: 'node --test test/unknown.test.mjs', decisions: ['D2'] }] },
+    { id: 'spec', kind: 'leaf', title: 'Document keys', rigor: 'tdd', locus: ['src/doc.js'], ground: ['docs/spec'],
+      acceptance: [{ text: 'Docs list keys', check: 'node --test test/doc.test.mjs' }] },
   ])
   assert.equal(added.ok, true, JSON.stringify(added.problems))
   return repo
@@ -195,4 +198,21 @@ test('the established commands are listed, an absent one left out', (t) => {
 
 test('an unknown node is refused', (t) => {
   assert.throws(() => brief(effort(t), 'nope'), /no live node/)
+})
+
+test('standing evidence on the ground of the leaf alone is excerpted', (t) => {
+  const repo = effort(t)
+  const out = recordItems(repo, '20260901-000000-survey', [{
+    question: 'what does the spec say', topic: 'spec', ground: ['docs/spec'], kind: 'external', claim: 'The spec lists every key.',
+    spans: [], queries: [], rests_on: [], sources: [{ url: 'https://example.invalid/spec', version: '1.0.0', retrieved: '' }],
+  }])
+  assert.equal(out.ok, true, JSON.stringify(out))
+  assert.match(sectionsOf(brief(repo, 'spec').text).Evidence, /\[spec, external\] The spec lists every key\./)
+})
+
+test('the guidance files the repository config lists are shown', (t) => {
+  const repo = effort(t, { 'docs/style.md': 'style rules\n' })
+  mkdirSync(dirname(configPath(repo)), { recursive: true })
+  writeFileSync(configPath(repo), JSON.stringify({ guidance: ['docs/style.md'] }))
+  assert.ok(sectionsOf(brief(repo).text)['Repository guidance'].includes('### docs/style.md\n\nstyle rules'))
 })

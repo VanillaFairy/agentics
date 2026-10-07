@@ -12,7 +12,7 @@ import { recordApproval, recordReviewed } from '../lib/approval.mjs'
 import { compileEffort } from '../lib/compile.mjs'
 import { append } from '../lib/ledger.mjs'
 import { listFolders, nextAction, nextForAll } from '../lib/next.mjs'
-import { executionDir, specPath } from '../lib/store.mjs'
+import { executionDir, executionRunId, returnPath, runJsonPath, specPath, writeJson } from '../lib/store.mjs'
 
 const NEXT = fileURLToPath(new URL('../lib/next.mjs', import.meta.url))
 const STAMP = '20260926-100000'
@@ -336,19 +336,34 @@ test('the CLI prints the Next line first, and the same payload with --json', () 
   assert.deepEqual(JSON.parse(json.stdout).payload, expected)
 })
 
-test('a stop whose author wrote it down shows its first line and where the rest is, or says the file is missing', () => {
+test('a stop quotes the lead of its dispatch\'s stored return (rule 2)', () => {
   const r = repo()
   built(r)
-  const said = join(mkdtempSync(join(tmpdir(), 'agentics-said-')), 'q.md')
-  writeFileSync(said, 'Keep the cache on disk or in memory?\nOn disk survives a restart.\n')
-  event(r, 'e1', { kind: 'parked', node: 'x', return: 'needs_decision', question: '', said })
+  const dispatch = 'x.implementer.producer-x.r1'
+  const lead = 'Keep the cache on disk or in memory?'
+  writeJson(returnPath(executionDir(r, 'e1', STAMP), dispatch), { status: 'blocked', text: lead + '\nOn disk survives a restart.' })
+  append(r, 'e1', 'state:' + STAMP, { kind: 'closed', status: 'done' })
+  event(r, 'e1', { kind: 'parked', node: 'x', return: 'needs_decision', question: '', said: dispatch })
   const n = nextAction(r, 'e1')
-  assert.ok(n.why.includes('Keep the cache on disk or in memory?'), n.why)
+  assert.equal(n.rule, 2)
+  assert.ok(n.why.includes('(needs_decision): ' + lead + ';'), n.why)
   assert.ok(!n.why.includes('survives a restart'), 'the Next line carries the first line only')
-  assert.ok(n.why.includes('in full: ' + said), n.why)
 
-  event(r, 'e1', { kind: 'parked', node: 'x', return: 'needs_decision', question: '', said: said + '.gone' })
-  const gone = nextAction(r, 'e1')
-  assert.match(gone.why, /did not write/)
-  assert.ok(!gone.why.includes('in full:'), 'never points at a file that is not there')
+  event(r, 'e1', { kind: 'parked', node: 'x', return: 'needs_decision', question: '', said: 'gone.implementer.r1' })
+  assert.ok(nextAction(r, 'e1').why.includes('(needs_decision); the spec to edit is'), 'a return never stored says nothing more')
+})
+
+test('an open execution names a live run to watch apart from a stopped one to relaunch (rule 1)', () => {
+  const r = repo()
+  write(r, 'e1', '.', spec({ plan: task('x', ['D1']) }))
+  openExecution(r, 'e1', '.')
+  const run = executionRunId('e1', STAMP)
+  assert.match(nextAction(r, 'e1').why, /is stopped: relaunch it$/, 'an execution no run has started yet')
+  const meta = (pid) => writeJson(runJsonPath(r, run), { run, pid, heartbeat_at: new Date().toISOString() })
+  meta(process.pid)
+  const live = nextAction(r, 'e1')
+  assert.deepEqual([live.rule, live.command], [1, '/agentics:develop e1'])
+  assert.ok(live.why.endsWith('is running as run ' + run + ': watch it'), live.why)
+  meta(spawnSync(process.execPath, ['-e', ''], { env: { ...process.env, NODE_TEST_CONTEXT: '' } }).pid)
+  assert.match(nextAction(r, 'e1').why, /is stopped: relaunch it$/, 'a run whose process is gone')
 })

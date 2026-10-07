@@ -18,7 +18,7 @@ import {
   AGENTICS_DIR, CONFIG_FILE, EVIDENCE_RENDER, ROOT_ID, SPEC_FILE, STATE_DIR,
   agenticsRoot, briefPath, configPath, contextDir, effortDir, effortStateDir, effortsRoot,
   evidenceStoreDir, executionDir, executionsRoot, folderDir, mainCheckout, mkdirState,
-  projectStateDir, readConfig, reportPath, safeSlug, saidOf, slotsDir, specPath, withLock,
+  projectStateDir, readConfig, reportPath, returnPath, safeSlug, saidOf, slotsDir, specPath, withLock, writeJson,
   handleArgs, handleEnvelope,
 } from '../lib/store.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
@@ -229,14 +229,63 @@ test('an effort\'s executions and reports sit in its .state', () => {
     .startsWith(spell(effortStateDir(r, 'e1')) + '/'))
 })
 
-test('saidOf reads what the author wrote, falls back to the record, and says so when the file is missing', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'agentics-said-'))
-  const file = join(dir, 'q.md')
-  writeFileSync(file, 'Keep the cache?\nIt costs 2 GB.\n')
-  assert.equal(saidOf({ kind: 'parked', question: '', said: file }), 'Keep the cache?\nIt costs 2 GB.')
-  assert.equal(saidOf({ kind: 'escalated', detail: 'merge conflict in a.js' }), 'merge conflict in a.js')
-  assert.match(saidOf({ kind: 'parked', question: '', said: join(dir, 'gone.md') }), /did not write .*gone\.md/)
-  assert.equal(saidOf({ kind: 'parked', question: 'the line', said: join(dir, 'gone.md') }), 'the line')
+// ------------------------------------------------------------------ what a record said
+
+const SAID_STAMP = '20260926-120000'
+const SAID_DISPATCH = 'x.implementer.producer-x.r1'
+
+/** A store whose execution holds `ret` as the stored return of SAID_DISPATCH (none when undefined). */
+function saidStore(ret) {
+  const r = fresh('said')
+  if (ret !== undefined) writeJson(returnPath(executionDir(r, 'e1', SAID_STAMP), SAID_DISPATCH), ret)
+  return r
+}
+const naming = (fields) => ({ execution: SAID_STAMP, said: SAID_DISPATCH, ...fields })
+
+test('saidOf gives the line the lib composed, then the stored return\'s text', () => {
+  const text = 'Keep the cache?\nIt costs 2 GB.'
+  const r = saidStore({ status: 'blocked', text })
+  assert.equal(saidOf(r, 'e1', naming({ kind: 'parked', node: 'x', question: 'needs a decision' })), 'needs a decision\n' + text)
+  assert.equal(saidOf(r, 'e1', naming({ kind: 'escalated', node: 'x', detail: 'blocked twice' })), 'blocked twice\n' + text)
+  assert.equal(saidOf(r, 'e1', naming({ kind: 'parked', node: 'x', question: '' })), text)
+})
+
+test('saidOf gives the return\'s notes when it has no text', () => {
+  const notes = 'The criteria hold: the CLI prints a Next line.'
+  const r = saidStore({ units: [], findings: [], fix_rulings: [], claims: [], notes })
+  assert.equal(saidOf(r, 'e1', naming({ kind: 'claims', node: '.' })), notes)
+})
+
+test('saidOf gives the ruling for the record\'s node when the return has no text or notes', () => {
+  const rulings = [
+    { node: 'a', ruling: 'affected', why: 'the sum moved', question: 'keep the order?' },
+    { node: 'b', ruling: 'unaffected', why: 'nothing it reads moved', question: '' },
+  ]
+  const r = saidStore({ rulings })
+  assert.equal(saidOf(r, 'e1', naming({ kind: 'parked', node: 'a', question: '' })), rulings[0].why + '\n' + rulings[0].question)
+  assert.equal(saidOf(r, 'e1', naming({ kind: 'parked', node: 'b', question: 'drift' })), 'drift\n' + rulings[1].why)
+  assert.equal(saidOf(r, 'e1', naming({ kind: 'parked', node: 'c', question: 'drift' })), 'drift', 'a ruling for another node says nothing here')
+})
+
+test('saidOf gives the line alone with no said or no readable return', () => {
+  const r = saidStore(undefined)
+  assert.equal(saidOf(r, 'e1', { kind: 'escalated', node: 'x', execution: SAID_STAMP, detail: 'merge conflict in a.js' }), 'merge conflict in a.js')
+  assert.equal(saidOf(r, 'e1', naming({ kind: 'parked', node: 'x', question: 'the line' })), 'the line', 'a return never stored')
+  const unreadable = returnPath(executionDir(r, 'e1', SAID_STAMP), SAID_DISPATCH)
+  mkdirSync(dirname(unreadable), { recursive: true })
+  writeFileSync(unreadable, '{"text": "cut')
+  assert.equal(saidOf(r, 'e1', naming({ kind: 'parked', node: 'x', question: 'the line' })), 'the line', 'a return that is not JSON')
+  const file = join(r, 'q.md')
+  writeFileSync(file, 'what a 4.x author wrote\n')
+  assert.equal(saidOf(r, 'e1', { kind: 'parked', node: 'x', execution: SAID_STAMP, question: 'the line', said: file }), 'the line',
+    'a said that is a file path names no dispatch')
+  writeJson(join(executionDir(r, 'e1', SAID_STAMP), 'outside.json'), { text: 'outside returns/' })
+  assert.equal(saidOf(r, 'e1', naming({ kind: 'parked', node: 'x', question: 'the line', said: '../outside' })), 'the line',
+    'a said that climbs out of returns/ names no dispatch')
+  writeJson(returnPath(executionDir(r, 'e1', 'bogus'), SAID_DISPATCH), { text: 'from a home that is no execution' })
+  assert.equal(saidOf(r, 'e1', { kind: 'parked', node: 'x', execution: 'bogus', question: 'the line', said: SAID_DISPATCH }), 'the line',
+    'an execution that is no stamp names no home')
+  assert.equal(saidOf(r, 'e1', null), '')
 })
 
 // ------------------------------------------------------------------ the lock

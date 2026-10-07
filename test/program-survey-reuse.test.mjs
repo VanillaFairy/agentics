@@ -222,7 +222,7 @@ test('a re-judged item that holds is known ground', async (t) => {
   assert.ok(result.reused.includes(id))
   const lines = judgedLines(rig.repo, id)
   assert.equal(lines.length, 1, JSON.stringify(lines))
-  assert.equal(lines[0].verdict, 'holds')
+  assert.equal(lines[0].ruling, 'holds')
   assert.equal(on(rig, 'scout:held').length, 0)
 })
 
@@ -237,7 +237,7 @@ test('an id the re-judge left unruled is unsure, and its topic searched again', 
   const { rig, result, id } = await rejudged(t, { topic: 'loader', steps: () => rulings([]), searched: ['loader'] })
   const lines = judgedLines(rig.repo, id)
   assert.equal(lines.length, 1, JSON.stringify(lines))
-  assert.equal(lines[0].verdict, 'unsure')
+  assert.equal(lines[0].ruling, 'unsure')
   assert.equal(on(rig, 'scout:loader').length, 1)
   assert.ok(!result.reused.includes(id))
 })

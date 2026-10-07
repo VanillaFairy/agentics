@@ -115,7 +115,7 @@ test('one ruling is recorded per id handed, and an id with no ruling is unsure',
   const { repo, a, b } = suspectPair(t)
   const out = recordRulings(repo, [a, b], [{ id: a, ruling: 'holds', why: 'a comment moved' }])
   assert.deepEqual(out.map((r) => [r.id, r.ruling, r.ok, r.state]), [[a, 'holds', true, 'standing'], [b, 'unsure', true, 'stale']])
-  assert.deepEqual(logOf(repo, 'judged').map((j) => [j.id, j.verdict]), [[a, 'holds'], [b, 'unsure']])
+  assert.deepEqual(logOf(repo, 'judged').map((j) => [j.id, j.ruling]), [[a, 'holds'], [b, 'unsure']])
 })
 
 test('a ruling for an id not handed is ignored', (t) => {
@@ -151,7 +151,7 @@ test('a holds ruling on an item whose lines are gone leaves it stale, recorded u
   rmSync(join(repo, 'src', 'a.js'))
   const [out] = recordRulings(repo, [id], [{ id, ruling: 'holds', why: '' }])
   assert.deepEqual([out.ruling, out.ok, out.state], ['holds', true, 'stale'])
-  assert.deepEqual([logOf(repo, 'judged').at(-1).verdict, logOf(repo, 'judged').at(-1).requested], ['unsure', 'holds'])
+  assert.deepEqual([logOf(repo, 'judged').at(-1).ruling, logOf(repo, 'judged').at(-1).requested], ['unsure', 'holds'])
 })
 
 test('a holds ruling on an item already stale for an expired source leaves it stale', (t) => {

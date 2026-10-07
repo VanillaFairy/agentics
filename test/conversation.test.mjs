@@ -38,6 +38,7 @@ const TABLE = [
   { msg: 'needs_locus', from: 'implementer', to: 'planner_or_park' },
   { msg: 'needs_locus', from: 'test-author', to: 'planner_or_park' },
   { msg: 'needs_locus', from: 'code', to: 'planner_or_park' },
+  { msg: 'retried', from: 'code', to: 'thread' },
 ]
 
 const SENDERS = ['reviewer', 'code', 'implementer', 'test-author', 'probe', 'producer', 'judge',
@@ -168,6 +169,13 @@ test('needs_locus from an implementer, a test-author or code goes to the planner
   assertNoRoute(routeOf({ msg: 'needs_locus', from: 'reviewer' }), 'needs_locus from reviewer')
 })
 
+test('retried goes from code to the thread its round resumes, answered by a round', () => {
+  assert.deepEqual(routeOf({ msg: 'retried', from: 'code' }), { to: 'thread' })
+  const row = ROUTES.find((r) => r.msg === 'retried' && r.from === 'code')
+  assert.deepEqual(row.answers, ['round'])
+  for (const from of ['implementer', 'test-author', 'reviewer']) assertNoRoute(routeOf({ msg: 'retried', from }), `retried from ${from}`)
+})
+
 test('tests_declined is not a message', () => {
   assert.ok(!ROUTES.some((r) => r.msg === 'tests_declined'), 'no row routes tests_declined')
   for (const from of SENDERS) assertNoRoute(routeOf({ msg: 'tests_declined', from }), `tests_declined from ${from}`)
@@ -245,6 +253,20 @@ test('a needs_locus names the node, each path and why', () => {
   assert.ok(text.includes(payload.node), 'names the node')
   for (const p of payload.paths) assert.ok(text.includes(p), `names ${p}`)
   assert.ok(text.includes(payload.why), 'carries why')
+})
+
+test('a retried message carries the cleared stop\'s reason and each note', () => {
+  const payload = { reason: 'wombat_fixture_missing', notes: ['the wombat fixture now lives in test/zebra', 'quokka runs need the --slow flag'] }
+  const text = renderMessage({ msg: 'retried', payload })
+  assert.ok(text.includes(payload.reason), 'names the reason')
+  for (const n of payload.notes) assert.ok(text.includes(n), `quotes ${n}`)
+})
+
+test('a retried message with no notes still names its reason', () => {
+  const text = renderMessage({ msg: 'retried', payload: { reason: 'platypus_blocked', notes: [] } })
+  assert.equal(typeof text, 'string')
+  assert.ok(text.includes('platypus_blocked'), 'names the reason')
+  assert.ok(text.length < renderMessage({ msg: 'retried', payload: { reason: 'platypus_blocked', notes: ['a note'] } }).length, 'a note adds to it')
 })
 
 test('a decline carries its why', () => {

@@ -193,14 +193,14 @@ test('the review gate reads the latest review of the text as it stands, and ever
   recordDisposition(repo, E, '.', { finding: 'Iaaaaaaaa', outcome: 'incorporated', by: 'user' })
   recordDisposition(repo, E, '.', { finding: unanchored, outcome: 'discarded', by: 'user' })
   const open = approvalGate(repo, E, '.')
-  assert.deepEqual(open.open, [])
-  assert.equal(open.ratifiable, true)
+  assert.deepEqual(open.open, ['Iaaaaaaaa'], 'an incorporated ambiguity waits for a later round to rule its section clean')
+  assert.equal(open.ratifiable, false)
 })
 
 test('an edit closes the gate until a review reads the new text; an earlier disposition still settles a carried ambiguity', () => {
   const repo = effort({ '.': ROOT })
   recordReviewed(repo, E, '.', { complete: true, remaining: [], ambiguities: ['Iaaaaaaaa'] })
-  recordDisposition(repo, E, '.', { finding: 'Iaaaaaaaa', outcome: 'incorporated', by: 'user' })
+  recordDisposition(repo, E, '.', { finding: 'Iaaaaaaaa', outcome: 'discarded', by: 'user' })
   assert.equal(approvalGate(repo, E, '.').ratifiable, true)
 
   write(repo, '.', ROOT.replace('Local, and writable', 'Local and writable'))
@@ -209,7 +209,7 @@ test('an edit closes the gate until a review reads the new text; an earlier disp
 
   recordReviewed(repo, E, '.', { complete: true, remaining: [], ambiguities: ['Iaaaaaaaa', 'Ibbbbbbbb'] })
   assert.deepEqual(approvalGate(repo, E, '.').open, ['Ibbbbbbbb'], 'the carried one was settled a round ago')
-  recordDisposition(repo, E, '.', { finding: 'Ibbbbbbbb', outcome: 'incorporated', by: 'user' })
+  recordDisposition(repo, E, '.', { finding: 'Ibbbbbbbb', outcome: 'discarded', by: 'user' })
   assert.equal(approvalGate(repo, E, '.').ratifiable, true)
 })
 

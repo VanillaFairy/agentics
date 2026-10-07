@@ -458,19 +458,24 @@ test('the cost carries by_model, each returned record joined to the latest dispa
   assert.deepEqual(readJson(out.result_file).cost, cost)
 })
 
-test("a home's cost joins its returned records to the dispatched events of its execution", async (t) => {
+test("a home's cost joins its returned records to the dispatched events of its execution, earlier runs' included", async (t) => {
   const repo = makeRepo(t)
   const u = { input_tokens: 4, output_tokens: 2 }
+  logOf(repo, HOME).append('dispatched', { node: 'a', dispatch: 'd1', model: 'haiku' })
   const { mod } = homed(async (ctx) => {
-    ctx.log.append('dispatched', { node: 'a', dispatch: 'd1', model: 'haiku' })
+    ctx.log.append('dispatched', { node: 'b', dispatch: 'd2', model: 'opus' })
     ctx.log.append('returned', returned('d1', u, 0.125))
+    ctx.log.append('returned', returned('d2', u, 0.25))
     return {}
   })
   const out = await start(repo, ['survey', '--topic', 'x'], mod)
   const events = readLog(repo, E, 'events').entries
-  assert.deepEqual(events.map((e) => [e.kind, e.execution]), [['dispatched', S]])
-  assert.deepEqual(out.result.cost.by_model, { haiku: { dispatches: 1, tokens: 6, usd: 0.125 } })
-  assert.equal(out.result.cost.dispatches, 1)
+  assert.deepEqual(events.map((e) => [e.kind, e.execution]), [['dispatched', S], ['dispatched', S]])
+  assert.deepEqual(out.result.cost.by_model, {
+    haiku: { dispatches: 1, tokens: 6, usd: 0.125 },
+    opus: { dispatches: 1, tokens: 6, usd: 0.25 },
+  })
+  assert.equal(out.result.cost.dispatches, 2)
 })
 
 // --- launch_failed that cannot be recorded ---------------------------------------------------

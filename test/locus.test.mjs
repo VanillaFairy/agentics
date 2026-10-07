@@ -181,6 +181,24 @@ test('no test globs at the root or for a barred producer', () => {
   for (const rule of editWrite('src/a/X.ts')) assert.ok(barred.allowed.includes(rule), rule)
 })
 
+test('test dirs admit new test names in each folder and deny the existing unlisted tests there', () => {
+  const baseFiles = ['test/a.test.ts', 'src/b/Old.test.ts', 'src/b/Y.ts']
+  const { allowed, disallowed } = permissionsFor({ locus: ['test/a.test.ts'], testDirs: ['src/b/', 'pkg'], baseFiles })
+  for (const folder of ['test', 'src/b', 'pkg']) {
+    for (const glob of TEST_GLOBS) {
+      for (const rule of editWrite(`${folder}/${glob}`)) assert.equal(count(allowed, rule), 1, rule)
+    }
+  }
+  for (const rule of editWrite('src/b/Old.test.ts')) assert.ok(disallowed.includes(rule), rule)
+  for (const rule of editWrite('src/b/Y.ts')) assert.ok(!allowed.includes(rule), `a source in a test dir stays unwritable: ${rule}`)
+})
+
+test('test dirs give no test glob at the root or to a producer barred from tests', () => {
+  const globRule = (rule) => TEST_GLOBS.some((g) => rule.endsWith(`${g})`))
+  assert.deepEqual(permissionsFor({ locus: ['index.mjs'], testDirs: [''] }).allowed.filter(globRule), [])
+  assert.deepEqual(permissionsFor({ locus: ['src/a/X.ts'], testDirs: ['src/b/'], tests: false }).allowed.filter(globRule), [])
+})
+
 test('a barred producer may not edit a listed test', () => {
   const locus = ['src/a/X.ts', 'src/a/X.test.ts', 'test/locus.test.mjs']
   const { allowed, disallowed } = permissionsFor({ locus, baseFiles: ['src/a/X.ts'], tests: false })

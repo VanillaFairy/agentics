@@ -139,7 +139,7 @@ test('the round that returned an ambiguity does not settle it with its own clean
   assert.deepEqual([after.ratifiable, after.open], [false, [A]])
 })
 
-test('a clean recorded before the incorporation does not count', (t) => {
+test('a clean recorded before the incorporation does not settle it', (t) => {
   const repo = specRepo(t)
   review(repo, { clean: ['design', 'intent', 'growth'] })
   review(repo, { ambiguities: [A], sections: { [A]: 'design' }, clean: [] })

@@ -305,6 +305,33 @@ test('a network failure stops the call', () => {
   stopped(classifyCall({ code: 1, stderr: 'Error: read ECONNRESET\n    at TLSWrap.onStreamRead', parsed: NOTHING() }), 'network')
 })
 
+test('a 503 status stops the call as unavailable', () => {
+  const p = parseStream(stream(resultLine({ subtype: 'success', is_error: true, api_error_status: 503 })))
+  stopped(classifyCall({ code: 1, stderr: '', parsed: p }), 'unavailable')
+})
+
+test('text saying the service is unavailable stops the call as unavailable', () => {
+  stopped(classifyCall({ code: 1, stderr: 'API Error: Service Unavailable\n', parsed: NOTHING() }), 'unavailable')
+})
+
+test('text naming a 503 stops the call as unavailable', () => {
+  stopped(classifyCall({ code: 1, stderr: 'API Error: 503 {"type":"error"}\n', parsed: NOTHING() }), 'unavailable')
+})
+
+test('a longer number holding 503 is not unavailable', () => {
+  failed(classifyCall({ code: 1, stderr: 'exit 15030\n', parsed: NOTHING() }), 'host_error')
+})
+
+const EFFORT_WARNING = "Warning: Unknown --effort value 'ultra' — ignoring it"
+
+test('an exit-0 call whose effort the CLI rejected is a host error carrying the warning', () => {
+  for (const stderr of [EFFORT_WARNING + '\n', 'Loading settings\n' + EFFORT_WARNING + '\nDone\n']) {
+    const got = classifyCall({ code: 0, stderr, parsed: parseStream(SUCCESS) })
+    failed(got, 'host_error')
+    assert.equal(got.message, EFFORT_WARNING)
+  }
+})
+
 test('anything else is a host error', () => {
   const got = classifyCall({ code: 1, stderr: 'boom', parsed: NOTHING() })
   failed(got, 'host_error')

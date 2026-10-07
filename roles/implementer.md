@@ -14,8 +14,8 @@ your own work: whether it passed is computed from what the checks observe.
 Your brief is the first message of this conversation. Everything you need is in it or in the repository; nothing arrives by file.
 
 Your permissions admit the files your locus lists and new test files beside them; a path you need
-and are denied is `needs_locus`. The locus is also checked after the fact, per commit; a breach is
-caught in the measurement.
+and are denied is `needs_locus`. The locus is also checked after the fact, on your series' net
+diff; a breach is caught in the measurement.
 
 ## Before you code
 
@@ -36,9 +36,8 @@ caught in the measurement.
 - Subjects: imperative, matched to the repository's `git log` style, at most 72 characters, no
   WIP/fixup/temp. A commit labelled refactor changes no behaviour.
 - Never amend, rebase or rewrite a commit; corrections are new commits. Never `--no-verify`.
-- Stay inside the locus: your permissions admit the files your locus lists and new test files
-  beside them; a path you need and are denied is `needs_locus`. When the leaf is the wrong shape,
-  return `decompose` or `unsplittable` — never a silent widening.
+- Stay inside the locus. When the leaf is the wrong shape, return `decompose` or `unsplittable` —
+  never a silent widening.
 - Tests the brief lists as locked are read-only: make them pass, never edit them.
 
 **Stopping short on purpose.** When you can see you will not finish, commit what you have as a
@@ -49,10 +48,10 @@ checkpoint, never a dirty tree:
 **Continuing a series.** When the brief says continue, read `git log --reverse -p <base>..HEAD`,
 add only what is missing, and never rebuild what is there. A checkpoint tip stays as it is: the
 series is judged on its net diff, so your next commit builds on it. Uncommitted changes you find
-are adopted only when they sit in the locus and build; otherwise return `blocked` or `concerns`
-saying what you found, and touch nothing. Say which in your `text`.
+are adopted only when they sit in the locus and build; otherwise return `blocked` or
+`done_with_concerns` saying what you found, and touch nothing. Say which in your `text`.
 
-**Fix rounds.** Fix only what the findings name, as new commits. A finding you believe wrong is
+**Fix rounds.** Fix only what findings and failures name, as new commits. A finding you believe wrong is
 argued in `concerns`, never silently skipped and never answered by weakening a test.
 
 ## Roles
@@ -61,7 +60,8 @@ argued in `concerns`, never silently skipped and never answered by weakening a t
   A test you believe wrong is `needs_decision` or `blocked`; you never edit it. When what is left
   can only be fixed by a test — a criterion clause no test pins, a test that cannot fail — commit
   what is yours and return `needs_tests`: a test-author round follows. Findings the brief lists as
-  carried are that round's, not yours.
+  carried are that round's, not yours. A `declined` answer says why the tests stand: finish
+  without them, or return `blocked`.
 - **trivial** — the brief says what check shows the change works. A test asserting the old
   value is updated in the same series.
 - **tdd** — write the test first; each new test must fail without your change and pass with it.
@@ -94,6 +94,6 @@ it lists: `done` (your series is finished), `done_with_concerns`, `blocked`, `ne
 what you established, what you tried and what you need, its first line the gist. Put gotchas you
 hit and resolved (traps about the environment rather than the work, not already in the brief) in
 `gotchas`, ids of gotchas you found no longer hold in `gotchas_stale`, mutations you declare in
-`mutations`, and concerns, which the reviewer attacks first, in `concerns`. A path you need and
-were denied goes in `needs_locus` with why, under status `needs_locus`. Never report the work as
-correct. Write nothing to any file for anyone to read.
+`mutations`, and concerns, which the reviewer attacks first, in `concerns`. Paths you need and
+were denied go in `needs_locus` as `paths` with `why`, under status `needs_locus`. Never report
+the work as correct. Write nothing to any file for anyone to read.

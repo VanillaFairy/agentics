@@ -34,6 +34,10 @@ const TABLE = [
   { msg: 'refusals', from: 'code', to: 'judge' },
   { msg: 'continue_search', from: 'code', to: 'searcher' },
   { msg: 'cut_off', from: 'code', to: 'thread' },
+  { msg: 'failures', from: 'code', to: 'producer' },
+  { msg: 'needs_locus', from: 'implementer', to: 'planner_or_park' },
+  { msg: 'needs_locus', from: 'test-author', to: 'planner_or_park' },
+  { msg: 'needs_locus', from: 'code', to: 'planner_or_park' },
 ]
 
 const SENDERS = ['reviewer', 'code', 'implementer', 'test-author', 'probe', 'producer', 'judge',
@@ -148,6 +152,28 @@ test('nothing is routed to a reviewer', () => {
   }
 })
 
+test('failures go from code to the producer, answered by a fix round', () => {
+  assert.deepEqual(routeOf({ msg: 'failures', from: 'code' }), { to: 'producer' })
+  const row = ROUTES.find((r) => r.msg === 'failures' && r.from === 'code')
+  assert.deepEqual(row.answers, ['fix'])
+  for (const from of ['implementer', 'test-author', 'reviewer']) assertNoRoute(routeOf({ msg: 'failures', from }), `failures from ${from}`)
+})
+
+test('needs_locus from an implementer, a test-author or code goes to the planner or a park', () => {
+  for (const from of ['implementer', 'test-author', 'code']) {
+    assert.deepEqual(routeOf({ msg: 'needs_locus', from }), { to: 'planner_or_park' }, from)
+    const row = ROUTES.find((r) => r.msg === 'needs_locus' && r.from === from)
+    assert.deepEqual([...row.answers].sort(), ['needs_decision', 'spec_edit'], from)
+  }
+  assertNoRoute(routeOf({ msg: 'needs_locus', from: 'reviewer' }), 'needs_locus from reviewer')
+})
+
+test('tests_declined is not a message', () => {
+  assert.ok(!ROUTES.some((r) => r.msg === 'tests_declined'), 'no row routes tests_declined')
+  for (const from of SENDERS) assertNoRoute(routeOf({ msg: 'tests_declined', from }), `tests_declined from ${from}`)
+  assert.throws(() => renderMessage({ msg: 'tests_declined', payload: { why: 'x' } }))
+})
+
 // --- rendering -------------------------------------------------------------------------------
 
 test('findings name what was found', () => {
@@ -195,6 +221,30 @@ test('tests ready names the tests', () => {
   const files = ['test/alpha-zebra.test.mjs', 'test/beta-quokka.test.mjs']
   const text = renderMessage({ msg: 'tests_ready', payload: { files } })
   for (const f of files) assert.ok(text.includes(f), `names ${f}`)
+})
+
+test('failures carry their source and each failed check, claim and evidence', () => {
+  const failures = [
+    { check: 'node --test test/wombat.test.mjs', claim: 'the empty wombat list throws', evidence: 'TypeError at lib/wombat.mjs:12' },
+    { check: 'tsc --noEmit', claim: 'quokka.ts no longer typechecks', evidence: '' },
+  ]
+  for (const source of ['verification', 'integration']) {
+    const text = renderMessage({ msg: 'failures', payload: { source, failures } })
+    assert.ok(text.includes(source), `names its source ${source}`)
+    for (const f of failures) {
+      assert.ok(text.includes(f.check), `names ${f.check}`)
+      assert.ok(text.includes(f.claim), `carries ${f.claim}`)
+    }
+    assert.ok(text.includes(failures[0].evidence), 'carries the evidence')
+  }
+})
+
+test('a needs_locus names the node, each path and why', () => {
+  const payload = { node: 'api/wombat-route', paths: ['lib/zebra.mjs', 'test/quokka.test.mjs'], why: 'the route registers itself in the zebra table' }
+  const text = renderMessage({ msg: 'needs_locus', payload })
+  assert.ok(text.includes(payload.node), 'names the node')
+  for (const p of payload.paths) assert.ok(text.includes(p), `names ${p}`)
+  assert.ok(text.includes(payload.why), 'carries why')
 })
 
 test('a decline carries its why', () => {

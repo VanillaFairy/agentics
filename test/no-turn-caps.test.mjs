@@ -54,7 +54,10 @@ test('a loop that ends on a state is not a cap, however it counts', () => {
 })
 
 test('the shipped programs and lib/run.mjs are judged and carry no cap', () => {
-  const paths = [...readdirSync(join(ROOT, 'lib', 'programs')).map((name) => 'lib/programs/' + name), 'lib/run.mjs']
+  const paths = [
+    ...readdirSync(join(ROOT, 'lib', 'programs'), { recursive: true }).map((name) => 'lib/programs/' + name.replaceAll('\\', '/')).filter((p) => p.endsWith('.mjs')),
+    'lib/run.mjs',
+  ]
   for (const path of paths) {
     assert.ok(applies.test(path), path + ' is not judged')
     assert.deepEqual(check(readFileSync(join(ROOT, path), 'utf8'), path), [], path)

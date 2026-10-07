@@ -18,7 +18,7 @@ export const id = 'no-turn-caps'
 // and a turn cap written into an agent's own definition is
 // the most damaging place one can appear — every dispatch of that agent inherits it. So are the
 // programs and lib/run.mjs, which start every dispatch (docs/DESIGN.md#self-checks).
-export const applies = /(\.workflow\.js|SKILL\.md|agents\/[^/]+\.md|^lib\/programs\/[^/]+\.mjs|^lib\/run\.mjs)$/
+export const applies = /(\.workflow\.js|SKILL\.md|agents\/[^/]+\.md|^lib\/programs\/(execute\/)?[^/]+\.mjs|^lib\/run\.mjs)$/
 
 /** Option-shaped caps, `rounds` among them — see the header. */
 const CAP_IDENTIFIER = /\bmax_?(turns|tool_?calls|rounds)\b/gi

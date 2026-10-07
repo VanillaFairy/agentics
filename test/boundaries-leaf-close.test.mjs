@@ -446,7 +446,7 @@ const gotcha = (trigger, extra = {}) => ({ kind: 'pitfall', roles: ['implementer
 const command = (name, value) => ({ kind: 'command', roles: ['implementer', 'investigator'], paths: [], trigger: 'running ' + name, action: 'use it', evidence: { command: name, output: 'ok' }, command: { name, value } })
 const absent = (name) => ({ ...command(name, ''), command: { name, value: '', absent: true } })
 const ESTABLISHED = () => [absent('build'), absent('typecheck'), command('suite', COMMANDS.suite), command('test_one', COMMANDS.test_one)]
-const establish = (w) => { for (const g of ESTABLISHED()) assert.equal(writeGotcha(w.r, E, g, { source: { role: 'investigator' } }).ok, true) }
+const establish = (w, skip = []) => { for (const g of ESTABLISHED().filter((x) => !skip.includes('command-' + x.command.name))) assert.equal(writeGotcha(w.r, E, g, { source: { role: 'investigator' } }).ok, true) }
 const gotchaOf = (w, id) => listGotchas(w.r, E).find((g) => g.id === id)
 
 // ================================================================== before measuring
@@ -968,7 +968,8 @@ describe('leaf-close and the gotchas', { concurrency: 4 }, () => {
     const w = world(t, [root(), lf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })], { commands: null })
     const o = open(w, 'a')
     commit(o.worktree, A_FILES, 'Add a')
-    establish(w)
+    establish(w, ['command-build'])
+    assert.equal(gotchaOf(w, 'command-build'), undefined, 'no command-build on file before the round')
     const before = JSON.stringify(gotchaOf(w, 'command-build') || null)
     const pit = gotcha('a pitfall beside the commands')
     const ret = { ...DONE, gotchas: [command('suite', 'echo not-the-suite'), command('build', 'make'), pit] }
@@ -979,6 +980,7 @@ describe('leaf-close and the gotchas', { concurrency: 4 }, () => {
     assert.equal(gotchaOf(w, 'command-suite').source.role, 'investigator', 'the investigator keeps command-suite')
     assert.equal(commandsOf(w.r, E).suite, COMMANDS.suite)
     assert.equal(JSON.stringify(gotchaOf(w, 'command-build') || null), before, 'command-build is what it was before the round')
+    assert.equal(gotchaOf(w, 'command-build'), undefined, 'a producer establishes no command nobody wrote')
     assert.ok(record.notes.some((n) => n.includes('command-suite')))
     assert.ok(record.notes.some((n) => n.includes('command-build')))
   })

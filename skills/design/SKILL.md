@@ -425,10 +425,10 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" gate --repo . --effort <e> --folde
 ```
 
 `ratifiable` is true once the latest review of the spec as it stands ruled every unit in scope and
-every ambiguity it returned has a disposition, from this round or an earlier one. `open` names the
-ambiguities still unsettled, `remaining` what a partial review left: the units no prober ruled,
-each failed channel and each search that ended short. Probe the whole spec again for those, with
-no `--since`. An edit leaves no review of the new text, so the gate stays shut until one reads it.
+every ambiguity it returned is discarded, or incorporated with its section ruled clean by a later
+round, which incorporating one earns. `open` names the ambiguities still unsettled, `remaining`
+what a partial review left (unruled units, failed channels, short searches, unrecorded findings):
+probe the whole spec for those, no `--since`. An edit shuts the gate until a review reads it.
 
 <!-- agentics:verbatim design-severity-ladder -->
 - **ambiguity** — a term, contract, or interface the design leaves readable two ways. Blocks
@@ -497,12 +497,12 @@ first round's `snapshot`) carries a settled finding whose lines no edit touched:
 and is not asked about again.
 
 Review leaves no document of its own: what the findings changed is in the spec, and the rest is
-gone. **A second round is earned** only by an ambiguity whose resolution reshaped the design (a new
-interface, a data shape, which part owns a decision); name the one that earned it, and pass
-`--since <the first round's snapshot>` so only the changed lines are attacked (an empty `snapshot`
-means that round recorded nothing: probe the whole spec again). If the probe cannot run, say so,
-offer a self-review as the weaker instrument it is, and let the user decide. Never substitute one
-silently.
+gone. **A second round is earned** by an incorporated ambiguity, or a resolution that reshaped the
+design (a new interface, a data shape, which part owns a decision); name the one that earned it,
+and pass `--since <the first round's snapshot>` so only the changed lines are attacked (an empty
+`snapshot` means that round recorded nothing: probe the whole spec again). If the probe cannot
+run, say so, offer a self-review as the weaker instrument it is, and let the user decide. Never
+substitute one silently.
 
 **The HARD GATE.** Then the user reads the folder's `DESIGN.md`, the file itself, not your summary
 of it. Nothing is approved until they have read it and chosen `Approve` in the question below: not

@@ -127,6 +127,44 @@ test('the other series checks still run', () => {
   assert.deepEqual(bySha, { 'wip-subject': SHA_A, 'empty-commit': SHA_B, 'and-subject': SHA_C })
 })
 
+test('a file only fenced commits touched is not judged on the net diff', () => {
+  const TEST_FILE = 'test/x.test.mjs'
+  // SHA_A is a test-author round fenced to the test file; the leaf's locus does not list it and
+  // `admits` rejects it, so judging it on the net diff would breach a file the fence allows.
+  const commits = [
+    commit(SHA_A, 'test(x): pin the parser', [TEST_FILE]),
+    commit(SHA_B, 'feat(x): add the parser', ['lib/x.mjs']),
+  ]
+  const fences = { [SHA_A]: [TEST_FILE] }
+  const findings = series.analyzeSeries(commits, ['lib/x.mjs'], fences, {
+    netFiles: ['lib/x.mjs', TEST_FILE], admits: admitsOnly(['lib/x.mjs']),
+  })
+  assert.deepEqual(breaches(findings), [], 'the fenced commit alone touched the file: its fence judges it')
+  assert.deepEqual(naming(findings, TEST_FILE), [])
+})
+
+test('an unfenced commit touching a file a fenced commit touched is judged by what the locus admits', () => {
+  const TEST_FILE = 'test/x.test.mjs'
+  const commits = [
+    commit(SHA_A, 'test(x): pin the parser', [TEST_FILE]),
+    commit(SHA_B, 'fix(x): change the parser test', [TEST_FILE]),
+  ]
+  const fences = { [SHA_A]: [TEST_FILE] }
+  // netFiles lacks the file: the net diff of a file changed and changed back holds nothing.
+  const rejected = series.analyzeSeries(commits, ['lib/x.mjs'], fences, {
+    netFiles: [], admits: admitsOnly(['lib/x.mjs']),
+  })
+  const hits = breaches(rejected)
+  assert.equal(hits.length, 1, 'one breach: the unfenced commit; the fenced one is within its fence')
+  assert.equal(hits[0].sha, SHA_B)
+  assert.ok(hits[0].message.includes(TEST_FILE), 'the breach names the file')
+
+  const admitted = series.analyzeSeries(commits, ['lib/x.mjs'], fences, {
+    netFiles: [], admits: admitsOnly(['lib/x.mjs', TEST_FILE]),
+  })
+  assert.deepEqual(breaches(admitted), [], 'what admits accepts is no breach, fenced file or not')
+})
+
 // =========================================================================================
 // removedTestCases
 // =========================================================================================
@@ -220,6 +258,18 @@ test('a moved test case is not a removal', () => {
     '})',
   )
   assert.deepEqual(removedTestCases(APPROVED, head), [])
+})
+
+test('removing one of two identical declarations is a removal', () => {
+  const declaration = "test('parses one record', () => {"
+  const copy = lines('', '  ' + declaration, '    assert.equal(parse(one).length, 1)', '  })')
+  const twice = "import { test } from 'node:test'\n" + copy + copy
+  const once = "import { test } from 'node:test'\n" + copy
+  const never = "import { test } from 'node:test'\n"
+  assert.deepEqual(removedTestCases(twice, once), [declaration], 'the head keeps one copy: one is gone')
+  assert.deepEqual(removedTestCases(twice, never), [declaration, declaration], 'the head keeps none: both are gone')
+  assert.deepEqual(removedTestCases(twice, twice), [])
+  assert.deepEqual(removedTestCases(once, twice), [], 'an extra copy at the head removes nothing')
 })
 
 test('the test-case patterns are shared', () => {

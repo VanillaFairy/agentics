@@ -51,18 +51,20 @@ test('every agent is dispatched by a workflow or a skill', () => {
 })
 
 /**
- * Every record kind is written by the shipped source (`kind: '<k>'` in a writer) and read by it
- * (the quoted kind anywhere else in lib/ or a workflow, the declaration list aside).
+ * Every record kind is written by the shipped source (`kind: '<k>'` in a writer, or `.append('<k>'`
+ * through a log port) and read by it (the quoted kind anywhere else in lib/ or a workflow, the
+ * declaration list aside).
  */
 test('every record kind is written somewhere and read somewhere', () => {
   const problems = []
   const check = (ok, why) => { if (!ok) problems.push(why) }
   const STATE = ['dispatch', 'usage', 'batch-started', 'batch', 'checkpoint', 'closed']
   const JOURNAL = ['verify-observed', 'merge-observed', 'series-done']
+  const RUN = ['run', 'returned', 'host_stop', 'thread_renewed', 'step', 'ended', 'fault']
   const sources = [...lib, ...workflows].filter((f) => !f.endsWith(join('lib', 'ledger.mjs')))
   const texts = sources.map((f) => [rel(f), read(f)])
-  for (const kind of [...EVENT_KINDS, ...STATE, ...JOURNAL]) {
-    const write = new RegExp("kind: '" + kind + "'")
+  for (const kind of [...EVENT_KINDS, ...STATE, ...JOURNAL, ...RUN]) {
+    const write = new RegExp("kind: '" + kind + "'|\\.append\\('" + kind + "'")
     const quoted = new RegExp("'" + kind + "'", 'g')
     const writers = texts.filter(([, t]) => write.test(t)).map(([f]) => f)
     const readers = texts.filter(([, t]) => (t.match(quoted) || []).length > (t.match(new RegExp(write.source, 'g')) || []).length).map(([f]) => f)

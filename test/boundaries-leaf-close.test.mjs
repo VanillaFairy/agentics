@@ -1255,7 +1255,7 @@ describe('leaf-close and the decision', { concurrency: 4 }, () => {
     assert.equal(out.route.request.status, 'verify_finding')
     assert.equal(out.route.request.node, 'c/v')
     assert.equal(recs(w, 'parked', 'c').length, 0)
-    assert.equal(recs(w, 'escalated', 'c/v').filter((e) => e.reason === 'verify_finding').length, 1)
+    assert.equal(recs(w, 'escalated', 'c/v').filter((e) => e.reason === 'verify_finding').length, 0, 'the finding is the route: the leaf is not escalated')
   })
 })
 

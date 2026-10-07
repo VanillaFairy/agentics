@@ -618,6 +618,12 @@ sent where is the routing table (`ROUTES`):
   message is delivered once a `dispatched` line carries it; a carrier that never returned is
   resumed, never sent the message again. `cut_off` alone is never recorded: it is the brief of
   every resume of a started call, after a cut-off or a host stop.
+- **A decline ends the conversation unless it answers only the implementer.** A cycle test round
+  that declines a dispatch carrying only the implementer's `needs_tests` answers the implementer
+  with `declined`. One that declines a reviewer's tests findings, surviving mutations or code's
+  failures, alone or beside `needs_tests`, escalates `tests_declined` and sends the implementer
+  nothing: the next request would be the same one sent again. The implementer's `needs_tests`
+  stays open, answered only by `tests_ready` or `declined`.
 - **Judges are fresh and never argued with.** A judge's session is resumed only with what bears on
   its own return (its schema, its refused items). No producer's word reaches a judge as a message:
   a producer that holds a finding wrong says so in its `concerns`, and the next fresh reviewer reads
@@ -1113,7 +1119,10 @@ A leaf's executor or a planner returns one of these instead of finishing; a rule
 | `needs_locus` | the work needs a path its locus does not admit ([The locus](#the-locus)) | the planner proposes the widened locus when it wrote the folder, and lib admits it where no unmerged leaf holds the paths; a folder the user wrote parks `needs_respec` with the paths |
 
 A verify task's finding replans its folder: the planner rewrites the folder's spec when the
-planner wrote it, and the folder parks `needs_respec` for the user when the user did. Every spec
+planner wrote it, and the folder parks `needs_respec` for the user when the user did. Under a
+planner's folder the finding is the route: leaf-close records no escalation of the leaf, so none
+outlives the planner's replan, and the leaf is measured again against the folder as replanned.
+Under a folder the user wrote the leaf is escalated `verify_finding` beside the park. Every spec
 the planner writes passes the [autonomous review](#autonomous-review) before compile builds from
 it.
 
@@ -1235,7 +1244,12 @@ Unsure between `tdd` and `tdd-pair`: `tdd` when the leaf is small, `tdd-pair` wh
   its tests let through stays until a test catches it: a gap-closing test is shown to fail on the
   very break that found the gap. A declaration that could not be applied is not held: it is a
   defect in the declaration, not evidence about the tests. Other rigors apply their round's
-  declarations alone, because their implementation moves and an old `find` with it.
+  declarations alone, because their implementation moves and an old `find` with it. The mutations
+  held, and the audit's gap below, are read from the leaf's `verify-observed` lines of every
+  execution, as resume reads them (`journalsOf`). A measurement taken at the head before a
+  revert (the parent of an `agentics: revert outside locus` commit) is never one of them: it
+  judged a locus the breach had widened, and a mutation applied only to a file the revert took
+  out can never be applied again.
 - **Every new test is shown to catch something.** A `tests-only` leaf's test file that adds a case
   is named in the `expect_failing` of a mutation that bites, or the leaf fails.
 - **A cycle's test gap is closed inside the cycle.** A gap in the cycle's tests found after the red
@@ -1774,7 +1788,7 @@ attached).
 | **preflight** | refuse an execution overlapping an open one; adopt or write the envelope (base, dial, pace, and the commands the session wrote to `commands_file`); check whether the base moved under its leaves and brief the ruler on those; traceability; free this execution's slots, its dead worktrees and merged leaves' worktrees (clean ones only — a dirty one is reported, never forced); find the dispatches a dead run left open, to resume in their sessions. A checkpoint's lists (the overlapping executions, the gaps) go on its state line, for the session to read with `lib/status.mjs checkpoint` |
 | **schedule** | compute what to launch from the records (`lib/schedule.mjs`, see [Scheduling](#scheduling)); park a folder the user writes that has nothing planned (`needs_design`); approve a leaf the resume ladder finds measured green, with no review loop of its own and no approval standing |
 | **leaf-open** | acquire a slot and the locus locks; ensure the parent's integration branch (lazily, refreshed from its own parent) and cut or attach the leaf's branch and worktree, brought up to that parent's head; compute the round's role from the records, its thread (resumed or fresh, [Conversations](#conversations)) and its permissions from the locus ([The locus](#the-locus)); assemble its brief; a refusal escalates `open_refused` |
-| **leaf-close** | read the producer's stored return: a park, an escalation, a replan, a `needs_locus` or a message for another session is recorded and routed without measuring, and a fix round that moved nothing escalates `fix_without_commits`; otherwise commit a shell-less author's locus files, revert what lies outside the locus and record it ([The locus](#the-locus)); journal the series as `series-done`, from git, when the producer declared it done; build, typecheck, suite, discriminator, declared mutations and named checks by rigor; journal the observation; write and delete the gotchas it returned; compute the close decision and record it — the approval, the escalation, a verify leaf's finding (and the `needs_respec` park of a folder the user writes), `verify_not_converging` when a fix repeats the close before it at a moved head, `command_unknown` once an investigator ran |
+| **leaf-close** | first put right what a verify cut off in the worktree left ([Verification](#verification)); read the producer's stored return: a park, an escalation, a replan, a `needs_locus` or a message for another session is recorded and routed without measuring, and a fix round that moved nothing escalates `fix_without_commits`; otherwise commit a shell-less author's locus files (a close cut off after that commit finds it in git and journals it), revert what lies outside the locus and record it ([The locus](#the-locus)); journal the series as `series-done`, from git, when the producer declared it done; build, typecheck, suite, discriminator, declared mutations and named checks by rigor; journal the observation; write and delete the gotchas it returned; compute the close decision and record it — the approval, the escalation, a verify leaf's finding (the `needs_respec` park of a folder the user writes beside the leaf's escalation; under a planner's folder the finding is the route and the leaf is not escalated, [Replanning](#replanning)), `verify_not_converging` when a fix repeats the close before it at a moved head, `command_unknown` once an investigator ran. What it reads of the rounds before spans executions, as a leaf's rounds do ([Resume and checkpoints](#resume-and-checkpoints)) |
 | **leaf-review** | read the reviewer's stored rulings; compute the review loop's exit (`reviewExit`) against what the round before left open; record the approval or the escalation, or the open findings as the messages the next round receives |
 | **merge-batch** | under the branch lock, record `batch-started` with the head it starts from; merge every approved child into one integration branch in dependency order; verify the merged head with the fast suite; bisect a red one; append `merged` and `merge-observed`; release locus locks; remove each merged leaf's clean worktree, keeping its branch; append a `batch` state line; record what stops — a conflict, a combination failure, a composite or a cycle failing alone, a batch that moved nothing, a batch that could not run; write the drift record and brief the ruler. A batch that started and never recorded its outcome is reset to where it started and done again, so an unverified merge is never recorded as landed |
 | **suite-gate** | on a composite whose children have all merged, under its branch lock: run the full suite on its integration head, against the head it was cut from; record the measurement and a `gate` state line; escalate `fails_full_suite` or `suite_gate_failed`. It runs nothing where the repository does not split its tests, or where the full suite already passed at that head in this execution ([The suite gate](#the-suite-gate)). A gate that passes says whether the integration review is earned, and records one that is not as `claims` with `review: not_earned` |
@@ -1979,6 +1993,11 @@ a stray file out clears it. leaf-close takes every path outside the locus out it
 committed, in a commit of its own (`agentics: revert outside locus`), records `breach_reverted
 {paths}`, and measures the leaf without them. It measures the head before the revert as well, and
 raises `needs_locus` for the paths only when that head passed and the reverted one fails.
+A close run again reads back its own commits only, those above the head its round opened on:
+a head that is an earlier round's `agentics: revert outside locus` or `agentics: outside locus`
+commit is nobody's to read back.
+A revert is recorded once per node and sha, whichever execution made it.
+A rename a producer left staged is two paths, and both are put back.
 
 Two leaves admitted the same new name meet as a merge conflict, which stops the batch like any
 other ([Merging](#merging)).
@@ -1997,7 +2016,10 @@ other ([Merging](#merging)).
   the round's close record with `status: needs_tests`, and the request goes to the cycle's test
   session as a `needs_tests` message with the test findings, the failures and the implementer's
   account of what is unpinned ([Conversations](#conversations)); once the tests it adds are measured, the implementer's
-  session is resumed with `tests_ready`. From any other leaf it escalates, as `blocked` does: a plain implementer leaf
+  session is resumed with `tests_ready`. The request stays open until a test round of the green is
+  measured and goes to review, to approval or back to the implementer: that round records
+  `tests_ready` with the test files the cycle's test session committed since the request, whatever
+  the round itself carried (the failures of an earlier test round, say). From any other leaf it escalates, as `blocked` does: a plain implementer leaf
   owns its tests, and a test-author or an auditor never returns it.
 - **Verification failures** send the producer's session a fix round carrying the failures. A fix round
   that returns no commits escalates (`fix_without_commits`); two consecutive measurements failing
@@ -2205,6 +2227,17 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
   comes back by that exact commit. Nothing another tree stashes is popped here, and no pop
   elsewhere takes this work. A drop goes by position, and one that took another entry puts it
   back.
+- **A cut-off verify's leftover is told from a round's work by what verify noted, never by what
+  the file holds.** A verify killed inside a rewrite leaves one of three things: a file rewritten
+  in place (an approved test's text written over the worktree's, a source with a declared mutation
+  applied), HEAD detached at the base, or the worktree's uncommitted work kept under
+  `refs/worktree/agentics-verify/`. Before it rewrites a file that is as the head has it, verify
+  writes the path into `agentics-verify-rewriting` in the worktree's own git directory (a JSON
+  array) and takes it off once the file is back. leaf-close runs `undoLeftover` before it commits,
+  reverts or measures: it checks the leaf's branch out again where HEAD is detached, puts each
+  noted file back to the head's text (removed where the head has none), and applies the kept work
+  again and deletes its ref. What stands after that is the round's, and a close run again commits
+  and measures it as the first run did.
 - A test that could not be launched at base is `test_unrunnable`; a suite failure that cannot be
   placed against a test file raises `suite_failures_unnamed`.
 - **A changed test file either adds a test case or keeps existing ones working.** Each file of the
@@ -2286,7 +2319,10 @@ clean execution (no records for its leaves and no leaf branches) opens for the c
 listing. Committed work is salvaged by right and reported as salvaged. A dispatch recorded
 `dispatched` and never `returned` is resumed in its own session, which holds its turns so far and
 finds its uncommitted edits where it left them; uncommitted work no resumable session owns is
-reported and adopted by nobody. Escalations carry forward until `retry` clears them. A resume
+reported and adopted by nobody. Escalations carry forward until `retry` clears them. What a
+close reads of the rounds before it spans executions: the close record of the round before (found
+by the `execution` its dispatch names), the journals for the mutations held and the audit's gap,
+and the state for the breaches reverted. A resume
 adopts its envelope (base, dial, pace, commands) from `execution.json`.
 
 A checkpoint dispatches nothing new and says how to proceed. What it found — the overlapping

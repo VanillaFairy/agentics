@@ -292,6 +292,142 @@ describe('G1: a close run again after a kill between a shell-less author\'s comm
   })
 })
 
+// ================================================================== G2
+
+describe('G2: what a killed verify leaves in a worktree', { concurrency: 2 }, () => {
+  /** The directory verify keeps its note in: the worktree's own git directory. */
+  const noteIn = (worktree) => posix(join(plainGit(worktree, 'rev-parse', '--absolute-git-dir').stdout.trim(), NOTE))
+
+  /** A green's strengthening test round, closed once; the next close of it finds what the test leaves. */
+  const strengthened = scenario(async (t) => {
+    const c = cycle(t)
+    const ret = { status: 'done', text: 'a case more', commit: 'Pin r at 3', mutations: [R_BITES] }
+    const spec = { node: 'g', role: 'test-author', round: 2, thread: 'producer:r', ret, base_sha: c.green.base_sha, head_before: c.greenHead }
+    const dispatch = stored(c.w, spec)
+    write(c.green.worktree, { 'test/r.test.mjs': R_TEST_TWO })
+    await close(c.w, { ...spec, dispatch })
+    return { c, spec, dispatch, authored: recs(c.w, 'authored', 'g')[0], size: git(c.green.worktree, 'rev-list', '--count', 'HEAD') }
+  })
+  after(() => strengthened.end())
+
+  test('G2.1 the red approved text left uncommitted over a file the authored commit changed makes no second authored commit', SLOW, async () => {
+    const { c, spec, dispatch, authored, size } = await strengthened.get()
+    assert.ok(authored, 'the first close committed the round')
+    write(c.green.worktree, { 'test/r.test.mjs': R_TEST })
+    writeFileSync(noteIn(c.green.worktree), JSON.stringify(['test/r.test.mjs']))
+    await close(c.w, { ...spec, dispatch })
+    assert.equal(recs(c.w, 'authored', 'g').length, 1)
+    assert.equal(git(c.green.worktree, 'rev-list', '--count', 'HEAD'), size)
+    assert.equal(text(c.green.worktree, 'test/r.test.mjs'), lf(R_TEST_TWO))
+    assert.equal(shown(c.green.worktree, 'HEAD:test/r.test.mjs'), lf(R_TEST_TWO))
+    assert.equal(git(c.green.worktree, 'status', '--porcelain'), '')
+  })
+
+  /** A green's test round closed once, then a declared mutation left standing in the cycle source. */
+  const mutated = scenario(async (t) => {
+    const c = cycle(t, TABLE_GREEN)
+    write(c.green.worktree, { 'src/table.test.mjs': TABLE_TEST })
+    const ret = { status: 'done', text: 'pinned', commit: 'Pin the capacity', mutations: [CAPACITY_BITE] }
+    const spec = { node: 'g', role: 'test-author', round: 2, thread: 'producer:r', ret, base_sha: c.green.base_sha, head_before: c.greenHead }
+    const dispatch = stored(c.w, spec)
+    await close(c.w, { ...spec, dispatch })
+    const tip = head(c.green.worktree)
+    write(c.green.worktree, { 'src/table.mjs': TABLE.replace(CAPACITY_BITE.find, CAPACITY_BITE.replace) })
+    writeFileSync(noteIn(c.green.worktree), JSON.stringify(['src/table.mjs']))
+    await close(c.w, { ...spec, dispatch })
+    return { c, tip }
+  })
+  after(() => mutated.end())
+
+  test('G2.2 a mutation left standing in a cycle source makes no outside-locus commit, no revert commit and no breach_reverted', SLOW, async () => {
+    const { c, tip } = await mutated.get()
+    assert.equal(head(c.green.worktree), tip, 'nothing was committed after the leftover')
+    assert.ok(!subjectsOver(c.green.worktree, c.greenHead).some((s) => s.startsWith('agentics:')), subjectsOver(c.green.worktree, c.greenHead).join(' | '))
+    assert.deepEqual(recs(c.w, 'breach_reverted', 'g'), [])
+  })
+
+  test('G2.3 the source in the worktree equals the head after that close', SLOW, async () => {
+    const { c } = await mutated.get()
+    assert.equal(text(c.green.worktree, 'src/table.mjs'), shown(c.green.worktree, 'HEAD:src/table.mjs'))
+  })
+
+  /** A tests-only leaf, the round's work kept under a ref by a verify cut off at the base. */
+  const detached = scenario(async (t) => {
+    const { w, o } = testsOnly(t, ['test/more.test.mjs', 'test/second.test.mjs'])
+    const x1 = commit(o.worktree, { 'test/more.test.mjs': MORE_TEST }, 'Test add with negatives')
+    const SECOND = MORE_TEST.replace('adds negatives', 'adds more negatives')
+    write(o.worktree, { 'test/second.test.mjs': SECOND })
+    git(o.worktree, 'stash', 'push', '--include-untracked', '-m', 'agentics-verify 1-a')
+    const kept = git(o.worktree, 'rev-parse', 'stash@{0}')
+    git(o.worktree, 'update-ref', KEPT + '1-a', kept)
+    git(o.worktree, 'stash', 'drop')
+    git(o.worktree, 'checkout', '-q', '--detach', o.base_sha)
+    const ret = { status: 'done', text: 'a second file', commit: 'Test the second file', mutations: [ADD_BITE] }
+    const { out } = await run(w, { node: 't', role: 'test-author', round: 2, ret, base_sha: o.base_sha, head_before: x1 })
+    return { w, o, x1, SECOND, out }
+  })
+  after(() => detached.end())
+
+  test('G2.4 a worktree verify left detached at the base has the leaf branch checked out again before the close commits', SLOW, async () => {
+    const { w, o, x1 } = await detached.get()
+    assert.equal(git(o.worktree, 'symbolic-ref', 'HEAD'), 'refs/heads/' + o.branch)
+    assert.equal(git(o.worktree, 'rev-parse', o.branch), head(o.worktree), 'the commit the close made is on the branch')
+    assert.ok(isAncestor(o.worktree, x1, 'HEAD'), 'the branch head the close started from is kept')
+    const authored = recs(w, 'authored', 't')
+    assert.equal(authored.length, 1)
+    assert.ok(isAncestor(o.worktree, authored[0].sha, o.branch), 'the authored commit is reachable from the branch')
+  })
+
+  test('G2.5 the kept work is back in the worktree and the ref is gone', SLOW, async () => {
+    const { o, SECOND } = await detached.get()
+    assert.equal(text(o.worktree, 'test/second.test.mjs'), lf(SECOND))
+    assert.equal(git(o.worktree, 'for-each-ref', KEPT), '')
+  })
+
+  /** A verify cycle whose test command appends the note it finds, or `none`, to a log at each call. */
+  function noted(t) {
+    const c = verifyCycle(t)
+    const seen = join(tmpdir(), 'agentics-gaps-' + process.pid + '-' + Math.random().toString(16).slice(2) + '.log')
+    t.after(() => rmSync(seen, { force: true }))
+    const note = noteIn(c.worktree)
+    const cmd = `node -e "const fs=require('fs');fs.appendFileSync('${posix(seen)}',(fs.existsSync('${note}')?fs.readFileSync('${note}','utf8'):'none')+'\\n')" {file}`
+    return { c, note, cmd, read: () => (existsSync(seen) ? readFileSync(seen, 'utf8').split('\n').filter(Boolean) : []) }
+  }
+
+  test('G2.0 verify notes an approved test file before writing the approved text over it, and clears the note once it is back', SLOW, (t) => {
+    const n = noted(t)
+    const FILE = 'test/widget.test.mjs'
+    write(n.c.worktree, { [FILE]: WIDGET_TEST.replace("'hi'", "'bye'"), 'src/widget.mjs': "export const label = () => 'bye'\n" })
+    plainGit(n.c.worktree, 'add', '-A')
+    plainGit(n.c.worktree, 'commit', '-qm', 'test(w3): round')
+    const headSha = plainGit(n.c.worktree, 'rev-parse', 'HEAD').stdout.trim()
+    const asked = verifyOptions({
+      worktree: n.c.worktree, base: n.c.head, head: headSha,
+      extra: ['--rigor', 'tdd-pair', '--role', 'green', '--producer', 'test-author', '--test-file', FILE, '--test-one', n.cmd],
+    })
+    verify({ ...asked, approved: [{ file: FILE, sha: n.c.red }] })
+    assert.ok(n.read().includes(JSON.stringify([FILE])), 'the note named the approved file while its approved text was written over it: ' + n.read().join(' | '))
+    assert.equal(existsSync(n.note), false, 'the note is gone once the file is back')
+  })
+
+  test('G2.0 verify notes a file before it applies a mutation to it, and clears the note once it is back', SLOW, (t) => {
+    const n = noted(t)
+    verify(verifyOptions({
+      worktree: n.c.worktree, base: n.c.red, head: n.c.head,
+      extra: ['--rigor', 'tdd', '--test-one', n.cmd, ...mutationFlags([{ file: 'src/widget.mjs', find: "'hi'", replace: "'bye'", expect_failing: ['test/widget.test.mjs'] }])],
+    }))
+    assert.ok(n.read().includes(JSON.stringify(['src/widget.mjs'])), 'the note named the mutated file while the mutation stood: ' + n.read().join(' | '))
+    assert.equal(existsSync(n.note), false, 'the note is gone once the file is back')
+  })
+
+  test('G2.6 DESIGN.md says how a close tells a verify leftover from the work of a round', () => {
+    const design = readFileSync(new URL('../docs/DESIGN.md', import.meta.url), 'utf8')
+    const section = design.slice(design.indexOf('\n## Verification'), design.indexOf('\n### What a verdict is computed from'))
+    assert.ok(section.includes(NOTE), 'the section names the note verify keeps')
+    assert.ok(section.includes(KEPT), 'the section names the refs the kept work stands under')
+  })
+})
+
 // ================================================================== G3
 
 describe('G3: [D1] a decline of a round that carried needs_tests and findings', { concurrency: 2 }, () => {

@@ -448,6 +448,50 @@ describe('G8: [D4] held mutations and the audit gap across executions', { concur
   })
 })
 
+// ================================================================== G9
+
+describe('G9: only this round\'s agentics: commits are read back', { concurrency: 2 }, () => {
+  const strays = scenario(async (t) => {
+    const { w, o } = testsOnly(t)
+    write(o.worktree, { 'test/more.test.mjs': MORE_TEST, 'stray.txt': 'one\n' })
+    await run(w, { node: 't', role: 'test-author', round: 1, ret: { status: 'done', text: 'one', commit: 'Test add', mutations: [ADD_BITE] }, base_sha: o.base_sha })
+    const afterOne = head(o.worktree)
+    assert.equal(subjectsOver(o.worktree, o.base_sha)[0], REVERT)
+    write(o.worktree, { 'stray2.txt': 'two\n' })
+    await run(w, { node: 't', role: 'test-author', round: 2, ret: { status: 'done', text: 'two', mutations: [ADD_BITE] }, base_sha: o.base_sha, head_before: afterOne })
+    return { w, o }
+  })
+  after(() => strays.end())
+
+  test('G9.1 a later round that starts on the revert commit of an earlier one has its own stray file taken out', SLOW, async () => {
+    const { o } = await strays.get()
+    assert.equal(existsSync(join(o.worktree, 'stray2.txt')), false)
+    assert.equal(holds(o.worktree, 'HEAD:stray2.txt'), false)
+  })
+
+  test('G9.2 its breach paths name that file and none of the earlier round', SLOW, async () => {
+    const { w } = await strays.get()
+    assert.deepEqual(rec(w, 't', 'test-author', 2).breach.paths, ['stray2.txt'])
+  })
+
+  test('G9.3 an audit cut from a green head ending in a revert records no breach when its auditor writes nothing', SLOW, async (t) => {
+    const c = cycle(t, { triad: true, greenSubject: REVERT })
+    await run(c.w, { node: 'au', role: 'auditor', round: 1, thread: 'producer:au', ret: auditor([R_BITES]), base_sha: c.audit.base_sha, head_before: c.audit.base_sha })
+    assert.deepEqual(recs(c.w, 'breach_reverted', 'au'), [])
+    assert.equal(rec(c.w, 'au', 'auditor', 1).breach, null)
+  })
+
+  test('G9.4 a round that starts on an outside-locus commit of an earlier round takes out its own stray file and leaves the earlier files out of its breach', SLOW, async (t) => {
+    const c = cycle(t, TABLE_GREEN)
+    const earlier = commit(c.green.worktree, { 'src/table.mjs': 'export const table = () => ({ capacity: 9 })\n' }, OUTSIDE)
+    write(c.green.worktree, { 'stray.txt': 'oops\n' })
+    const ret = { status: 'done', text: 'nothing to add', mutations: [R_BITES] }
+    await run(c.w, { node: 'g', role: 'test-author', round: 3, thread: 'producer:r', ret, base_sha: c.green.base_sha, head_before: earlier })
+    assert.equal(existsSync(join(c.green.worktree, 'stray.txt')), false)
+    assert.deepEqual(rec(c.w, 'g', 'test-author', 3).breach.paths, ['stray.txt'])
+  })
+})
+
 // ================================================================== G10
 
 describe('G10: a staged rename', () => {

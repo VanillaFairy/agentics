@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { append, seqMax } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import { checkpointOf, costOf, efforts, questionsSince, renderTodos, snapshotOf, todosOf } from '../lib/status.mjs'
-import { effortDir, effortStateDir, executionDir } from '../lib/store.mjs'
+import { effortDir, effortStateDir, executionDir, returnPath, writeJson } from '../lib/store.mjs'
 import { tokensOf, usdOf } from '../lib/usage.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/status.mjs', import.meta.url))
@@ -346,15 +346,34 @@ test('watch refuses a --since that is not a non-negative integer', () => {
   }
 })
 
-test('a question its author wrote to a file reaches the watch and the snapshot from that file', () => {
+test('a stop\'s question reaches the snapshot whole from its dispatch\'s stored return', () => {
   const repo = effortWith(TREE)
-  const said = join(mkdtempSync(join(tmpdir(), 'agentics-said-')), 'q.md')
-  writeFileSync(said, 'Keep the cache?\nIt costs 2 GB.\n')
-  const start = seqMax(repo, E)
-  append(repo, E, 'events', { kind: 'parked', node: 'a', execution: X1, return: 'needs_decision', question: '', said })
-  assert.deepEqual(questionsSince(repo, E, X1, start).lines.map((l) => l.line), ['parked a (needs_decision): Keep the cache? (in full: ' + said + ')'])
+  const d = 'a.implementer.producer-a.r1'
+  const text = 'Keep the cache?\nIt costs 2 GB.'
+  writeJson(returnPath(executionDir(repo, E, X1), d), { status: 'blocked', text })
+  append(repo, E, 'events', { kind: 'parked', node: 'a', execution: X1, return: 'needs_decision', question: '', said: d })
   const node = snapshotOf(repo, E).nodes.find((n) => n.id === 'a')
-  assert.equal(node.event.question, 'Keep the cache?\nIt costs 2 GB.', 'the viewer gets the whole question')
+  assert.equal(node.event.question, text, 'the viewer gets the whole question')
+  assert.equal(node.event.said, d, 'said names the dispatch whose return holds it')
+
+  const e = 'c.implementer.producer-c.r1'
+  writeJson(returnPath(executionDir(repo, E, X1), e), { status: 'blocked', text: 'The merge needs a human.' })
+  append(repo, E, 'events', { kind: 'escalated', node: 'c', execution: X1, reason: 'no_commit', detail: 'cut off', said: e })
+  const stop = snapshotOf(repo, E).nodes.find((n) => n.id === 'c').event
+  assert.deepEqual([stop.detail, stop.said], ['cut off\nThe merge needs a human.', e])
+})
+
+test('a folder\'s integration review entry leads with what its reviewer\'s stored return said', () => {
+  const repo = effortWith([composite('.'), leaf('x')])
+  ev(repo, 'merged', 'x', { into: 'agentics/eff', merged_sha: 'm', head_sha: 'h' })
+  const d = 'root.reviewer.integration-.-1.r1'
+  writeJson(returnPath(executionDir(repo, E, X1), d), { units: [], findings: [], fix_rulings: [], claims: [], notes: 'The criteria\nhold.\n\nDetails follow.' })
+  ev(repo, 'claims', '.', { head_sha: 'h', review: 'done', claims: [], said: d })
+  const entry = snapshotOf(repo, E).nodes.find((n) => n.id === '@review')
+  assert.deepEqual(entry.card.report, { dispatch: d, lead: 'The criteria hold.' })
+  assert.deepEqual(entry.files.reports, [], 'the stored return is no report file')
+  ev(repo, 'claims', '.', { head_sha: 'h2', review: 'done', claims: [], said: 'gone.reviewer.r1' })
+  assert.equal(snapshotOf(repo, E).nodes.find((n) => n.id === '@review').card.report, null, 'a return never stored leads with nothing')
 })
 
 test('the snapshot says who writes each node\'s spec', () => {

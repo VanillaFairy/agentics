@@ -175,6 +175,8 @@ test('an escalation decided again after a lost courier lands once, after a retry
   assert.equal(escalations()[0].said, '/said/x.md')
   B(r, 'preflight', { root: '.', commands: COMMANDS, retry: ['c/a'], confirmed_duplicate: true })
   assert.equal(readTree(r, 'e1').status.get('c/a').status, 'planned')
+  const retried = readLog(r, 'e1', 'events').entries.filter((e) => e.kind === 'replanned' && e.node === 'c/a' && e.reason === 'retry_escalated')
+  assert.deepEqual(retried.map((e) => e.execution), [STAMP], 'the preflight names its own execution on the retry it records')
   blocked()
   assert.equal(escalations().length, 2, 'the same decision after a retry lands again')
   assert.equal(readTree(r, 'e1').status.get('c/a').status, 'escalated')

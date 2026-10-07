@@ -451,6 +451,18 @@ describe('G3: [D1] a decline of a round that carried needs_tests and findings', 
     const { c } = await s.get()
     assert.deepEqual(msgs(c.w, 'declined', 'g'), [])
   })
+
+  test('G3.3 a decline of needs_tests that also carried brief_changed goes back to the implementer as declined', SLOW, async (t) => {
+    const c = cycle(t)
+    const asked = answered(c.w, { node: 'g', thread: 'producer:r', msg: 'needs_tests', payload: { text: 'pin it' }, round: 3, from: 'implementer' })
+    const moved = answered(c.w, { node: 'g', thread: 'producer:r', msg: 'brief_changed', payload: { changed: ['Acceptance'], brief: 'the red moved' }, round: 3 })
+    const ret = { status: 'declined', text: 'a test of that would pin an implementation detail' }
+    const { out } = await run(c.w, { node: 'g', role: 'test-author', round: 3, thread: 'producer:r', ret, carries: [asked, moved], base_sha: c.green.base_sha, head_before: c.greenHead })
+    assert.deepEqual(out.stops, [])
+    const sent = msgs(c.w, 'declined', 'g')
+    assert.equal(sent.length, 1)
+    assert.equal(sent[0].thread, 'producer:g')
+  })
 })
 
 // ================================================================== G4

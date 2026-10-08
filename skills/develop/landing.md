@@ -11,16 +11,19 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" land --repo . --effort <e> --actio
 
 It prints the report as JSON: `open_escalations`, `parked`, `human`,
 `drift: {base_moved, commits, overlap}`, `root_claims`, `landing` and `token`, the act the user's
-answer must choose. It reads; it writes nothing.
+answer must choose. It reads; it writes nothing. `ok: false` with `no_effort_branch` means nothing
+was ever built into an effort branch: there is nothing to land; say so and stop.
 
 ## 2. Present — gaps first
 
 1. **The landing view.** `landing` is markdown: the root spec's success criteria beside the root
    integration review's verdict on each claim, what did not hold first. Show it as printed. A
    verdict other than `met`, or a view with no verdicts at all, is named before anything else: a
-   `cant_tell` is not a pass, and no review is not a clean review.
-2. **Open escalations and parked nodes.** Landing refuses over an open escalation; resolve those
-   first (develop step 4b–c). A parked node is not landed work: name it.
+   `cant_tell` is not a pass, and no review is not a clean review. Under the verdicts it prints
+   what the review said of the evidence behind each; a view that says the review's evidence was
+   not written down has verdicts with nothing shown behind them: say so.
+2. **Open escalations and parked nodes.** Landing refuses over an open escalation or a parked
+   node; resolve those first (develop step 4b–c).
 3. **What is not in the effort branch.** When the user asked to land what exists, name every
    planned node that has not merged (`lib/status.mjs show --repo . --effort <e>`), so a partial
    landing never reads as the whole.
@@ -33,7 +36,7 @@ answer must choose. It reads; it writes nothing.
 
 One `AskUserQuestion`, the check's `token` in the question's own text, offering exactly the options
 `Land` and `Not yet` with nothing added to either label. Silence is not a go, and nothing lands
-while an escalation is open.
+while an escalation or a park is open.
 
 ## 4. Merge, on `Land`
 
@@ -42,12 +45,13 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" land --repo . --effort <e> --actio
 ```
 
 It first finds the user's answer to the token and refuses unless it chose `Land` on the effort
-branch as the check saw it: run the check again and ask with its new `token`. Then it runs
-`git merge --no-ff agentics/<effort>` in the user's checkout, records `landed`, and then
+head the check saw (`head_moved` when the branch has moved on since): run the check again and ask
+with its new `token`. Then it merges that head, the one the token names, never the branch as it
+stands by then, into the user's checkout with `git merge --no-ff`, records `landed`, and then
 sweeps the effort's merged branches and the clean worktrees on them (`removed`), with `git branch
--d` only. It refuses over an open escalation or a dirty tree: report the refusal as it came. A
-dirty tree is the user's to commit or stash, never yours. A conflict stops the merge: surface the
-paths, and resolve nothing without the user.
+-d` only. It refuses over an open escalation, a parked node or a dirty tree: report the refusal as
+it came. A dirty tree is the user's to commit or stash, never yours. A conflict stops the merge:
+surface the paths, and resolve nothing without the user.
 
 ## 5. Report what was kept
 

@@ -35,8 +35,9 @@ Root statuses, as derived:
 | `integrated` | every child merged and its review stands; at the root, ready to land |
 | `merged` / `landed` | in its parent's branch / the effort branch is in the user's branch |
 
-An execution reads `open` whether it is running, paused or was killed: the logs cannot tell those
-apart, so say that rather than guessing which.
+An open execution's Next line says whether its run is going (`is running as run <effort>.<stamp>:
+watch it`) or not (`is stopped: relaunch it`). A stopped one may have paused, run out of budget or
+been killed; develop's start resumes it either way, and for a running one it watches that run.
 
 ## Step 2 — Offer the Next line
 
@@ -79,6 +80,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" cost --repo . --effort <e>
 - `show` renders the compiled tree with each node's kind, rigor, derived status and title.
 - `todos` is one execution's derived todo list under a display header (`ONGOING`, `DONE`,
   `NEEDS_INPUT`): a rendering, never a state.
-- `cost` counts dispatches per model and role, sums measured tokens and dollars per model, and gives
-  the mean over merged tasks whose every dispatch was measured. Dispatches with no usage recorded are
-  counted as unreported: never quote them as zero, and never quote a projected figure as a measured one.
+- `cost` counts dispatches and sums measured tokens and dollars per model over every execution's
+  returns, and gives the mean over merged tasks whose every dispatch was measured. A dispatch whose
+  return carries no cost is counted as unmeasured: never quote it as zero, and never quote a
+  projected figure as a measured one.

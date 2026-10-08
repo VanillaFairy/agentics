@@ -113,6 +113,30 @@ test('a path with a space is named as it is', (t) => {
   assert.deepEqual(compareCheckout(before, snapshotCheckout(dir)).changed, ['my file.txt'])
 })
 
+test('a snapshot reads HEAD and its branch as git names them', (t) => {
+  const { dir, g } = repo(t)
+  const snap = snapshotCheckout(dir)
+  assert.equal(snap.head, g('rev-parse', 'HEAD').trim())
+  assert.equal(snap.branch, g('symbolic-ref', 'HEAD').trim())
+})
+
+test('a detached HEAD is its sha on no branch, and detaching moves HEAD', (t) => {
+  const { dir, g } = repo(t)
+  const before = snapshotCheckout(dir)
+  g('switch', '-q', '--detach')
+  const after = snapshotCheckout(dir)
+  assert.deepEqual([after.head, after.branch], [g('rev-parse', 'HEAD').trim(), ''])
+  assert.ok(compareCheckout(before, after).moved.some((m) => m.ref === 'HEAD'))
+})
+
+test('a repository with no commit has no HEAD sha but is on its branch', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentics-watch-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  execFileSync('git', ['-C', dir, 'init', '-q', '-b', 'main'])
+  const snap = snapshotCheckout(dir)
+  assert.deepEqual([snap.head, snap.branch], ['', 'refs/heads/main'])
+})
+
 test('checkoutWatch pairs a snapshot with its comparison', (t) => {
   const { dir } = repo(t)
   const watch = checkoutWatch(dir)

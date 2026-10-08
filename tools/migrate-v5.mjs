@@ -5,10 +5,11 @@
 //
 // Every part appends at a new seq, so each part takes only what keeps every derived status as it
 // was: a stop is stated again only while it is its node's open stop, a `claims` event only while
-// it stands, a `judged` line only while it judges its item's latest revision. A 4.x execution is
-// one whose state holds no `run` line. Each part recognises its own work, so a second run, or the
-// run after one cut short, appends nothing twice. It never deletes: what 5.0 does not read is
-// listed in `left`. The default is a dry run; `--yes` applies.
+// it stands, a `judged` line only while it judges its item's latest revision, a fixes file only
+// while no later round superseded it. A 4.x said file is stated again as a stored return, so
+// nothing reads one. A 4.x execution is one whose state holds no `run` line. Each part recognises
+// its own work, so a second run, or the run after one cut short, appends nothing twice. It never
+// deletes: what 5.0 does not read is listed in `left`. The default is a dry run; `--yes` applies.
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -17,7 +18,7 @@ import { pathToFileURL } from 'node:url'
 import { approvalState } from '../lib/approval.mjs'
 import { append, appendProject, readLog, readProjectLog } from '../lib/ledger.mjs'
 import {
-  ROOT_ID, STAMP, agenticsRoot, effortStateDir, executionDir, executionsRoot, nodeKey, pidAlive, posix, readJson,
+  ROOT_ID, STAMP, agenticsRoot, effortStateDir, executionDir, executionsRoot, holderGone, nodeKey, pidAlive, posix, readJson,
   returnPath, safeSlug, writeWhole,
 } from '../lib/store.mjs'
 import { claimsEventOf, cycleOf, readTree, standingReview } from '../lib/tree.mjs'
@@ -33,6 +34,7 @@ const LEFT = {
 }
 
 const list = (v) => (Array.isArray(v) ? v : [])
+const objectOf = (v) => (v !== null && typeof v === 'object' && !Array.isArray(v) ? v : {})
 const entriesOf = (dir, dirs) => {
   try {
     return readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory() === dirs).map((e) => e.name)
@@ -75,12 +77,14 @@ function findingsByThread(nodes, leaf, entries) {
   return out
 }
 
-/** Why the effort must wait: its lock held by a live process, or a 4.x job still running; '' when free. */
+/** Why the effort must wait: its lock held, as the lock itself judges a holder, or a 4.x job still running; '' when free. */
 function busyWhy(root, effort) {
   const lock = join(effortStateDir(root, effort), '.lock')
   for (const name of entriesOf(lock, false)) {
-    const holder = readJson(join(lock, name))
-    if (holder && Number.isInteger(holder.pid) && holder.pid > 0 && pidAlive(holder.pid)) return 'the effort lock is held by pid ' + holder.pid
+    const path = join(lock, name)
+    if (holderGone(path, new Map())) continue
+    const { pid } = objectOf(readJson(path))
+    return 'the effort lock is held' + (Number.isInteger(pid) ? ' by pid ' + pid : '')
   }
   for (const stamp of entriesOf(executionsRoot(root, effort), true)) {
     const jobs = join(executionDir(root, effort, stamp), 'jobs')
@@ -112,6 +116,41 @@ function latestFixes(executions, leafId) {
   return null
 }
 
+/** The highest round any `dispatched` event records for `leafId`: a fixes file of an earlier round was answered by it. */
+const dispatchedRound = (events, leafId) =>
+  Math.max(0, ...events.filter((e) => e.kind === 'dispatched' && e.node === leafId && Number.isInteger(e.round)).map((e) => e.round))
+
+/**
+ * The dispatch a 4.x said file of `ev` is stated again as: the stored return of its text under the
+ * event's execution. Null once the reason it cannot be is in `out.refused`: the event names no
+ * execution, the file cannot be read, or the return is there with other bytes.
+ */
+function restatement(root, effort, id, ev, what, out) {
+  if (!STAMP.test(String(ev.execution || ''))) {
+    out.refused.push({ what, why: 'it names no execution to keep its text in' })
+    return null
+  }
+  const text = readText(resolve(root, ev.said))
+  if (text === null) {
+    out.refused.push({ what, why: 'its said file ' + ev.said + ' cannot be read' })
+    return null
+  }
+  // A shortened node key carries `_`, which no dispatch key holds: saidOf would never read it.
+  const dispatch = 'migrated-' + (id === ROOT_ID ? 'root' : nodeKey(id).replace(/_/g, '-')) + '-' + ev.seq
+  const target = returnPath(executionDir(root, effort, ev.execution), dispatch)
+  if (existsSync(target) && readText(target) !== storedBytes(text)) {
+    out.refused.push({ what, why: posix(target) + ' exists with other bytes' })
+    return null
+  }
+  return dispatch
+}
+
+/** Keep the text of `file` as the return `dispatch` names under the execution of `old`; a return already there stays as it is. */
+function storeSaid(root, effort, old, { file, dispatch }) {
+  const target = returnPath(executionDir(root, effort, old.execution), dispatch)
+  if (!existsSync(target)) writeWhole(target, storedBytes(readFileSync(resolve(root, file), 'utf8')))
+}
+
 /** What one effort needs, appended to `out.refused` and `out.left` where it applies. */
 function effortPlan(root, effort, out) {
   const tree = readTree(root, effort)
@@ -125,31 +164,19 @@ function effortPlan(root, effort, out) {
   for (const [id, s] of tree.status) {
     const ev = s.last
     if (!ev || (ev.kind !== 'escalated' && ev.kind !== 'parked') || !fourX(ev.said)) continue
-    const what = 'the ' + ev.kind + ' stop of ' + id + ' at seq ' + ev.seq + ' in ' + effort
-    if (!STAMP.test(String(ev.execution || ''))) {
-      out.refused.push({ what, why: 'it names no execution to keep its text in' })
-      continue
-    }
-    const text = readText(resolve(root, ev.said))
-    if (text === null) {
-      out.refused.push({ what, why: 'its said file ' + ev.said + ' cannot be read' })
-      continue
-    }
-    // A shortened node key carries `_`, which no dispatch key holds: saidOf would never read it.
-    const dispatch = 'migrated-' + (id === ROOT_ID ? 'root' : nodeKey(id).replace(/_/g, '-')) + '-' + ev.seq
-    const target = returnPath(executionDir(root, effort, ev.execution), dispatch)
-    if (existsSync(target) && readText(target) !== storedBytes(text)) {
-      out.refused.push({ what, why: posix(target) + ' exists with other bytes' })
-      continue
-    }
-    e.stops.push({ node: id, seq: ev.seq, file: ev.said, dispatch })
+    const dispatch = restatement(root, effort, id, ev, 'the ' + ev.kind + ' stop of ' + id + ' at seq ' + ev.seq + ' in ' + effort, out)
+    if (dispatch) e.stops.push({ node: id, seq: ev.seq, file: ev.said, dispatch })
   }
 
   for (const id of tree.nodes.keys()) {
     const c = claimsEventOf(tree.events, id)
-    if (c && standingReview(tree.nodes, tree.events, id) === c && c.claims.some((x) => x && Object.hasOwn(x, 'verdict'))) {
+    if (!c || standingReview(tree.nodes, tree.events, id) !== c || !c.claims.some((x) => x && Object.hasOwn(x, 'verdict'))) continue
+    if (!fourX(c.said)) {
       e.claims.push({ node: id, seq: c.seq })
+      continue
     }
+    const dispatch = restatement(root, effort, id, c, 'the claims of ' + id + ' at seq ' + c.seq + ' in ' + effort, out)
+    if (dispatch) e.claims.push({ node: id, seq: c.seq, file: c.said, dispatch })
   }
 
   const ledger = readLog(root, effort, 'ledger').entries
@@ -158,14 +185,14 @@ function effortPlan(root, effort, out) {
     if (!hash || state === 'approved' || state === 'prepared') continue
     const latest = ledger.filter((l) => l.kind === 'reviewed' && l.folder === folder && l.hash === hash)
       .reduce((best, l) => (!best || l.seq > best.seq ? l : best), null)
-    if (latest && latest.complete === true) e.reviewed.push({ folder, hash })
+    if (latest && latest.complete === true) e.reviewed.push({ folder, hash, seq: latest.seq })
   }
 
   for (const [id, n] of tree.nodes) {
     const status = tree.status.get(id).status
     if (n.kind !== 'leaf' || status === 'merged' || status === 'approved') continue
     const fixes = latestFixes(executions, id)
-    if (!fixes) continue
+    if (!fixes || fixes.round < dispatchedRound(tree.events, id)) continue
     for (const [thread, findings] of findingsByThread(tree.nodes, n, list(readJson(fixes.file)))) {
       const sent = tree.events.some((m) => m.kind === 'message' && m.node === id && m.thread === thread && m.msg === 'findings' && m.execution === '')
       if (!sent) e.messages.push({ node: id, thread, findings_n: findings.length, file: fixes.file, round: fixes.round })
@@ -227,17 +254,24 @@ export function apply(p) {
     }
     for (const s of e.stops) {
       const { seq: _seq, ...old } = bySeq.get(s.seq)
-      const target = returnPath(executionDir(p.root, e.effort, old.execution), s.dispatch)
-      if (!existsSync(target)) writeWhole(target, storedBytes(readFileSync(resolve(p.root, s.file), 'utf8')))
+      storeSaid(p.root, e.effort, old, s)
       add(append(p.root, e.effort, 'events', { ...old, said: s.dispatch }))
     }
     for (const c of e.claims) {
       const { seq: _seq, ...old } = bySeq.get(c.seq)
-      add(append(p.root, e.effort, 'events', { ...old, claims: old.claims.map(({ verdict, ...rest }) => ({ ...rest, ruling: verdict })) }))
+      if (c.dispatch) storeSaid(p.root, e.effort, old, c)
+      add(append(p.root, e.effort, 'events', {
+        ...old, ...(c.dispatch ? { said: c.dispatch } : {}), claims: old.claims.map(({ verdict, ...rest }) => ({ ...rest, ruling: verdict })),
+      }))
     }
+    // The marker keeps the review's ambiguities and the sections that name them, and rules no section
+    // clean: the gate's open ambiguities stay as the review left them.
+    const reviews = new Map(readLog(p.root, e.effort, 'ledger').entries.map((x) => [x.seq, x]))
     for (const r of e.reviewed) {
+      const review = reviews.get(r.seq)
       add(append(p.root, e.effort, 'ledger', {
-        kind: 'reviewed', folder: r.folder, hash: r.hash, complete: false, remaining: [MARKER], ambiguities: [], clean: [], sections: {},
+        kind: 'reviewed', folder: r.folder, hash: r.hash, complete: false, remaining: [MARKER],
+        ambiguities: list(review.ambiguities), clean: [], sections: objectOf(review.sections),
       }))
     }
     for (const m of e.messages) {

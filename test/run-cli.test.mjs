@@ -21,6 +21,7 @@ import {
   runLogFile, runLogPath, specPath, stampNow, writeJson,
 } from '../lib/store.mjs'
 import { scriptedRunner } from './harness/scripted-runner.mjs'
+import { DEAD_PID } from './harness/dead-pid.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const RUN_MJS = join(HERE, '..', 'lib', 'run.mjs')
@@ -32,7 +33,6 @@ const QUESTION = 'Where does the store write\nits return files?'
 
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', windowsHide: true }).trim()
 const childEnv = () => ({ ...process.env, NODE_TEST_CONTEXT: '' })
-const deadPid = () => spawnSync(process.execPath, ['-e', ''], { env: childEnv() }).pid
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const same = (a, b) => {
   const n = (p) => { const s = posix(resolve(p)); return process.platform === 'win32' ? s.toLowerCase() : s }
@@ -94,7 +94,7 @@ function start(repo, argv, mod, over = {}) {
 }
 
 /** A run left as a killed process leaves it: its log cut as `cut` says, a dead pid in run.json. */
-function stop(repo, run, { cut = 'ended', pid = deadPid(), heartbeat_at } = {}) {
+function stop(repo, run, { cut = 'ended', pid = DEAD_PID, heartbeat_at } = {}) {
   const all = entries(repo, run)
   let kept
   if (cut === 'ended') kept = all.filter((e) => e.kind !== 'ended')

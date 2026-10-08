@@ -30,6 +30,7 @@ import { readTree } from '../lib/tree.mjs'
 import { apply, plan } from '../tools/migrate-v5.mjs'
 import { executionRig } from './harness/program-rig.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
+import { DEAD_PID } from './harness/dead-pid.mjs'
 
 const TOOL = join(dirname(fileURLToPath(import.meta.url)), '..', 'tools', 'migrate-v5.mjs')
 
@@ -52,8 +53,6 @@ const childEnv = () => {
 // recycled, Linux stops at 2^22). The pid of an exited child is not safe here: the OS hands a
 // freed pid to the next process started, and under a concurrent suite that process is alive while
 // a test plans, so the migration would refuse the whole effort as busy.
-const DEAD_PID = 2 ** 31 - 1
-assert.throws(() => process.kill(DEAD_PID, 0), { code: 'ESRCH' })
 
 const TEXT = {
   a: 'a is stuck — needs the café decision\n\nsecond paragraph\r\nthird line\n',

@@ -6,7 +6,6 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
@@ -17,6 +16,7 @@ import {
 import {
   posix, resolveHandle, resultPath, runDir, runJsonPath, runLogFile, runLogPath, writeJson,
 } from '../lib/store.mjs'
+import { DEAD_PID } from './harness/dead-pid.mjs'
 
 const RUN = '20260101-000000-survey'
 const NOW = Date.parse('2026-01-01T00:10:00.000Z')
@@ -204,7 +204,7 @@ test('by default this process reads as alive', (t) => {
   const r = repo(t)
   writeJson(runJsonPath(r, RUN), runJson({ pid: process.pid, heartbeat_at: new Date().toISOString() }))
   assert.equal(runState(r, RUN).state, 'live')
-  const gone = spawnSync(process.execPath, ['-e', ''], { env: { ...process.env, NODE_TEST_CONTEXT: '' } }).pid
+  const gone = DEAD_PID
   writeJson(runJsonPath(r, RUN), runJson({ pid: gone, heartbeat_at: new Date().toISOString() }))
   assert.equal(runState(r, RUN).state, 'stopped')
 })

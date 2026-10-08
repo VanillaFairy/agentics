@@ -7,7 +7,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync, spawn, spawnSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -22,6 +22,7 @@ import {
   runHome, runJsonPath, runLogFile, runLogPath, runsDir, writeJson, writeWhole,
 } from '../lib/store.mjs'
 import { scriptedRunner } from './harness/scripted-runner.mjs'
+import { DEAD_PID } from './harness/dead-pid.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const STORE_MJS = join(HERE, '..', 'lib', 'store.mjs')
@@ -37,7 +38,6 @@ const TEXT_ARGS = { topic: { kind: 'text', required: true } }
 
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', windowsHide: true }).trim()
 const childEnv = () => ({ ...process.env, NODE_TEST_CONTEXT: '' })
-const deadPid = () => spawnSync(process.execPath, ['-e', ''], { env: childEnv() }).pid
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const same = (a, b) => {
   const n = (p) => { const s = posix(resolve(p)); return process.platform === 'win32' ? s.toLowerCase() : s }
@@ -103,7 +103,7 @@ function start(repo, argv, mod, over = {}) {
 }
 
 /** A home left as a killed process leaves it: its state cut as `cut` says, a dead pid in run.json. */
-function stopHome(repo, { cut = 'ended', pid = deadPid(), heartbeat_at } = {}) {
+function stopHome(repo, { cut = 'ended', pid = DEAD_PID, heartbeat_at } = {}) {
   const all = stateOf(repo)
   const kept = cut === 'ended' ? all.filter((e) => e.kind !== 'ended') : all.slice(0, all.findLastIndex((e) => e.kind === 'run') + 1)
   writeFileSync(runLogPath(repo, HOME), kept.map((e) => JSON.stringify(e) + '\n').join(''))
@@ -486,7 +486,7 @@ test("a launch_failed that cannot be recorded names the append's refusal", async
   const first = await start(repo, ['survey', '--topic', 'x'], mod)
   const all = readRunLog(repo, first.run).entries
   writeFileSync(runLogPath(repo, first.run), JSON.stringify(all[0]) + '\n')
-  writeJson(runJsonPath(repo, first.run), { ...readJson(runJsonPath(repo, first.run)), pid: deadPid() })
+  writeJson(runJsonPath(repo, first.run), { ...readJson(runJsonPath(repo, first.run)), pid: DEAD_PID })
   const counter = join(runDir(repo, first.run), 'seq')
   rmSync(counter)
   mkdirSync(counter)

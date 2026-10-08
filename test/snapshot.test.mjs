@@ -28,6 +28,7 @@ import {
   reportPath, returnPath, runJsonPath, specPath, worktreeOf, writeJson,
 } from '../lib/store.mjs'
 import { normalizeNode, readTree, renderTree } from '../lib/tree.mjs'
+import { DEAD_PID } from './harness/dead-pid.mjs'
 
 const { liveOf, nodeOf, renderNode, snapshotOf } = statusModule
 
@@ -626,7 +627,7 @@ test('live is the running dispatch\'s activity while its execution\'s run is liv
   assert.equal(byId['a/wait'].live, null, 'a node never dispatched')
   assert.match(renderNode(byId['a/impl']), /^live: .*7 turn\(s\), last Edit src\/a-impl\.js/m)
 
-  meta(spawnSync(process.execPath, ['-e', ''], { env: { ...process.env, NODE_TEST_CONTEXT: '' } }).pid)
+  meta(DEAD_PID)
   assert.equal(liveOf(repo, effort, 'a/impl'), null, 'a run whose process is gone')
 })
 

@@ -12,7 +12,6 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { hostname, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -21,6 +20,7 @@ import { append } from '../lib/ledger.mjs'
 import { acquire, acquireAsync, withBranchLock, withBranchLockAsync } from '../lib/locks.mjs'
 import { configPath, mkdirState, withLock, withLockAsync } from '../lib/store.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
+import { DEAD_PID } from './harness/dead-pid.mjs'
 
 const E = 'e1'
 const X = '20260925-120000'
@@ -31,11 +31,10 @@ const fresh = (t) => {
   return dir
 }
 
-const deadPid = () => spawnSync(process.execPath, ['-e', ''], { env: { ...process.env, NODE_TEST_CONTEXT: '' } }).pid
 
 /** Put the holder file of a holder that is gone into the lock directory at `path`. */
 const goneHolder = (path) =>
-  writeFileSync(join(path, 'gone'), JSON.stringify({ pid: deadPid(), host: hostname(), at: new Date().toISOString() }))
+  writeFileSync(join(path, 'gone'), JSON.stringify({ pid: DEAD_PID, host: hostname(), at: new Date().toISOString() }))
 
 /** withLock's answer: 'taken', or the message it threw. */
 const syncAttempt = (path, waitMs) => {

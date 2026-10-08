@@ -13,6 +13,7 @@ import { compileEffort } from '../lib/compile.mjs'
 import { append } from '../lib/ledger.mjs'
 import { listFolders, nextAction, nextForAll } from '../lib/next.mjs'
 import { executionDir, executionRunId, returnPath, runJsonPath, specPath, writeJson } from '../lib/store.mjs'
+import { DEAD_PID } from './harness/dead-pid.mjs'
 
 const NEXT = fileURLToPath(new URL('../lib/next.mjs', import.meta.url))
 const STAMP = '20260926-100000'
@@ -364,6 +365,6 @@ test('an open execution names a live run to watch apart from a stopped one to re
   const live = nextAction(r, 'e1')
   assert.deepEqual([live.rule, live.command], [1, '/agentics:develop e1'])
   assert.ok(live.why.endsWith('is running as run ' + run + ': watch it'), live.why)
-  meta(spawnSync(process.execPath, ['-e', ''], { env: { ...process.env, NODE_TEST_CONTEXT: '' } }).pid)
+  meta(DEAD_PID)
   assert.match(nextAction(r, 'e1').why, /is stopped: relaunch it$/, 'a run whose process is gone')
 })

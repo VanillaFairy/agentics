@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url'
 import { append, appendRun, readRunLog, seqMax } from '../lib/ledger.mjs'
 import { efforts, runWatchLines } from '../lib/status.mjs'
 import { executionRunId, runJsonPath, writeJson } from '../lib/store.mjs'
+import { DEAD_PID } from './harness/dead-pid.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/status.mjs', import.meta.url))
 const RUN = '20260101-000000-survey'
@@ -71,7 +72,7 @@ test('watch on a run that ended prints its end and nothing recorded before it be
 
 test('watch on a run whose process is gone prints how to resume it', (t) => {
   const r = repo(t)
-  const gone = spawnSync(process.execPath, ['-e', ''], { env: { ...process.env, NODE_TEST_CONTEXT: '' } }).pid
+  const gone = DEAD_PID
   writeJson(runJsonPath(r, RUN), { run: RUN, pid: gone, heartbeat_at: new Date().toISOString() })
   appendRun(r, RUN, [{ kind: 'run', program: 'survey' }, { kind: 'fault', node: '', channel: 'program', detail: 'before' }])
   assert.equal(watch(r, RUN), 'stopped: start the same command again to resume run ' + RUN + '\n')
@@ -123,7 +124,6 @@ const XRUN = executionRunId(EFFORT, STAMP)
 const leaf = (id) => ({ id, title: 'do ' + id, kind: 'leaf', rigor: 'trivial', locus: ['src/' + id + '.js'], acceptance: [{ text: 't', check: 'c' }] })
 const event = (r, kind, node, fields = {}) => append(r, EFFORT, 'events', { kind, node, execution: STAMP, ...fields })
 const state = (r, kind, fields = {}) => append(r, EFFORT, 'state:' + STAMP, { kind, ...fields })
-const deadPid = () => 2 ** 31 - 1
 
 /** An execution home whose current run started with `run`: live (this process) unless given a pid and heartbeat. */
 function execution(t, { pid = process.pid, heartbeat = new Date() } = {}) {
@@ -190,7 +190,7 @@ test('a fault and a host stop of the execution print', (t) => {
 })
 
 test('an earlier run\'s end is not printed; a run whose process is gone and heartbeat is stale prints stopped', (t) => {
-  const r = execution(t, { pid: deadPid(), heartbeat: new Date(Date.now() - 600000) })
+  const r = execution(t, { pid: DEAD_PID, heartbeat: new Date(Date.now() - 600000) })
   state(r, 'ended', { result: { status: 'checkpoint', file: '/r/old.json', complete: false } })
   state(r, 'run', { program: 'execute', scope: { effort: EFFORT, folder: '.' }, pid: 0 })
   assert.equal(watchFrom(r, 0), 'stopped: start the same command again to resume run ' + XRUN + '\n')

@@ -131,7 +131,7 @@ The laws themselves are in `docs/DESIGN.md#laws`.
 
     node tools/lint.mjs && node tools/suite.mjs
     node tools/suite.mjs --fast
-    node --test test/<file>.test.mjs
+    node --test test/[fast/]<file>.test.mjs
     claude plugin validate .
 
 `node --test` alone still runs everything, without the rerun. A test that spawns a process
@@ -154,7 +154,8 @@ process creation throw fails it at run time.
 - `roles/` — agent roles: instructions, tools and kind, read by the runner alone
 - `skills/` — user entry points: design, develop, task, investigate, next (`docs/kb/skills.md`)
 - `tools/` — lint, its rules, size budgets, one-shot migrations (`tools/INDEX.md`)
-- `test/` — the `node --test` suite; `test/harness/` holds the scripted runner and the fake CLI
+- `test/` — the `node --test` suite; `test/fast/harness/` holds the spawn-free harness (scripted
+  runner, workflow host), `test/harness/` the fake CLI and the real-git rigs
 - 4.x, until the last phase: the evidence workflows in `service-workflows/`
   (`service-workflows/INDEX.md`), the agents they name in `agents/` (`docs/kb/agents.md`), the
   courier and `test/fast/harness/workflow-host.mjs`; no execution runs through them

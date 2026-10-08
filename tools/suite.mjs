@@ -3,8 +3,8 @@
 //   node tools/suite.mjs [--fast] [--concurrency N] [file...]
 //
 // Runs `node --test` over the fast tier (--fast), the named files, or everything. A failed run
-// is repeated at --test-concurrency=2: node re-runs only the tests that failed and reads the
-// rest from the state file. A test that fails the first run and passes the repeat is a
+// is repeated at --test-concurrency=2 over only the files that had a failed test; node re-runs
+// only the tests that failed and reads the rest from the state file. A test that fails the first run and passes the repeat is a
 // `flake`; one that fails both is `red`. Exit 0 when nothing is red, 1 otherwise, 2 for a bad
 // command line, 130 when interrupted.
 //
@@ -58,14 +58,27 @@ export function classify(first, second) {
   }
 }
 
+function readRecords(path) {
+  if (!existsSync(path)) return []
+  return readFileSync(path, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line))
+}
+
 /** The failed tests the reporter wrote, as `file:line:col name` with a repo-relative POSIX file. */
 export function readFailures(path, root) {
-  if (!existsSync(path)) return []
-  return readFileSync(path, 'utf8').split('\n').filter(Boolean).map((line) => {
-    const { name, file, line: row, column } = JSON.parse(line)
+  return readRecords(path).map(({ name, file, line, column }) => {
     const where = file ? relative(root, file).split(sep).join('/') : '(no file)'
-    return `${where}:${row}:${column} ${name}`
+    return `${where}:${line}:${column} ${name}`
   })
+}
+
+/**
+ * What the repeat loads: the files that had a failed test, so the others are not loaded again
+ * with their top-level setup. The first run's selection when nothing names a file to rerun.
+ */
+export function rerunSelection(path, selection) {
+  const records = readRecords(path)
+  if (records.length === 0 || records.some((r) => !r.file)) return selection
+  return [...new Set(records.map((r) => r.file))]
 }
 
 function nodeArgs({ selection, concurrency, state }) {
@@ -125,17 +138,17 @@ async function main(argv) {
   const state = join(work, 'state.json')
   const failureFiles = [join(work, 'first.jsonl'), join(work, 'second.jsonl')]
   try {
-    const attempt = async (concurrency, failures) => {
-      const code = await runNode(nodeArgs({ selection, concurrency, state }), failures)
+    const attempt = async (files, concurrency, failures) => {
+      const code = await runNode(nodeArgs({ selection: files, concurrency, state }), failures)
       return { code, failed: readFailures(failures, ROOT) }
     }
 
-    const first = await attempt(parsed.concurrency, failureFiles[0])
+    const first = await attempt(selection, parsed.concurrency, failureFiles[0])
     if (interrupted) return 130
     if (first.code === 0) return 0
 
     console.log(`\n${first.failed.length} failed; running them again at --test-concurrency=${RERUN_CONCURRENCY}\n`)
-    const second = await attempt(RERUN_CONCURRENCY, failureFiles[1])
+    const second = await attempt(rerunSelection(failureFiles[0], selection), RERUN_CONCURRENCY, failureFiles[1])
     if (interrupted) return 130
 
     const verdict = classify(first, second)

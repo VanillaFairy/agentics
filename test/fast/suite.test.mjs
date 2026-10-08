@@ -1,5 +1,6 @@
 // test/fast/suite.test.mjs — what tools/suite.mjs decides: which tests were flakes and which
-// red, and what a command line means. The runs themselves are node's and are not repeated here.
+// red, what a command line means and which files a rerun loads. The runs themselves are node's
+// and are not repeated here.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -7,7 +8,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { DEFAULT_CONCURRENCY, classify, parseArgs, readFailures } from '../../tools/suite.mjs'
+import { DEFAULT_CONCURRENCY, classify, parseArgs, readFailures, rerunSelection } from '../../tools/suite.mjs'
 
 const run = (code, failed = []) => ({ code, failed })
 
@@ -70,6 +71,24 @@ test('failures are read back as repo-relative ids, and a missing file is no fail
     ]
     writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
     assert.deepEqual(readFailures(file, dir), ['test/x.test.mjs:3:1 one', '(no file):1:1 two'])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('the rerun loads the files that had a failed test, once each, and the whole selection when it cannot tell', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'suite-test-'))
+  try {
+    const all = ['everything']
+    const file = join(dir, 'failures.jsonl')
+    const write = (records) => writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n') + '\n')
+    assert.deepEqual(rerunSelection(file, all), all, 'no failures file')
+
+    write([{ name: 'a', file: '/x/a.test.mjs' }, { name: 'b', file: '/x/b.test.mjs' }, { name: 'c', file: '/x/a.test.mjs' }])
+    assert.deepEqual(rerunSelection(file, all), ['/x/a.test.mjs', '/x/b.test.mjs'])
+
+    write([{ name: 'a', file: '/x/a.test.mjs' }, { name: 'b' }])
+    assert.deepEqual(rerunSelection(file, all), all, 'a failure with no file')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

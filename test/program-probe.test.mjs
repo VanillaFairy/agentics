@@ -313,11 +313,13 @@ const withGuidance = (axesSteps, keys = STANDING, extra = {}) =>
   scriptFor(DOC, keys, { locate: [{ output: located([GUIDE_HIT]) }], axes: axesSteps, ...extra })
 
 test('located guidance buys one axes analyst', async (t) => {
-  const { rig } = await probeIn(t, { files: { [ART]: DOC, ...GROUND_FILES }, script: withGuidance([{ output: axesOut([]) }]).script })
+  const read = ['docs/REVIEW.md', 'CLAUDE.md']
+  const { rig, result } = await probeIn(t, { files: { [ART]: DOC, ...GROUND_FILES }, script: withGuidance([{ output: axesOut([], { guidance_read: read }) }]).script })
   const calls = callsOf(rig, 'axes')
   assert.equal(calls.length, 1)
   assert.equal(calls[0].role.name, 'analyst')
   assert.deepEqual(calls[0].schema, schemaOf('axes'))
+  assert.deepEqual(result.guidance_read, read)
 })
 
 test('no guidance located buys no axes analyst and fails nothing', async (t) => {
@@ -362,14 +364,6 @@ test('an axes analyst that finds no guidance adds no axis and fails nothing', as
   assert.deepEqual(keysOf(result), STANDING)
   assert.deepEqual(result.coverage.failed_channels, [])
   assert.equal(result.coverage.complete, true, JSON.stringify(result.coverage))
-})
-
-test("guidance_read is the axes analyst's", async (t) => {
-  const read = ['docs/REVIEW.md', 'CLAUDE.md']
-  const { result } = await probeIn(t, {
-    files: { [ART]: DOC, ...GROUND_FILES }, script: withGuidance([{ output: axesOut([], { guidance_read: read }) }]).script,
-  })
-  assert.deepEqual(result.guidance_read, read)
 })
 
 // --- units and probers -------------------------------------------------------------------------

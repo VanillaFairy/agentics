@@ -234,27 +234,17 @@ test('a plan with no topics searches nothing and says so', async (t) => {
 
 // --- scouts and channels ----------------------------------------------------------------------
 
-test("each topic gets one scout on its own thread at the scout's tier", async (t) => {
+test("a scout's brief holds the question and its topic's find and subtree", async (t) => {
   for (const intelligence of ['low', 'max']) {
-    const { rig } = await runSurvey(t, {
-      ...fullScript(),
-      'analyst||plan': [{ output: plan({ topics: [TOPIC.loader, TOPIC.store] }) }],
-    }, { intelligence })
+    const { rig } = await runSurvey(t, fullScript(), { intelligence })
     for (const key of ['loader', 'store']) {
       const calls = on(rig, 'scout:' + key)
       assert.equal(calls.length, 1, key)
       assert.equal(calls[0].role.name, 'scout')
       assert.deepEqual(calls[0].schema, schemaOf('scout_hits'))
       assert.deepEqual(calls[0].tier, tierFor(roleOf('scout'), { intelligence }), intelligence)
+      for (const part of [Q, TOPIC[key].find, TOPIC[key].subtree]) assert.ok(calls[0].brief.includes(part), key + ': ' + part)
     }
-  }
-})
-
-test("a scout's brief holds the question and its topic's find and subtree", async (t) => {
-  const { rig } = await runSurvey(t, fullScript())
-  for (const key of ['loader', 'store']) {
-    const brief = on(rig, 'scout:' + key)[0].brief
-    for (const part of [Q, TOPIC[key].find, TOPIC[key].subtree]) assert.ok(brief.includes(part), key + ': ' + part)
   }
 })
 

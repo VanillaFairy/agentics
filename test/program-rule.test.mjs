@@ -636,16 +636,6 @@ test('a relaunch after the basis moved under the same text rules it again', asyn
 
 // --- the user's word on a ruling that can no longer settle -----------------------------------
 
-test('an over refusal says the rulings on disk are on no ruled line', (t) => {
-  const { rig, folder, brief } = changed(t)
-  writeFileSync(brief.rulings, JSON.stringify(rulingsOf(brief, AFFECTED)))
-  const ruled = respecSettle(rig.repo, E, folder)
-  writeFileSync(brief.rulings, JSON.stringify(rulingsOf(brief, AFFECTED_AGAIN)))
-  const out = respecSettle(rig.repo, E, folder, { userApproved: true, over: ruled.ruled })
-  assert.deepEqual([out.status, out.next], ['refused', 'rule_it'], JSON.stringify(out))
-  assert.ok(out.why.includes('on no ruled line'), out.why)
-})
-
 /** The user-approved run over `needsUser`'s ruling once `move` ran: its result, what it asked and its confirm steps. */
 async function approveAfter(t, move) {
   const { rig, folder, brief, token } = await needsUser(t)
@@ -684,6 +674,7 @@ function assertRefusedOver(repo, folder, over) {
   assert.deepEqual([out.status, out.next], ['refused', 'rule_it'], JSON.stringify(out))
   assert.equal(readLog(repo, E, 'ledger').entries.length, size, 'nothing is appended')
   assert.equal(approvalState(repo, E, folder).state, 'edited')
+  return out
 }
 
 /** The wording edit ruled twice at one hash: `older` over AFFECTED, `latest` over AFFECTED_AGAIN, the file back at AFFECTED. */
@@ -703,7 +694,8 @@ test('over refuses rulings on disk that are on no ruled line', (t) => {
   writeFileSync(brief.rulings, JSON.stringify(rulingsOf(brief, AFFECTED)))
   const over = respecSettle(rig.repo, E, folder).ruled
   writeFileSync(brief.rulings, JSON.stringify(rulingsOf(brief, AFFECTED_AGAIN)))
-  assertRefusedOver(rig.repo, folder, over)
+  const out = assertRefusedOver(rig.repo, folder, over)
+  assert.ok(out.why.includes('on no ruled line'), out.why)
 })
 
 test("over refuses rulings on disk that are an older ruled line's", (t) => {

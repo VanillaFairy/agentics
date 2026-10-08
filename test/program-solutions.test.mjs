@@ -131,14 +131,6 @@ test('a blank capability searches nothing', async (t) => {
 
 // --- the frame -------------------------------------------------------------------------------
 
-test('the frame is one analyst call on its own thread', async (t) => {
-  const { rig } = await sweep(t, scriptOf({ assess: DEFAULT_ASSESS }))
-  const on = callsOn(rig, 'frame')
-  assert.equal(on.length, 1)
-  assert.equal(on[0].role.name, 'analyst')
-  assert.deepEqual(on[0].schema, schemaOf('frame'))
-})
-
 test("the frame's brief holds the capability, the roots, the caller's constraints and notes and the angle bound", async (t) => {
   const constraints = 'must stay under a kilobyte of glue'
   const notes = 'the team once tried a YAML reader and dropped it'
@@ -152,6 +144,8 @@ test("each dispatch's tier is its role's at the dial", async (t) => {
   for (const intelligence of ['low', 'normal', 'max']) {
     const { rig } = await sweep(t, scriptOf({ assess: DEFAULT_ASSESS }), { args: { intelligence } })
     const tier = (thread) => callsOn(rig, thread)[0].tier
+    assert.deepEqual(callsOn(rig, 'frame')[0].schema, schemaOf('frame'), intelligence + ' frame schema')
+    assert.deepEqual(callsOn(rig, 'assess')[0].schema, schemaOf('assessment'), intelligence + ' assess schema')
     assert.deepEqual(tier('frame'), tierFor(role('analyst'), { intelligence, base: 'medium' }), intelligence + ' frame')
     assert.deepEqual(tier('assess'), tierFor(role('analyst'), { intelligence, base: 'high' }), intelligence + ' assess')
     assert.deepEqual(tier('research:npm'), tierFor(role('doc-researcher')), intelligence + ' researcher')
@@ -356,14 +350,6 @@ test('the assessor runs only when a researcher reported a named candidate', asyn
   assert.equal(result.coverage.complete, true)
 })
 
-test('the assessor is one analyst call on thread assess with the assessment schema', async (t) => {
-  const { rig } = await sweep(t, scriptOf({ assess: DEFAULT_ASSESS }))
-  const on = callsOn(rig, 'assess')
-  assert.equal(on.length, 1)
-  assert.equal(on[0].role.name, 'analyst')
-  assert.deepEqual(on[0].schema, schemaOf('assessment'))
-})
-
 test("the assessor's brief holds every candidate as reported, the frame's constraints and disqualifiers, and the caller's constraints", async (t) => {
   const frame = frameOut({
     hard_constraints: ['runs on Node without compilation', 'reads files of several megabytes'],
@@ -440,19 +426,14 @@ test('the record turns candidates and hits into items, and counts what they mean
   assert.deepEqual([...result.items].sort(byId), pool(rig.repo).map(({ id, topic, kind }) => ({ id, topic, kind })).sort(byId))
   assert.equal(result.recorded, true)
   assert.equal(result.measured, true)
+  for (const k of COUNT_KEYS) assert.equal(typeof result.counts[k], 'number', k)
+  for (const k of ['unread', 'present_read']) assert.ok(!(k in result.counts), 'a sweep reads no files, so it counts none: ' + k)
   assert.equal(result.counts.present, 1)
   assert.equal(result.counts.candidates, 2)
   assert.equal(result.counts.viable, 1)
   assert.equal(result.counts.ruled_out, 1)
   assert.ok(result.summary && existsSync(result.summary), 'the summary is a file')
   assert.ok(readFileSync(result.summary, 'utf8').includes(CAPABILITY))
-})
-
-test("counts carry the sweep's figures and no file-reading ones", async (t) => {
-  const { result } = await sweep(t, RECORD_SCRIPT())
-  for (const k of COUNT_KEYS) assert.equal(typeof result.counts[k], 'number', k)
-  assert.ok(!('unread' in result.counts))
-  assert.ok(!('present_read' in result.counts))
 })
 
 test('a ground the frame never declared is counted and named as a loss', async (t) => {

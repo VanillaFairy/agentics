@@ -674,15 +674,6 @@ test('a thread that already holds a findings message of no execution is sent not
   assert.equal(messagesOn(fx.dir, 'c').length, 1)
 })
 
-test('a findings message of an execution does not count as sent', (t) => {
-  const fx = fixture(t)
-  const sent = append(fx.dir, E, 'events', {
-    kind: 'message', node: 'c', thread: 'producer:c', from: 'code', msg: 'findings', payload: { findings: [] }, round: 2, execution: OPEN,
-  })
-  assert.equal(sent.ok, true)
-  assert.deepEqual(byThread(planned(plan(fx.dir), 'c')), [['producer:c', 2]])
-})
-
 test('a migrated findings message is read by the next execution', (t) => {
   const fx = fixture(t)
   const next = '20270101-000000'
@@ -805,14 +796,12 @@ test('a live 4.x job refuses the effort', (t) => {
   assert.ok(!p.left.some((l) => posix(l.path).includes('/' + E + '/')), 'nothing of the effort is listed')
   apply(p)
   assert.deepEqual(hexed(snapshot(fx.dir), E + '/'), before)
-})
-
-test('a live 4.x job under a closed execution refuses the effort too', (t) => {
-  const fx = fixture(t)
+  // the same job under a closed execution refuses too
+  rmSync(join(fx.openDir, 'jobs', 'leaf-close-live.pid'))
   put(join(executionDir(fx.dir, E, CLOSED), 'jobs', 'leaf-close-live.pid'), String(process.pid))
-  const p = plan(fx.dir)
-  assert.ok(!p.efforts.some((e) => e.effort === E))
-  assert.ok(p.refused.some((r) => r.what === 'effort ' + E && String(r.why).includes(String(process.pid))))
+  const q = plan(fx.dir)
+  assert.ok(!q.efforts.some((e) => e.effort === E))
+  assert.ok(q.refused.some((r) => r.what === 'effort ' + E && String(r.why).includes(String(process.pid))), 'a closed execution is searched too')
 })
 
 test('a dead 4.x job does not refuse the effort', (t) => {
@@ -866,16 +855,6 @@ const LEFT = [
   ['the fixes files of a closed 4.x execution', 'executions/' + CLOSED + '/fixes'],
   ['reports and progress files', 'reports'],
 ]
-for (const [what, rel] of LEFT) {
-  test('the left list names ' + what, (t) => {
-    const fx = fixture(t)
-    const p = plan(fx.dir)
-    const named = p.left.filter((l) => tail(l.path).endsWith('/' + E + '/.state/' + rel))
-    assert.equal(named.length, 1, rel)
-    assert.equal(typeof named[0].why, 'string')
-    assert.ok(named[0].why.trim() !== '')
-  })
-}
 
 test('the left list never names what 5.0 reads: an envelope, a state log, a journal, stored returns', (t) => {
   const fx = fixture(t)
@@ -888,7 +867,14 @@ test('the left list never names what 5.0 reads: an envelope, a state log, a jour
       assert.ok(!path.includes('/.agentics/.state'), when + ': ' + path)
     }
   }
-  check(plan(fx.dir), 'before')
+  const before = plan(fx.dir)
+  for (const [what, rel] of LEFT) {
+    const named = before.left.filter((l) => tail(l.path).endsWith('/' + E + '/.state/' + rel))
+    assert.equal(named.length, 1, what + ': ' + rel)
+    assert.equal(typeof named[0].why, 'string', what)
+    assert.ok(named[0].why.trim() !== '', what)
+  }
+  check(before, 'before')
   apply(plan(fx.dir))
   assert.ok(existsSync(join(fx.openDir, 'returns')), 'the stored returns are there')
   check(plan(fx.dir), 'after')
@@ -1173,13 +1159,12 @@ test('a composite with a fixes file gets no findings message', (t) => {
 test('a findings message of another node on the same thread does not count as sent', (t) => {
   const fx = fixture(t)
   record(fx.dir, 'events', { kind: 'message', node: 'r', thread: 'producer:r', from: 'code', msg: 'findings', payload: { findings: [] }, round: 2, execution: '' })
-  assert.ok(planned(plan(fx.dir), 'gr').some((m) => m.thread === 'producer:r'))
-})
-
-test('a message of another kind on the same node and thread does not count as sent', (t) => {
-  const fx = fixture(t)
+  // on c's own thread: a findings message of an execution, and a message of another kind of no execution
+  record(fx.dir, 'events', { kind: 'message', node: 'c', thread: 'producer:c', from: 'code', msg: 'findings', payload: { findings: [] }, round: 2, execution: OPEN })
   record(fx.dir, 'events', { kind: 'message', node: 'c', thread: 'producer:c', from: 'code', msg: 'retried', payload: { reason: '', notes: [] }, round: 2, execution: '' })
-  assert.ok(planned(plan(fx.dir), 'c').some((m) => m.thread === 'producer:c'))
+  const p = plan(fx.dir)
+  assert.ok(planned(p, 'gr').some((m) => m.thread === 'producer:r'))
+  assert.ok(planned(p, 'c').some((m) => m.thread === 'producer:c'), 'neither an execution message nor another kind stands for the findings')
 })
 
 test('a stored return written between the plan and the apply keeps its bytes', (t) => {

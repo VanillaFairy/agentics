@@ -48,8 +48,12 @@ const childEnv = () => {
   return env
 }
 
-// A pid that is surely not running: the child has exited by the time spawnSync returns.
-const DEAD_PID = spawnSync(process.execPath, ['-e', ''], { env: childEnv() }).pid
+// A pid no process holds: the largest int32, which no OS allocates (Windows pids are small and
+// recycled, Linux stops at 2^22). The pid of an exited child is not safe here: the OS hands a
+// freed pid to the next process started, and under a concurrent suite that process is alive while
+// a test plans, so the migration would refuse the whole effort as busy.
+const DEAD_PID = 2 ** 31 - 1
+assert.throws(() => process.kill(DEAD_PID, 0), { code: 'ESRCH' })
 
 const TEXT = {
   a: 'a is stuck — needs the café decision\n\nsecond paragraph\r\nthird line\n',

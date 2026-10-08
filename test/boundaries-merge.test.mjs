@@ -28,6 +28,7 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { writeSessionCommands } from '../lib/boundaries/execution.mjs'
 import { driftOf, mergeBatch, suiteGate } from '../lib/boundaries/merge.mjs'
 import { executionContext } from '../lib/boundaries/records.mjs'
 import { ensureIntegration, ensureLeaf, worktrees } from '../lib/integration.mjs'
@@ -65,7 +66,7 @@ const stopsOf = (out) => out.stops.map((s) => [s.id, s.status, s.reason])
 const kindOf = (entries, kind, node) => entries.filter((e) => e.kind === kind && (node === undefined || e.node === node))
 
 /**
- * A repository, a seeded tree and the envelope preflight would have written. `register` takes the
+ * A repository, a seeded tree, and the envelope and session commands preflight would have written. `register` takes the
  * cleanup (`t.after`, or the module's `after`); `prepare` changes the repository before the base
  * commit is read; `envelope: false` leaves the execution without its `execution.json`.
  */
@@ -84,7 +85,9 @@ function world(register, nodesOf, { commands = COMMANDS, prepare, envelope = tru
       stamp: STAMP, root: '.', base_branch: 'main', base_sha: base, dial: 'normal', pace: 'balanced', commands,
     }))
   }
-  return { r, xc: ctxOf(r), base }
+  const xc = ctxOf(r)
+  if (envelope) writeSessionCommands(xc, xc.envelope())
+  return { r, xc, base }
 }
 
 function integrationOf(w, folder = '.') {

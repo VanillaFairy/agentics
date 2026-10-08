@@ -58,7 +58,7 @@ test('every agent is dispatched by a workflow or a skill', () => {
 test('every record kind is written somewhere and read somewhere', () => {
   const problems = []
   const check = (ok, why) => { if (!ok) problems.push(why) }
-  const STATE = ['dispatch', 'usage', 'batch-started', 'batch', 'checkpoint', 'closed', 'breach_reverted']
+  const STATE = ['batch-started', 'batch', 'checkpoint', 'closed', 'breach_reverted']
   const JOURNAL = ['verify-observed', 'merge-observed', 'series-done', 'authored']
   const RUN = ['run', 'returned', 'host_stop', 'thread_renewed', 'checkout_changed', 'step', 'ended', 'fault']
   const sources = [...lib, ...workflows].filter((f) => !f.endsWith(join('lib', 'ledger.mjs')))

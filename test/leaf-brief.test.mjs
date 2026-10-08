@@ -14,7 +14,7 @@ import { recordItems } from '../lib/evidence.mjs'
 import { writeGotcha } from '../lib/gotchas.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
 import { configPath } from '../lib/store.mjs'
-import { readTree } from '../lib/tree.mjs'
+import { normalizeNode, readTree } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 
 const E = 'e1'
@@ -198,6 +198,15 @@ test('the established commands are listed, an absent one left out', (t) => {
 
 test('an unknown node is refused', (t) => {
   assert.throws(() => brief(effort(t), 'nope'), /no live node/)
+})
+
+test('measuresFor names the yardstick per rigor and role', () => {
+  const m = (extra) => measuresFor(normalizeNode({ kind: 'leaf', ...extra })).join(' | ')
+  assert.match(m({ rigor: 'verify' }), /nothing is written/)
+  assert.match(m({ rigor: 'tdd-pair', role: 'red' }), /fail now and fail at the base/)
+  assert.match(m({ rigor: 'tdd-pair', role: 'green' }), /red leaf's tests pass now/)
+  assert.match(m({ rigor: 'tdd-triad', role: 'audit' }), /no new tests are expected/)
+  assert.match(m({ rigor: 'tests-only' }), /at least one declaration is required/)
 })
 
 test('standing evidence on the ground of the leaf alone is excerpted', (t) => {

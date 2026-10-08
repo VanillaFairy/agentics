@@ -26,6 +26,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
+import { writeSessionCommands } from '../lib/boundaries/execution.mjs'
 import { leafClose, producerOutcome, recordCommands } from '../lib/boundaries/leaf-close.mjs'
 import { approved, escalated, executionContext, message, parked } from '../lib/boundaries/records.mjs'
 import { commandsOf, gotchaId, listGotchas, writeGotcha } from '../lib/gotchas.mjs'
@@ -259,6 +260,7 @@ function world(t, nodesOf, { commands = COMMANDS, stamp = STAMP } = {}) {
   mkdirState(dir)
   writeFileSync(join(dir, 'execution.json'), JSON.stringify({ stamp, root: '.', base_branch: 'main', base_sha: base, ...(commands ? { commands } : {}) }))
   const xc = executionContext({ repo: r, effort: E, execution: stamp, log: executionLog(r, E, stamp) })
+  writeSessionCommands(xc, xc.envelope())
   return { r, xc, base, stamp }
 }
 

@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
-  commandsOf, deleteGotcha, extractReportBlocks, gotchaId, gotchaProblem, gotchasFor, knowledgeDir,
+  commandsOf, deleteGotcha, gotchaId, gotchaProblem, gotchasFor, knowledgeDir,
   listGotchas, parseGotcha, readKnowledge, writeGotcha,
 } from '../lib/gotchas.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
@@ -51,35 +51,6 @@ test('gotchaProblem enforces the checkable qualification rules', () => {
   assert.match(gotchaProblem(command('build', '')), /no value/)
   assert.equal(gotchaProblem(command('typecheck', '', { command: { name: 'typecheck', absent: true } })), null)
   assert.match(gotchaProblem('nope'), /object/)
-})
-
-test('extractReportBlocks parses every block and reports malformed ones instead of throwing', () => {
-  const report = [
-    '# Report', '',
-    '```agentics-gotchas', JSON.stringify([pitfall(), pitfall({ roles: [] })]), '```', '',
-    '```agentics-gotchas-stale', '["g-0000abcd", "../../x"]', '```', '',
-    '```agentics-mutations', JSON.stringify([{ file: 'src/a.js', find: '<', replace: '<=', expect_failing: ['a bound'] }, { file: 'src/a.js', find: '', replace: 'x', expect_failing: [] }]), '```', '',
-    '```agentics-commit', 'test(a): pin the bound', '```', '',
-    '```agentics-gotchas', '{not json', '```', '',
-    '```agentics-mutations', '{"file": "x"}', '```', '',
-    '```js', 'const x = 1', '```',
-  ].join('\r\n')
-  const out = extractReportBlocks(report)
-  assert.equal(out.gotchas.length, 1)
-  assert.deepEqual(out.stale, ['g-0000abcd'])
-  assert.deepEqual(out.mutations, [{ file: 'src/a.js', find: '<', replace: '<=', expect_failing: ['a bound'] }])
-  assert.equal(out.commit, 'test(a): pin the bound')
-  assert.equal(out.problems.length, 5, out.problems.join('\n'))
-  assert.ok(out.problems.some((p) => /agentics-gotchas\[1\]: roles/.test(p)))
-  assert.ok(out.problems.some((p) => /agentics-gotchas: not JSON/.test(p)))
-  assert.ok(out.problems.some((p) => /agentics-mutations: expected a JSON array/.test(p)))
-  assert.ok(out.problems.some((p) => /not a gotcha id/.test(p)))
-
-  assert.deepEqual(extractReportBlocks('no blocks at all'), { gotchas: [], stale: [], mutations: [], commit: null, problems: [] })
-  const twoLines = extractReportBlocks('```agentics-commit\nfirst\nsecond\n```\n')
-  assert.equal(twoLines.commit, null)
-  assert.match(twoLines.problems[0], /one subject line/)
-  assert.doesNotThrow(() => extractReportBlocks(undefined))
 })
 
 test('writeGotcha is idempotent on the id and round-trips through the file format', () => {

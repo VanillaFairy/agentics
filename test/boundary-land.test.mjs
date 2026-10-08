@@ -1,35 +1,15 @@
-// test/boundary-land.test.mjs — lib/boundary.mjs against real git: landing, drift, and records sent twice.
+// test/boundary-land.test.mjs — lib/boundary.mjs against real git: what a landing check reports, merges, refuses and sweeps.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { freshRecords, land } from '../lib/boundary.mjs'
+import { land } from '../lib/boundary.mjs'
 import { append } from '../lib/ledger.mjs'
 import { renderLanding } from '../lib/render.mjs'
-import { deriveStatus, normalizeNode, readTree } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
-import { git, leaf, repo, root, STAMP } from './harness/boundary-fixture.mjs'
-
-test('drift: a landed diff under a contract a pending node consumes is flagged; its own provider is not', async () => {
-  const { driftOf } = await import('../lib/boundary.mjs')
-  const r = repo()
-  seedTree(r, 'e1', [root(),
-    leaf('p', { rigor: 'trivial', locus: ['src/api.mjs'], provides: [{ name: 'api', paths: ['src/api.mjs'] }] }),
-    leaf('c', { rigor: 'trivial', locus: ['src/use.mjs'], consumes: [{ name: 'api', paths: ['src/api.mjs'] }], deps: ['p'] }),
-    leaf('x', { rigor: 'trivial', locus: ['src/other.mjs'] }),
-    leaf('d', { rigor: 'trivial', locus: ['src/d.mjs'], consumes: [{ name: 'shape', paths: ['src/shape/'] }] }),
-    { id: 'later', kind: 'design', title: 'later part' }])
-  const tree = readTree(r, 'e1')
-  const out = driftOf(tree, ['x'], ['src/other.mjs', 'src/shape/one.mjs', 'src/api.mjs'])
-  assert.deepEqual(out.drift.map((d) => [d.node, d.contract]).sort(), [['c', 'api'], ['d', 'shape']])
-  assert.equal(out.unexamined, 1)
-  assert.deepEqual(driftOf(tree, ['p'], ['src/api.mjs']).drift, [], 'the provider landing its own contract is expected work')
-  append(r, 'e1', 'events', { kind: 'escalated', node: 'c', execution: STAMP, reason: 'blocked' })
-  const stopped = driftOf(readTree(r, 'e1'), ['x'], ['src/api.mjs']).drift
-  assert.deepEqual(stopped, [{ node: 'c', contract: 'api', files: ['src/api.mjs'], stopped: 'escalated' }], 'a stopped consumer is reported, marked, never skipped')
-})
+import { git, repo, STAMP } from './harness/boundary-fixture.mjs'
 
 test('land check carries the root integration review\'s latest claim verdicts', () => {
   const r = repo()
@@ -109,18 +89,4 @@ test('landing sweeps what it merged and keeps, with why, an unmerged branch and 
   const again = land(r, 'e1', 'merge')
   assert.equal(again.already, true)
   assert.deepEqual(again.removed, ['agentics/e1--dirty'], 'landing again finishes the sweep')
-})
-
-test('a decision lands once while it is the node\'s word, and again once something has cleared it', () => {
-  const nodes = new Map([['a', normalizeNode({ id: 'a', kind: 'leaf', rigor: 'tdd' })]])
-  const disk = (events) => ({ nodes, events, status: deriveStatus(nodes, events), state: [], journal: [] })
-  const approve = { file: 'events', entry: { kind: 'approved', node: 'a', head_sha: 'h1' } }
-  const block = { file: 'events', entry: { kind: 'escalated', node: 'a', reason: 'blocked', detail: '' } }
-  assert.equal(freshRecords([approve, approve], disk([{ kind: 'dispatched', node: 'a', seq: 1 }])).length, 1, 'one call deciding it twice lands it once')
-  const approvedOnDisk = [{ kind: 'dispatched', node: 'a', seq: 1 }, { ...approve.entry, seq: 2 }]
-  assert.deepEqual(freshRecords([approve], disk(approvedOnDisk)), [], 'decided again after a lost courier')
-  assert.equal(freshRecords([approve], disk([...approvedOnDisk, { kind: 'dispatched', node: 'a', seq: 3 }])).length, 1, 'approved again after a new round')
-  const blocked = [{ kind: 'dispatched', node: 'a', seq: 1 }, { ...block.entry, seq: 2 }]
-  assert.deepEqual(freshRecords([block, approve], disk(blocked)), [], 'a stopped node is neither stopped twice nor approved under its stop')
-  assert.equal(freshRecords([block], disk([...blocked, { kind: 'replanned', node: 'a', seq: 3 }])).length, 1, 'escalated again after a retry')
 })

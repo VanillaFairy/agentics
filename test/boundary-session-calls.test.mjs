@@ -9,14 +9,16 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { land, landAct } from '../lib/boundary.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
 import { executionDir, revParse } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
-import { BOUNDARY, commitIn, git, leaf, repo, root } from './harness/boundary-fixture.mjs'
+import { commitIn, git, leaf, repo, root } from './harness/boundary-fixture.mjs'
 
+const BOUNDARY = fileURLToPath(new URL('../lib/boundary.mjs', import.meta.url))
 const E = 'e1'
 const EFFORT_BRANCH = 'agentics/' + E
 const OLDER = '20260925-120000'

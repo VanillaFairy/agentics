@@ -25,7 +25,7 @@ import { append, appendProject, executionLog, readLog, readProjectLog } from '..
 import { renderLanding } from '../lib/render.mjs'
 import { hashSpec } from '../lib/spec.mjs'
 import { executionSummary } from '../lib/status.mjs'
-import { effortStateDir, executionDir, executionsRoot, fixesPath, nodeKey, posix, saidOf, specPath, stalePath } from '../lib/store.mjs'
+import { effortStateDir, executionDir, executionsRoot, nodeKey, posix, saidOf, specPath, stalePath } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
 import { apply, plan } from '../tools/migrate-v5.mjs'
 import { executionRig } from './harness/program-rig.mjs'
@@ -38,6 +38,9 @@ const E = 'e1'
 const CLOSED = '20260801-100000'
 const OPEN = '20260901-100000'
 const NOENV = '20260902-100000'
+
+/** Where 4.x wrote a leaf's fixes file for a round. */
+const fixesFile = (repo, effort, stamp, id, round) => posix(join(executionDir(repo, effort, stamp), 'fixes', nodeKey(id) + '-r' + round + '.json'))
 const V5 = '20260903-100000'
 const LONG = 'a-leaf-whose-name-is-longer-than-forty-characters'
 const S1 = 'I0000000a'
@@ -163,7 +166,7 @@ function fixture(t) {
   state(CLOSED, { kind: 'invocation', at: 'then' })
   state(CLOSED, { kind: 'closed', status: 'done' })
   put(join(executionDir(dir, E, CLOSED), 'execution.json'), JSON.stringify({ root: '.' }))
-  put(fixesPath(dir, E, CLOSED, 'c', 5), JSON.stringify(F.c5.map(reviewEntry)))
+  put(fixesFile(dir, E, CLOSED, 'c', 5), JSON.stringify(F.c5.map(reviewEntry)))
 
   put(join(openDir, 'execution.json'), JSON.stringify({ root: '.' }))
   state(OPEN, { kind: 'invocation', at: 'now' })
@@ -172,12 +175,12 @@ function fixture(t) {
   state(OPEN, { kind: 'checkpoint', why: 'size' })
   state(OPEN, { kind: 'ended' })
   assert.equal(append(dir, E, 'journal:' + OPEN, { kind: 'merge-observed', note: 'x' }).ok, true)
-  put(fixesPath(dir, E, OPEN, 'c', 1), JSON.stringify(F.c1.map(reviewEntry)))
-  put(fixesPath(dir, E, OPEN, 'c', 2), JSON.stringify([reviewEntry(F.c2[0]), verification, reviewEntry(F.c2[1])]))
-  put(fixesPath(dir, E, OPEN, 'gr', 2), JSON.stringify(F.gr2.map(reviewEntry)))
-  put(fixesPath(dir, E, OPEN, 'ta', 2), JSON.stringify(F.ta2.map(reviewEntry)))
-  put(fixesPath(dir, E, OPEN, 'd', 2), JSON.stringify(F.d2.map(reviewEntry)))
-  put(fixesPath(dir, E, OPEN, 'f/x', 2), JSON.stringify(F.fx2.map(reviewEntry)))
+  put(fixesFile(dir, E, OPEN, 'c', 1), JSON.stringify(F.c1.map(reviewEntry)))
+  put(fixesFile(dir, E, OPEN, 'c', 2), JSON.stringify([reviewEntry(F.c2[0]), verification, reviewEntry(F.c2[1])]))
+  put(fixesFile(dir, E, OPEN, 'gr', 2), JSON.stringify(F.gr2.map(reviewEntry)))
+  put(fixesFile(dir, E, OPEN, 'ta', 2), JSON.stringify(F.ta2.map(reviewEntry)))
+  put(fixesFile(dir, E, OPEN, 'd', 2), JSON.stringify(F.d2.map(reviewEntry)))
+  put(fixesFile(dir, E, OPEN, 'f/x', 2), JSON.stringify(F.fx2.map(reviewEntry)))
   put(join(openDir, 'jobs', 'leaf-close-1.pid'), String(DEAD_PID))
   put(join(openDir, 'jobs', 'leaf-close-1.json'), JSON.stringify({ boundary: 'leaf-close', ok: true }))
   put(join(openDir, 'cards', 'leaf-a-12345678.json'))
@@ -1086,7 +1089,7 @@ for (const [what, findings, role, thread, redToo] of CYCLE_CASES) {
     const fourX = (kind, fields) => record(rig.repo, 'events', { kind, execution: rig.stamp, ...fields })
     fourX('approved', { node: 'r', head_sha: rig.git('rev-parse', 'refs/heads/' + rig.branchOf('r')), review_rounds: 1, at_integration: false })
     fourX('dispatched', { node: 'g', role: 'implementer', round: 1 })
-    if (findings) put(fixesPath(rig.repo, E, rig.stamp, 'g', 1), JSON.stringify(findings.map(reviewEntry)))
+    if (findings) put(fixesFile(rig.repo, E, rig.stamp, 'g', 1), JSON.stringify(findings.map(reviewEntry)))
     if (redToo) {
       fourX('message', { node: 'r', thread: 'producer:r', from: 'code', msg: 'findings', payload: { findings: [{ id: 'R1', severity: 'major', claim: 'c', evidence: 'e', failure_scenario: '' }] }, round: 1, execution: '' })
     }
@@ -1139,8 +1142,8 @@ test('a leaf is matched to its fixes files by its whole key', (t) => {
   assert.equal(seeded.ok, true, JSON.stringify(seeded.problems))
   assert.equal(nodeKey('f/x'), 'f.x')
   put(join(executionDir(dir, E, OPEN), 'execution.json'), JSON.stringify({ root: '.' }))
-  put(fixesPath(dir, E, OPEN, 'f/x', 1), JSON.stringify(F.fx2.map(reviewEntry)))
-  put(fixesPath(dir, E, OPEN, 'fax', 3), JSON.stringify(F.fx2.map(reviewEntry)))
+  put(fixesFile(dir, E, OPEN, 'f/x', 1), JSON.stringify(F.fx2.map(reviewEntry)))
+  put(fixesFile(dir, E, OPEN, 'fax', 3), JSON.stringify(F.fx2.map(reviewEntry)))
   const p = plan(dir)
   assert.deepEqual(planned(p, 'f/x').map((m) => m.round), [1])
   assert.deepEqual(planned(p, 'fax').map((m) => m.round), [3])
@@ -1148,7 +1151,7 @@ test('a leaf is matched to its fixes files by its whole key', (t) => {
 
 test('a composite with a fixes file gets no findings message', (t) => {
   const fx = fixture(t)
-  put(fixesPath(fx.dir, E, OPEN, 'g', 1), JSON.stringify(F.fx2.map(reviewEntry)))
+  put(fixesFile(fx.dir, E, OPEN, 'g', 1), JSON.stringify(F.fx2.map(reviewEntry)))
   const p = plan(fx.dir)
   assert.deepEqual(planned(p, 'g'), [])
   apply(p)

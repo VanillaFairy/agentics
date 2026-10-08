@@ -24,8 +24,8 @@ import { hashSpec, parseSpec } from '../lib/spec.mjs'
 import { costOf, efforts, todoFor } from '../lib/status.mjs'
 import * as statusModule from '../lib/status.mjs'
 import {
-  agenticsRoot, branchOf, briefPath, dispatchKey, executionDir, executionRunId, livePath, parentOf, posix, progressPath,
-  reportPath, returnPath, runJsonPath, specPath, worktreeOf, writeJson,
+  agenticsRoot, branchOf, dispatchKey, effortStateDir, executionDir, executionRunId, livePath, nodeKey, parentOf, posix,
+  returnPath, runJsonPath, specPath, worktreeOf, writeJson,
 } from '../lib/store.mjs'
 import { normalizeNode, readTree, renderTree } from '../lib/tree.mjs'
 import { DEAD_PID } from './harness/dead-pid.mjs'
@@ -413,7 +413,10 @@ test('a dispatch made again names its stored return once', () => {
 
 test('4.x briefs, reports and progress files are not read', () => {
   const { repo, effort, stamp } = effortFixture()
-  const files = [briefPath, reportPath, progressPath].map((at) => at(repo, effort, stamp, 'a/impl', 'implementer', 1))
+  // Where 4.x wrote a dispatch's brief, its report and its progress file.
+  const stem = nodeKey('a/impl') + '-implementer-r1'
+  const reports = join(effortStateDir(repo, effort), 'reports', stamp + '-' + stem)
+  const files = [join(executionDir(repo, effort, stamp), 'briefs', stem + '.md'), reports + '.md', reports + '.json']
   for (const path of files) {
     mkdirSync(dirname(path), { recursive: true })
     writeFileSync(path, path.endsWith('.json') ? JSON.stringify({ items: [{ name: 'Parser', state: 'done' }] }) : 'a 4.x file\n')

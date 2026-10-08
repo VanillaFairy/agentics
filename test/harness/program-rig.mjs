@@ -5,7 +5,7 @@
 // same for one execution: an approved, compiled effort, its effort branch, the execution's home,
 // log port and boundary context.
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -26,19 +26,37 @@ const NOW = () => '2026-01-01T00:00:00.000Z'
 
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', windowsHide: true })
 
-export function programRig({ files = {}, script = {}, effort = '', maxAgents = 6, env = {}, config = {} } = {}) {
-  const repo = mkdtempSync(join(tmpdir(), 'agentics-program-'))
-  git(repo, 'init', '-q', '.')
-  git(repo, 'config', 'user.email', 't@t')
-  git(repo, 'config', 'user.name', 't')
-  git(repo, 'config', 'core.autocrlf', 'false')
-  for (const [path, content] of Object.entries(files)) {
-    const full = join(repo, ...path.split('/'))
-    mkdirSync(dirname(full), { recursive: true })
-    writeFileSync(full, content)
+/**
+ * A fresh repository holding `files` in one commit on `branch`: built once per distinct
+ * `(branch, message, files)` in this process and copied for every later caller, so a test file
+ * pays git for its fixture once, not once per test.
+ */
+const seeds = new Map()
+process.on('exit', () => { for (const dir of seeds.values()) rmSync(dir, { recursive: true, force: true }) })
+function seededRepo(prefix, { branch, message, files }) {
+  const key = JSON.stringify([branch, message, files])
+  if (!seeds.has(key)) {
+    const seed = mkdtempSync(join(tmpdir(), 'agentics-seed-'))
+    git(seed, 'init', '-q', ...(branch ? ['-b', branch] : []))
+    git(seed, 'config', 'user.email', 't@t')
+    git(seed, 'config', 'user.name', 't')
+    git(seed, 'config', 'core.autocrlf', 'false')
+    for (const [path, content] of Object.entries(files)) {
+      const full = join(seed, ...path.split('/'))
+      mkdirSync(dirname(full), { recursive: true })
+      writeFileSync(full, content)
+    }
+    git(seed, 'add', '-A')
+    git(seed, 'commit', '-q', '--allow-empty', '-m', message)
+    seeds.set(key, seed)
   }
-  git(repo, 'add', '-A')
-  git(repo, 'commit', '-q', '--allow-empty', '-m', 'init')
+  const repo = mkdtempSync(join(tmpdir(), prefix))
+  cpSync(seeds.get(key), repo, { recursive: true, preserveTimestamps: true })
+  return repo
+}
+
+export function programRig({ files = {}, script = {}, effort = '', maxAgents = 6, env = {}, config = {} } = {}) {
+  const repo = seededRepo('agentics-program-', { branch: '', message: 'init', files })
   if (Object.keys(config).length) writeJson(configPath(repo), config)
   const cleanup = () => rmSync(repo, { recursive: true, force: true })
   const build = (s) => {
@@ -96,20 +114,9 @@ const RIG_FILES = {
  * runs in the repository and returns its trimmed output. The repository is removed in `t.after`.
  */
 export function executionRig(t, { spec = RIG_SPEC, commands = RIG_COMMANDS, files = {}, maxAgents = 6, env = {} } = {}) {
-  const repo = mkdtempSync(join(tmpdir(), 'agentics-execution-'))
+  const repo = seededRepo('agentics-execution-', { branch: 'main', message: 'base', files: { ...RIG_FILES, ...files } })
   t.after(() => rmSync(repo, { recursive: true, force: true }))
   const inRepo = (...args) => git(repo, ...args).trim()
-  inRepo('init', '-q', '-b', 'main')
-  inRepo('config', 'user.email', 't@t')
-  inRepo('config', 'user.name', 't')
-  inRepo('config', 'core.autocrlf', 'false')
-  for (const [path, content] of Object.entries({ ...RIG_FILES, ...files })) {
-    const full = join(repo, ...path.split('/'))
-    mkdirSync(dirname(full), { recursive: true })
-    writeFileSync(full, content)
-  }
-  inRepo('add', '-A')
-  inRepo('commit', '-q', '-m', 'base')
   const base_sha = inRepo('rev-parse', 'HEAD')
 
   const opened = openEffort(repo, { slug: EFFORT, about: 'the rig', roots: ['src'], now: new Date(NOW()) })

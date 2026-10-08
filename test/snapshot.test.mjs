@@ -24,11 +24,12 @@ import { hashSpec, parseSpec } from '../lib/spec.mjs'
 import { costOf, efforts, todoFor } from '../lib/status.mjs'
 import * as statusModule from '../lib/status.mjs'
 import {
-  agenticsRoot, branchOf, briefPath, executionDir, parentOf, posix, progressPath, reportPath, specPath, worktreeOf,
+  agenticsRoot, branchOf, briefPath, dispatchKey, executionDir, executionRunId, livePath, parentOf, posix, progressPath,
+  reportPath, returnPath, runJsonPath, specPath, worktreeOf, writeJson,
 } from '../lib/store.mjs'
 import { normalizeNode, readTree, renderTree } from '../lib/tree.mjs'
 
-const { nodeOf, parseProgress, renderNode, snapshotOf } = statusModule
+const { liveOf, nodeOf, renderNode, snapshotOf } = statusModule
 
 const CLI = fileURLToPath(new URL('../lib/status.mjs', import.meta.url))
 
@@ -75,6 +76,11 @@ const FIX_REASON = 'verify_oscillating'
 const FIX_DETAIL = 'the fix diverged twice'
 const WAIT_RETURN = 'needs_decision'
 const WAIT_QUESTION = 'what does the wait step wait for?'
+
+const round = (id, n, role = 'implementer') => dispatchKey({ node: id, role, thread: 'producer:' + id, round: n })
+const D_IMPL = round('a/impl', 1)
+const D_FIX = round('a/fix', 1)
+const IMPL_TEXT = 'report for a/impl'
 
 const ROOT_SPEC = [
   '# Eff root', '',
@@ -164,8 +170,8 @@ function effortFixture() {
   append(repo, EFFORT, 'nodes', RAW_NODES.map((node) => ({ kind: 'node', node })))
 
   const ev = (kind, node, extra = {}) => append(repo, EFFORT, 'events', { kind, node, execution: STAMP, ...extra })
-  ev('dispatched', 'a/impl', { role: 'implementer', round: 1, model: 'sonnet', effort: 'medium' })
-  ev('dispatched', 'a/fix', { role: 'implementer', round: 1, model: 'sonnet', effort: 'medium' })
+  ev('dispatched', 'a/impl', { dispatch: D_IMPL, role: 'implementer', round: 1, model: 'sonnet', effort: 'medium' })
+  ev('dispatched', 'a/fix', { dispatch: D_FIX, role: 'implementer', round: 1, model: 'sonnet', effort: 'medium' })
   ev('escalated', 'a/fix', { reason: FIX_REASON, detail: FIX_DETAIL })
   ev('parked', 'a/wait', { return: WAIT_RETURN, question: WAIT_QUESTION })
 
@@ -189,18 +195,12 @@ function effortFixture() {
 
   mkdirSync(executionDir(repo, EFFORT, STAMP), { recursive: true })
   writeFileSync(join(executionDir(repo, EFFORT, STAMP), 'execution.json'), JSON.stringify({ root: '.' }))
-  const brief = briefPath(repo, EFFORT, STAMP, 'a/impl', 'implementer', 1)
-  mkdirSync(dirname(brief), { recursive: true })
-  writeFileSync(brief, 'brief for a/impl\n')
-  const report = reportPath(repo, EFFORT, STAMP, 'a/impl', 'implementer', 1)
-  mkdirSync(dirname(report), { recursive: true })
-  writeFileSync(report, 'report for a/impl\n')
-
-  append(repo, EFFORT, 'state:' + STAMP, [
-    { kind: 'dispatch', label: 'implementer:a/impl#1', node: 'a/impl', role: 'implementer', model: 'sonnet', effort: 'medium' },
-    { kind: 'dispatch', label: 'implementer:a/fix#1', node: 'a/fix', role: 'implementer', model: 'sonnet', effort: 'medium' },
-    { kind: 'usage', agent: 'a1', label: 'implementer:a/impl#1', models: { 'claude-sonnet-5': { input: 100, cache_write_5m: 40, cache_write_1h: 0, cache_read: 1000, output: 60 } } },
-  ])
+  // a/impl's call returned and stored its words; a/fix's never returned, in a run that is not live.
+  writeJson(returnPath(executionDir(repo, EFFORT, STAMP), D_IMPL), { status: 'done', text: IMPL_TEXT })
+  append(repo, EFFORT, 'state:' + STAMP, {
+    kind: 'returned', dispatch: D_IMPL, session: 's1', status: 'returned', cause: '', denials: [], cost_total: 0.5, cost_usd: 0.5,
+    usage: { input_tokens: 100, output_tokens: 60, cache_read_input_tokens: 1000, cache_creation_input_tokens: 40 },
+  })
 
   return { repo, effort: EFFORT, stamp: STAMP }
 }
@@ -215,9 +215,9 @@ function linkedWorktree(repo) {
   return wt
 }
 
-test('snapshot carries format 3', () => {
+test('snapshot carries format 4', () => {
   const { repo, effort } = sharedFixture()
-  assert.equal(snapshotOf(repo, effort).format, 3)
+  assert.equal(snapshotOf(repo, effort).format, 4)
 })
 
 test("store names the main checkout's .agentics", () => {
@@ -416,19 +416,32 @@ test('a task links its parent spec at its entry line', () => {
   assert.equal(impl.files.spec.line, lineOf(A_SPEC, '- **impl**'))
 })
 
-test('briefs and reports list only files that exist', () => {
+test('files.returns lists the node\'s stored returns on disk', () => {
   const { repo, effort, stamp } = sharedFixture()
   const byId = Object.fromEntries(snapshotOf(repo, effort).nodes.map((n) => [n.id, n]))
+  const impl = byId['a/impl'].files.returns
+  assert.equal(impl.length, 1)
+  assert.ok(samePath(repo, impl[0], returnPath(executionDir(repo, effort, stamp), D_IMPL)))
+  assert.deepEqual(byId['a/fix'].files.returns, [], 'a call that never returned stored nothing')
+})
 
-  const impl = byId['a/impl']
-  assert.equal(impl.files.briefs.length, 1)
-  assert.ok(samePath(repo, impl.files.briefs[0], briefPath(repo, effort, stamp, 'a/impl', 'implementer', 1)))
-  assert.equal(impl.files.reports.length, 1)
-  assert.ok(samePath(repo, impl.files.reports[0], reportPath(repo, effort, stamp, 'a/impl', 'implementer', 1)))
+test('a dispatch made again names its stored return once', () => {
+  const { repo, effort, stamp } = effortFixture()
+  append(repo, effort, 'events', { kind: 'dispatched', node: 'a/impl', execution: stamp, dispatch: D_IMPL, role: 'implementer', round: 1, model: 'sonnet', effort: 'medium' })
+  const again = snapshotOf(repo, effort).nodes.find((n) => n.id === 'a/impl').files.returns
+  assert.equal(again.length, 1, 'a dispatch made again names its return once')
+})
 
-  const fix = byId['a/fix']
-  assert.deepEqual(fix.files.briefs, [])
-  assert.deepEqual(fix.files.reports, [])
+test('4.x briefs, reports and progress files are not read', () => {
+  const { repo, effort, stamp } = effortFixture()
+  const files = [briefPath, reportPath, progressPath].map((at) => at(repo, effort, stamp, 'a/impl', 'implementer', 1))
+  for (const path of files) {
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, path.endsWith('.json') ? JSON.stringify({ items: [{ name: 'Parser', state: 'done' }] }) : 'a 4.x file\n')
+  }
+  const text = JSON.stringify(snapshotOf(repo, effort))
+  for (const path of files) assert.ok(!text.includes(posix(path).split('/').pop()), 'the snapshot names ' + path)
+  assert.equal(snapshotOf(repo, effort).nodes.find((n) => n.id === 'a/impl').card.report.lead, IMPL_TEXT, 'the report is the stored return')
 })
 
 test('folders carry approval and blocking counts', () => {
@@ -448,12 +461,12 @@ test('cost matches costOf', () => {
   const { repo, effort } = sharedFixture()
   const snap = snapshotOf(repo, effort)
   const c = costOf(repo, effort)
-  assert.equal(snap.cost.dispatches, c.dispatches)
-  assert.ok(c.tokens > 0 && c.tokens_unreported > 0, 'the fixture has both a measured and an unreported dispatch')
-  for (const field of ['tokens', 'usd', 'tokens_unreported', 'usage']) assert.deepEqual(snap.cost[field], c[field], field)
-  for (const [id, leafCost] of Object.entries(c.per_leaf)) {
-    assert.equal(snap.cost.per_leaf[id].dispatches, leafCost.dispatches, id)
-    for (const field of ['tokens', 'usd', 'tokens_unreported', 'usage']) assert.deepEqual(snap.cost.per_leaf[id][field], leafCost[field], id + ' ' + field)
+  const FIELDS = ['dispatches', 'tokens', 'usd', 'unmeasured']
+  assert.ok(c.tokens > 0 && c.unmeasured > 0, 'the fixture has both a measured call and one that never returned')
+  for (const field of FIELDS) assert.equal(snap.cost[field], c[field], field)
+  for (const group of ['by_model', 'per_leaf', 'per_folder']) {
+    assert.deepEqual(Object.keys(snap.cost[group]).sort(), Object.keys(c[group]).sort(), group)
+    for (const [key, s] of Object.entries(c[group])) for (const field of FIELDS) assert.equal(snap.cost[group][key][field], s[field], group + ' ' + key + ' ' + field)
   }
 })
 
@@ -538,17 +551,25 @@ test("behind counts the folder's commits a leaf's branch lacks", () => {
   assert.equal(cards.a.behind, null, 'a folder is not a leaf')
 })
 
-test("the card's report is the latest dispatch's, with its lead", () => {
+test("the card's report is the latest return that carries text, with its lead", () => {
   const { repo, effort, stamp } = effortFixture()
-  append(repo, effort, 'events', { kind: 'dispatched', node: 'a/impl', execution: stamp, role: 'implementer', round: 2, model: 'sonnet', effort: 'medium' })
-  const second = reportPath(repo, effort, stamp, 'a/impl', 'implementer', 2)
+  const dir = executionDir(repo, effort, stamp)
+  const dispatched = (d, n, role) => append(repo, effort, 'events', { kind: 'dispatched', node: 'a/impl', execution: stamp, dispatch: d, role, round: n, model: 'sonnet', effort: 'medium' })
+  const second = round('a/impl', 2)
   const lead = ['The suite fails on two tests', 'outside this locus.']
-  writeFileSync(second, ['', '# Round 2', '', ...lead, '', 'More.', ''].join('\r\n'))
+  dispatched(second, 2, 'implementer')
+  writeJson(returnPath(dir, second), { status: 'done', text: ['', '# Round 2', '', ...lead, '', 'More.', ''].join('\r\n') })
+  const third = round('a/impl', 3)
+  dispatched(third, 3, 'implementer')
+  writeJson(returnPath(dir, third), { status: 'done', text: '  ' })
+  assert.deepEqual(cardsOf(repo, effort)['a/impl'].report, { dispatch: second, lead: lead.join(' ') }, 'a return with no words is passed over')
+  assert.ok(renderNode(nodeOf(repo, effort, 'a/impl')).includes('report (' + second + '): ' + lead.join(' ')), 'renderNode prints the dispatch and the lead')
 
-  const cards = cardsOf(repo, effort)
-  assert.ok(samePath(repo, cards['a/impl'].report.path, second))
-  assert.equal(cards['a/impl'].report.lead, lead.join(' '))
-  assert.equal(cards['a/fix'].report, null)
+  const review = dispatchKey({ node: 'a/impl', role: 'reviewer', thread: 'reviewer:a/impl:1', round: 1 })
+  dispatched(review, 1, 'reviewer')
+  writeJson(returnPath(dir, review), { findings: [], units: [], notes: 'Clean: both criteria hold.', stop_reason: 'done', not_reached: [] })
+  assert.deepEqual(cardsOf(repo, effort)['a/impl'].report, { dispatch: review, lead: 'Clean: both criteria hold.' }, 'a judge\'s notes are its words')
+  assert.equal(cardsOf(repo, effort)['a/fix'].report, null, 'a call that never returned has no report')
 })
 
 test('notes are on the card newest first, and move no status', () => {
@@ -564,12 +585,12 @@ test('notes are on the card newest first, and move no status', () => {
   for (const [id, s] of before) assert.equal(after.get(id).status, s.status, id)
 })
 
-test('relaunch names the open execution, and retries only the node that escalated itself', () => {
+test('relaunch names the open execution, and retry holds only the node that escalated itself', () => {
   const { repo, effort, stamp } = effortFixture()
   const cards = cardsOf(repo, effort)
-  assert.deepEqual(cards['a/fix'].relaunch, { execution: stamp, root: '.', retry_escalated: ['a/fix'] })
-  assert.deepEqual(cards['a/wait'].relaunch, { execution: stamp, root: '.', retry_escalated: [] })
-  assert.deepEqual(cards.a.relaunch.retry_escalated, [], 'a folder escalated only through a child retries nothing itself')
+  assert.deepEqual(cards['a/fix'].relaunch, { execution: stamp, root: '.', retry: ['a/fix'] })
+  assert.deepEqual(cards['a/wait'].relaunch, { execution: stamp, root: '.', retry: [] })
+  assert.deepEqual(cards.a.relaunch.retry, [], 'a folder escalated only through a child retries nothing itself')
 
   append(repo, effort, 'state:' + stamp, { kind: 'closed', status: 'done' })
   assert.equal(cardsOf(repo, effort)['a/fix'].relaunch, null)
@@ -606,39 +627,37 @@ test('node prints one entry of the snapshot, for a person or as JSON', () => {
   assert.match(JSON.parse(missing.stdout).error, /no live node/)
 })
 
-test("progress is the unfinished leaf's latest progress file, and null where there is none", () => {
+test('live is the running dispatch\'s activity while its execution\'s run is live, and null otherwise', () => {
   const { repo, effort, stamp } = effortFixture()
-  const items = [{ name: 'Parser', state: 'done' }, { name: 'Lexer', state: 'working' }, { name: 'Errors', state: 'pending' }]
-  writeFileSync(progressPath(repo, effort, stamp, 'a/impl', 'implementer', 1), JSON.stringify({ items: items.slice(0, 1) }))
-  append(repo, effort, 'events', { kind: 'dispatched', node: 'a/impl', execution: stamp, role: 'implementer', round: 2, model: 'sonnet', effort: 'medium' })
-  const latest = progressPath(repo, effort, stamp, 'a/impl', 'implementer', 2)
-  writeFileSync(latest, JSON.stringify({ items }))
+  const dir = executionDir(repo, effort, stamp)
+  const running = round('a/impl', 2)
+  append(repo, effort, 'events', { kind: 'dispatched', node: 'a/impl', execution: stamp, dispatch: running, role: 'implementer', round: 2, model: 'sonnet', effort: 'medium' })
+  const activity = { turns: 7, tool: 'Edit src/a-impl.js', at: '2026-09-27T10:00:00.000Z' }
+  writeJson(livePath(dir, running), activity)
+  writeJson(livePath(dir, D_IMPL), { turns: 1, tool: 'Read', at: '2026-09-27T09:00:00.000Z' })
+  assert.equal(liveOf(repo, effort, 'a/impl'), null, 'no run holds the execution')
 
+  const run = executionRunId(effort, stamp)
+  const meta = (pid) => writeJson(runJsonPath(repo, run), { run, pid, heartbeat_at: new Date().toISOString() })
+  meta(process.pid)
+  const expected = { dispatch: running, ...activity }
+  assert.deepEqual(liveOf(repo, effort, 'a/impl'), expected, 'the latest dispatch\'s activity, never an earlier one\'s')
   const byId = Object.fromEntries(snapshotOf(repo, effort).nodes.map((n) => [n.id, n]))
-  assert.ok(samePath(repo, byId['a/impl'].progress.path, latest))
-  assert.deepEqual(byId['a/impl'].progress.items, items)
-  assert.equal(byId['a/impl'].progress.error, null)
-  assert.equal(byId['a/fix'].progress, null, 'a leaf that wrote none')
-  assert.equal(byId.a.progress, null, 'a folder is not a leaf')
-  assert.match(renderNode(byId['a/impl']), /progress: \[x\] Parser, \[>\] Lexer, \[ \] Errors/)
+  assert.deepEqual(byId['a/impl'].live, expected)
+  assert.equal(byId['a/fix'].live, null, 'a dispatch with no live file')
+  assert.equal(byId['a/wait'].live, null, 'a node never dispatched')
+  assert.match(renderNode(byId['a/impl']), /^live: .*7 turn\(s\), last Edit src\/a-impl\.js/m)
+
+  meta(spawnSync(process.execPath, ['-e', ''], { env: { ...process.env, NODE_TEST_CONTEXT: '' } }).pid)
+  assert.equal(liveOf(repo, effort, 'a/impl'), null, 'a run whose process is gone')
 })
 
-test("a merged leaf's progress is dropped: its commits say what it did", () => {
+test('a node\'s card shows the latest checkout change of its own dispatches', () => {
   const { repo, effort, stamp } = effortFixture()
-  writeFileSync(progressPath(repo, effort, stamp, 'a/impl', 'implementer', 1), JSON.stringify({ items: [{ name: 'Parser', state: 'done' }] }))
-  const head = git(repo, 'rev-parse', branchOf(effort, 'a/impl'))
-  append(repo, effort, 'events', { kind: 'merged', node: 'a/impl', execution: stamp, into: 'a', merged_sha: head, head_sha: head })
-  const impl = snapshotOf(repo, effort).nodes.find((n) => n.id === 'a/impl')
-  assert.ok(impl.status === 'merged', 'the fixture merged the leaf, not ' + impl.status)
-  assert.equal(impl.progress, null)
-})
-
-test('a progress file caught mid-rewrite reads as unreadable, never as fewer pieces', () => {
-  const whole = JSON.stringify({ items: [{ name: 'A', state: 'done' }, { name: 'B', state: 'pending' }] })
-  assert.deepEqual(parseProgress(whole).items.map((it) => it.name), ['A', 'B'])
-  for (const text of [whole.slice(0, whole.length - 5), '', '{}', '{"items":[{"name":"A","state":"started"}]}', '{"items":[{"name":" ","state":"done"}]}']) {
-    const p = parseProgress(text)
-    assert.equal(p.items, null, text)
-    assert.ok(p.error, text)
-  }
+  append(repo, effort, 'state:' + stamp, { kind: 'checkout_changed', dispatch: D_IMPL, paths: ['notes.md'] })
+  append(repo, effort, 'state:' + stamp, { kind: 'checkout_changed', dispatch: D_IMPL, paths: ['README.md', 'notes.md'] })
+  const byId = Object.fromEntries(snapshotOf(repo, effort).nodes.map((n) => [n.id, n]))
+  assert.deepEqual(byId['a/impl'].card.checkout_changed, { dispatch: D_IMPL, paths: ['README.md', 'notes.md'] })
+  assert.equal(byId['a/fix'].card.checkout_changed, null)
+  assert.ok(renderNode(byId['a/impl']).includes('checkout changed by ' + D_IMPL + ': README.md, notes.md'))
 })

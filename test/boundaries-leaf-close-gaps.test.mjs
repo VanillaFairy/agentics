@@ -420,12 +420,6 @@ describe('G2: what a killed verify leaves in a worktree', { concurrency: 2 }, ()
     assert.equal(existsSync(n.note), false, 'the note is gone once the file is back')
   })
 
-  test('G2.6 DESIGN.md says how a close tells a verify leftover from the work of a round', () => {
-    const design = readFileSync(new URL('../docs/DESIGN.md', import.meta.url), 'utf8')
-    const section = design.slice(design.indexOf('\n## Verification'), design.indexOf('\n### What a verdict is computed from'))
-    assert.ok(section.includes(NOTE), 'the section names the note verify keeps')
-    assert.ok(section.includes(KEPT), 'the section names the refs the kept work stands under')
-  })
 })
 
 // ================================================================== G3

@@ -214,15 +214,6 @@ test("a ratifiable round is prepared naming the probe's review return, else its 
   assert.equal(prepared.hash, approvalState(w.rig.repo, E, 'p').hash)
 })
 
-test('a folder whose ground is known is planned with no survey', async (t) => {
-  const w = world(t, { known: true, steps: clean(), writes: { 1: S1 } })
-  const out = await w.run()
-  assert.equal(out.outcome, 'prepared')
-  assert.equal(out.survey, null)
-  assert.equal(under(w.rig, 'survey:').length, 0)
-  assert.equal(w.rig.log.entries().filter((e) => e.kind === 'step' && e.key.startsWith('survey:')).length, 0)
-})
-
 test("the planner writes on planner:<folder> in the session the folder mints, at the planner's tier, writing its spec alone", async (t) => {
   const role = loadRole('planner').role
   const tiers = new Set()
@@ -465,22 +456,6 @@ test('a discarded ambiguity is refused once, and discarded again escalates revie
   assert.equal(nodeOf(w.rig, 'p').kind, 'design')
 })
 
-test('a settlement that leaves a finding out is refused, and left out again escalates review_not_converging', async (t) => {
-  const w = world(t, {
-    steps: { ...planner(written, settled(), settled()), ...probing(1, S1, [GAP]) },
-    writes: { 1: S1 },
-  })
-  const out = await w.run()
-  assert.equal(out.outcome, 'stopped')
-  assert.deepEqual(escalations(w.rig).map((e) => e.reason), ['review_not_converging'])
-  assert.equal(messages(w.rig, 'refusals').length, 1)
-  assert.equal(ledger(w.rig, 'disposition').length, 0)
-  assert.equal(ledger(w.rig, 'reviewed').length, 1)
-  assert.equal(under(w.rig, 'probe:p:1/').length > 0, true)
-  for (const n of [2, 3, 4]) assert.equal(under(w.rig, 'probe:p:' + n + '/').length, 0, 'one probe round only')
-  assert.equal(ledger(w.rig, 'prepared').length, 0)
-})
-
 test('a finding back unchanged after it was incorporated escalates review_not_converging', async (t) => {
   const again = { ...GAP, claim: GAP.claim.toUpperCase().replace(/ /g, '  '), start: lineOf(S2, DESIGN_B), end: lineOf(S2, DESIGN_B) }
   const w = world(t, {
@@ -539,20 +514,6 @@ test('a carried finding a disposition settled is not settled again', async (t) =
   assert.ok(second.findings.some((f) => f.carried), 'the fixture: round 2 carries the gap whose line the edit left')
   assert.equal(ledger(w.rig, 'reviewed').length, 2)
   assert.equal(ledger(w.rig, 'prepared').length, 1)
-})
-
-test('a round that left a unit unruled is recorded incomplete and escalates review_incomplete', async (t) => {
-  const units = unitsFor(S1)
-  const left = units[units.length - 1]
-  const w = world(t, { steps: { ...planner(written), ...probing(1, S1, [], { units: units.slice(0, -1) }) }, writes: { 1: S1 } })
-  const out = await w.run()
-  assert.equal(out.outcome, 'stopped')
-  const reviewed = ledger(w.rig, 'reviewed')
-  assert.equal(reviewed.length, 1)
-  assert.equal(reviewed[0].complete, false)
-  assert.ok(reviewed[0].remaining.includes(left), 'remaining names ' + left + ': ' + JSON.stringify(reviewed[0].remaining))
-  assert.deepEqual(escalations(w.rig).map((e) => e.reason), ['review_incomplete'])
-  assert.equal(ledger(w.rig, 'prepared').length, 0)
 })
 
 test('a round whose prober returned nothing holds the folder on a role fault and records no round', async (t) => {

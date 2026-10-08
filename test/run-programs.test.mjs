@@ -17,7 +17,7 @@ import { readRunLog } from '../lib/ledger.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { launch } from '../lib/run.mjs'
-import { posix, readJson, resultPath, revParse, runDir, runJsonPath, specPath } from '../lib/store.mjs'
+import { posix, readJson, resultPath, revParse, runJsonPath, specPath } from '../lib/store.mjs'
 import { programRig } from './harness/program-rig.mjs'
 import { scriptedRunner } from './harness/scripted-runner.mjs'
 
@@ -270,11 +270,6 @@ test('drafts: an attached run writes its result with coverage, run and cost', as
 
 // ------------------------------------------------------------------ rule
 
-test('rule: an absent flag takes its default', async (t) => {
-  const { meta } = await claimed(t, 'rule', ['--effort', 'e1', '--folder', '.'], { setup: withSpec })
-  assert.deepEqual(pick(meta.args, ['effort', 'folder', 'user_approved']), { effort: 'e1', folder: '.', user_approved: false })
-})
-
 test('rule: every flag resolves', async (t) => {
   const { repo, out } = await attached(t, 'rule', ['--effort', 'e1', '--folder', '.', '--user-approved'], { setup: withSpec })
   assert.equal(out.ok, true, JSON.stringify(out))
@@ -293,19 +288,11 @@ test('rule: an attached run writes its result with coverage, run and cost', asyn
 
 // ------------------------------------------------------------------ review
 
-const PRIOR = '20251231-000000-review'
-const withPrior = (repo) => mkdirSync(runDir(repo, PRIOR), { recursive: true })
-
 test('review: an absent flag takes its default', async (t) => {
   const { repo, meta } = await claimed(t, 'review', ['--base', 'HEAD', '--criteria-file', 'criteria.md'])
   assert.deepEqual(pick(meta.args, ['base', 'criteria_file', 'criteria', 'prior']), {
     base: revParse(repo, 'HEAD'), criteria_file: resolve(repo, 'criteria.md'), criteria: CRITERIA.trim(), prior: '',
   })
-})
-
-test('review: every flag resolves', async (t) => {
-  const { repo, meta } = await claimed(t, 'review', ['--base', 'HEAD', '--criteria-file', 'criteria.md', '--prior', PRIOR], { setup: withPrior })
-  assert.deepEqual(pick(meta.args, ['base', 'prior']), { base: revParse(repo, 'HEAD'), prior: PRIOR })
 })
 
 

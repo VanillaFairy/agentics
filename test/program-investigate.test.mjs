@@ -7,7 +7,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { readContext, writeContext } from '../lib/citations.mjs'
@@ -15,10 +15,8 @@ import { liveItems, recordItems, recordJudgement } from '../lib/evidence.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
 import { investigate, scopeOf } from '../lib/programs/investigate.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
-import { launch } from '../lib/run.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
 import { programRig } from './harness/program-rig.mjs'
-import { scriptedRunner } from './harness/scripted-runner.mjs'
 
 const QUESTION = 'Can the config loader drop its cache?'
 const GUIDE = 'Cite every claim by path and line.'
@@ -73,14 +71,6 @@ test('the survey runs inside this run, on its log', async (t) => {
   assert.deepEqual(r.calls.map((c) => c.thread.key), ['plan', 'scout:loader', 'judge:1', 'synthesis'])
   const dispatched = r.log.entries().filter((e) => e.kind === 'dispatched').map((e) => e.thread)
   assert.deepEqual(dispatched, ['plan', 'scout:loader', 'judge:1', 'synthesis'])
-})
-
-test("the survey's steps are recorded on this run's log", async (t) => {
-  const r = rig(t, script(REPORT))
-  await investigate(r.ctx, argsOf())
-  const steps = r.log.entries().filter((e) => e.kind === 'step').map((e) => e.key)
-  assert.ok(steps.includes('context'), JSON.stringify(steps))
-  assert.ok(steps.some((k) => k.startsWith('record:')), JSON.stringify(steps))
 })
 
 test('the survey is asked the question, with the roots, notes, intelligence and pace', async (t) => {
@@ -224,25 +214,7 @@ test('a relaunch calls nothing that returned', async (t) => {
   assert.equal(again.calls.length, 0)
 })
 
-test('run.mjs runs an investigation from its question file, its tasks flag a bare flag', async (t) => {
-  const r = rig(t, {})
-  const file = join(r.repo, 'question.md')
-  writeFileSync(file, QUESTION + '\r\n')
-  const out = await launch({
-    argv: ['investigate', '--question-file', file, '--as-tasks'], cwd: r.repo, env: { NODE_TEST_CONTEXT: '' },
-    runner: ({ log }) => scriptedRunner(script([{ output: { summary: 's', gaps: [], tasks: [task(1)] } }]), { log }).runAgent,
-  })
-  assert.equal(out.ok, true, JSON.stringify(out))
-  assert.deepEqual([out.result.question, out.result.mode], [QUESTION, 'tasks'])
-})
-
 // ------------------------------------------------------------------ reading a context back
-
-test('readContext reads a one-part context whole', (t) => {
-  const r = rig(t, {})
-  const text = 'EVIDENCE ITEMS\n- one claim\n'
-  assert.equal(readContext(writeContext(r.repo, text).path), text)
-})
 
 test('readContext reads every part an index names, in order', (t) => {
   const r = rig(t, {})

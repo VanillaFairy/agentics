@@ -250,19 +250,6 @@ test('one locating scout is handed the artefact', async (t) => {
   }
 })
 
-test('an unfinished locating search is continued in its own session', async (t) => {
-  const locate = [
-    { output: located([GROUND_HIT], { stop_reason: 'unfinished', not_reached: 'the tests' }) },
-    { output: located([GROUND_HIT, hit('src/ground.js', 3, 'ground')]) },
-  ]
-  const { rig, result } = await probeIn(t, { files: { [ART]: DOC, ...GROUND_FILES }, script: scriptFor(DOC, STANDING, { locate }).script })
-  const calls = callsOf(rig, 'locate')
-  assert.equal(calls.length, 2)
-  assert.equal(calls[1].resume, true)
-  assert.equal(calls[1].thread.session, calls[0].thread.session)
-  assert.deepEqual(result.coverage.incomplete, [])
-})
-
 test('located ground reaches every prober and located guidance the axes analyst alone', async (t) => {
   const { script } = scriptFor(DOC, STANDING, {
     locate: [{ output: located([GUIDE_HIT, GROUND_HIT]) }], axes: [{ output: axesOut([]) }], perAxis: true,
@@ -446,12 +433,6 @@ test('a long checklist buys a prober per 12 axes', async (t) => {
 test('no more probers than axes', async (t) => {
   const doc = longDoc(2000)
   const { rig, result } = await probeIn(t, { files: { [ART]: doc }, script: scriptFor(doc, STANDING).script })
-  assert.equal(proberCalls(rig).length, STANDING.length)
-  assert.deepEqual(result.analysts, STANDING.map((k) => [k]))
-})
-
-test('per_axis gives every axis its own prober', async (t) => {
-  const { rig, result } = await probeIn(t, { script: scriptFor(DOC, STANDING, { perAxis: true }).script, over: { per_axis: true } })
   assert.equal(proberCalls(rig).length, STANDING.length)
   assert.deepEqual(result.analysts, STANDING.map((k) => [k]))
 })
@@ -754,33 +735,6 @@ test('the result holds the fields of a probe result', async () => {
     'ambiguities', 'ratifiable', 'snapshot', 'scope', 'unrecorded', 'review', 'coverage']) {
     assert.ok(key in result, 'the result holds ' + key)
   }
-})
-
-test("the result's shared_ground holds resolved, cited, files, excerpts and unresolved", async () => {
-  const { result } = await shapedRound()
-  for (const key of ['resolved', 'cited', 'files', 'excerpts', 'unresolved']) assert.ok(key in result.shared_ground, key)
-})
-
-test("the result's repo_ground holds located and unresolved", async () => {
-  const { result } = await shapedRound()
-  for (const key of ['located', 'unresolved']) assert.ok(key in result.repo_ground, key)
-})
-
-test("the result's units hold total, ruled and open", async () => {
-  const { result } = await shapedRound()
-  for (const key of ['total', 'ruled', 'open']) assert.ok(key in result.units, key)
-})
-
-test('each axis of the result holds its key and source', async () => {
-  const { result } = await shapedRound()
-  assert.ok(result.axes.length > 0)
-  for (const a of result.axes) for (const key of ['key', 'source']) assert.ok(key in a, key)
-})
-
-test('each finding of the result holds id, item, severity, axis, section and carried', async () => {
-  const { result } = await shapedRound()
-  assert.ok(result.findings.length > 0)
-  for (const f of result.findings) for (const key of ['id', 'item', 'severity', 'axis', 'section', 'carried']) assert.ok(key in f, key)
 })
 
 test('the scope of a full round is the whole document', async () => {

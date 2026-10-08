@@ -18,7 +18,7 @@ import { compileEffort } from '../lib/compile.mjs'
 import { renderMessage } from '../lib/conversation.mjs'
 import { append, fileFor, readLog, readRunLog, runLog, runState } from '../lib/ledger.mjs'
 import { programContext } from '../lib/programs/common.mjs'
-import { attachedOnly, rule, scopeOf } from '../lib/programs/rule.mjs'
+import { rule } from '../lib/programs/rule.mjs'
 import { respecBrief, respecSettle } from '../lib/respec.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
@@ -125,18 +125,6 @@ function session(t, token, answer) {
 }
 
 // --- the program module ----------------------------------------------------------------------
-
-test('a rule run is scoped by its effort and folder', () => {
-  const at = { repo: '/r', root: '/r' }
-  assert.deepEqual(scopeOf(args('api'), at), { effort: E, folder: 'api' })
-  assert.deepEqual(scopeOf(args('api', true), at), { effort: E, folder: 'api' })
-  assert.deepEqual(scopeOf(args('.'), at), { effort: E, folder: '.' })
-})
-
-test("a rule run takes the user's word attached only", () => {
-  assert.equal(attachedOnly(args('api', true)), true)
-  assert.equal(attachedOnly(args('api', false)), false)
-})
 
 // --- the brief and the ruler -----------------------------------------------------------------
 

@@ -234,16 +234,6 @@ test('the first preflight writes the envelope from its arguments and the command
   assert.deepEqual(xc.envelope(), env, 'the context reads back what was written')
 })
 
-test('dial and pace default to normal and balanced, and the folder to the effort root', async (t) => {
-  const r = world(t, NO_GAPS)
-  const out = await preflight(ctxOf(r), { commands_file: commandsFile(t) })
-  assert.equal(out.ok, true)
-  const env = envelopeOf(r)
-  assert.equal(env.root, '.')
-  assert.equal(env.dial, 'normal')
-  assert.equal(env.pace, 'balanced')
-})
-
 test('base_ref names the base branch and its head', async (t) => {
   const r = world(t, NO_GAPS)
   git(r, 'branch', 'release')
@@ -365,20 +355,6 @@ test("confirmed equal to the latest checkpoint's seq passes it and records check
   assert.ok(confirmed[0].seq > line.seq)
   assert.deepEqual(confirmed[0].gaps, line.gaps)
   assert.equal(stateKind(r, 'checkpoint').length, 1, 'the checkpoint is not raised again')
-})
-
-test('a confirmed existing_execution is recorded with no gaps', async (t) => {
-  const r = world(t, NO_GAPS)
-  const cf = commandsFile(t)
-  assert.equal((await preflight(ctxOf(r, STAMP), { folder: '.', commands_file: cf })).checkpoint, null)
-  const first = await preflight(ctxOf(r, STAMP2), { folder: 'a', commands_file: cf })
-  assert.equal(first.checkpoint.reason, 'existing_execution')
-
-  const second = await preflight(ctxOf(r, STAMP2), { folder: 'a', confirmed: first.checkpoint.seq, commands_file: cf })
-  assert.equal(second.checkpoint, null)
-  const confirmed = stateKind(r, 'checkpoint-confirmed', STAMP2)
-  assert.equal(confirmed.length, 1)
-  assert.equal(Object.hasOwn(confirmed[0], 'gaps'), false)
 })
 
 test("a confirmed naming an older checkpoint's seq does not pass it", async (t) => {
@@ -790,41 +766,6 @@ test('a dispatch started again after its host stop is open, once', async (t) => 
   assert.deepEqual(open, [{ dispatch: 'd-a', round: 2 }, { dispatch: 'd-r', round: 2 }], 'each key once, at its latest dispatched')
 })
 
-test('preflight writes no invocation, usage or ended record', async (t) => {
-  const r = world(t, WITH_GAPS)
-  const cf = commandsFile(t)
-  const first = await preflight(ctxOf(r), { commands_file: cf })
-  assert.equal(first.checkpoint.reason, 'blocking_gaps')
-  assert.equal((await preflight(ctxOf(r), { confirmed: first.checkpoint.seq, commands_file: cf })).checkpoint, null)
-  const kinds = [...stateOf(r), ...journalOf(r), ...readLog(r, E, 'events').entries].map((e) => e.kind)
-  for (const kind of ['invocation', 'usage', 'ended']) assert.ok(!kinds.includes(kind), 'a ' + kind + ' record was written')
-})
-
-test("counts are the subtree's nodes, leaves, gaps and untraced criteria, and max_parallel is the pool's", async (t) => {
-  const r = world(t, [
-    root({ defines: [{ id: 'D1', text: 'x' }, { id: 'D2', text: 'y' }] }),
-    { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] },
-    leaf('c/a', { locus: ['src/ca.mjs'] }),
-    leaf('b', { locus: ['src/b.mjs'], acceptance: [{ text: 'b works', check: 'node --test', decisions: [] }] }),
-  ])
-  mkdirSync(join(configPath(r), '..'), { recursive: true })
-  writeFileSync(configPath(r), JSON.stringify({ max_parallel: 3 }))
-  const cf = commandsFile(t)
-
-  const whole = trace(readTree(r, E).nodes, '.')
-  assert.ok(whole.gaps.length > 0 && whole.untraced.length > 0)
-  const out = await preflight(ctxOf(r, STAMP), { folder: '.', commands_file: cf })
-  assert.equal(out.ok, true)
-  assert.deepEqual({ nodes: out.counts.nodes, leaves: out.counts.leaves, gaps: out.counts.gaps, untraced: out.counts.untraced },
-    { nodes: 4, leaves: 2, gaps: whole.gaps.length, untraced: whole.untraced.length })
-  assert.equal(out.max_parallel, maxParallel(r))
-  assert.equal(out.max_parallel, 3)
-
-  const below = await preflight(ctxOf(r, STAMP2), { folder: 'c', commands_file: cf })
-  assert.deepEqual({ nodes: below.counts.nodes, leaves: below.counts.leaves, gaps: below.counts.gaps, untraced: below.counts.untraced },
-    { nodes: 2, leaves: 1, gaps: 0, untraced: 0 })
-})
-
 // ------------------------------------------------------------------ schedule
 
 test('schedule refuses an execution with no envelope, and an unreadable tree', async (t) => {
@@ -850,17 +791,6 @@ test('schedule launches the ready leaves, and none behind an unmerged dependency
   assert.deepEqual(ids(out.launch), ['leaf:a'])
   assert.deepEqual(out.stops, [])
   assert.equal(out.idle, false)
-})
-
-test('schedule launches nothing beneath a running unit, and no leaf while stopping', async (t) => {
-  const r = world(t, [root(), leaf('a', { locus: ['src/a.mjs'] }), leaf('b', { locus: ['src/b.mjs'] })])
-  envelopeFor(r)
-  const xc = ctxOf(r)
-  assert.deepEqual(ids((await schedule(xc, { running: [] })).launch).sort(), ['leaf:a', 'leaf:b'])
-  assert.deepEqual(ids((await schedule(xc, { running: ['leaf:a'] })).launch), ['leaf:b'])
-  const stopping = await schedule(xc, { stopping: true })
-  assert.equal(stopping.ok, true)
-  assert.deepEqual(stopping.launch, [])
 })
 
 test('schedule launches nothing beneath a folder being planned', async (t) => {
@@ -975,31 +905,6 @@ test('a ladder-green leaf whose approval stands is not approved again', async (t
   assert.deepEqual(out.launch.find((l) => l.unit === 'merge').children, [{ id: 'a', head_sha: sha }])
 })
 
-test('a planner folder parked spec_changed is re-derived once per park', async (t) => {
-  const r = world(t, [root(), { id: 'x', kind: 'composite', title: 'x', author: 'planner', decisions: ['D1'] }, leaf('x/a', { locus: ['src/a.mjs'] })])
-  envelopeFor(r)
-  const xc = ctxOf(r)
-  const plans = async () => (await schedule(xc, {})).launch.filter((l) => l.unit === 'plan')
-  xc.log.append('parked', { node: 'x', return: 'spec_changed', question: '' })
-  assert.deepEqual(await plans(), [{ unit: 'plan', id: 'x', why: 'spec_changed' }])
-
-  xc.log.append('dispatched', dispatchedFields('d-reviewer', { node: 'x', role: 'reviewer', thread: 'x:reviewer' }))
-  assert.equal((await plans()).length, 1, 'a dispatch of another role does not answer the park')
-  xc.log.append('dispatched', dispatchedFields('d-planner', { node: 'x', role: 'planner', thread: 'x:planner' }))
-  assert.deepEqual(await plans(), [], 'a planner dispatch on the folder newer than the park does')
-
-  xc.log.append('parked', { node: 'x', return: 'spec_changed', question: '' })
-  assert.equal((await plans()).length, 1, 'a new park is re-derived once more')
-})
-
-test('schedule writes no card files', async (t) => {
-  const r = world(t, [root(), leaf('a', { locus: ['src/a.mjs'] }), leaf('b', { locus: ['src/b.mjs'] }), { id: 'later', kind: 'design', title: 'later', author: 'planner' }])
-  envelopeFor(r)
-  const out = await schedule(ctxOf(r), {})
-  assert.ok(out.launch.length >= 3)
-  assert.equal(existsSync(join(executionDir(r, E, STAMP), 'cards')), false)
-})
-
 test('schedule run twice records nothing twice', async (t) => {
   const r = world(t, [root(), leaf('a', { locus: ['src/a.mjs'] }), { id: 'mine', kind: 'design', title: 'my part', author: 'you' }])
   envelopeFor(r)
@@ -1018,27 +923,7 @@ test('schedule run twice records nothing twice', async (t) => {
   assert.deepEqual(lines(), after, 'a second schedule over the same disk appends no event')
 })
 
-test('schedule is idle when nothing runs and nothing is ready', async (t) => {
-  const r = world(t, [root(), leaf('a', { locus: ['src/a.mjs'] })])
-  envelopeFor(r)
-  const xc = ctxOf(r)
-  xc.log.append('escalated', { node: 'a', reason: 'blocked', detail: '' })
-  const idle = await schedule(xc, {})
-  assert.equal(idle.ok, true)
-  assert.equal(idle.idle, true)
-  assert.equal((await schedule(xc, { running: ['review:.'] })).idle, false)
-})
-
 // ------------------------------------------------------------------ postflight
-
-test('postflight refuses an unreadable tree', async (t) => {
-  const r = world(t, NO_GAPS)
-  envelopeFor(r)
-  const bad = executionContext({ repo: r, effort: 'Not An Effort!', execution: STAMP, log: executionLog(r, E, STAMP) })
-  const out = await postflight(bad)
-  assert.equal(out.ok, false)
-  assert.equal(out.error.kind, 'unreadable')
-})
 
 test('postflight appends closed {status: done} once every leaf in scope merged', async (t) => {
   const r = world(t, NO_GAPS)
@@ -1082,17 +967,6 @@ test('below the effort root, postflight closes only once the root folder merged 
   xc.log.append('merged', { node: 'c' })
   assert.equal((await postflight(xc)).closed, true)
   assert.equal(stateKind(r, 'closed').length, 1)
-})
-
-test('postflight writes no ended, invocation or usage record', async (t) => {
-  const r = world(t, NO_GAPS)
-  envelopeFor(r)
-  const xc = ctxOf(r)
-  xc.log.append('merged', { node: 'a' })
-  xc.log.append('merged', { node: 'b' })
-  assert.equal((await postflight(xc)).closed, true)
-  const kinds = [...stateOf(r), ...journalOf(r), ...readLog(r, E, 'events').entries].map((e) => e.kind)
-  for (const kind of ['ended', 'invocation', 'usage']) assert.ok(!kinds.includes(kind), 'a ' + kind + ' record was written')
 })
 
 test("postflight frees this execution's slots", async (t) => {

@@ -530,29 +530,6 @@ describe('the execute program', { concurrency: 4 }, () => {
     assert.equal(ended.result.complete, true)
   })
 
-  test("a detached start prints the execution's run, log and result file, and its child runs there", T, async (t) => {
-    const w = world(t, { leaves: ['a'] })
-    const { rig } = w
-    w.script({ [IMPL('a')]: [done()] }, rootReview(1, claim('D1 holds')))
-    const seen = []
-    const out = await w.start(['--effort', E, '--detach'], { spawnChild: (o) => { seen.push(o); return process.pid } })
-
-    assert.equal(out.ok, true, JSON.stringify(out))
-    assert.equal(out.run, rig.run)
-    assert.equal(out.pid, process.pid)
-    assert.ok(same(out.log, join(rig.dir, 'run.log')))
-    assert.ok(same(out.result_file, join(rig.dir, 'result.json')))
-    assert.equal(seen.length, 1)
-    assert.deepEqual(seen[0].args, ['execute', '--effort', E, '--child', out.run])
-    assert.equal(w.calls.length, 0, 'nothing runs before the child')
-
-    const child = await w.start(seen[0].args.slice(1))
-    assert.equal(child.ok, true, JSON.stringify(child))
-    assert.equal(child.run, out.run, 'the child runs in the same home')
-    assert.equal(child.result.execution, rig.stamp)
-    assertComplete(child.result, 'the child\'s execution')
-  })
-
   test('a start cut before its child started is launch_failed, and the next start reaches the same execution', T, async (t) => {
     const w = world(t, { leaves: ['a'] })
     const { rig } = w

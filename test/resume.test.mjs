@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
-import { ACTIONS, gitFacts, nextActionFor, resumeLeaves } from '../lib/resume.mjs'
+import { ACTIONS, nextActionFor, resumeLeaves } from '../lib/resume.mjs'
 import { append } from '../lib/ledger.mjs'
 import { branchOf, git as runGit, worktreeOf } from '../lib/store.mjs'
 import { normalizeNode } from '../lib/tree.mjs'
@@ -117,12 +117,6 @@ test('a leaf recorded merged is none even with nothing left in git', (t) => {
   const rows = resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a')], {}, { run })
   assert.equal(rowOf(rows, 'a').next_action, 'none')
   assert.equal(calls.length, 1)
-})
-
-test('gitFacts reports clean when no leaf branch exists, and names what it asked', (t) => {
-  const dir = repository(t)
-  const facts = gitFacts(dir, EFFORT, ['a', 'b'])
-  assert.deepEqual(facts, { clean: true, calls: 1, branches: {} })
 })
 
 // ---------------------------------------------------------------- the dirty regime

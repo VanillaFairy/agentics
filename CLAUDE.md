@@ -16,7 +16,10 @@ that enforces it.
 
 Run the checks with:
 
-    node tools/lint.mjs && node --test
+    node tools/lint.mjs && node tools/test.mjs
+
+`node tools/test.mjs --fast` runs only `test/fast/`, the tests that spawn no process, in about a
+second; the script reruns a failed run's failures before calling any of them red.
 
 ## Moving to 5.0.0
 
@@ -126,9 +129,13 @@ The laws themselves are in `docs/DESIGN.md#laws`.
 
 ## Build
 
-    node tools/lint.mjs && node --test
+    node tools/lint.mjs && node tools/test.mjs
+    node tools/test.mjs --fast
     node --test test/<file>.test.mjs
     claude plugin validate .
+
+`node --test` alone still runs everything, without the rerun. A test that spawns a process
+belongs outside `test/fast/`; the `fast-tier` lint rule fails it there.
 
 ## Architecture
 

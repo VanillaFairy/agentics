@@ -28,7 +28,7 @@ judgment.
 | `lib/briefs/` | The prompts the programs build, one file per program: the execution's (its reviewers, integration reviewers, rulers, planner and investigator; a leaf round's thread brief is `lib/brief.mjs`'s), the survey's, the probe's, the solutions sweep's, the drafts', the inline review's and the investigation's; a ruling's is `lib/respec.mjs`'s (see [Briefs and returns](#briefs-and-returns)). |
 | `roles/` | One file per agent role: its instructions, tools and kind (see [Roles](#roles)). The host never loads them as agents: only the runner starts one. |
 | `tools/` | `lint.mjs`, its rules under `tools/rules/`, `budgets.json`, and the one-shot migrations. |
-| `test/` | The `node --test` suite, including the scripted runner. |
+| `test/` | The `node --test` suite, including the scripted runner; `test/fast/` holds the tests that spawn no process. |
 
 **Programs are code with the filesystem.** A program reads and writes the store and git itself,
 calls every deterministic step as a function, and starts every agent itself through one runner
@@ -58,7 +58,9 @@ a plan entry of its own.
 The runtime artifacts are prompts and code, so they are checked in layers — detailed under
 [Self-checks](#self-checks): lint judges form, the programs run against real git with a scripted
 runner, an opt-in contract test runs the real host, real-git tests run every boundary, and pins
-keep restated contracts, allowlists and design pointers from drifting. Run everything with `node tools/lint.mjs && node --test`.
+keep restated contracts, allowlists and design pointers from drifting. Run everything with
+`node tools/lint.mjs && node tools/test.mjs`, or just the spawn-free tier with
+`node tools/test.mjs --fast` (see [Self-checks](#self-checks)).
 
 ---
 
@@ -3295,7 +3297,13 @@ whether a loop converges, `{ruling: converging | not_converging, why}`. The inve
   judge's (L3); no bound in a return schema; role frontmatter (kind, tools, commands, schema);
   prompts built only by `lib/brief.mjs`, `lib/briefs/` and `renderMessage`, so no command or path
   for a model to carry reaches one (P2); no skill that starts an agent; gate clauses in gated
-  skills; a stated task-tool fallback; and size budgets.
+  skills; a stated task-tool fallback; size budgets; and that nothing in `test/fast/` imports
+  `child_process` or a helper from `test/` outside it (`fast-tier`).
+- **The suite** runs through `tools/test.mjs`: `node tools/test.mjs` runs everything and
+  `--fast` only `test/fast/`, the files that spawn no process, which finish in about a second.
+  A failed run is repeated at `--test-concurrency=2` over only the tests that failed, and each
+  first-run failure is named `flake` (it passed the repeat) or `red`; the exit code is 1 only
+  for red.
 - **The scripted runner** (`test/fast/harness/scripted-runner.mjs`) stands in for the host: it is the
   real `runAgent` over a scripted CLI, each start of the CLI answered by the next step of a script
   keyed by role, node and thread, so a program run against real git (`test/harness/program-rig.mjs`,

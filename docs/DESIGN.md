@@ -344,6 +344,26 @@ leaves ([Scheduling](#scheduling)). A program nested in another — an investiga
 read the records it decides from. An orchestrator that cannot read the disk needs a model to carry
 every lib result to it, and that carrying is the work P2 gives to code.
 
+**Whoever decides a dispatch** — a program's author, or a session — works to this:
+
+<!-- agentics:verbatim dispatch-economy -->
+A dispatch costs context × turns, and every agent pays its own. Tool calls are what make turns;
+parallel agents share only the system prompt, so a prompt body handed to four agents is paid four
+times; and what an agent returns is re-read on every later turn of the session that dispatched
+it.
+
+- Grant tools only where the charge needs the tree. A question answerable from what you hand over
+  goes to an agent without tools and comes back in one turn.
+- Resolve evidence several agents need once — by script wherever that is deterministic — and hand
+  each agent the excerpts inline: never a path to go and read, never a whole source file.
+- Prefer fewer agents with disjoint charges. Split by head only where independence is the point,
+  and say that it is.
+- Ask for a typed return on a fixed shape. Narrative is context you pay for until the session
+  ends.
+- To check a change, re-dispatch narrowed to what changed and name the narrowing in coverage.
+  Never re-run the whole pass.
+<!-- /agentics:verbatim -->
+
 **Arguments.** A program declares each argument it takes, with its kind, its default and whether
 it is required; `lib/run.mjs` reads it from `--<name>`, an `_` in the name written `-`, and hands
 the program the resolved values:

@@ -8,8 +8,6 @@ description: Use when the user asks to build a change, feature or fix through ag
 The entry for building any folder of an effort: finding it, launching it, walking its result,
 landing it. Design: `docs/DESIGN.md#execution-modes`, `docs/DESIGN.md#execution`.
 
-Invoking this skill **is** the user's opt-in for the `Workflow` tool. Do not ask again.
-
 ## Vocabulary
 
 <!-- agentics:verbatim vocabulary -->
@@ -82,8 +80,8 @@ what the project's docs describe, its plan carries the entry that updates them.
 
 ## Arguments
 
-`[max|normal|low] [--intelligence=<tier>] [--resume <stamp>] [--plan-only] [--pause]
-[--pace frugal|balanced|fast] [--base <ref>] <a folder, or the request, in plain words>`
+`[max|normal|low] [--intelligence=<tier>] [--plan-only] [--pause] [--budget <tokens>]
+[--pace frugal|balanced|fast] [--base <branch>] <a folder, or the request, in plain words>`
 
 <!-- agentics:verbatim intelligence-tier -->
 The dial follows the model this session is running, never how important the work feels:
@@ -102,12 +100,14 @@ The dial is a ceiling on the gates (planner, reviewer, auditor, analyst, ruler);
 cheaper model unless their task's entry set otherwise (`docs/DESIGN.md#model-tier`). At `low`,
 say before launching that no strong reader remains anywhere in the loop.
 
-- `--resume <stamp>`: relaunch that execution: go to step 3 with its stamp.
-- `--plan-only`: plan the folder and stop at a `parked` checkpoint; nothing is implemented.
+- `--plan-only`: stop at a `parked` checkpoint before anything is dispatched: the compiled plan is
+  on disk (`lib/status.mjs show`) and nothing is implemented.
 - `--pause`: start no new task after the next merge-batch.
+- `--budget`: in tokens; start no new task once what is left cannot cover the execution's measured
+  tokens per merged task. Default none.
 - `--pace`: `fast` buys parallelism over shared context for speed; default `balanced`.
-- `--base`: the named ref the effort branch is cut from; default the current HEAD. A branch or
-  tag, never a sha.
+- `--base`: the branch the effort branch is cut from; default the current branch. A branch or tag
+  name, never a sha.
 
 ## Step 0 — Which folder
 
@@ -132,14 +132,14 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" node --repo . --effort <e> --node <i
 It prints the stop and its reason, the next action a relaunch would take, how many commits the
 task's branch lacks of its folder's (say so before relaunching an escalated task that is behind),
 the notes earlier sessions left, and the relaunch arguments. **A parked or escalated node** is a
-question, not a launch: take it through 4b or 4c now, and relaunch its execution (step 3, the
-card's stamp) only once the answer is recorded.
+question, not a launch: take it through 4b or 4c now, and relaunch its execution (step 3, on the
+card's `relaunch` root) only once the answer is recorded.
 
 For a matched folder, first match:
 
 | the folder | go to |
 |---|---|
-| an open execution is rooted at it (`node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" list --repo .` lists open executions and their roots) | step 3 with that execution's stamp: this is the resume |
+| an open execution is rooted at it (`node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" list --repo .` lists open executions and their roots) | step 3: the start resumes it, or names the run already going |
 | it is the root folder and its status is `integrated` | step 6 |
 | its spec is approved or prepared (`node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" state --repo . --effort <e> --folder <id>`) | step 3, a fresh execution |
 | anything else | not develop's yet: print the Next line and stop |
@@ -163,26 +163,6 @@ Say the recommendation in one or two sentences, with the cost where one is measu
 (`lib/status.mjs cost --repo . --effort <an earlier effort>` gives `leaf_mean_usd`); with no
 measurement, say there is none rather than quoting a constant. **It is a recommendation.** "Run it
 anyway" ends the discussion: proceed in the mode the user chose and say nothing more about cost.
-
-Anything you dispatch yourself, outside the workflow, is paid for by the turn:
-
-<!-- agentics:verbatim dispatch-economy -->
-A dispatch costs context × turns, and every agent pays its own. Tool calls are what make turns;
-parallel agents share only the system prompt, so a prompt body handed to four agents is paid four
-times; and what an agent returns is re-read on every later turn of the session that dispatched
-it.
-
-- Grant tools only where the charge needs the tree. A question answerable from what you hand over
-  goes to an agent without tools and comes back in one turn.
-- Resolve evidence several agents need once — by script wherever that is deterministic — and hand
-  each agent the excerpts inline: never a path to go and read, never a whole source file.
-- Prefer fewer agents with disjoint charges. Split by head only where independence is the point,
-  and say that it is.
-- Ask for a typed return on a fixed shape. Narrative is context you pay for until the session
-  ends.
-- To check a change, re-dispatch narrowed to what changed and name the narrowing in coverage.
-  Never re-run the whole pass.
-<!-- /agentics:verbatim -->
 
 ## Step 2 — The effort and its root spec (a request only)
 
@@ -301,42 +281,66 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/compile.mjs" --repo . --effort <e> --folder <id>
 ```
 
 `ok: false` lists refusals by file and line and wrote nothing: show them and stop; the fix is a
-re-spec (step 4c). Then mint the stamp with `date -u +%Y%m%d-%H%M%S`; a resume reuses its stamp.
+re-spec (step 4c).
 
-```
-Workflow({ scriptPath: '${CLAUDE_PLUGIN_ROOT}/service-workflows/execute-approved-plan-in-worktrees.workflow.js', args: { repo, effort, root: <folder id>, execution, plugin_root, intelligence, pace, plan_only, pause, base_ref, commands_file, retry_escalated, confirmed_duplicate, confirmed_gaps } })
-```
+A new execution is told the project's commands. Write the ones you know (from the user, the
+project's `CLAUDE.md`, its build files) with your Write tool as JSON `{build, typecheck, suite,
+suite_fast, test_one}` to a file outside the repository, `test_one` with `{file}` where a test
+file's path goes; leave out one you do not know, and the run's investigator establishes it.
 
-- `repo` is the absolute path `git rev-parse --show-toplevel` prints where the effort lives, never
-  `.`: the workflow refuses a relative one. `plugin_root`, required, is `${CLAUDE_PLUGIN_ROOT}`.
-- `root` is the node to run: `.` for the root folder, a folder id, a group (`<folder>/<group>`) or
-  one task. Compile `--folder` takes the folder that holds it.
-- `intelligence` on a fresh execution only. A resume passes none: it adopts its envelope.
-- `commands_file` only when the user named commands: write `{build, typecheck, suite, suite_fast,
-  test_one}` as JSON to a file outside the repository and pass its path.
-- The confirmations and `retry_escalated` only as step 4 directs.
+Read the effort's `seq` before you start, so the watch misses nothing raised in between: the
+`seq <n>` that `node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" list --repo .` prints on the effort's
+line. Then start the run:
 
-**Record the `runId`.** The execution works on `agentics/<effort>` and branches and worktrees it
-owns; it never touches the user's branch or tree. Uncommitted edits in the user's tree are not in
-its base — say so when the tree is dirty. Write the todo list now (step 5); do not poll.
-
-**Questions arrive while it runs.** Right after the launch, arm a watch (re-arm it on expiry while
-the workflow still runs):
-
-```
-Monitor({ command: 'node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" watch --repo . --effort <e> --execution <stamp>', description: 'agentics questions for <e>', timeout_ms: 3600000 })
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" execute --repo . --detach --effort <e> --folder <id> --intelligence <tier> --commands-file <file> [--pace <pace>] [--base-ref <branch>] [--plan-only] [--pause] [--budget <tokens>] [--confirmed <seq>]
 ```
 
-Each line is a parked or escalated node: refresh the todo list (step 5), then ask the user at once
-(step 4b or 4c) until the answer settles it. A re-spec's approval and compile clears a park; an escalation whose cause is dealt with
-is cleared with `node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e>
---execution <stamp> --node <id>`. The running workflow relaunches the node on its next tick; if it
-has already returned, relaunch now with the same stamp.
+- `--folder` is the folder: `.` for the root, else its path from the root. A task or a group runs
+  with the folder that holds it.
+- `--intelligence` by the dial above: it tiers a new execution's agents; a resume keeps its own.
+- `--commands-file`, `--pace` and `--base-ref` shape a new execution only. A start on a folder an
+  open execution holds resumes that execution, which keeps the commands, pace and base it began
+  with: leave them off.
+- `--confirmed` only as step 4a directs.
 
-**Resuming.** Inside this conversation, `resumeFromRunId` with the same args replays finished
-agents from cache. After a hard kill, or from another session, relaunch with the same `execution`:
-preflight adopts the envelope and each task resumes at its next undone action
-(`docs/DESIGN.md#resume-and-checkpoints`). Every resume is the same launch with the same stamp.
+It prints `{run, pid, log, result_file}` at once: keep `run` (`<e>.<stamp>`, the execution's
+stamp after the dot) and `result_file`. A `run_live` refusal names a run already going on this
+folder: watch that `run` instead. `launch_failed` is a plugin fault: say so and start the same
+command once more; the same refusal again is reported to the user as a plugin defect. Any other
+refusal names the argument it refused: fix it and start again.
+
+The execution works on `agentics/<effort>` and branches and worktrees it owns; it never touches
+the user's branch or tree. Uncommitted edits in the user's tree are not in its base — say so when
+the tree is dirty. Write the todo list now (step 5); do not poll.
+
+**Follow it.** Right after the start, arm a watch from the `seq` you read, and re-arm it with the
+same command whenever it expires, until it prints the run's end:
+
+```
+Monitor({ command: 'node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" watch --repo . --run <run> --since <seq>', description: 'agentics run <run>', timeout_ms: 3600000 })
+```
+
+Refresh the todo list (step 5) on each line. A re-armed watch prints again a line that still
+stands: act on each once.
+
+- `<id> escalated <reason>` or `<id> parked <return>`: a stop of that node alone; the run goes on.
+  Read its text on the node's card (step 0) and ask the user at once (step 4b or 4c) until the
+  answer settles it. A re-spec's approval and compile clears a park; an escalation whose cause is
+  dealt with is cleared with `retry` (4b). The running program takes the node up at its next tick.
+- `host_stop <dispatch>: <cause> until <time>`: the host is unavailable; the run waits it out and
+  resumes the call itself. Nothing to do.
+- `fault <channel>: <detail>`: a plugin fault; its node is held for the rest of the run, which goes
+  on. Ask nothing: 4b relaunches it once the run ends.
+- `ended <status>: complete=<bool> result=<file>`: read `result_file` and walk it (step 4).
+  `ended failed` or `ended launch_failed` is a plugin fault: say so and start the same command once
+  more; the same fault again is reported to the user as a plugin defect.
+- `stopped: …`: the run's process is gone. Start the same command again: it resumes.
+
+**Resuming** is starting again. After a stop, a fault, an answer or a kill, from this session or
+another, the same start on the same folder resumes the open execution, and each task picks up at
+its next undone action (`docs/DESIGN.md#resume-and-checkpoints`); a call cut off mid-way is resumed
+in its own session.
 
 ## Step 4 — Walk the result, in this order
 
@@ -355,39 +359,43 @@ changes. An explanation only in chat beside the dialog, or only in your thinking
 never sees, does not count, nor does a re-ask that refers to one ("given those uses", "as above").
 <!-- /agentics:verbatim -->
 
-**First, when `coverage.failed_channels` holds `postflight`:** run the command in
-`coverage.resumable.postflight` exactly as it stands. Every stop is already on disk; until it has
-run, the faults only the run saw are not, and the invocation is not closed.
+**First, when the result holds `error`:** preflight refused and nothing was dispatched (the
+unreached line `preflight refused (<kind>)`). `no_base`: `--base-ref` names no commit;
+`commands_unreadable`: the commands file is not JSON; any other `kind`, what its `message` says.
+Fix it and start again (step 3).
 
-**a. Checkpoint.** Non-null means nothing new was dispatched; what it found is printed by
+**a. Checkpoint.** `checkpoint {reason, detail, seq}`, non-null, means nothing new was
+dispatched; what it found is printed by
 `lib/status.mjs checkpoint --repo . --effort <e> --execution <stamp>`.
 
 | `checkpoint.reason` | means | to proceed |
 |---|---|---|
-| `existing_execution` | an open execution's root is an ancestor or descendant of this one (`detail`) | resume that one by its stamp (`lib/status.mjs list` shows it); relaunch with `confirmed_duplicate: true` only when both are meant to run |
-| `blocking_gaps` | a decision no entry realises, or evidence a node needs was not reached (the checkpoint's `gaps`) | a re-spec (c): an entry that realises the decision — or, on the user's go, relaunch with `confirmed_gaps: true` |
-| `parked` | `plan_only`, or nodes await the user | show the plan (`lib/status.mjs show`) or answer them (c); relaunch |
-| anything else | the launch failed (`bad_input`, `preflight_failed`, `no_such_node`, a refusal) | fix what `detail` says; relaunch |
+| `existing_execution` | an open execution's root is an ancestor or descendant of this one (`detail`) | resume that one (step 3 on its root; `lib/status.mjs list` shows it); relaunch with `--confirmed <checkpoint.seq>` only when both are meant to run |
+| `blocking_gaps` | a decision no entry realises, or evidence a node needs was not reached (the checkpoint's `gaps`) | a re-spec (c): an entry that realises the decision — or, on the user's go, relaunch with `--confirmed <checkpoint.seq>` |
+| `parked` | `--plan-only`, or nodes await the user | show the plan (`lib/status.mjs show`) or answer them (c); relaunch without `--plan-only` |
 
-**b. Escalations** — `{id, reason, said}`, each to the user: what it says is the file `said`
-names, or the node's card (step 0) when `said` is empty. They are decisions, not information; do
-not resolve them yourself. Once a cause is dealt with, relaunch with the same `execution` and
-`retry_escalated: [<ids>]`.
+**b. Escalations** — `{id, reason, said}`, each to the user: its text is on the node's card
+(step 0), read from the return `said` names. They are decisions, not information; do not resolve
+them yourself. Once a cause is dealt with, clear the stop, then relaunch (step 3):
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e> --node <id>
+```
 
 **Leave a note on the node** whenever you establish why it stopped, the user rules on it, or you
 touch its branch by hand, before you relaunch. One paragraph, plain words; the next session
 reads it on the card instead of finding it out again:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" note --repo . --effort <e> --execution <stamp> --node <id> --text "<what stopped it, what was done or ruled>"
+node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" note --repo . --effort <e> --node <id> --text "<what stopped it, what was done or ruled>"
 ```
 
-**Faults** — `{id, channel}`: a plugin fault, never a question. Relaunch the same
-`execution` at once, asking nothing; a fault on the same node again is reported to the user as a
-plugin defect, with the node and what it left undone.
+**Faults** — `{id, channel}`: a plugin fault, never a question. Relaunch at once (step 3), asking
+nothing; a fault on the same node again is reported to the user as a plugin defect, with the node
+and what it left undone.
 
-**c. Parked nodes** — `{id, return, said}`, the question in the file `said` names or on the
-node's card. Ask the user each question, one topic at a time,
+**c. Parked nodes** — `{id, return, said}`, the question on the node's card (step 0). Ask the
+user each question, one topic at a time,
 with your recommendation marked `(Recommended)`. Never answer for them. **Every answer is a
 re-spec**: edit the spec that owns the fault, have the change ruled (below), relaunch.
 
@@ -399,57 +407,39 @@ re-spec**: edit the spec that owns the fault, have the change ruled (below), rel
 | `integration_critical` | the folder's spec: the user rules which part is wrong; a `task` entry that fixes it, or the corrected criterion |
 | `spec_defect` | the spec the question names: the claim cannot be met as written; the user rules how it changes |
 | `cant_tell` | the folder's spec: make the claim decidable, a criterion with a check or a `HUMAN:` criterion the user judges at landing |
-| `contract_drift` | merged work touched a contract the node consumes, and the planner could not take it: no ruler could rule, work already stood on the node's plan when it was ruled affected, or its replan faulted. The consumer's entry: the user rules it unaffected (then relaunch with `retry_escalated: [<id>]` and edit nothing), re-designs it, or re-slices it |
+| `contract_drift` | merged work touched a contract the node consumes, and the planner could not take it: no ruler could rule, work already stood on the node's plan when it was ruled affected, or its replan faulted. The consumer's entry: the user rules it unaffected (then clear it with `retry` (b) and edit nothing), re-designs it, or re-slices it |
 | `spec_changed` | a folder you wrote was re-approved while work under it was under way, and no ruling found that work untouched: the user rules whether the dispatched work still stands, and re-specs what does not. A folder develop's planner wrote never reaches you with this return: the run hands it back to the planner, which re-derives it |
 
 **Each spec you edited is ruled before anyone is asked to approve it**, a parent before its child,
-by the `rule` program, started detached and followed with the Monitor tool on
-`node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" watch --repo . --run <run> --since 0`; on `ended done`
-read `result_file`'s `status`; on `stopped: …` start the command again; `ended failed` and
-`launch_failed` are plugin faults, retried once; a `run_live` refusal names a ruling going: watch it.
+by the `rule` program: read `respec.md` beside this skill and follow it.
 
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" rule --repo . --detach --effort <e> --folder <id>
-```
-
-- `approved` — nothing the change reaches is moved by it: it is approved on that ruling and
-  compiled, and what it reaches is spared its parks. Tell the user what changed in one line; ask nothing.
-- `needs_user` — for each `affected` with a `fix`, make that edit in the spec owning the node, rule
-  that spec the same way, then rule this one again. Ask the user each `question` left; then show the
-  change and its `reasons` and ask, the result's `token` in the question's own text, with exactly
-  the options `Approve` and `Change it`. On `Approve`, run it attached, since it reads the answer:
-  `node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" rule --repo . --effort <e> --folder <id> --user-approved`.
-  It prints `approved`, `refused` with `next: ask_user` (ask again with its `token`), or another result, handled below.
-- `compile_refused` — its `problems` name file and line: the fix is an edit, ruled again.
-- `refused` — by its `next`: `user_approves`, show the change, then ask and approve as step 2 does
-  and compile as step 3 does; `fix_spec`, edit what `problems` name; `rule_parent_first`, rule the
-  spec `why` names; `rule_it`, rule it again; `planner`, leave it to the run; `nothing`: approved.
-
-A park no re-spec cleared (a `contract_drift` ruled unaffected) is cleared by relaunching with
-`retry_escalated: [<id>]`. Then relaunch with the **same** `execution`.
+A park no re-spec cleared (a `contract_drift` ruled unaffected) is cleared with `retry` (b). Then
+relaunch (step 3).
 
 **d. Blocked** — `{blocked_by, leaves_n}`: how many tasks were never dispatched because a node they
 depend on, or whose files they share, did not land. Name that node as the root cause; do not
 relaunch for them while it is still escalated.
 
-**e. Integration.** `integration.branch` and `head_sha`, then `reviews` per folder: read each
-`review_file`. Criticals, and claims that did not hold, were parked (c); majors are the user's
-decision queue, reported as written. A review that ran with planned children missing carries that
-caveat on every finding — say so.
+**e. Integration.** `integration.branch` and `head_sha`, then `reviews[{target, said}]` per
+folder: read each review's return, `.agentics/<e>/.state/executions/<stamp>/returns/<said>.json`,
+its `findings` and `claims`. Criticals, and claims that did not hold, were parked (c); majors are
+the user's decision queue, reported as written. A review that ran with planned children missing
+carries that caveat on every finding — say so.
 
 **f. `HUMAN:` criteria.** `node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" land --repo . --effort <e>
 --action check` is read-only; put every entry of its `human` in front of the user, verbatim, prefix
 included.
 
 **g. What was built.** `implemented` per task: rigor and role (a `red` task's tests are required to
-fail), rounds, `salvaged` — adopted from an earlier invocation, not done now; say which.
+fail), rounds, `salvaged` — adopted from an earlier run, not done now; say which.
 
 ### Reporting — binding
 
 - **Never report success while `coverage.complete` is false.** `coverage.unreached` leads —
   escalated, parked, blocked, not merged, failed channels — then what merged.
 - Verdicts are reported as computed: never softened, recomputed or paraphrased.
-- Cost is `result.cost`, measured. A `null` token count is unreported, never zero.
+- Cost is `result.cost`, measured, per model in `by_model`. Its `unmeasured` dispatches are
+  unreported, never zero.
 
 ## Step 5 — Progress
 

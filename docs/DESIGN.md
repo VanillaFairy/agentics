@@ -3301,6 +3301,10 @@ whether a loop converges, `{ruling: converging | not_converging, why}`. The inve
   `child_process` or a helper from `test/` outside it (`fast-tier`).
 - **The suite** runs through `tools/suite.mjs`: `node tools/suite.mjs` runs everything and
   `--fast` only `test/fast/`, the files that spawn no process, which finish in about a second.
+  The fast tier runs under a preload (`test/fast/harness/no-spawn.mjs`) that makes every
+  `child_process` call throw, so a test there that starts a process, directly or through `lib/`,
+  fails; `test/fast-tier-spawns.test.mjs` runs the tier under it in every full run, and the
+  `fast-tier` lint rule is the static half that catches the import.
   A failed run is repeated at `--test-concurrency=2` over only the tests that failed, and each
   first-run failure is named `flake` (it passed the repeat) or `red`; the exit code is 1 only
   for red.

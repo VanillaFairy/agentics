@@ -135,7 +135,8 @@ The laws themselves are in `docs/DESIGN.md#laws`.
     claude plugin validate .
 
 `node --test` alone still runs everything, without the rerun. A test that spawns a process
-belongs outside `test/fast/`; the `fast-tier` lint rule fails it there.
+belongs outside `test/fast/`; the `fast-tier` lint rule fails it there, and a preload that makes
+process creation throw fails it at run time.
 
 ## Architecture
 

@@ -10,8 +10,10 @@
 //     which is where every spawning helper lives. A helper that spawns nothing belongs in
 //     test/fast/harness/, where the import is allowed.
 //
-// Imports of lib/, tools/ and the other node builtins are allowed. Not caught: a lib/ module
-// that spawns when called — the rule reads imports, not behaviour.
+// Imports of lib/, tools/ and the other node builtins are allowed. This rule is the fast, static
+// half: it reads imports, not behaviour, so a lib/ module that spawns when called is not caught
+// here. The other half is run time: test/fast-tier-spawns.test.mjs runs the tier under
+// test/fast/harness/no-spawn.mjs, which makes every child_process call throw.
 //
 // Strings and comments are blanked before matching, so a test that quotes an import as fixture
 // text is not flagged; the specifier is then read back from the source at the quote the blanked

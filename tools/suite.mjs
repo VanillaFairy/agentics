@@ -4,9 +4,10 @@
 //
 // Runs `node --test` over the fast tier (--fast), the named files, or everything. A failed run
 // is repeated at --test-concurrency=2 over only the files that had a failed test; node re-runs
-// only the tests that failed and reads the rest from the state file. A test that fails the first run and passes the repeat is a
-// `flake`; one that fails both is `red`. Exit 0 when nothing is red, 1 otherwise, 2 for a bad
-// command line, 130 when interrupted.
+// only the tests that failed and reads the rest from the state file. A test that fails the first
+// run and passes the repeat is a `flake`; one that fails both is `red`. The fast tier runs under
+// test/fast/harness/no-spawn.mjs, so a test there that starts a process fails. Exit 0 when
+// nothing is red, 1 otherwise, 2 for a bad command line, 130 when interrupted.
 //
 // Design: docs/DESIGN.md#how-the-plugin-checks-itself
 
@@ -20,6 +21,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const REPORTER = new URL('./suite-reporter.mjs', import.meta.url).href
 
 const FAST_TIER = 'test/fast/**/*.test.mjs'
+const NO_SPAWN = new URL('../test/fast/harness/no-spawn.mjs', import.meta.url).href
 export const DEFAULT_CONCURRENCY = 8
 export const RERUN_CONCURRENCY = 2
 
@@ -81,8 +83,9 @@ export function rerunSelection(path, selection) {
   return [...new Set(records.map((r) => r.file))]
 }
 
-function nodeArgs({ selection, concurrency, state }) {
+export function nodeArgs({ fast, selection, concurrency, state }) {
   return [
+    ...(fast ? ['--import', NO_SPAWN] : []),
     '--test', `--test-concurrency=${concurrency}`, `--test-rerun-failures=${state}`,
     `--test-reporter=${REPORTER}`, '--test-reporter-destination=stdout',
     ...selection,
@@ -143,7 +146,7 @@ async function main(argv) {
   const failureFiles = [join(work, 'first.jsonl'), join(work, 'second.jsonl')]
   try {
     const attempt = async (files, concurrency, failures) => {
-      const code = await runNode(nodeArgs({ selection: files, concurrency, state }), failures)
+      const code = await runNode(nodeArgs({ fast: parsed.fast, selection: files, concurrency, state }), failures)
       return { code, failed: readFailures(failures, ROOT) }
     }
 

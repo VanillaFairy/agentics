@@ -1,6 +1,6 @@
 // test/fast/suite.test.mjs — what tools/suite.mjs decides: which tests were flakes and which
-// red, what a command line means and which files a rerun loads. The runs themselves are node's
-// and are not repeated here.
+// red, what a command line means, which files a rerun loads and which runs refuse a spawn. The runs
+// themselves are node's and are not repeated here.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { DEFAULT_CONCURRENCY, classify, parseArgs, readFailures, rerunSelection } from '../../tools/suite.mjs'
+import { DEFAULT_CONCURRENCY, classify, nodeArgs, parseArgs, readFailures, rerunSelection } from '../../tools/suite.mjs'
 
 const run = (code, failed = []) => ({ code, failed })
 
@@ -92,4 +92,12 @@ test('the rerun loads the files that had a failed test, once each, and the whole
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+test('only the fast tier is started under the preload that refuses a spawn', () => {
+  const given = { selection: ['x'], concurrency: 2, state: 's' }
+  const fast = nodeArgs({ ...given, fast: true })
+  assert.match(fast[fast.indexOf('--import') + 1], /test\/fast\/harness\/no-spawn\.mjs$/)
+  assert.ok(fast.indexOf('--import') < fast.indexOf('--test'))
+  assert.ok(!nodeArgs({ ...given, fast: false }).includes('--import'))
 })

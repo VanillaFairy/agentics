@@ -1,0 +1,257 @@
+// test/execute-leaf-faults.test.mjs — pins the leaf unit of the execute program (`runLeaf`): one
+// leaf driven over the execution rig, with scripted agents, to a requeue, a route or a fault, and
+// through a relaunch.
+//
+// What is pinned here:
+//
+//   requeues, routes and faults  by cause: no slot, a locus another leaf holds, needs_context, a
+//                                failed dispatch, and a throw inside the unit
+//   a relaunch                   rebuilt from the records
+//
+// The rig, the scripted answers and the worlds the parts share are in
+// test/harness/execute-leaf-world.mjs.
+//
+// Design: docs/DESIGN.md#executors-and-review.
+
+import { describe, test } from 'node:test'
+import assert from 'node:assert/strict'
+import { existsSync, rmSync } from 'node:fs'
+import { heldOf } from '../lib/boundaries/records.mjs'
+import { renderMessage } from '../lib/conversation.mjs'
+import { acquire } from '../lib/locks.mjs'
+import { closePath, configPath, returnPath, writeJson } from '../lib/store.mjs'
+import {
+  T, E, leafEntry, specText, YARD, bLeaf, git, work, world, ofKind, stateOf, faultsOf, startsOf, approvals,
+  stopsOn, stepsOf, keyOf, IMPL, REV, done, said, failed, verdict,
+} from './harness/execute-leaf-world.mjs'
+
+// The rig does not clear NODE_TEST_CONTEXT, and a measurement's nested `node --test` that inherits
+// it reports to this runner and exits 0, so every red or tdd test file would read as passing.
+delete process.env.NODE_TEST_CONTEXT
+
+const stopped = () => ({ status: 'stopped', cause: 'rate_limit' })
+
+/** A reviewer thread's quiet end of a killed run: resolves the promise a test awaits and never resolves itself. */
+function killer() {
+  let hit
+  const reached = new Promise((resolveIt) => { hit = resolveIt })
+  return { reached, hit, sleep: () => { hit(); return new Promise(() => {}) } }
+}
+
+// ------------------------------------------------------------------ one round
+
+describe('the leaf unit', { concurrency: 4 }, () => {
+
+  // ------------------------------------------------------------------ requeues, routes and faults
+
+  test('no slot: the leaf goes back to the scheduler, nothing dispatched', T, async (t) => {
+    const w = world(t, { leaves: [bLeaf(), leafEntry('x', { locus: ['src/x.txt'] })] })
+    writeJson(configPath(w.rig.repo), { max_parallel: 1 })
+    const held = acquire(w.rig.repo, { effort: E, execution: w.rig.stamp, node: 'x', locus: ['src/x.txt'], waitMs: 0 })
+    assert.equal(held.ok, true, JSON.stringify(held))
+    w.rig.script({})
+    const out = await w.run('b')
+    assert.equal(out.outcome, 'requeue')
+    assert.equal(w.rig.calls.length, 0)
+    assert.equal(ofKind(w.rig, 'dispatched', 'b').length, 0)
+    assert.deepEqual(faultsOf(w.rig), [])
+    assert.deepEqual(stopsOn(w.rig), [])
+  })
+
+  test('a locus another leaf holds: the leaf goes back to the scheduler, nothing dispatched', T, async (t) => {
+    const w = world(t, { leaves: [bLeaf(), leafEntry('x', { locus: ['src/x.txt', 'src/b.txt'] })] })
+    const held = acquire(w.rig.repo, { effort: E, execution: w.rig.stamp, node: 'x', locus: ['src/x.txt', 'src/b.txt'], waitMs: 0 })
+    assert.equal(held.ok, true, JSON.stringify(held))
+    w.rig.script({})
+    const out = await w.run('b')
+    assert.equal(out.outcome, 'requeue')
+    assert.equal(w.rig.calls.length, 0)
+    assert.equal(ofKind(w.rig, 'dispatched', 'b').length, 0)
+    assert.deepEqual(faultsOf(w.rig), [])
+  })
+
+  test("needs_context under a planner's folder comes back as a route to that planner", T, async (t) => {
+    const root = specText([['- **f** — sub-effort · realises: D1 · author: planner', '  Fold f', '']])
+    // A planner-written spec states no decision of its own: its task realises the root's D1.
+    const sub = specText([leafEntry('b', { locus: ['src/b.txt'] })], { decisions: false })
+    const w = world(t, { spec: { '.': root, f: sub } })
+    const ASKED = 'which format does the folder want?'
+    w.rig.script({ 'implementer|f/b|producer:f/b': [said('needs_context', ASKED)] })
+    const out = await w.run('f/b')
+    assert.equal(out.outcome, 'route')
+    assert.equal(out.route.folder, 'f')
+    assert.equal(out.route.request.node, 'f/b')
+    assert.equal(out.route.request.status, 'needs_context')
+    assert.equal(out.route.request.text, ASKED)
+    assert.deepEqual(stopsOn(w.rig, 'f/b'), [], 'the leaf is not parked')
+    assert.deepEqual(stopsOn(w.rig, 'f'), [], 'nor the folder')
+  })
+
+  /** A dispatch that failed: the fault it records, the leaf it holds, and no question. */
+  function assertFaulted(w, out, channel) {
+    assert.equal(out.outcome, 'faulted')
+    const faults = faultsOf(w.rig)
+    assert.equal(faults.length, 1)
+    assert.equal(faults[0].channel, channel)
+    assert.ok(heldOf(stateOf(w.rig)).has('b'), 'the leaf is held')
+    assert.deepEqual(stopsOn(w.rig), [], 'no escalation, no park')
+    assert.equal(approvals(w.rig).length, 0)
+  }
+
+  test('a dispatch that failed schema_failed is a role fault, and the leaf is held', T, async (t) => {
+    const w = world(t)
+    w.rig.script({ [IMPL]: [failed('schema_failed'), failed('schema_failed')] })
+    assertFaulted(w, await w.run('b'), 'role')
+  })
+
+  test('a dispatch that failed host_error is a host_error fault, and the leaf is held', T, async (t) => {
+    const w = world(t)
+    w.rig.script({ [IMPL]: [failed('host_error')] })
+    assertFaulted(w, await w.run('b'), 'host_error')
+  })
+
+  for (const cause of ['checkout', 'watch_failed']) {
+    test(`a dispatch that failed ${cause} is a checkout fault, and the leaf is held`, T, async (t) => {
+      const w = world(t)
+      const around = async (call) => ({ status: 'failed', cause, message: 'the host said ' + cause, session: call.thread.session })
+      assertFaulted(w, await w.leg({ around }).run('b'), 'checkout')
+    })
+  }
+
+  test('a throw inside the unit is a program fault on the leaf', T, async (t) => {
+    const w = world(t)
+    w.rig.script({})
+    const out = await w.run('b')
+    assert.equal(out.outcome, 'faulted')
+    const faults = faultsOf(w.rig)
+    assert.equal(faults.length, 1)
+    assert.equal(faults[0].channel, 'program')
+    assert.ok(heldOf(stateOf(w.rig)).has('b'))
+    assert.deepEqual(stopsOn(w.rig), [])
+  })
+
+  // ------------------------------------------------------------------ a relaunch
+
+  test('a relaunch resumes a cut-off producer in its own session', T, async (t) => {
+    const w = world(t)
+    w.job('implementer|b#1', (cwd) => work(cwd, { 'src/b.txt': 'ok\n' }, 'make b'))
+    w.rig.script({ [IMPL]: [stopped()] })
+    const k = killer()
+    w.leg({ sleep: k.sleep }).run('b').catch(() => {})
+    await k.reached
+    const cut = startsOf(w.rig, 'implementer', 'b')[0]
+    assert.ok(cut, 'the first run called the producer')
+    const again = w.relaunch()
+    again.rig.script({ [IMPL]: [done()] })
+    const out = await again.run('b')
+    assert.equal(out.outcome, 'approved')
+    assert.equal(out.round, 1)
+    assert.equal(again.rig.calls.length, 1)
+    const [call] = again.rig.calls
+    assert.equal(call.dispatch, cut.dispatch, 'the same dispatch')
+    assert.equal(call.resume, true)
+    assert.equal(call.thread.session, cut.thread.session)
+    assert.equal(call.brief, renderMessage({ msg: 'cut_off' }))
+  })
+
+  test('a fix round cut off after it committed is judged on relaunch against the head it first opened on', T, async (t) => {
+    const w = world(t)
+    let headBefore = ''
+    w.job('implementer|b#1', (cwd) => work(cwd, { 'src/b.txt': 'no\n' }, 'first try'))
+    w.job('implementer|b#2', (cwd) => {
+      headBefore = git(cwd, 'rev-parse', 'HEAD')
+      work(cwd, { 'src/b.txt': 'ok\n' }, 'fix')
+    })
+    w.rig.script({ [IMPL]: [done(), stopped()] })
+    const k = killer()
+    w.leg({ sleep: k.sleep }).run('b').catch(() => {})
+    await k.reached
+    assert.notEqual(headBefore, '')
+    const again = w.relaunch()
+    again.rig.script({ [IMPL]: [done()] })
+    const out = await again.run('b')
+    assert.equal(ofKind(again.rig, 'escalated', 'b').length, 0, 'a head moved by the round itself is not a fix without commits')
+    assert.equal(out.outcome, 'approved')
+    assert.equal(out.round, 2)
+    const opened = stepsOf(again.rig, 'opened:b:2')
+    assert.equal(opened.length, 1)
+    assert.equal(opened[0].value.head_sha, headBefore, 'the head the round first opened on')
+    assert.equal(again.rig.calls.length, 1)
+    assert.equal(again.rig.calls[0].resume, true)
+  })
+
+  test('a round whose call returned but was never closed is closed on relaunch, not dispatched again', T, async (t) => {
+    const w = world(t)
+    w.job('implementer|b#1', (cwd) => work(cwd, { 'src/b.txt': 'ok\n' }, 'make b'))
+    w.rig.script({ [IMPL]: [done()] })
+    const k = killer()
+    const around = async (call, real) => {
+      await real(call)
+      k.hit()
+      return new Promise(() => {})
+    }
+    w.leg({ around }).run('b').catch(() => {})
+    await k.reached
+    const closePathB = closePath(w.rig.repo, w.rig.effort, w.rig.stamp, 'b', 'implementer', 1)
+    assert.equal(existsSync(closePathB), false, 'killed before the close')
+    const again = w.relaunch()
+    again.rig.script({})
+    const out = await again.run('b')
+    assert.equal(again.rig.calls.length, 0, 'no call')
+    assert.equal(out.outcome, 'approved')
+    assert.equal(out.round, 1)
+    assert.equal(existsSync(closePathB), true, 'its close record is written')
+    assert.equal(approvals(again.rig).length, 1)
+  })
+
+  test('a round closed on relaunch whose stored return is gone holds the leaf on a role fault', T, async (t) => {
+    const w = world(t)
+    w.job('implementer|b#1', (cwd) => work(cwd, { 'src/b.txt': 'ok\n' }, 'make b'))
+    w.rig.script({ [IMPL]: [done()] })
+    const k = killer()
+    const around = async (call, real) => {
+      await real(call)
+      k.hit()
+      return new Promise(() => {})
+    }
+    w.leg({ around }).run('b').catch(() => {})
+    await k.reached
+    rmSync(returnPath(w.rig.dir, keyOf('b', 'implementer', 'producer:b', 1)))
+    const again = w.relaunch()
+    again.rig.script({})
+    const out = await again.run('b')
+    assert.equal(again.rig.calls.length, 0, 'no call')
+    assert.equal(out.outcome, 'faulted')
+    const faults = faultsOf(again.rig)
+    assert.equal(faults.length, 1)
+    assert.equal(faults[0].channel, 'role')
+    assert.ok(heldOf(stateOf(again.rig)).has('b'))
+    assert.equal(approvals(again.rig).length, 0)
+  })
+
+  test('a relaunch resumes a reviewer cut off mid-review in its own session and dispatches no producer round', T, async (t) => {
+    const w = world(t, { leaves: [bLeaf(YARD)] })
+    w.job('implementer|b#1', (cwd) => work(cwd, { 'src/b.txt': 'ok\n' }, 'make b'))
+    w.rig.script({ [IMPL]: [done()], [REV(1)]: [stopped()] })
+    const k = killer()
+    w.leg({ sleep: k.sleep }).run('b').catch(() => {})
+    await k.reached
+    const cut = startsOf(w.rig, 'reviewer', 'b')[0]
+    assert.ok(cut, 'the first run called the reviewer')
+    const again = w.relaunch()
+    again.rig.script({ [REV(1)]: [verdict()] })
+    const out = await again.run('b')
+    assert.equal(out.outcome, 'approved')
+    assert.equal(out.review_rounds, 1)
+    assert.equal(out.round, 1)
+    assert.equal(again.rig.calls.length, 1, "the relaunch's only call is the reviewer's")
+    const [call] = again.rig.calls
+    assert.equal(call.role.name, 'reviewer')
+    assert.equal(call.dispatch, cut.dispatch)
+    assert.equal(call.resume, true)
+    assert.equal(call.thread.session, cut.thread.session)
+    assert.equal(call.brief, renderMessage({ msg: 'cut_off' }))
+    assert.equal(approvals(again.rig).length, 1)
+    assert.equal(approvals(again.rig)[0].review_rounds, 1)
+  })
+})

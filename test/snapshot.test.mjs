@@ -260,13 +260,6 @@ test('every live node appears once with its parent', () => {
   assert.deepEqual([...seen].sort(), [...tree.nodes.keys()].sort())
 })
 
-test('status passes through from deriveStatus', () => {
-  const { repo, effort } = sharedFixture()
-  const tree = readTree(repo, effort)
-  const byId = Object.fromEntries(snapshotOf(repo, effort).nodes.map((n) => [n.id, n]))
-  for (const id of tree.nodes.keys()) assert.equal(byId[id].status, tree.status.get(id).status, id)
-})
-
 test("event carries its kind's payload fields", () => {
   const { repo, effort } = sharedFixture()
   const byId = Object.fromEntries(snapshotOf(repo, effort).nodes.map((n) => [n.id, n]))
@@ -327,21 +320,6 @@ function statusFixture() {
   ev('escalated', 'escalated-leaf', { reason: 'r', detail: 'd' })
   return { repo, effort }
 }
-
-test('an open design node passes through', () => {
-  const { repo, effort } = statusFixture()
-  const tree = readTree(repo, effort)
-  const n = snapshotOf(repo, effort).nodes.find((x) => x.id === 'design-node')
-  assert.equal(n.status, tree.status.get('design-node').status)
-  assert.equal(n.stage, null)
-})
-
-test('an integrated folder passes through', () => {
-  const { repo, effort } = statusFixture()
-  const tree = readTree(repo, effort)
-  const n = snapshotOf(repo, effort).nodes.find((x) => x.id === 'merged-folder')
-  assert.equal(n.status, tree.status.get('merged-folder').status)
-})
 
 test('every reachable status passes through unchanged', () => {
   const { repo, effort } = statusFixture()

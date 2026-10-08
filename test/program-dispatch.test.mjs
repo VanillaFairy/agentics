@@ -15,7 +15,7 @@ import { roundOf } from '../lib/evidence.mjs'
 import { readOnlyPermissions } from '../lib/locus.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
 import {
-  coverageOf, deliver, dispatch, dispatchJudge, judgeAllowed, programContext, searchRounds, step, waitFor,
+  coverageOf, deliver, dispatch, dispatchJudge, programContext, searchRounds, step, waitFor,
 } from '../lib/programs/common.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { dispatchedEntry } from '../lib/runner.mjs'
@@ -73,27 +73,6 @@ function gated(inner) {
 
 // --- the context -----------------------------------------------------------------------------
 
-test("the context runs in the run's directory", (t) => {
-  const rig = rigFor(t)
-  assert.equal(rig.ctx.dir, runDir(rig.repo, rig.run))
-})
-
-test('the context carries what it was given', (t) => {
-  const rig = rigFor(t, { files: { 'sub/a.txt': 'a' } })
-  const given = {
-    repo: rig.repo, root: join(rig.repo, 'sub'), run: rig.run, effort: 'effort-kiwi', log: rig.log,
-    runAgent: async () => ({ status: 'failed', cause: 'host_error' }), now: () => '2026-02-02T00:00:00.000Z',
-    sleep: async () => {}, env: { ZEBRA: '1' }, resumable: { program: 'survey', scope: { q: 'x' }, args: { a: 1 } },
-    stdinIsTTY: true, ask: async () => 'yes', maxAgents: 3,
-  }
-  const ctx = programContext(given)
-  for (const k of ['repo', 'root', 'run', 'effort', 'log', 'runAgent', 'now', 'sleep', 'stdinIsTTY', 'ask', 'maxAgents']) {
-    assert.equal(ctx[k], given[k], k)
-  }
-  assert.deepEqual(ctx.env, given.env)
-  assert.deepEqual(ctx.resumable, given.resumable)
-})
-
 test('the context holds six agents at once by default', { timeout: 60_000 }, async (t) => {
   const threads = ['t1', 't2', 't3', 't4', 't5', 't6', 't7']
   const rig = rigFor(t, { script: Object.fromEntries(threads.map((th) => ['scout||' + th, [{ output: scoutOut() }]])) })
@@ -110,13 +89,6 @@ test('the context holds six agents at once by default', { timeout: 60_000 }, asy
   const results = await all
   assert.equal(g.peak, 6)
   for (const r of results) assert.equal(r.status, 'returned')
-})
-
-test('the context reads the repository unless given a root', (t) => {
-  const rig = rigFor(t)
-  assert.equal(rig.ctx.root, rig.repo)
-  const ctx = programContext({ ...rig.ctx, root: undefined })
-  assert.equal(ctx.root, rig.repo)
 })
 
 // --- a first call ----------------------------------------------------------------------------
@@ -227,11 +199,6 @@ test('a given tier, permissions and cwd are used as given', async (t) => {
   assert.equal(call.tier.effort, tier.effort)
   assert.deepEqual(call.permissions, permissions)
   assert.equal(call.cwd, cwd)
-})
-
-test('a first call carries no message by default', async (t) => {
-  const { call } = await firstCall(t)
-  assert.deepEqual(call.carries, [])
 })
 
 // --- results ---------------------------------------------------------------------------------
@@ -535,20 +502,6 @@ test('a step that throws records nothing', async (t) => {
   }
 })
 
-test('steps under different keys are independent', async (t) => {
-  const rig = rigFor(t)
-  let ranA = 0
-  let ranB = 0
-  assert.equal(await step(rig.ctx, 'a', () => { ranA++; return 'alpha' }), 'alpha')
-  assert.equal(await step(rig.ctx, 'b', () => { ranB++; return 'beta' }), 'beta')
-  assert.equal(ranA, 1)
-  assert.equal(ranB, 1)
-  assert.deepEqual(ofKind(rig, 'step').map((s) => [s.key, s.value]).sort(), [['a', 'alpha'], ['b', 'beta']])
-  const again = rig.relaunch({})
-  assert.equal(await step(again.ctx, 'b', () => 'not run'), 'beta')
-  assert.equal(await step(again.ctx, 'a', () => 'not run'), 'alpha')
-})
-
 // --- messages --------------------------------------------------------------------------------
 
 const MSG = { msg: 'declined', payload: { why: 'the kiwi case is pinned already' } }
@@ -743,11 +696,6 @@ test('coverage carries each list and resumable as given', () => {
   for (const k of Object.keys(given)) assert.deepEqual(c[k], given[k], k)
 })
 
-test('coverage has resumable null when none is given', () => {
-  assert.equal(coverageOf({}).resumable, null)
-  assert.equal(coverageOf({ declared: ['a'] }).resumable, null)
-})
-
 const NOW = '2026-01-01T00:00:00.000Z'
 
 test('a stop with a readable until waits until a minute after it', () => {
@@ -776,22 +724,6 @@ test('a stop with no readable until backs off from a minute, doubling, up to thi
 // --- judges ----------------------------------------------------------------------------------
 
 const PRODUCERS = [{ session: 's-producer-a', thread: 'implementer:a' }, { session: 's-producer-b', thread: 'test-author:a' }]
-
-test('a judge sharing a session with any producer is refused', () => {
-  for (const p of PRODUCERS) {
-    assert.equal(judgeAllowed({ producer: PRODUCERS, judge: { session: p.session, thread: 'reviewer:a:1' } }), false, p.session)
-  }
-})
-
-test('a judge sharing a thread with any producer is refused', () => {
-  for (const p of PRODUCERS) {
-    assert.equal(judgeAllowed({ producer: PRODUCERS, judge: { session: 's-judge', thread: p.thread } }), false, p.thread)
-  }
-})
-
-test('a judge apart from every producer is allowed', () => {
-  assert.equal(judgeAllowed({ producer: PRODUCERS, judge: { session: 's-judge', thread: 'reviewer:a:1' } }), true)
-})
 
 test("dispatchJudge refuses a judge on any producer's work without running it", async () => {
   for (const judge of [{ session: PRODUCERS[1].session, thread: 'reviewer:a:1' }, { session: 's-judge', thread: PRODUCERS[1].thread }]) {

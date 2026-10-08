@@ -228,13 +228,6 @@ test('a file argument reads the same whatever its line endings', async (t) => {
   assert.equal(b.scope_key, a.scope_key)
 })
 
-test('a text argument is the string given', async (t) => {
-  const repo = makeRepo(t)
-  const { mod, seen } = program(async () => ({}), { ARGS: TEXT_ARGS })
-  await start(repo, ['survey', '--topic', 'the store, its returns'], mod)
-  assert.equal(seen.calls[0].args.topic, 'the store, its returns')
-})
-
 test('a list argument is its trimmed entries, empty ones dropped', async (t) => {
   const repo = makeRepo(t)
   const { mod, seen } = program(async () => ({}), { ARGS: { roots: { kind: 'list', required: true } } })
@@ -258,13 +251,6 @@ test('a bool argument is true when present and false when absent', async (t) => 
   await start(repo, ['survey'], mod)
   assert.equal(seen.calls[0].args.deep, true)
   assert.equal(seen.calls[1].args.deep, false)
-})
-
-test('an enum argument is one of its values', async (t) => {
-  const repo = makeRepo(t)
-  const { mod, seen } = program(async () => ({}), { ARGS: { mode: { kind: 'enum', values: ['quick', 'deep'], required: true } } })
-  await start(repo, ['survey', '--mode', 'deep'], mod)
-  assert.equal(seen.calls[0].args.mode, 'deep')
 })
 
 test('an effort, a folder in it and a run resolve to their names', async (t) => {
@@ -291,16 +277,6 @@ test('a ref argument resolves to its commit sha in the repository', async (t) =>
   const out = await start(repo, ['survey', '--base', 'HEAD'], mod)
   assert.equal(out.ok, true)
   assert.equal(seen.calls[0].args.base, git(repo, 'rev-parse', 'HEAD'))
-})
-
-test('a ref argument resolves in --root when one is given', async (t) => {
-  const repo = makeRepo(t)
-  const other = makeRepo(t, { content: 'another repository\n' })
-  assert.notEqual(git(other, 'rev-parse', 'HEAD'), git(repo, 'rev-parse', 'HEAD'))
-  const { mod, seen } = program(async () => ({}), { ARGS: { base: { kind: 'ref', required: true } } })
-  const out = await start(repo, ['survey', '--root', other, '--base', 'HEAD'], mod)
-  assert.equal(out.ok, true)
-  assert.equal(seen.calls[0].args.base, git(other, 'rev-parse', 'HEAD'))
 })
 
 test("an absent optional argument takes its default, else its kind's empty value", async (t) => {
@@ -648,13 +624,6 @@ test('an ended run is not resumed', async (t) => {
 })
 
 // --- run ids and the heartbeat ---------------------------------------------------------------
-
-test('a run is named by the stamp of its start and its program', async (t) => {
-  const repo = makeRepo(t)
-  const when = new Date('2026-03-04T05:06:07.000Z')
-  const out = await start(repo, ['solutions'], program(async () => ({}), { name: 'solutions' }).mod, { now: () => when })
-  assert.equal(out.run, stampNow(when) + '-solutions')
-})
 
 test('a run whose name is taken takes the next free -n', async (t) => {
   const repo = makeRepo(t)

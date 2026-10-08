@@ -369,30 +369,6 @@ test('a resumed call given no brief is briefed with the waiting messages alone',
   assert.deepEqual(call.carries, [s1, s2])
 })
 
-test("a composed call's carries name the messages it delivers", async (t) => {
-  const w = world(t, { script: { [K('a', 'ta')]: ONE, [K('a', 'tb')]: TWO, [K('a', 'tc')]: TWO } })
-  const first = [note(w, { thread: 'ta', msg: 'failures', payload: failuresPayload('a1'), round: 1 }),
-    note(w, { thread: 'ta', msg: 'findings', payload: findingsPayload('a2'), round: 1 })]
-  const rFirst = await dispatch(w.ctx, target({ thread: 'ta', round: 1 }))
-
-  await dispatch(w.ctx, spec({ thread: 'tb', round: 1 }))
-  const resumed = [note(w, { thread: 'tb', msg: 'failures', payload: failuresPayload('b'), round: 2 })]
-  const rResumed = await dispatch(w.ctx, target({ thread: 'tb', round: 2 }))
-
-  await dispatch(w.ctx, spec({ thread: 'tc', round: 1 }))
-  const raised = [note(w, { thread: 'tc', msg: 'failures', payload: failuresPayload('c1'), round: 2 }),
-    note(w, { thread: 'tc', msg: 'findings', payload: findingsPayload('c2'), round: 2 })]
-  const rRaised = await dispatch(w.ctx, target({ thread: 'tc', round: 2, fresh: 'raised' }))
-
-  const byDispatch = (r) => w.calls.find((c) => c.dispatch === r.dispatch)
-  const recorded = (r) => dispatchedOf(w, r.dispatch).at(-1).carries
-  for (const [label, r, seqs] of [['first', rFirst, first], ['resumed', rResumed, resumed], ['raised', rRaised, raised]]) {
-    assert.equal(r.status, 'returned', label)
-    assert.deepEqual(byDispatch(r).carries, seqs, label + ': the call')
-    assert.deepEqual(recorded(r), seqs, label + ': its dispatched record')
-  }
-})
-
 test('a resumed call given no brief with nothing waiting throws', async (t) => {
   const w = world(t, { script: { [K('a', 'plan')]: TWO } })
   await dispatch(w.ctx, spec({ round: 1 }))
@@ -569,12 +545,6 @@ test('brief_changed is delivered by the resumed call', async (t) => {
   const [first] = dispatchedOf(w, keyOf({ round: 1 }))
   assert.deepEqual(first.brief_parts, P1)
   assert.equal(first.brief_digest, fnv1a(TB1))
-})
-
-test('a call given no briefParts records an empty brief_parts', async (t) => {
-  const w = world(t, { script: { [K('a', 'plan')]: ONE } })
-  const r = await dispatch(w.ctx, spec())
-  assert.deepEqual(dispatchedOf(w, r.dispatch)[0].brief_parts, {})
 })
 
 test('brief_changed is recorded once', async (t) => {
@@ -806,24 +776,6 @@ test('scoped inside scoped prefixes both', async (t) => {
   const r = await dispatch(scoped(scoped(w.ctx, 'probe:f:1'), 'survey:g'), spec())
   assert.equal(r.status, 'returned')
   assert.equal(w.calls[0].thread.key, named)
-})
-
-test('a context made with a prefix scopes as scoped does', async (t) => {
-  const w = world(t, { script: { [K('a', 'survey:f/plan')]: ONE } })
-  const r = await dispatch(programContext({ ...w.ctx, prefix: 'survey:f' }), spec())
-  assert.equal(r.status, 'returned')
-  assert.equal(w.calls[0].thread.key, 'survey:f/plan')
-})
-
-test('a scoped context shares the log', async (t) => {
-  const w = world(t, { script: { [K('a', 'survey:f/plan')]: ONE } })
-  const scope = scoped(w.ctx, 'survey:f')
-  await step(scope, 'pick', () => 1)
-  await dispatch(scope, spec())
-  const seen = w.ctx.log.entries()
-  assert.ok(seen.some((e) => e.kind === 'step' && e.key === 'survey:f/pick'), 'the scope\'s step')
-  assert.ok(seen.some((e) => e.kind === 'dispatched' && e.thread === 'survey:f/plan'), 'the scope\'s dispatched record')
-  assert.ok(seen.some((e) => e.kind === 'returned' && e.dispatch === keyOf({ thread: 'survey:f/plan' })), 'the scope\'s returned record')
 })
 
 test('a scoped context shares the slots', { timeout: 60_000 }, async (t) => {

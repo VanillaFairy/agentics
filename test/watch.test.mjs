@@ -113,6 +113,13 @@ test('a path with a space is named as it is', (t) => {
   assert.deepEqual(compareCheckout(before, snapshotCheckout(dir)).changed, ['my file.txt'])
 })
 
+test('a staged rename changes both its paths', (t) => {
+  const { dir, g } = repo(t)
+  const before = snapshotCheckout(dir)
+  g('mv', 'a.txt', 'renamed.txt')
+  assert.deepEqual(compareCheckout(before, snapshotCheckout(dir)).changed, ['a.txt', 'renamed.txt'])
+})
+
 test('a snapshot reads HEAD and its branch as git names them', (t) => {
   const { dir, g } = repo(t)
   const snap = snapshotCheckout(dir)

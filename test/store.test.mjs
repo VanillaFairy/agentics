@@ -6,7 +6,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import {
   existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync,
 } from 'node:fs'
@@ -22,6 +22,7 @@ import {
   handleArgs, handleEnvelope,
 } from '../lib/store.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
+import { DEAD_PID } from './harness/dead-pid.mjs'
 
 const fresh = (area) => mkdtempSync(join(tmpdir(), 'agentics-store-' + area + '-'))
 
@@ -290,11 +291,10 @@ test('saidOf gives the line alone with no said or no readable return', () => {
 
 // ------------------------------------------------------------------ the lock
 
-const deadPid = () => spawnSync(process.execPath, ['-e', '']).pid
 
 /** Put the holder file of a holder that is gone into the lock directory at `path`. */
 const goneHolder = (path) =>
-  writeFileSync(join(path, 'gone'), JSON.stringify({ pid: deadPid(), host: hostname(), at: new Date().toISOString() }))
+  writeFileSync(join(path, 'gone'), JSON.stringify({ pid: DEAD_PID, host: hostname(), at: new Date().toISOString() }))
 
 const attempt = (path, waitMs) => {
   try {

@@ -21,11 +21,13 @@ Run the checks with:
 ## Moving to 5.0.0
 
 Branch `v5` moves the plugin from 4.x to 5.0.0 in four phases: foundations, the evidence
-programs, execution, and removing what 4.x alone used. Until the last phase the 4.x runtime still
-lives here: `service-workflows/`, `agents/`, the courier, `test/harness/workflow-host.mjs` and
-`test/harness/develop-sim.mjs`, and the lint rules that guard them. Keep them working and never
-add to them. New code follows `docs/DESIGN.md` and the rules below. On this branch the design
-leads the code: where they disagree, the design is the target.
+programs, execution, and removing what 4.x alone used. Until the last phase what is left of the
+4.x runtime still lives here: the evidence workflows in `service-workflows/`, the agents in
+`agents/` they name, the courier, `test/harness/workflow-host.mjs` with the workflows' scenario
+tests, and the lint rules that guard them. An execution runs only as the `execute` program, over
+the in-process boundaries in `lib/boundaries/`; no boundary is reached through the courier. Keep
+the 4.x runtime working and never add to it. New code follows `docs/DESIGN.md` and the rules below.
+On this branch the design leads the code: where they disagree, the design is the target.
 
 ## Rules for changing this repository
 
@@ -117,9 +119,9 @@ The laws themselves are in `docs/DESIGN.md#laws`.
 | Law | Enforced by |
 |---|---|
 | L1 — honest state | `tools/rules/coverage-block.mjs`, which requires a coverage block in every program's `resultOf` and every workflow's return; `coverageOf` in `lib/programs/common.mjs`; the coverage every searcher's return schema requires and the per-unit rulings every judge's requires (`test/schemas.test.mjs`); `resolveHandle` in `lib/store.mjs`, through which `lib/run.mjs` resolves every effort, folder, run and file argument (a ref is resolved by git or refused); status derived on read |
-| L2 — states end work, counts don't | `tools/rules/no-turn-caps.mjs`, over the programs, `lib/run.mjs`, skills, agents and workflows; the convergence predicates in `lib/verdict.mjs`; `askAfter` in `lib/programs/converge.mjs`; the runner's host-stop classes, waited out by `dispatch` in `lib/programs/common.mjs` |
+| L2 — states end work, counts don't | `tools/rules/no-turn-caps.mjs`, over the programs and the execute program's units (`lib/programs/execute/`), `lib/run.mjs`, skills, agents and workflows; the convergence predicates in `lib/verdict.mjs`; `askAfter` in `lib/programs/converge.mjs`; the runner's host-stop classes, waited out by `dispatch` in `lib/programs/common.mjs` |
 | L3 — separate judges | the role kinds in `lib/roles.mjs`; `judgeAllowed` and `dispatchJudge` in `lib/programs/common.mjs`; `tools/rules/no-self-verdict.mjs`; `verdictOf` in `lib/verdict.mjs` |
-| L4 — the user owns decisions and their branch | `verifyAnswer` and `confirmAct` in `lib/host.mjs`, called by `approveAct` in `lib/approval.mjs`, `landAct` in `lib/boundary.mjs` and the `rule` program; `userBound` in `lib/respec.mjs`, which the `rule` program and `respec.mjs settle` apply; `decisionProblems` in `lib/tree.mjs`; the runner's confinement and its watch on the user's checkout; the `review` program's snapshot, which leaves the user's tree, index and stash untouched; `lib/verify.mjs`'s linked-worktree refusal; `land`'s refusals |
+| L4 — the user owns decisions and their branch | `verifyAnswer` and `confirmAct` in `lib/host.mjs`, called by `approveAct` in `lib/approval.mjs`, `landAct` in `lib/boundary.mjs` and the `rule` program; `userBound` in `lib/respec.mjs`, which the `rule` program and `respec.mjs settle` apply; `decisionProblems` in `lib/tree.mjs`; the runner's confinement and its watch on the user's checkout, and `measure`'s watch around every check in `lib/measure.mjs`; leaf-close's revert of what lies outside a leaf's locus in `lib/boundaries/leaf-close.mjs`; the `review` program's snapshot, which leaves the user's tree, index and stash untouched; `lib/verify.mjs`'s linked-worktree refusal; `land`'s refusals |
 | P4 — everything earns its place | `test/liveness.test.mjs`; `tools/rules/size-budget.mjs` |
 
 ## Build
@@ -130,17 +132,24 @@ The laws themselves are in `docs/DESIGN.md#laws`.
 
 ## Architecture
 
-- `lib/` — deterministic modules and CLIs: the store, tree, ledger, compile, boundary, verify,
-  runner, host, locus and conversation modules (`lib/INDEX.md`)
-- `lib/programs/` — the programs that orchestrate, started by `lib/run.mjs`
-- `lib/briefs/` — the prompts the programs build, one file per program (a ruling's is
-  `lib/respec.mjs`'s)
+- `lib/` — deterministic modules and CLIs: the store, tree, ledger, compile, verify, measure,
+  runner, host, locus and conversation modules, and the session's calls in `lib/boundary.mjs`
+  (land, retry, note) (`lib/INDEX.md`)
+- `lib/boundaries/` — the boundaries an execution calls in-process: preflight, schedule and
+  postflight, leaf-open, leaf-close, leaf-review, merge-batch and the suite gate, folder-review and
+  rule-close, and the autonomous review's, over one records core
+- `lib/programs/` — the programs that orchestrate, started by `lib/run.mjs`; the execute
+  program's units (a leaf, a planner's folder, the integration units) in `lib/programs/execute/`
+- `lib/briefs/` — the prompts the programs build, one file per program (`execute.mjs` the
+  execution's reviewers, rulers, planner and investigator; a leaf round's thread brief is
+  `lib/brief.mjs`'s, a ruling's `lib/respec.mjs`'s)
 - `roles/` — agent roles: instructions, tools and kind, read by the runner alone
 - `skills/` — user entry points: design, develop, task, investigate, next (`docs/kb/skills.md`)
 - `tools/` — lint, its rules, size budgets, one-shot migrations (`tools/INDEX.md`)
 - `test/` — the `node --test` suite; `test/harness/` holds the scripted runner and the fake CLI
-- 4.x, until the last phase: `service-workflows/` (`service-workflows/INDEX.md`), `agents/`
-  (`docs/kb/agents.md`)
+- 4.x, until the last phase: the evidence workflows in `service-workflows/`
+  (`service-workflows/INDEX.md`), the agents they name in `agents/` (`docs/kb/agents.md`), the
+  courier and `test/harness/workflow-host.mjs`; no execution runs through them
 
 ## Knowledge base
 

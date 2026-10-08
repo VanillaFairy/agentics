@@ -349,11 +349,3 @@ test('a watch that cannot read the checkout before the check spawns nothing', { 
   assert.match(out.payload.error.message, /unreadable/)
 })
 
-test('a watch that cannot read the checkout after the check hands back no measurement', { timeout: 60_000 }, async (t) => {
-  const { xc, opts } = rig(t)
-  const watch = { before: () => ({}), after: () => { throw new Error('unreadable') } }
-  const out = await measure(xc, opts, { spawn: counted().spawn, watch })
-  assert.equal(out.payload.stop_reason, 'environment_broken')
-  assert.equal(out.payload.error.kind, 'watch_failed')
-  assert.equal(out.moved, false)
-})

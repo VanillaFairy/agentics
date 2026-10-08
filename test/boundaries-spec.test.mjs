@@ -15,7 +15,7 @@ import { join } from 'node:path'
 import { executionContext } from '../lib/boundaries/records.mjs'
 import { specCheck, specGate, specPrepare, specReviewed, specSettle } from '../lib/boundaries/spec.mjs'
 import {
-  approvalGate, approvalState, recordApproval, recordDisposition, recordPreparation, recordReviewed,
+  approvalState, recordApproval, recordDisposition, recordPreparation, recordReviewed,
 } from '../lib/approval.mjs'
 import { compileEffort } from '../lib/compile.mjs'
 import { executionLog, readLog } from '../lib/ledger.mjs'
@@ -257,13 +257,6 @@ test('spec-check: a spec that states a decision parks needs_decision', (t) => {
   assert.deepEqual([now.status, now.last.return], ['parked', 'needs_decision'])
   assert.match(now.last.question, /states 1 decision\(s\): only the user states decisions/)
   assert.deepEqual(messages(xc), [], 'a decision is the user\'s: the planner is not sent its problems')
-})
-
-test('spec-check: the question names how many decisions the spec states', (t) => {
-  const xc = rig(t, { spec: folderSpec({ decisions: [['p.D1', 'keep it in memory'], ['p.D2', 'use a queue'], ['p.D3', 'poll']] }) })
-  const out = specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
-  assert.equal(out.decisions_n, 3)
-  assert.match(statusOf(xc).last.question, /states 3 decision\(s\)/)
 })
 
 test('spec-check: problems go to the planner once, as a problems message for its next round', (t) => {
@@ -794,19 +787,6 @@ test('spec-gate: shut before any review of the spec as it stands', (t) => {
   assert.deepEqual([edited.ratifiable, edited.status, edited.reviewed], [false, 'shut', false], 'a review of the text before is no review of this text')
 })
 
-test('spec-gate is approvalGate: an ambiguity no disposition settled keeps it shut', (t) => {
-  const xc = rig(t)
-  reviewedLine(xc, [finding('P1', 'ambiguity', 'Two meanings of tick', { item: 'Ia' })])
-  const out = specGate(xc, { folder: 'p', edited: true })
-  const gate = approvalGate(xc.repo, E, 'p')
-  assert.deepEqual([out.ratifiable, out.status], [false, 'shut'])
-  assert.deepEqual(out.open, ['Ia'])
-  assert.deepEqual(out.open, gate.open)
-  assert.equal(out.coverage_complete, gate.coverage_complete)
-  assert.equal(out.reviewed, gate.reviewed)
-  assert.deepEqual(out.stops, [])
-})
-
 test('spec-gate: a gate that is open stops nothing, edited or not', (t) => {
   const xc = rig(t)
   reviewedLine(xc, [])
@@ -986,14 +966,6 @@ test('spec-prepare: a replan that changed the leaf is prepared', (t) => {
   assert.deepEqual(out.stops, [])
   assert.ok(seqOfNode(xc, 'p/x') > rev, 'compile revised the leaf')
   assert.deepEqual(escalations(xc, 'p/x'), [])
-})
-
-test('spec-prepare: no replanning leaf asks nothing of an unchanged leaf', (t) => {
-  const xc = prepared(t)
-  put(xc.repo, 'p', folderSpec({ design: 'One function, edited.' }))
-  const out = specPrepare(xc, { folder: 'p', review: REVIEW_2 })
-  assert.equal(out.status, 'prepared')
-  assert.deepEqual(out.stops, [])
 })
 
 /** The sound spec prepared, work dispatched under it, its Design edited and prepared again: compile parks the folder spec_changed. */

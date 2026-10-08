@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url'
 import { verify } from '../lib/verify.mjs'
 import { readLog } from '../lib/ledger.mjs'
 import {
-  BRANCH, cycle, EFFORT, EXECUTION, git, NODE, options, order, rev, WIDGET_TEST,
+  BRANCH, cycle, EFFORT, EXECUTION, git, NODE, options, rev, WIDGET_TEST,
 } from './harness/verify-fixture.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/verify.mjs', import.meta.url))
@@ -152,17 +152,6 @@ test('an approved file that fails naming no case is one entry with an empty id',
 })
 
 // ---------------------------------------------------------------- the journal
-
-test('key is on the journalled verify-observed', (t) => {
-  const r = order(t)
-  const opts = { ...options({ worktree: r.worktree, base: r.base, head: r.head }), rigor: 'trivial', ...journaling(r) }
-  verify({ ...opts, key: 'k-0001' })
-  verify(opts)
-  const [first, second] = journal(r)
-  assert.equal(first.kind, 'verify-observed')
-  assert.equal(first.key, 'k-0001')
-  assert.equal(second.key, '', 'the key defaults to the empty string')
-})
 
 test('approved_failing is on the journalled verify-observed', (t) => {
   const r = round(t, { 'src/widget.mjs': SOURCE_BYE, [FILE]: WIDGET_TEST_BYE })

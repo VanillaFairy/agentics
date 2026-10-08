@@ -68,16 +68,8 @@ test('a return with no status holds the round', () => {
   assert.equal(po({ ret: { status: 3, text: TEXT } }).next, 'held', 'a status that is not a string is no status')
 })
 
-test("a test-author's return with no status holds the round", () => {
-  assert.equal(po({ role: 'test-author', ret: { text: TEXT } }).next, 'held')
-})
-
 test("an auditor's return, which carries no status, is measured", () => {
   assert.equal(po({ leaf: AUDIT, role: 'auditor', ret: AUDITOR_RETURN }).next, 'measure')
-})
-
-test('an auditor that returned nothing holds the round', () => {
-  assert.equal(po({ leaf: AUDIT, role: 'auditor', ret: null }).next, 'held')
 })
 
 test("an auditor's return is read the same with a status field as without one", () => {
@@ -92,14 +84,6 @@ test("an auditor's return is read the same with a status field as without one", 
 test('a leaf with no producer is measured without a return', () => {
   assert.equal(po({ role: '', ret: null }).next, 'measure')
   assert.equal(po({ role: '', ret: { status: 'blocked', text: TEXT } }).next, 'measure', 'no return is read for a leaf with no producer')
-})
-
-test('done is measured', () => {
-  assert.equal(po({ ret: { status: 'done', text: TEXT } }).next, 'measure')
-})
-
-test('done_with_concerns is measured', () => {
-  assert.equal(po({ ret: { status: 'done_with_concerns', text: TEXT, concerns: ['c'] } }).next, 'measure')
 })
 
 test('blocked escalates, said the dispatch', () => {

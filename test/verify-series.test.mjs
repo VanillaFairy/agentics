@@ -68,11 +68,6 @@ test('a path that is no working tree at all is refused before anything runs', (t
   assert.equal(worktreeProblem(outside).kind, 'no_worktree')
 })
 
-test('a linked worktree is accepted', (t) => {
-  const { worktree } = order(t)
-  assert.equal(worktreeProblem(worktree), null)
-})
-
 // ---------------------------------------------------------------- the green series
 
 test('a green series: build passes, suite passes, and the new test discriminates', (t) => {

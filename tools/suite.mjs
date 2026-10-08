@@ -11,8 +11,7 @@
 // Design: docs/DESIGN.md#how-the-plugin-checks-itself
 
 import { spawn, spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -41,12 +40,6 @@ export function parseArgs(argv) {
   }
   if (out.fast && out.files.length > 0) return { error: '--fast and named files select different things; use one' }
   return out
-}
-
-/** One state file per checkout and commit, so two checkouts never read each other's passes. */
-export function stateFileFor(root, head, dir = tmpdir()) {
-  const where = createHash('sha1').update(resolve(root)).digest('hex').slice(0, 12)
-  return join(dir, `agentics-test-${where}-${head.slice(0, 12)}.json`)
 }
 
 /**
@@ -81,11 +74,6 @@ function nodeArgs({ selection, concurrency, state }) {
     `--test-reporter=${REPORTER}`, '--test-reporter-destination=stdout',
     ...selection,
   ]
-}
-
-function headOf(root) {
-  const run = spawnSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' })
-  return run.status === 0 ? run.stdout.trim() : 'no-head'
 }
 
 let running = null
@@ -131,11 +119,11 @@ async function main(argv) {
     return 2
   }
   const selection = parsed.fast ? [FAST_TIER] : parsed.files.map((f) => resolve(process.cwd(), f))
-  const state = stateFileFor(ROOT, headOf(ROOT))
-  const failureFiles = [`${state}.first.jsonl`, `${state}.second.jsonl`]
-  const clear = () => { for (const f of [state, ...failureFiles]) rmSync(f, { force: true }) }
-
-  clear() // a state left by an earlier invocation would skip tests that passed on older code
+  // One directory per invocation: its state and failure files are nobody else's, and a state
+  // left behind could never skip tests that passed on older code.
+  const work = mkdtempSync(join(tmpdir(), 'agentics-suite-'))
+  const state = join(work, 'state.json')
+  const failureFiles = [join(work, 'first.jsonl'), join(work, 'second.jsonl')]
   try {
     const attempt = async (concurrency, failures) => {
       const code = await runNode(nodeArgs({ selection, concurrency, state }), failures)
@@ -158,7 +146,7 @@ async function main(argv) {
     console.log(`${verdict.flake.length} flake, ${verdict.red.length} red`)
     return verdict.ok ? 0 : 1
   } finally {
-    clear()
+    rmSync(work, { recursive: true, force: true })
   }
 }
 

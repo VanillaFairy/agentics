@@ -1,6 +1,5 @@
 // test/fast/suite.test.mjs — what tools/suite.mjs decides: which tests were flakes and which
-// red, what a command line means, and which state file two checkouts do not share. The runs
-// themselves are node's and are not repeated here.
+// red, and what a command line means. The runs themselves are node's and are not repeated here.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -8,7 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { DEFAULT_CONCURRENCY, classify, parseArgs, readFailures, stateFileFor } from '../../tools/suite.mjs'
+import { DEFAULT_CONCURRENCY, classify, parseArgs, readFailures } from '../../tools/suite.mjs'
 
 const run = (code, failed = []) => ({ code, failed })
 
@@ -58,13 +57,6 @@ test('concurrency is a positive integer in either spelling', () => {
 
 test('an unknown option is refused rather than taken for a file', () => {
   assert.match(parseArgs(['--fats']).error, /unknown option/)
-})
-
-test('the state file is stable for a checkout and commit and differs for another of either', () => {
-  const here = stateFileFor('/work/a', 'a'.repeat(40), '/tmp')
-  assert.equal(here, stateFileFor('/work/a', 'a'.repeat(40), '/tmp'))
-  assert.notEqual(here, stateFileFor('/work/b', 'a'.repeat(40), '/tmp'))
-  assert.notEqual(here, stateFileFor('/work/a', 'b'.repeat(40), '/tmp'))
 })
 
 test('failures are read back as repo-relative ids, and a missing file is no failures', () => {

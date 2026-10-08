@@ -351,6 +351,19 @@ test('a raised call given no brief is briefed with the thread brief and every wa
   assert.deepEqual(call.carries, [s])
 })
 
+test('a raised call given no brief is also briefed with the messages an earlier call carried', async (t) => {
+  const w = world(t, { script: { [K('a', 'plan')]: TWO } })
+  const s1 = note(w, { msg: 'findings', payload: findingsPayload('carried'), round: 1 })
+  await dispatch(w.ctx, target({ round: 1 }))
+  const s2 = note(w, { msg: 'failures', payload: failuresPayload('raise'), round: 2 })
+  const r = await dispatch(w.ctx, target({ round: 2, fresh: 'raised' }))
+  assert.equal(r.status, 'returned')
+  const call = w.calls[1]
+  assert.equal(call.resume, false)
+  assertInOrder(call.brief, [TB, findingsText('carried'), failuresText('raise')], 'the brief')
+  assert.deepEqual(call.carries, [s1, s2])
+})
+
 test('a resumed call given no brief is briefed with the waiting messages alone', async (t) => {
   const w = world(t, { script: { [K('a', 'plan')]: TWO } })
   note(w, { msg: 'findings', payload: findingsPayload('carried'), round: 1 })

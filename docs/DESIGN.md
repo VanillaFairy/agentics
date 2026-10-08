@@ -777,7 +777,9 @@ the `seq` its `--since <seq>` names, or after it began when it is given none
 execution's run (`<effort>.<stamp>`) it also prints each `escalated` or `parked` event of the
 execution that is still its node's open stop when the watch reads it (`<id> escalated <reason>`,
 `<id> parked <return>`); then `ended <status>: complete=<bool> result=<file>` at the run's end —
-the `ended` after the run's latest `run` line, wherever it stands against `--since` — or
+the `ended` after the run's latest `run` line, wherever it stands against `--since`, and on an
+execution's run only one whose `seq` is above the `--since` given, so a relaunch whose child has
+not yet appended its `run` line is not ended by the previous run's `ended` — or
 `stopped: start the same command again to resume run <run>` when the run reads stopped. The
 session's monitor shows each line as it comes. A program run's monitor passes `--since 0`, so a
 fault recorded before the watch began, or between two of its re-arms, is printed all the same: the
@@ -2538,7 +2540,8 @@ per `escalated` or `parked` event of the execution after the `seq` its `--since 
 is still its node's open stop (`<id> escalated <reason>`, `<id> parked <return>`). The `seq` is the
 effort's, which `lib/status.mjs list` printed before the start, so nothing raised in between goes
 unseen; the watch is re-armed with the same `seq` until the run ends, so a line that still stands
-is printed again, and it exits on the current run's `ended`, or `stopped`. The session asks the
+is printed again, and it exits on the `ended` of the run it was armed for (one recorded after that
+`seq`: an earlier run's end never ends it), or `stopped`. The session asks the
 user at
 once and records the answer: a re-spec's approval and compile clears a park (`replanned`,
 `answered`), and `lib/boundary.mjs retry --node <id>` clears an escalation (`replanned`,

@@ -134,7 +134,7 @@ The laws themselves are in `docs/DESIGN.md#laws`.
     node --test test/[fast/]<file>.test.mjs
     claude plugin validate .
 
-`node --test` alone still runs everything, without the rerun. A test that spawns a process
+`node --test "test/**/*.test.mjs"` runs everything without the rerun; bare `node --test` also loads the harness modules. A test that spawns a process
 belongs outside `test/fast/`; the `fast-tier` lint rule fails it there, and a preload that makes
 process creation throw fails it at run time.
 

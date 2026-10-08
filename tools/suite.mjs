@@ -21,6 +21,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const REPORTER = new URL('./suite-reporter.mjs', import.meta.url).href
 
 const FAST_TIER = 'test/fast/**/*.test.mjs'
+const ALL_TESTS = 'test/**/*.test.mjs'
 const NO_SPAWN = new URL('../test/fast/harness/no-spawn.mjs', import.meta.url).href
 export const DEFAULT_CONCURRENCY = 8
 export const RERUN_CONCURRENCY = 2
@@ -138,7 +139,7 @@ async function main(argv) {
     console.error(`${parsed.error}\n${USAGE}`)
     return 2
   }
-  const selection = parsed.fast ? [FAST_TIER] : parsed.files.map((f) => resolve(process.cwd(), f))
+  const selection = parsed.fast ? [FAST_TIER] : parsed.files.length > 0 ? parsed.files.map((f) => resolve(process.cwd(), f)) : [ALL_TESTS]
   // One directory per invocation: its state and failure files are nobody else's, and a state
   // left behind could never skip tests that passed on older code.
   const work = mkdtempSync(join(tmpdir(), 'agentics-suite-'))

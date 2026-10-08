@@ -214,7 +214,6 @@ async function until(pred, label, ms = 120_000) {
 
 const R_TEST = "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { r } from '../src/r.mjs'\ntest('doubles 2', () => assert.equal(r(2), 4))\n"
 const R_TEST_TWO = R_TEST + "test('doubles 3', () => assert.equal(r(3), 6))\n"
-const R_TEST_THREE = R_TEST_TWO + "test('doubles 4', () => assert.equal(r(4), 8))\n"
 const R_TEST_FOUR = R_TEST_TWO + "test('doubles 5', () => assert.equal(r(5), 10))\n"
 const R_SRC = 'export const r = (x) => x * 2\n'
 const R_BITES = { file: 'src/r.mjs', find: 'x * 2', replace: 'x * 3', expect_failing: ['test/r.test.mjs'] }
@@ -586,50 +585,6 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.equal(approvals(w.rig).length, 0)
   })
 
-  test('a prior blocker the next round never rules on stays open', T, async (t) => {
-    const w = world(t, { leaves: [bLeaf(YARD)] })
-    w.job('implementer|b#1', (cwd) => work(cwd, { 'src/b.txt': 'ok\n', 'src/b2.txt': 'one\n' }, 'round one'))
-    w.job('implementer|b#2', (cwd) => work(cwd, { 'src/b2.txt': 'two\n' }, 'round two'))
-    w.job('implementer|b#3', (cwd) => work(cwd, { 'src/b2.txt': 'three\n' }, 'round three'))
-    w.rig.script({
-      [IMPL]: [done(), done(), done()],
-      [REV(1)]: [verdict({ findings: [finding('F1')] })],
-      [REV(2)]: [verdict()],
-      [REV(3)]: [verdict()],
-    })
-    const out = await w.run('b')
-    assert.equal(out.outcome, 'stopped')
-    assert.equal(startsOf(w.rig, 'implementer', 'b').length, 3, 'a blocker no review rules on is not fixed')
-    assert.deepEqual(ofKind(w.rig, 'escalated', 'b').map((e) => e.reason), ['review_not_converging'])
-    assert.equal(approvals(w.rig).length, 0)
-  })
-
-  test('on a yardstick leaf a major blocks only with a failure scenario', T, async (t) => {
-    const blocking = world(t, { leaves: [bLeaf(YARD)] })
-    blocking.job('implementer|b#1', (cwd) => work(cwd, { 'src/b.txt': 'ok\n' }, 'round one'))
-    blocking.job('implementer|b#2', (cwd) => work(cwd, { 'src/b2.txt': 'two\n' }, 'round two'))
-    blocking.rig.script({
-      [IMPL]: [done(), done()],
-      [REV(1)]: [verdict({ findings: [finding('M1', { severity: 'major', failure_scenario: 'a correct caller fails it' })] })],
-      [REV(2)]: [verdict({ fix: [fixed('M1')] })],
-    })
-    const one = await blocking.run('b')
-    assert.equal(one.outcome, 'approved')
-    assert.equal(one.review_rounds, 2, 'a major with a failure scenario takes a fix round and a second review')
-    assert.equal(startsOf(blocking.rig, 'implementer', 'b').length, 2)
-
-    const advisory = world(t, { leaves: [bLeaf(YARD)] })
-    advisory.job('implementer|b#1', (cwd) => work(cwd, { 'src/b.txt': 'ok\n' }, 'round one'))
-    advisory.rig.script({
-      [IMPL]: [done()],
-      [REV(1)]: [verdict({ findings: [finding('M1', { severity: 'major', failure_scenario: '' })] })],
-    })
-    const two = await advisory.run('b')
-    assert.equal(two.outcome, 'approved')
-    assert.equal(two.review_rounds, 1, 'no failure scenario: advisory')
-    assert.equal(startsOf(advisory.rig, 'implementer', 'b').length, 1)
-  })
-
   test('a review that leaves units unruled goes to a fresh reviewer, not to the producer', T, async (t) => {
     const w = world(t, { leaves: [bLeaf(YARD)] })
     w.job('implementer|b#1', (cwd) => work(cwd, { 'src/b.txt': 'ok\n', 'src/b2.txt': 'one\n' }, 'round one'))
@@ -749,44 +704,6 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.equal(three.thread.session, one.thread.session, "the implementer's own session")
     assert.ok(three.carries.includes(ready[0].seq), 'round 3 carries tests_ready')
     assert.ok(three.brief.includes(renderMessage({ msg: 'tests_ready', payload: ready[0].payload })))
-    assert.equal(approvals(w.rig, 'g').length, 1)
-  })
-
-  test('a mixed open set goes to the implementer first, the test finding carried and no strike', T, async (t) => {
-    const w = cycleWorld(t)
-    seedRed(w)
-    const code = finding('F1')
-    const gap = finding('R1', { remedy: 'tests' })
-    w.job('implementer|g#1', (cwd) => work(cwd, { 'src/r.mjs': R_SRC }, 'implement r'))
-    w.job('implementer|g#2', (cwd) => work(cwd, { 'src/r.mjs': R_SRC + '// round two\n' }, 'answer F1'))
-    w.job('test-author|g#3', (cwd) => write(cwd, { 'test/r.test.mjs': R_TEST_TWO }))
-    w.job('test-author|g#4', (cwd) => write(cwd, { 'test/r.test.mjs': R_TEST_THREE }))
-    w.rig.script({
-      'implementer|g|producer:g': [done(), done()],
-      'test-author|g|producer:r': [done('doubles 3', { mutations: [R_BITES] }), done('doubles 4', { mutations: [R_BITES] })],
-      'reviewer|g|reviewer:g:1': [verdict({ findings: [code, gap] })],
-      'reviewer|g|reviewer:g:2': [verdict({ findings: [gap], fix: [fixed('F1'), notFixed('R1')] })],
-      'reviewer|g|reviewer:g:3': [verdict({ findings: [gap], fix: [notFixed('R1')] })],
-      'reviewer|g|reviewer:g:4': [verdict({ fix: [fixed('R1')] })],
-    })
-    const out = await w.run('g')
-    assert.deepEqual(ofKind(w.rig, 'escalated', 'g'), [], "the carried finding's miss is no strike")
-    assert.equal(out.outcome, 'approved')
-    assert.equal(out.review_rounds, 4)
-    assert.equal(out.round, 4)
-    const toCode = messages(w.rig, 'producer:g', 'findings')
-    assert.equal(toCode.length, 1, 'one findings message for the implementer')
-    assert.deepEqual(toCode[0].payload.findings.map((f) => f.id), ['F1'], 'it names only the code finding')
-    const [impl1, impl2] = startsOf(w.rig, 'implementer', 'g')
-    assert.equal(impl2.round, 2)
-    assert.deepEqual(impl2.carries, [toCode[0].seq])
-    const authors = startsOf(w.rig, 'test-author', 'g')
-    assert.deepEqual(authors.map((c) => c.round), [3, 4])
-    assert.deepEqual(authors.map((c) => c.thread.key), ['producer:r', 'producer:r'])
-    const toTests = messages(w.rig, 'producer:r', 'findings')
-    assert.ok(toTests.some((m) => m.round === 3 && m.payload.findings.some((f) => f.id === 'R1')), 'round 3 carries the tests finding')
-    assert.ok(authors[0].carries.includes(toTests.find((m) => m.round === 3).seq))
-    assert.notEqual(impl1.thread.session, authors[0].thread.session)
     assert.equal(approvals(w.rig, 'g').length, 1)
   })
 

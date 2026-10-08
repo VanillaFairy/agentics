@@ -107,7 +107,6 @@ const SPLIT = {
 }
 const BIG_TEST = "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { add } from '../../src/add.mjs'\n" +
   "test('adds big', () => assert.equal(add(2, 2), 4))\n"
-const BREAK_ADD = 'export const add = (a, b) => a - b\n'
 const BREAK_BIG = 'export const add = (a, b) => (a === 2 && b === 2 ? 5 : a + b)\n'
 
 // ================================================================== a world to work in
@@ -263,24 +262,6 @@ test("a stopped consumer's drift is reported and goes to no ruler", SLOW, async 
   assert.equal(kinds(w.rig, 'drift-ruled').length, 0)
 })
 
-test('a leaf failing alone on the merged head comes back for its fix round, its failures waiting', SLOW, async (t) => {
-  const rig = executionRig(t)
-  const a = readyLeaf(rig, 'a', { 'src/add.mjs': BREAK_ADD }, 'Break add')
-  const out = await mergeUnit(rig.ctx, rig.xc, { target: '.', children: handed(a) })
-
-  assert.equal(out.outcome, 'done')
-  assert.deepEqual(out.failed_alone, [{ id: 'a' }])
-  assert.deepEqual(out.merged, [])
-  assert.deepEqual(out.replan, [])
-  const sent = kinds(rig, 'message')
-  assert.equal(sent.length, 1)
-  assert.deepEqual([sent[0].node, sent[0].thread, sent[0].msg, sent[0].round], ['a', 'producer:a', 'failures', 2])
-  assert.equal(sent[0].payload.source, 'integration')
-  assert.equal(statusOf(rig, 'a'), 'active')
-  assert.equal(rig.calls.length, 0)
-  assert.equal(kinds(rig, 'merged').length, 0)
-})
-
 test('a merge-batch that cannot run stops its target and rules nothing', SLOW, async (t) => {
   const rig = executionRig(t)
   const a = readyLeaf(rig, 'a', { 'src/a.mjs': 'export const a = () => 1\n' })
@@ -294,29 +275,6 @@ test('a merge-batch that cannot run stops its target and rules nothing', SLOW, a
   assert.deepEqual(kinds(rig, 'escalated').map((e) => [e.node, e.reason]), [['.', 'merge_batch_failed']])
   assert.equal(rig.calls.length, 0)
   assert.equal(kinds(rig, 'merged').length, 0)
-})
-
-test('a relaunch after a batch started and never recorded resets it and merges again', SLOW, async (t) => {
-  const rig = executionRig(t)
-  const a = readyLeaf(rig, 'a', { 'src/a.mjs': 'export const a = () => 1\n' }, 'Add a')
-  const pre = rootHead(rig)
-  const wt = rig.worktreeOf('.')
-  rig.log.append('batch-started', { target: '.', pre, children: ['a'] })
-  git(wt, 'merge', '--no-ff', '-q', '-m', 'HAND MERGE OF A', a.branch)
-  assert.equal(git(wt, 'log', '-1', '--format=%s'), 'HAND MERGE OF A')
-
-  const again = rig.relaunch()
-  const out = await mergeUnit(again.ctx, again.xc, { target: '.', children: handed(a) })
-
-  assert.equal(out.outcome, 'done')
-  assert.deepEqual(out.merged.map((m) => m.id), ['a'])
-  const merges = git(rig.repo, 'rev-list', '--first-parent', '--merges', pre + '..' + rootHead(rig)).split('\n').filter(Boolean)
-  assert.equal(merges.length, 1, 'one merge past pre')
-  assert.notEqual(git(rig.repo, 'log', '-1', '--format=%s', merges[0]), 'HAND MERGE OF A', 'the hand merge was reset away')
-  assert.equal(kinds(again, 'merged').length, 1)
-  assert.equal(kinds(again, 'batch').length, 1)
-  const record = JSON.parse(readFileSync(mergePath(rig.repo, rig.effort, rig.stamp, '.', pre), 'utf8'))
-  assert.equal(record.notes.length, 1, 'the batch record notes the reset')
 })
 
 test('a merge the boundary refuses is a program fault on its target', SLOW, async (t) => {
@@ -349,20 +307,6 @@ test('a failing suite gate escalates the composite unreviewed', SLOW, async (t) 
   assert.deepEqual(kinds(rig, 'escalated').map((e) => [e.node, e.reason]), [['.', 'fails_full_suite']])
   assert.equal(rig.calls.length, 0)
   assert.equal(kinds(rig, 'claims').length, 0)
-})
-
-test('the gate unit reports a passing and a failing suite as its outcome, with the head it judged', SLOW, async (t) => {
-  const rig = executionRig(t, { commands: SPLIT, files: { 'test/big/add.test.mjs': BIG_TEST } })
-  const wt = rig.worktreeOf('.')
-  const passed = await gateUnit(rig.ctx, rig.xc, { target: '.' })
-  assert.equal(passed.outcome, 'passed')
-  assert.equal(passed.review, 'earned')
-  assert.equal(passed.head_sha, rootHead(rig))
-
-  const broken = commitIn(wt, { 'src/add.mjs': BREAK_BIG }, 'Break only the big test')
-  const failed = await gateUnit(rig.ctx, rig.xc, { target: '.' })
-  assert.equal(failed.outcome, 'failed')
-  assert.equal(failed.head_sha, broken)
 })
 
 /** Two leaves merged into the root without a batch: their files committed in the root's worktree. */

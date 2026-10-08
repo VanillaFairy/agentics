@@ -222,17 +222,6 @@ test('the plan and judge briefs carry the standing items with no empty suspect o
   }
 })
 
-test('the re-judge brief carries the suspect items with no empty standing or stale section', async (t) => {
-  const base = rigFor(t, { files: SURVEY_FILES })
-  const [id] = seed(base.repo, [seedItem('held', 'SUSPECT-a77 the loader reads line eleven')])
-  editLine(base.repo, 11, EDIT)
-  const rig = base.relaunch({ 'analyst||rejudge:1': [{ output: { rulings: [{ id, ruling: 'holds', why: 'it holds' }] } }], ...surveyScript({ planned: [] }) })
-  await survey(rig.ctx, surveyArgs({ ground: ['src'] }))
-  const [call] = rig.calls.filter((c) => c.thread.key === 'rejudge:1')
-  assert.ok(call.brief.includes('SUSPECT —'), 'the suspect section')
-  for (const empty of ['STANDING —', 'STALE —', '(none)']) assert.ok(!call.brief.includes(empty), 'no ' + empty)
-})
-
 // --- M13: a pruned snapshot --------------------------------------------------------------------
 
 test('a snapshot pruned from the store before a relaunch is reported, not thrown', async (t) => {

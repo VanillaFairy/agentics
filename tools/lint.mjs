@@ -18,8 +18,15 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
  */
 export const PLUGIN_ROOT = fileURLToPath(new URL('..', import.meta.url))
 
-/** Directories never linted: VCS, deps, the plan, and the lint's own fixtures. */
-const SKIP_DIRS = new Set(['.git', 'node_modules', 'docs', 'test'])
+/** Directories never linted: VCS, deps and the plan. */
+const SKIP_DIRS = new Set(['.git', 'node_modules', 'docs'])
+
+/**
+ * A directory named `test` is linted only in its `fast` folder: the rest holds the lint's own
+ * deliberately bad fixtures, while the fast tier is source a rule guards.
+ */
+const TEST_DIR = 'test'
+const TEST_LINTED = 'fast'
 
 /**
  * Run a rule set against one file's text.
@@ -86,11 +93,12 @@ function validated(mod, name) {
   return { id: mod.id, applies: mod.applies, check: mod.check }
 }
 
-async function collectFiles(dir, out) {
+async function collectFiles(dir, out, only = null) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     if (SKIP_DIRS.has(entry.name)) continue
+    if (only !== null && entry.name !== only) continue
     const full = join(dir, entry.name)
-    if (entry.isDirectory()) await collectFiles(full, out)
+    if (entry.isDirectory()) await collectFiles(full, out, entry.name === TEST_DIR ? TEST_LINTED : null)
     else out.push(full)
   }
   return out

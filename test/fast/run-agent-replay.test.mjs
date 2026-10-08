@@ -1,4 +1,4 @@
-// test/run-agent-replay.test.mjs — pins what runAgent records for a relaunched program to replay
+// test/fast/run-agent-replay.test.mjs — pins what runAgent records for a relaunched program to replay
 // from: the brief's digest on every dispatched entry of a call, and a long return's parts recorded as
 // parts, with the whole return on disk before the one record that says it returned.
 //

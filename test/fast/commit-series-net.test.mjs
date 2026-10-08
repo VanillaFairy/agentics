@@ -1,4 +1,4 @@
-// test/commit-series-net.test.mjs — pins the series check's locus judged on the net diff, base to
+// test/fast/commit-series-net.test.mjs — pins the series check's locus judged on the net diff, base to
 // head (`netFiles`, `admits`), and `removedTestCases`, the removed-test-case finder.
 //
 // Design: docs/DESIGN.md#the-locus, docs/DESIGN.md#conversations.

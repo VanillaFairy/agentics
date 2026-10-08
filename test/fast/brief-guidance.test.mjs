@@ -1,4 +1,4 @@
-// test/brief-guidance.test.mjs — pins the repository's guidance a dispatch's prompt carries: its
+// test/fast/brief-guidance.test.mjs — pins the repository's guidance a dispatch's prompt carries: its
 // CLAUDE.md files from the root down to each directory the dispatch touches, then the files the
 // project's config names under `guidance`.
 //

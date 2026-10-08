@@ -1,4 +1,4 @@
-// test/role-dispatch.test.mjs — pins what a dispatch takes from its role: its tier under the user's
+// test/fast/role-dispatch.test.mjs — pins what a dispatch takes from its role: its tier under the user's
 // intelligence dial, its system prompt as a file on disk, and the permission rules of a role that
 // writes nothing.
 //

@@ -1,4 +1,4 @@
-// test/locus.test.mjs — what a leaf's locus admits, and the permission rules it becomes.
+// test/fast/locus.test.mjs — what a leaf's locus admits, and the permission rules it becomes.
 //
 // What is pinned here:
 //

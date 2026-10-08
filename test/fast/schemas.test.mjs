@@ -1,4 +1,4 @@
-// test/schemas.test.mjs — pins the return schemas the runner hands the host: their kinds, the
+// test/fast/schemas.test.mjs — pins the return schemas the runner hands the host: their kinds, the
 // coverage every searcher declares, the per-unit rulings every judge returns, and what no
 // producer or searcher may carry.
 //

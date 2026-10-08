@@ -1,4 +1,4 @@
-// test/verbatim-blocks.test.mjs — makes "copied verbatim" a checked invariant instead of
+// test/fast/verbatim-blocks.test.mjs — makes "copied verbatim" a checked invariant instead of
 // a comment. A contract restated in prose drifts: the self-audit found the develop skill
 // narrowing the review-loop exit back to "zero criticals", the reviewer charter dropping
 // the contract-order carve-out from the severity ladder, and the merge contract described

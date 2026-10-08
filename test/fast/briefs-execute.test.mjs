@@ -1,4 +1,4 @@
-// test/briefs-execute.test.mjs — pins the prompts the execute program builds: each carries what its
+// test/fast/briefs-execute.test.mjs — pins the prompts the execute program builds: each carries what its
 // agent rules or writes from inline, and the same input gives the same text.
 //
 // Design: docs/DESIGN.md#briefs-and-returns.

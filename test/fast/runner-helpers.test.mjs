@@ -1,4 +1,4 @@
-// test/runner-helpers.test.mjs — pins the runner's pure helpers: the arguments of one host call,
+// test/fast/runner-helpers.test.mjs — pins the runner's pure helpers: the arguments of one host call,
 // the child's environment, how a stream-json output reads, and what a finished call amounts to.
 //
 // Design: docs/DESIGN.md#the-agent-runner and docs/DESIGN.md#host-stops.

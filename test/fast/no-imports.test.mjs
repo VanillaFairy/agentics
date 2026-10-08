@@ -1,4 +1,4 @@
-// test/no-imports.test.mjs — pins the platform constraint that workflow scripts cannot
+// test/fast/no-imports.test.mjs — pins the platform constraint that workflow scripts cannot
 // load modules.
 //
 // This is not a style rule: the Workflow sandbox has no module loader, so an import is a

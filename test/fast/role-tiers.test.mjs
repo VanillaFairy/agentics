@@ -1,4 +1,4 @@
-// test/role-tiers.test.mjs — pins the tier of a leaf's producer and reviewer, a raise, the refusal
+// test/fast/role-tiers.test.mjs — pins the tier of a leaf's producer and reviewer, a raise, the refusal
 // of an unknown effort, and the commands a role may run once the repository's commands are known.
 //
 // Design: docs/DESIGN.md#model-tier and docs/DESIGN.md#roles.

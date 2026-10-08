@@ -1,4 +1,4 @@
-// test/scripted-runner.test.mjs — pins the scripted runner programs are tested against: the real
+// test/fast/scripted-runner.test.mjs — pins the scripted runner programs are tested against: the real
 // runAgent over a scripted CLI, each start playing the next step of its role, node and thread, so a
 // program test sees the records, stored returns, retries, parts and renewals production does.
 //

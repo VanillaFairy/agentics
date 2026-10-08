@@ -1,4 +1,4 @@
-// test/agentics-investigate-scenarios.test.mjs — the investigate workflow through the same
+// test/fast/agentics-investigate-scenarios.test.mjs — the investigate workflow through the same
 // harness: the survey-reference failure classes, and the report path's coverage
 // passthrough. Parse-compilation of all three workflows is pinned here too, so a syntax
 // error in any script fails the suite instead of the first live run.

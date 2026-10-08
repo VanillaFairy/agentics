@@ -1,4 +1,4 @@
-// test/courier-handles.test.mjs — GP6: no command a model is handed carries data.
+// test/fast/courier-handles.test.mjs — GP6: no command a model is handed carries data.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

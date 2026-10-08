@@ -1,4 +1,4 @@
-// test/coverage-block-vacuous.test.mjs — pins the self-audit deepening of the
+// test/fast/coverage-block-vacuous.test.mjs — pins the self-audit deepening of the
 // `coverage-block` rule: a coverage KEY whose value is decidably empty no longer
 // satisfies IL2. The rule's message demands six named fields; before this,
 // `coverage: {}` and `coverage: null` both linted clean — a partial result wearing the

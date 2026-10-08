@@ -1,4 +1,4 @@
-// test/role-allowlists.test.mjs — pins each role's kind, tools, commands and schemas. A change to
+// test/fast/role-allowlists.test.mjs — pins each role's kind, tools, commands and schemas. A change to
 // one is a deliberate edit of this table in the same commit (CLAUDE.md).
 //
 // Design: docs/DESIGN.md#roles.

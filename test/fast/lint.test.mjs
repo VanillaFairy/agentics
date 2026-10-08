@@ -1,4 +1,4 @@
-// test/lint.test.mjs — pins the orchestrator's contract with the rule modules.
+// test/fast/lint.test.mjs — pins the orchestrator's contract with the rule modules.
 //
 // Seven rule tasks are written in parallel against this contract without seeing each
 // other's code. The two things that can silently break all of them are: `applies` being

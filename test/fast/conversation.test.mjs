@@ -1,4 +1,4 @@
-// test/conversation.test.mjs — where a message goes, what its rendering carries, and that a
+// test/fast/conversation.test.mjs — where a message goes, what its rendering carries, and that a
 // message is delivered exactly once.
 //
 // What is pinned here:

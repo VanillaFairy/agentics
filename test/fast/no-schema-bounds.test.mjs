@@ -1,4 +1,4 @@
-// test/no-schema-bounds.test.mjs — pins the ban on unsupported schema length constraints.
+// test/fast/no-schema-bounds.test.mjs — pins the ban on unsupported schema length constraints.
 //
 // minItems/maxItems/minLength/maxLength are silently dropped by structured outputs. An
 // author who writes one believes a bound is enforced when nothing is enforcing it. The

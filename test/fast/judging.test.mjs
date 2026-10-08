@@ -1,4 +1,4 @@
-// test/judging.test.mjs — pins that no judge rules on what its own session or thread produced, and
+// test/fast/judging.test.mjs — pins that no judge rules on what its own session or thread produced, and
 // that a count only decides when a convergence ruling is asked for.
 //
 // Design: docs/DESIGN.md#l3--separate-judges and docs/DESIGN.md#l2--states-end-work-counts-dont.

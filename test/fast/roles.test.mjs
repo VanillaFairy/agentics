@@ -1,4 +1,4 @@
-// test/roles.test.mjs — pins how a role file is read: its frontmatter into a role, its body into
+// test/fast/roles.test.mjs — pins how a role file is read: its frontmatter into a role, its body into
 // the system prompt the runner hands the host, and every way a role file is refused.
 //
 // Design: docs/DESIGN.md#roles.

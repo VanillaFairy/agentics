@@ -2,7 +2,7 @@
 // refusal, and what a series measures green, red and at the merged head.
 //
 // Which checks run is the leaf's rigor and role (see `checksFor`); the verdict over what they
-// observed is lib/verdict.mjs's, tested purely in test/verdict.test.mjs. The test/verify-*.test.mjs
+// observed is lib/verdict.mjs's, tested purely in test/fast/verdict.test.mjs. The test/verify-*.test.mjs
 // files pin the observations, one file per concern so they run side by side.
 //
 // These are slow tests: each one stands in a real git worktree and runs a real node test suite

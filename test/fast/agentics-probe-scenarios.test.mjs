@@ -1,4 +1,4 @@
-// test/agentics-probe-scenarios.test.mjs — attack-document-with-independent-reviewers's arithmetic: axis assembly, finding
+// test/fast/agentics-probe-scenarios.test.mjs — attack-document-with-independent-reviewers's arithmetic: axis assembly, finding
 // attribution, and the computed ratification gate.
 //
 // The property worth pinning hardest is the one a reader cannot check by reading: an axis

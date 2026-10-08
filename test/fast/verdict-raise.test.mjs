@@ -1,4 +1,4 @@
-// test/verdict-raise.test.mjs — pins when a review round raises: it answered prior blockers (those
+// test/fast/verdict-raise.test.mjs — pins when a review round raises: it answered prior blockers (those
 // not carried past the round) and ruled none of them fixed. One fixed blocker among the answered
 // ones means the producer is making progress, so no raise; a prior unit the round now rules counts
 // as fixed.

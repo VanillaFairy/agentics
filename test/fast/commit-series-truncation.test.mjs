@@ -1,4 +1,4 @@
-// test/commit-series-truncation.test.mjs — pins the self-audit fix to `parseLog`: a
+// test/fast/commit-series-truncation.test.mjs — pins the self-audit fix to `parseLog`: a
 // malformed record now throws instead of being silently skipped.
 //
 // The defect this pins away: `parseLog` used to `continue` past a record with no field

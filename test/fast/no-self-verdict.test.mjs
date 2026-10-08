@@ -1,4 +1,4 @@
-// test/no-self-verdict.test.mjs — pins the ban on self-reported verdict booleans in workflow
+// test/fast/no-self-verdict.test.mjs — pins the ban on self-reported verdict booleans in workflow
 // schemas (IRON LAW §2, extended to review).
 //
 // The line this rule draws is verdict names vs. fact names: `approved`/`passed`/`ok`/... are
@@ -64,7 +64,7 @@ test('flags two banned keys in one file as two findings', () => {
 })
 
 test('flags every key in the banned list', () => {
-  // Mirrors test/no-schema-bounds.test.mjs's "flags all four banned keys": a literal copy
+  // Mirrors test/fast/no-schema-bounds.test.mjs's "flags all four banned keys": a literal copy
   // of the rule's BANNED_KEYS, kept here rather than exported, since the rule module's
   // contract is exactly `id`, `applies`, `check` and this is not reason enough to widen it.
   // If a key is ever typo'd or dropped from the rule, this loop is what catches it — the

@@ -1,4 +1,4 @@
-// test/liveness.test.mjs — GP2: nothing outlives its consumer.
+// test/fast/liveness.test.mjs — GP2: nothing outlives its consumer.
 //
 // Design: docs/DESIGN.md#self-checks. An element nobody can justify costs as much as a missed
 // check and is harder to see, and a mechanism whose consumer went away keeps being paid for —

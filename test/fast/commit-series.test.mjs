@@ -1,4 +1,4 @@
-// test/commit-series.test.mjs — pins `parseLog` (the delimited `git log`
+// test/fast/commit-series.test.mjs — pins `parseLog` (the delimited `git log`
 // reader) and `analyzeSeries` (the mechanical checks a verifier runs before any expensive
 // reviewer round). The commit series is the review artifact, so these two functions decide
 // what the reviewer is even asked to look at. A false negative here buys an Opus round on

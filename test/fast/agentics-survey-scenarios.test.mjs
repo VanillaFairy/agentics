@@ -1,4 +1,4 @@
-// test/agentics-survey-scenarios.test.mjs — the survey workflow's accounting arithmetic, executed.
+// test/fast/agentics-survey-scenarios.test.mjs — the survey workflow's accounting arithmetic, executed.
 //
 // Lint judges form and cannot reach any of this: whether a channel nobody ran is recorded,
 // whether a ruling is matched to its topic by position or by a string the model retyped,

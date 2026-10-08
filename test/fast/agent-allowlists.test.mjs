@@ -1,8 +1,8 @@
-// test/agent-allowlists.test.mjs — every agent's tool allowlist, pinned exactly.
+// test/fast/agent-allowlists.test.mjs — every agent's tool allowlist, pinned exactly.
 //
-// Lint family, same stance as test/self-lint.test.mjs and test/design-doc.test.mjs: an invariant
+// Lint family, same stance as test/fast/self-lint.test.mjs and test/fast/design-doc.test.mjs: an invariant
 // enforced against this plugin's own source, mechanically, forever. Its sibling
-// test/agent-frontmatter.test.mjs tests the RULE against fixtures — that a `tools:` key exists
+// test/fast/agent-frontmatter.test.mjs tests the RULE against fixtures — that a `tools:` key exists
 // and is non-empty. This file tests the shipped tree, and asks the question the rule cannot:
 // which tools, exactly.
 //

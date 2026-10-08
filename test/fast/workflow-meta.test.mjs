@@ -1,4 +1,4 @@
-// test/workflow-meta.test.mjs — pins the workflow-meta rule against the two silent failures it
+// test/fast/workflow-meta.test.mjs — pins the workflow-meta rule against the two silent failures it
 // exists to prevent.
 //
 // A workflow's name is spelled once, as its file's own name — nothing else addresses it. A name

@@ -1,4 +1,4 @@
-// test/agent-frontmatter.test.mjs — this rule is the test for the four agent files.
+// test/fast/agent-frontmatter.test.mjs — this rule is the test for the four agent files.
 //
 // Agent markdown cannot be imported or unit-tested, so its correctness is enforced here.
 // The name/filename check is the one that matters most: a mismatch produces an agent that

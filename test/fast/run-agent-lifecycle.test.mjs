@@ -1,4 +1,4 @@
-// test/run-agent-lifecycle.test.mjs — pins how runAgent carries a thread past its session: a session the
+// test/fast/run-agent-lifecycle.test.mjs — pins how runAgent carries a thread past its session: a session the
 // host lost or one grown past half its window goes on fresh, and a return marked `more` is continued.
 //
 // Design: docs/DESIGN.md#the-agent-runner.

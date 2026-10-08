@@ -1,4 +1,4 @@
-// test/host.test.mjs — pins what lib/host.mjs knows about the host CLI's layout: where the CLI is,
+// test/fast/host.test.mjs — pins what lib/host.mjs knows about the host CLI's layout: where the CLI is,
 // where a session's transcript is, what the user answered, and whether an act was confirmed.
 //
 // Design: docs/DESIGN.md#the-users-word and docs/DESIGN.md#the-agent-runner.

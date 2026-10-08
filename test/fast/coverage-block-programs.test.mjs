@@ -1,4 +1,4 @@
-// test/coverage-block-programs.test.mjs — pins L1 over the programs: a program's result is built by
+// test/fast/coverage-block-programs.test.mjs — pins L1 over the programs: a program's result is built by
 // its module-local `resultOf`, and `resultOf` returns an object carrying a coverage block. The
 // shared modules `common.mjs` and `converge.mjs` build no program result and are not judged.
 //

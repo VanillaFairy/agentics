@@ -1,4 +1,4 @@
-// test/iron-law.test.mjs — pins that the design still carries its Laws, intact, and that
+// test/fast/iron-law.test.mjs — pins that the design still carries its Laws, intact, and that
 // CLAUDE.md maps each one to what enforces it.
 //
 // If a law is silently dropped or softened, nothing else in the repo fails — the plugin just
@@ -20,7 +20,7 @@ test('the Laws section matches its pinned hash', () => {
   //   node -e "const f=require('fs'),c=require('crypto');const r=f.readFileSync('docs/DESIGN.md','utf8').replace(/\r\n/g,'\n');
   //   console.log(c.createHash('sha256').update(r.slice(r.indexOf('## Laws'),r.indexOf('## Principles'))).digest('hex'))"
   const laws = design.slice(design.indexOf('## Laws'), design.indexOf('## Principles'))
-  assert.equal(createHash('sha256').update(laws).digest('hex'), '5cdc839838bc793e8de603cf88fec9c712ea25ae3efadadbc24730cff025215f')
+  assert.equal(createHash('sha256').update(laws).digest('hex'), '67b8ecdafada9b877174dfd8c2cd875162ad4cbede5f3500d503d34a63085825')
 })
 
 test('each law names its enforcement', () => {

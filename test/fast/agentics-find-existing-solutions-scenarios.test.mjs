@@ -1,4 +1,4 @@
-// test/agentics-find-existing-solutions-scenarios.test.mjs — executes the build-or-adopt sweep
+// test/fast/agentics-find-existing-solutions-scenarios.test.mjs — executes the build-or-adopt sweep
 // through the harness with scripted agents.
 //
 // One mechanism here matters more than the rest, and most of these scenarios are about it:

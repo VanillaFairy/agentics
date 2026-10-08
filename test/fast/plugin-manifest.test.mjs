@@ -1,4 +1,4 @@
-// test/plugin-manifest.test.mjs — pins the plugin manifest's required shape.
+// test/fast/plugin-manifest.test.mjs — pins the plugin manifest's required shape.
 //
 // The manifest is the one file Claude Code reads before anything else in the plugin;
 // a malformed or renamed field makes every agent and workflow here unreachable, with

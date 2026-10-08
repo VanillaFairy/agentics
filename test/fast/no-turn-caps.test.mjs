@@ -1,4 +1,4 @@
-// test/no-turn-caps.test.mjs — pins IL1: completion is defined by the goal,
+// test/fast/no-turn-caps.test.mjs — pins IL1: completion is defined by the goal,
 // never by a counter.
 //
 // The hard part is not detecting `maxTurns`. It is NOT detecting the three legitimate

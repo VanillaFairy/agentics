@@ -1,4 +1,4 @@
-// test/verdict.test.mjs — lib/verdict.mjs, pure and table-driven.
+// test/fast/verdict.test.mjs — lib/verdict.mjs, pure and table-driven.
 //
 // One measurement shape per row, judged against each rigor and role. The payloads are built by
 // hand rather than measured: what is under test is the arithmetic from observed facts to a

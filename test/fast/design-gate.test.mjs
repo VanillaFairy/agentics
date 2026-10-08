@@ -1,4 +1,4 @@
-// test/design-gate.test.mjs — the rule that keeps the design phase a phase.
+// test/fast/design-gate.test.mjs — the rule that keeps the design phase a phase.
 //
 // The rule is three substring checks, so the tests worth writing are the ones about SCOPE
 // (it must not fire on other skills) and INDEPENDENCE (dropping one clause reports one

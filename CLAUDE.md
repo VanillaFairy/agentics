@@ -42,7 +42,7 @@ On this branch the design leads the code: where they disagree, the design is the
 - **Docs land with the code, in the same commit series.** A behaviour-changing change is not
   done until `docs/DESIGN.md` says what the code now does. Role files and skill texts count as
   code. The design carries no history and no links to documents that no longer exist, and
-  `test/design-doc.test.mjs` fails on a pointer whose heading is gone.
+  `test/fast/design-doc.test.mjs` fails on a pointer whose heading is gone.
 - **Data contracts are registered in `docs/DESIGN.md#data-contracts`**, each with its owner and
   every place it is restated; a change to a field list edits every copy the entry names, in the
   same commit series. A change to a role's `tools:` or `commands:` edits its pin test in the same
@@ -118,11 +118,11 @@ The laws themselves are in `docs/DESIGN.md#laws`.
 
 | Law | Enforced by |
 |---|---|
-| L1 — honest state | `tools/rules/coverage-block.mjs`, which requires a coverage block in every program's `resultOf` and every workflow's return; `coverageOf` in `lib/programs/common.mjs`; the coverage every searcher's return schema requires and the per-unit rulings every judge's requires (`test/schemas.test.mjs`); `resolveHandle` in `lib/store.mjs`, through which `lib/run.mjs` resolves every effort, folder, run and file argument (a ref is resolved by git or refused); status derived on read |
+| L1 — honest state | `tools/rules/coverage-block.mjs`, which requires a coverage block in every program's `resultOf` and every workflow's return; `coverageOf` in `lib/programs/common.mjs`; the coverage every searcher's return schema requires and the per-unit rulings every judge's requires (`test/fast/schemas.test.mjs`); `resolveHandle` in `lib/store.mjs`, through which `lib/run.mjs` resolves every effort, folder, run and file argument (a ref is resolved by git or refused); status derived on read |
 | L2 — states end work, counts don't | `tools/rules/no-turn-caps.mjs`, over the programs and the execute program's units (`lib/programs/execute/`), `lib/run.mjs`, skills, agents and workflows; the convergence predicates in `lib/verdict.mjs`; `askAfter` in `lib/programs/converge.mjs`; the runner's host-stop classes, waited out by `dispatch` in `lib/programs/common.mjs` |
 | L3 — separate judges | the role kinds in `lib/roles.mjs`; `judgeAllowed` and `dispatchJudge` in `lib/programs/common.mjs`; `tools/rules/no-self-verdict.mjs`; `verdictOf` in `lib/verdict.mjs` |
 | L4 — the user owns decisions and their branch | `verifyAnswer` and `confirmAct` in `lib/host.mjs`, called by `approveAct` in `lib/approval.mjs`, `landAct` in `lib/boundary.mjs` and the `rule` program; `userBound` in `lib/respec.mjs`, which the `rule` program and `respec.mjs settle` apply; `decisionProblems` in `lib/tree.mjs`; the runner's confinement and its watch on the user's checkout, and `measure`'s watch around every check in `lib/measure.mjs`; leaf-close's revert of what lies outside a leaf's locus in `lib/boundaries/leaf-close.mjs`; the `review` program's snapshot, which leaves the user's tree, index and stash untouched; `lib/verify.mjs`'s linked-worktree refusal; `land`'s refusals |
-| P4 — everything earns its place | `test/liveness.test.mjs`; `tools/rules/size-budget.mjs` |
+| P4 — everything earns its place | `test/fast/liveness.test.mjs`; `tools/rules/size-budget.mjs` |
 
 ## Build
 

@@ -1,7 +1,7 @@
-// test/design-doc.test.mjs — pins that docs/DESIGN.md exists, keeps its shape, and that every
+// test/fast/design-doc.test.mjs — pins that docs/DESIGN.md exists, keeps its shape, and that every
 // pointer into it lands on a real heading.
 //
-// Lint family, same stance as test/no-turn-caps.test.mjs and test/iron-law.test.mjs: an
+// Lint family, same stance as test/fast/no-turn-caps.test.mjs and test/fast/iron-law.test.mjs: an
 // invariant enforced against this plugin's own source, mechanically, forever. The invariant
 // here is documentary, and it is the one that erodes without anything failing.
 //
@@ -9,7 +9,7 @@
 // point into it as `docs/DESIGN.md#<anchor>`, and a renamed heading silently strands every one
 // of those pointers. So the anchors are checked here rather than trusted: a pointer that no
 // longer resolves fails the suite, and so does a link inside the document itself. This is a
-// test rather than a lint rule for the reason test/verbatim-blocks.test.mjs gives — rule modules
+// test rather than a lint rule for the reason test/fast/verbatim-blocks.test.mjs gives — rule modules
 // are pure per-file functions, and this comparison spans files.
 
 import { test } from 'node:test'

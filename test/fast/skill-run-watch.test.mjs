@@ -1,4 +1,4 @@
-// test/skill-run-watch.test.mjs — pins where every skill following a detached run starts its watch,
+// test/fast/skill-run-watch.test.mjs — pins where every skill following a detached run starts its watch,
 // and that it says what to do when the run ends failed or never launched. A program run's log is
 // its own, so its watch starts at the log's start, `--since 0` (docs/DESIGN.md#detached-runs). An
 // execution's log spans every run of it, so the skill that starts `execute` watches from the

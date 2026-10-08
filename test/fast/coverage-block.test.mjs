@@ -1,4 +1,4 @@
-// test/coverage-block.test.mjs — pins IL2 at the workflow boundary: a partial
+// test/fast/coverage-block.test.mjs — pins IL2 at the workflow boundary: a partial
 // result must never be indistinguishable from a whole one. An agentics-* workflow that returns
 // nothing, or returns a result with no coverage block, hands its caller an answer that
 // looks exactly like a complete one.

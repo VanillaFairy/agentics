@@ -1,6 +1,6 @@
-// test/coverage-block-gaps.test.mjs — the two defects an adversarial audit found in
+// test/fast/coverage-block-gaps.test.mjs — the two defects an adversarial audit found in
 // the `coverage-block` rule, pinned. These are gaps, not a rewrite: the main suite in
-// test/coverage-block.test.mjs stays exactly as its author left it, and this file sits
+// test/fast/coverage-block.test.mjs stays exactly as its author left it, and this file sits
 // alongside it so the audit trail is readable later.
 //
 // DEFECT 1 (high) — a `coverage:` sitting inside a string or a comment WITHIN the returned

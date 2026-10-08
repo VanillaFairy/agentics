@@ -65,7 +65,7 @@ keep restated contracts, allowlists and design pointers from drifting. Run every
 ## Laws
 
 Four laws. Each names the mechanism that enforces it, and says so where a mechanism stops short;
-a law without a mechanism is a defect, and `test/design-doc.test.mjs` fails a law whose section
+a law without a mechanism is a defect, and `test/fast/design-doc.test.mjs` fails a law whose section
 names none.
 
 ### L1 — Honest state
@@ -78,7 +78,7 @@ what was established, what was tried, what remains and how to resume; or **done*
 its intent traced to work and to a passing check ([Traceability](#traceability)). Nothing reads as
 more complete than it is, and what stays incomplete leads every report.
 
-*Enforced by:* `test/schemas.test.mjs` (every searcher's and judge's return schema in
+*Enforced by:* `test/fast/schemas.test.mjs` (every searcher's and judge's return schema in
 `lib/schemas.mjs` requires its coverage); the `coverage-block` lint rule (every program result
 computes `complete` from its fields); `resolveHandle` in `lib/store.mjs`, the one way a CLI turns
 an argument into a thing, which refuses an unknown one as `unknown_<kind>`; status derived on read
@@ -197,7 +197,7 @@ names the property that earns it and the consumer that reads it, and goes when i
 - **Leanness never touches verdicts.** What shrinks is dispatches, tiers and phases; the
   predicates a verdict is computed from never shrink once a check runs.
 - **No mechanism outlives its consumer.** A format change ships a one-shot migration, never a
-  permanent second reader. `test/liveness.test.mjs` enforces it ([Self-checks](#self-checks)).
+  permanent second reader. `test/fast/liveness.test.mjs` enforces it ([Self-checks](#self-checks)).
 
 ### P5 — Faults are fixed in their class, where they live
 
@@ -3319,10 +3319,10 @@ whether a loop converges, `{ruling: converging | not_converging, why}`. The inve
   A host release that changes one of them fails here before it fails an execution.
 - **Real git.** Every boundary, the locus, the resume ladder, verification and landing are tested
   against real repositories and worktrees.
-- **Pins:** verbatim blocks match across files (`test/verbatim-blocks.test.mjs`); every role's
-  tools and commands are pinned (`test/role-allowlists.test.mjs`); every pointer into this document
-  resolves and every law names its enforcement (`test/design-doc.test.mjs`).
-- **Liveness** (P4, `test/liveness.test.mjs`): every role is dispatched by a program; every record
+- **Pins:** verbatim blocks match across files (`test/fast/verbatim-blocks.test.mjs`); every role's
+  tools and commands are pinned (`test/fast/role-allowlists.test.mjs`); every pointer into this document
+  resolves and every law names its enforcement (`test/fast/design-doc.test.mjs`).
+- **Liveness** (P4, `test/fast/liveness.test.mjs`): every role is dispatched by a program; every record
   kind is written somewhere and read somewhere; every message kind has a route and a reader; every
   field a role's schema asks for is read; every lint rule has its test; every library export is
   used somewhere. Defined-never-dispatched, written-never-read and read-never-written fail the
@@ -3404,8 +3404,8 @@ second time; a 3.x or early-4.x store runs them in that order before `migrate-v5
   definitions and skill texts count as code here.
 - It describes the present. No history, no increment numbers, no links to documents that no
   longer exist. Git has the history.
-- `test/design-doc.test.mjs` pins that every section has a body and every pointer into this
-  document resolves; `test/verbatim-blocks.test.mjs` pins the `severity-ladder` block above
+- `test/fast/design-doc.test.mjs` pins that every section has a body and every pointer into this
+  document resolves; `test/fast/verbatim-blocks.test.mjs` pins the `severity-ladder` block above
   against its copy in `roles/reviewer.md`.
 - `docs/superpowers/` is gitignored local scratch for planning sessions. Nothing in the repository
   may point into it.

@@ -1,4 +1,4 @@
-// test/verdict-units.test.mjs — pins verdicts over units: a unit nobody ruled on is open, never
+// test/fast/verdict-units.test.mjs — pins verdicts over units: a unit nobody ruled on is open, never
 // passed, and a review loop cannot approve while one is.
 //
 // Design: docs/DESIGN.md#l3--separate-judges and docs/DESIGN.md#executors-and-review.

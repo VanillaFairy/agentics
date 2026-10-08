@@ -1,4 +1,4 @@
-// test/qualified-agent-types.test.mjs — pins that every agent reference is namespaced.
+// test/fast/qualified-agent-types.test.mjs — pins that every agent reference is namespaced.
 //
 // Agent types resolve from one flat global registry shared across installed plugins. A
 // bare name resolves by luck and fails mid-run when another plugin defines the same name.

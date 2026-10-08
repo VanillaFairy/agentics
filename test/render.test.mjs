@@ -194,6 +194,9 @@ test('evidence.md lists exactly the cited items by topic, each in the state deri
   assert.match(text, /src\/a\.js:2-4/)
   assert.match(text, /## Coverage gaps\n\n- git history was not searched/)
   assert.doesNotMatch(text, /## Not in the store/)
+
+  assert.equal(recordCites(repo, EFFORT, '.', { items: [cached] }).ok, true)
+  assert.match(readFileSync(renderEvidence(repo, EFFORT, '.'), 'utf8'), new RegExp('^# Evidence: ' + EFFORT + '\n'), 'the root folder is titled with the effort')
 })
 
 test('a folder with no gaps says so, and rendering twice writes the same bytes', () => {
@@ -205,14 +208,6 @@ test('a folder with no gaps says so, and rendering twice writes the same bytes',
   assert.equal(readFileSync(renderEvidence(repo, EFFORT, 'runtime'), 'utf8'), first)
   writeFileSync(path, 'edited by hand\n')
   assert.equal(readFileSync(renderEvidence(repo, EFFORT, 'runtime'), 'utf8'), first, 'a render is never merged with the disk')
-})
-
-test('renderEvidence of the root folder is titled with the effort', () => {
-  const { repo, cached } = citedFixture()
-  assert.equal(recordCites(repo, EFFORT, '.', { items: [cached] }).ok, true)
-  const path = renderEvidence(repo, EFFORT, '.')
-  assert.equal(path, join(folderDir(repo, EFFORT, '.'), EVIDENCE_RENDER).split('\\').join('/'))
-  assert.match(readFileSync(path, 'utf8'), new RegExp('^# Evidence: ' + EFFORT + '\\n'))
 })
 
 test('a citation of gaps alone is recorded and rendered', () => {

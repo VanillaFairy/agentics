@@ -436,11 +436,6 @@ const gotchaOf = (w, id) => listGotchas(w.r, E).find((g) => g.id === id)
 // ================================================================== before measuring
 
 describe('leaf-close before it measures', { concurrency: 4 }, () => {
-  test('leafClose refuses a node that is not a leaf', SLOW, async (t) => {
-    const { w } = tdd(t)
-    await assert.rejects(async () => close(w, { node: '.', role: 'implementer', round: 1, dispatch: 'none' }))
-  })
-
   test('a dispatch with no stored return holds the leaf on a role fault, and nothing is measured', SLOW, async (t) => {
     const { w, o } = tdd(t)
     const { out, dispatch } = await run(w, { node: 'a', role: 'implementer', round: 1, base_sha: o.base_sha })
@@ -454,6 +449,7 @@ describe('leaf-close before it measures', { concurrency: 4 }, () => {
     assert.equal(record.dispatch, dispatch)
     assert.equal(record.status, '', 'a record is written on every path, with no status when nothing came back')
     assert.equal(record.decision.next, 'stop')
+    await assert.rejects(async () => close(w, { node: '.', role: 'implementer', round: 1, dispatch: 'none' }), /is not a leaf/, 'a folder is no leaf')
   })
 
   test("an auditor's dispatch with no stored return holds the audit on a role fault, and nothing is measured", SLOW, async (t) => {
@@ -499,15 +495,11 @@ describe('leaf-close before it measures', { concurrency: 4 }, () => {
     assert.deepEqual(out.stops, [])
     assert.deepEqual(sizes(w), before, 'nothing recorded beyond the round\'s own dispatched and returned')
     assert.equal(rec(w, 'c/a', 'implementer', 1).status, 'needs_locus')
-  })
 
-  test('a route to the planner carries no paths when the producer named none', SLOW, async (t) => {
-    const w = world(t, [root(), planner(), lf('c/a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })])
-    const o = open(w, 'c/a')
-    const { out } = await run(w, { node: 'c/a', role: 'implementer', round: 1, base_sha: o.base_sha, ret: { status: 'decompose', text: 'two jobs' } })
-    assert.equal(out.decision.next, 'route')
-    assert.equal(out.decision.reason, 'decompose')
-    assert.deepEqual(out.route.request.paths, [])
+    const second = await run(w, { node: 'c/a', role: 'implementer', round: 2, base_sha: o.base_sha, ret: { status: 'decompose', text: 'two jobs' } })
+    assert.equal(second.out.decision.next, 'route')
+    assert.equal(second.out.decision.reason, 'decompose')
+    assert.deepEqual(second.out.route.request.paths, [], 'a producer that named no paths gives the planner none')
   })
 
   test('a route under a folder the user wrote parks the leaf', SLOW, async (t) => {

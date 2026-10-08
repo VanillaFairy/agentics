@@ -494,16 +494,11 @@ describe('the leaf unit', { concurrency: 4 }, () => {
       assert.ok(one.brief.includes(opened.brief.trim()), "and the leaf's brief as its producer has it")
     })
 
-    test('a review rules each criterion and each file the span changed', T, async () => {
-      const { w } = await loop.get()
-      const record = reviewRecord(w.rig, 1)
-      assert.equal(record.units[0], 'criterion:1')
-      assert.deepEqual(sorted(record.units.slice(1)), ['file:src/b.txt', 'file:src/b2.txt'])
-      assert.equal(record.units.length, 3)
-    })
-
     test('a later review rules only the files of the fix span', T, async () => {
       const { w } = await loop.get()
+      const first = reviewRecord(w.rig, 1)
+      assert.equal(first.units[0], 'criterion:1')
+      assert.deepEqual(sorted(first.units.slice(1)), ['file:src/b.txt', 'file:src/b2.txt'], 'the first review rules the whole span from the base')
       const record = reviewRecord(w.rig, 2)
       assert.equal(record.units[0], 'criterion:1')
       assert.deepEqual(record.units.slice(1), ['file:src/b2.txt'], 'the fix round changed one file')

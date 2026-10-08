@@ -105,17 +105,11 @@ test('the synthesis brief holds the context text inline and no context path', as
   const r = rig(t, script(REPORT))
   const out = await investigate(r.ctx, argsOf())
   const { brief } = on(r, 'synthesis')[0]
-  for (const part of [QUESTION, 'the loader caches in a map', 'no tests cover eviction', GUIDE]) assert.ok(brief.includes(part), part)
+  for (const part of [QUESTION, 'the loader caches in a map', 'no tests cover eviction', GUIDE, 'no search tools']) assert.ok(brief.includes(part), part)
   assert.ok(readContext(out.evidence.context).length > 0)
   assert.ok(brief.includes(readContext(out.evidence.context)))
   assert.ok(!brief.includes(out.evidence.context))
   assert.ok(!brief.includes('.agentics'))
-})
-
-test('the synthesis brief says it cannot search', async (t) => {
-  const r = rig(t, script(REPORT))
-  await investigate(r.ctx, argsOf())
-  assert.ok(on(r, 'synthesis')[0].brief.includes('no search tools'))
 })
 
 test("the synthesis brief names each gap in the survey's coverage", async (t) => {

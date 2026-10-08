@@ -1,10 +1,11 @@
 // test/harness/boundary-fixture.mjs — the repository, tree rows and commits the boundary, landing
 // and migration tests share.
 
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
+
+import { seededRepo } from './seeded-repo.mjs'
 
 // The fixtures' own suites run `node --test`; a grandchild that sees this runner's marker runs
 // nothing and exits 0, which would make every measurement a pass. It is cleared here so that every
@@ -24,19 +25,15 @@ export const git = (cwd, ...args) => {
 }
 
 export function repo() {
-  const dir = mkdtempSync(join(tmpdir(), 'agentics-boundary-'))
-  git(dir, 'init', '-q', '-b', 'main')
-  git(dir, 'config', 'user.email', 't@example.com')
-  git(dir, 'config', 'user.name', 'T')
-  mkdirSync(join(dir, 'src'))
-  mkdirSync(join(dir, 'test'))
-  writeFileSync(join(dir, '.gitignore'), '.claude/\n')
-  writeFileSync(join(dir, 'src', 'add.mjs'), 'export const add = (a, b) => a + b\n')
-  writeFileSync(join(dir, 'test', 'add.test.mjs'), "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { add } from '../src/add.mjs'\ntest('adds', () => assert.equal(add(1, 2), 3))\n")
-  writeFileSync(join(dir, 'README.md'), 'hello\n')
-  git(dir, 'add', '-A')
-  git(dir, 'commit', '-q', '-m', 'base')
-  return dir
+  return seededRepo('agentics-boundary-', {
+    branch: 'main', message: 'base', identity: { email: 't@example.com', name: 'T' },
+    files: {
+      '.gitignore': '.claude/\n',
+      'src/add.mjs': 'export const add = (a, b) => a + b\n',
+      'test/add.test.mjs': "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { add } from '../src/add.mjs'\ntest('adds', () => assert.equal(add(1, 2), 3))\n",
+      'README.md': 'hello\n',
+    },
+  })
 }
 
 export const leaf = (id, extra = {}) => ({

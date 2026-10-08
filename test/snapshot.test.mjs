@@ -411,21 +411,6 @@ test('a dispatch made again names its stored return once', () => {
   assert.equal(again.length, 1, 'a dispatch made again names its return once')
 })
 
-test('4.x briefs, reports and progress files are not read', () => {
-  const { repo, effort, stamp } = effortFixture()
-  // Where 4.x wrote a dispatch's brief, its report and its progress file.
-  const stem = nodeKey('a/impl') + '-implementer-r1'
-  const reports = join(effortStateDir(repo, effort), 'reports', stamp + '-' + stem)
-  const files = [join(executionDir(repo, effort, stamp), 'briefs', stem + '.md'), reports + '.md', reports + '.json']
-  for (const path of files) {
-    mkdirSync(dirname(path), { recursive: true })
-    writeFileSync(path, path.endsWith('.json') ? JSON.stringify({ items: [{ name: 'Parser', state: 'done' }] }) : 'a 4.x file\n')
-  }
-  const text = JSON.stringify(snapshotOf(repo, effort))
-  for (const path of files) assert.ok(!text.includes(posix(path).split('/').pop()), 'the snapshot names ' + path)
-  assert.equal(snapshotOf(repo, effort).nodes.find((n) => n.id === 'a/impl').card.report.lead, IMPL_TEXT, 'the report is the stored return')
-})
-
 test('folders carry approval and blocking counts', () => {
   const { repo, effort } = sharedFixture()
   const byId = Object.fromEntries(snapshotOf(repo, effort).folders.map((f) => [f.id, f]))
@@ -536,6 +521,15 @@ test("behind counts the folder's commits a leaf's branch lacks", () => {
 test("the card's report is the latest return that carries text, with its lead", () => {
   const { repo, effort, stamp } = effortFixture()
   const dir = executionDir(repo, effort, stamp)
+  // Where 4.x wrote a dispatch's brief, its report and its progress file: none is read, so none is the card's report.
+  const stem = nodeKey('a/impl') + '-implementer-r1'
+  const reports = join(effortStateDir(repo, effort), 'reports', stamp + '-' + stem)
+  const old = [join(dir, 'briefs', stem + '.md'), reports + '.md', reports + '.json']
+  for (const path of old) {
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, path.endsWith('.json') ? JSON.stringify({ items: [{ name: 'Parser', state: 'done' }] }) : 'a 4.x file\n')
+  }
+  assert.deepEqual(cardsOf(repo, effort)['a/impl'].report, { dispatch: D_IMPL, lead: IMPL_TEXT }, 'the report is the stored return, not a 4.x file')
   const dispatched = (d, n, role) => append(repo, effort, 'events', { kind: 'dispatched', node: 'a/impl', execution: stamp, dispatch: d, role, round: n, model: 'sonnet', effort: 'medium' })
   const second = round('a/impl', 2)
   const lead = ['The suite fails on two tests', 'outside this locus.']
@@ -552,6 +546,8 @@ test("the card's report is the latest return that carries text, with its lead", 
   writeJson(returnPath(dir, review), { findings: [], units: [], notes: 'Clean: both criteria hold.', stop_reason: 'done', not_reached: [] })
   assert.deepEqual(cardsOf(repo, effort)['a/impl'].report, { dispatch: review, lead: 'Clean: both criteria hold.' }, 'a judge\'s notes are its words')
   assert.equal(cardsOf(repo, effort)['a/fix'].report, null, 'a call that never returned has no report')
+  const text = JSON.stringify(snapshotOf(repo, effort))
+  for (const path of old) assert.ok(!text.includes(posix(path).split('/').pop()), 'the snapshot names ' + path)
 })
 
 test('notes are on the card newest first, and move no status', () => {

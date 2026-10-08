@@ -16,9 +16,9 @@ import { basename, dirname, join, relative, resolve } from 'node:path'
 import { append, readLog } from '../lib/ledger.mjs'
 import {
   AGENTICS_DIR, CONFIG_FILE, EVIDENCE_RENDER, ROOT_ID, SPEC_FILE, STATE_DIR,
-  agenticsRoot, briefPath, configPath, contextDir, effortDir, effortStateDir, effortsRoot,
+  agenticsRoot, configPath, contextDir, effortDir, effortStateDir, effortsRoot,
   evidenceStoreDir, executionDir, executionsRoot, folderDir, mainCheckout, mkdirState,
-  projectStateDir, readConfig, reportPath, returnPath, safeSlug, saidOf, slotsDir, specPath, withLock, writeJson,
+  projectStateDir, readConfig, returnPath, safeSlug, saidOf, slotsDir, specPath, withLock, writeJson,
   handleArgs, handleEnvelope,
 } from '../lib/store.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
@@ -220,14 +220,10 @@ test('readConfig from a worktree reads the main checkout\'s settings', () => {
   assert.equal(readConfig(wt).max_parallel, 2)
 })
 
-test('an effort\'s executions and reports sit in its .state', () => {
+test('an effort\'s executions sit in its .state', () => {
   const r = fresh('executions')
   assert.ok(directlyIn(executionsRoot(r, 'e1'), effortStateDir(r, 'e1')))
   assert.ok(directlyIn(executionDir(r, 'e1', '20260926-120000'), executionsRoot(r, 'e1')))
-  assert.ok(spell(briefPath(r, 'e1', '20260926-120000', 'a/b', 'implementer', 1))
-    .startsWith(spell(executionDir(r, 'e1', '20260926-120000')) + '/'))
-  assert.ok(spell(reportPath(r, 'e1', '20260926-120000', 'a/b', 'implementer', 1))
-    .startsWith(spell(effortStateDir(r, 'e1')) + '/'))
 })
 
 // ------------------------------------------------------------------ what a record said

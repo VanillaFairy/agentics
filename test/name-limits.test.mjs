@@ -2,8 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  NAME_KEY_MAX, ROOT_ID, WORKTREE_KEY_MAX, branchOf, briefPath, cardPath, closePath, fixesPath, gatePath, mergePath, nameKey,
-  nodeIdProblem, nodeKey, progressPath, reportPath, respecPath, reviewPath, specCopyPath, stalePath, worktreeOf,
+  NAME_KEY_MAX, ROOT_ID, WORKTREE_KEY_MAX, branchOf, closePath, gatePath, mergePath, nameKey, nodeIdProblem, nodeKey,
+  respecPath, reviewPath, specCopyPath, stalePath, worktreeOf,
 } from '../lib/store.mjs'
 import { EFFORT, PROJECT_PATH_BUDGET, ROOT, overruns } from './harness/path-limits.mjs'
 
@@ -39,21 +39,16 @@ test('a bounded key never equals the key of a name that fit', () => {
 
 test('every name minted from the longest node id fits on Windows under a long checkout', () => {
   const byAgents = {
-    report: reportPath(ROOT, EFFORT, STAMP, LONGEST_ID, 'test-author', 99),
-    progress: progressPath(ROOT, EFFORT, STAMP, LONGEST_ID, 'test-author', 99),
     respec_rulings: respecPath(ROOT, EFFORT, LONGEST_ID, DIGEST + '-' + DIGEST, 'rulings.json'),
   }
   const byLib = {
     worktree: worktreeOf(ROOT, EFFORT, LONGEST_ID),
     spec_copy: specCopyPath(ROOT, EFFORT, LONGEST_ID, DIGEST),
-    brief: briefPath(ROOT, EFFORT, STAMP, LONGEST_ID, 'test-author', 99),
     close: closePath(ROOT, EFFORT, STAMP, LONGEST_ID, 'test-author', 99),
     merge_drift: mergePath(ROOT, EFFORT, STAMP, LONGEST_ID, SHA).replace(/\.json$/, '.drift.md'),
     gate: gatePath(ROOT, EFFORT, STAMP, LONGEST_ID, SHA),
     stale: stalePath(ROOT, EFFORT, STAMP, SHA),
-    card: cardPath(ROOT, EFFORT, STAMP, 'review', LONGEST_ID, DIGEST),
     review: reviewPath(ROOT, EFFORT, STAMP, LONGEST_ID, 99),
-    fixes: fixesPath(ROOT, EFFORT, STAMP, LONGEST_ID, 99),
   }
   for (const [what, path] of Object.entries(byAgents)) assert.deepEqual(overruns(path), [], what)
   for (const [what, path] of Object.entries(byLib)) assert.deepEqual(overruns(path, ''), [], what)

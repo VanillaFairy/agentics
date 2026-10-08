@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { recordApproval } from '../../lib/approval.mjs'
+import { writeSessionCommands } from '../../lib/boundaries/execution.mjs'
 import { executionContext } from '../../lib/boundaries/records.mjs'
 import { compileEffort } from '../../lib/compile.mjs'
 import { openEffort } from '../../lib/effort.mjs'
@@ -138,6 +139,7 @@ export function executionRig(t, { spec = RIG_SPEC, commands = RIG_COMMANDS, file
   const dir = executionDir(repo, EFFORT, STAMP)
   mkdirState(dir)
   writeFileSync(join(dir, 'execution.json'), JSON.stringify(envelope, null, 1) + '\n')
+  writeSessionCommands(executionContext({ repo, effort: EFFORT, execution: STAMP, log: null }), envelope)
   const branch = ensureIntegration(repo, EFFORT, ROOT_ID, envelope)
   if (!branch.ok) throw new Error('executionRig: the effort branch: ' + branch.error)
 

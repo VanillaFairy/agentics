@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import {
-  branchOf, cardPath, effortStateDir, executionDir, flat, nodeKey, posix, reportPath, reviewPath, specCopyPath, worktreeOf,
+  branchOf, effortStateDir, executionDir, flat, nodeKey, posix, reviewPath, specCopyPath, worktreeOf,
 } from '../lib/store.mjs'
 import { apply, plan } from '../tools/migrate-node-keys.mjs'
 import * as worktreeKeys from '../tools/migrate-worktree-keys.mjs'
@@ -62,11 +62,12 @@ test('a long node\'s branch, worktree and files move to its key; records and sho
 
   assert.equal(git(r, 'rev-parse', '--verify', '--quiet', 'refs/heads/' + branchOf(EFFORT, LONG)).length, 40)
   assert.equal(git(worktreeOf(r, EFFORT, LONG), 'rev-parse', '--abbrev-ref', 'HEAD'), branchOf(EFFORT, LONG))
-  assert.ok(existsSync(reportPath(r, EFFORT, STAMP, LONG, 'implementer', 1)))
-  assert.ok(existsSync(reportPath(r, EFFORT, STAMP, LONG, 'implementer', 1).replace(/\.md$/, '.json')))
+  const report = join(effortStateDir(r, EFFORT), 'reports', STAMP + '-' + nodeKey(LONG) + '-implementer-r1')
+  assert.ok(existsSync(report + '.md'))
+  assert.ok(existsSync(report + '.json'))
   assert.ok(existsSync(specCopyPath(r, EFFORT, LONG, 'deadbeef')))
   assert.ok(existsSync(reviewPath(r, EFFORT, STAMP, LONG, 1)))
-  assert.ok(existsSync(cardPath(r, EFFORT, STAMP, 'leaf', LONG, '12345678')))
+  assert.ok(existsSync(join(executionDir(r, EFFORT, STAMP), 'cards', 'leaf-' + nodeKey(LONG) + '-12345678.json')))
   assert.ok(existsSync(old.said), 'a said file is pointed at by a record, so it keeps its path')
   assert.ok(existsSync(old.short), 'a node that fits keeps its name')
   for (const k of ['report', 'progress', 'spec', 'review', 'card']) assert.ok(!existsSync(old[k]), k)

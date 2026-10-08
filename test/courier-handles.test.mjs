@@ -30,7 +30,7 @@ test('every way of putting data into a command is flagged on its line', () => {
 
 test('a command of handles passes', () => {
   const src = [
-    'node "$R/lib/boundary.mjs" leaf-open --repo "C:/r" --node a/b --round 2 --digest 1a2b3c4d',
+    'node "$R/lib/boundary.mjs" retry --repo "C:/r" --effort e1 --node a/b --node c',
     'node "$R/lib/evidence.mjs" record --kind survey --from "C:/r/.agentics/.state/evidence/inbox/judge.json"',
     'const shifted = a << 2',
   ].join('\n')

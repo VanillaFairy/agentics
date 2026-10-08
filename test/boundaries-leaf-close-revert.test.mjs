@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 
+import { writeSessionCommands } from '../lib/boundaries/execution.mjs'
 import { leafClose } from '../lib/boundaries/leaf-close.mjs'
 import { executionContext } from '../lib/boundaries/records.mjs'
 import { attach } from '../lib/integration.mjs'
@@ -33,6 +34,7 @@ async function breached(t, { refuse, stray = false }) {
   mkdirState(dir)
   writeFileSync(join(dir, 'execution.json'), JSON.stringify({ stamp: STAMP, root: '.', base_branch: 'main', base_sha: base, commands: COMMANDS }))
   const xc = executionContext({ repo: r, effort: E, execution: STAMP, log: executionLog(r, E, STAMP) })
+  writeSessionCommands(xc, xc.envelope())
   const branch = branchOf(E, 'a')
   git(r, 'branch', branch, base)
   const worktree = worktreeOf(r, E, 'a')

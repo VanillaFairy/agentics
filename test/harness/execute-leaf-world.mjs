@@ -2,7 +2,6 @@
 // scripted answers of a producer, reviewer and ruler, and the world and the cycle world they run
 // over. Nothing here runs at import.
 
-import { after } from 'node:test'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'

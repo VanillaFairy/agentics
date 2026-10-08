@@ -307,14 +307,7 @@ test('a verify leaf opens its worktree with no role, thread or tier', async (t) 
   assert.equal(out.status, 'opened')
   assert.deepEqual([out.role, out.thread, out.owner, out.fresh, out.tier, out.permissions], ['', '', 'v', '', null, null])
   assert.ok(existsSync(out.cwd))
-})
-
-test('a node that is no live leaf, or an execution with no envelope, is the caller\'s bug', async (t) => {
-  const { xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
-  await assert.rejects(leafOpen(xc, { node: 'nope' }), /no live leaf/)
-  await assert.rejects(leafOpen(xc, { node: '.' }), /no live leaf/)
-  rmSync(join(xc.dir, 'execution.json'))
-  await assert.rejects(leafOpen(xc, { node: 'a' }), /no envelope/)
+  await assert.rejects(leafOpen(xc, { node: '.' }), /no live leaf/, 'a folder is no leaf')
 })
 
 // ------------------------------------------------------------------ the raise

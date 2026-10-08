@@ -196,6 +196,32 @@ test('an earlier run\'s end is not printed; a run whose process is gone and hear
   assert.equal(watchFrom(r, 0), 'stopped: start the same command again to resume run ' + XRUN + '\n')
 })
 
+test('a relaunch\'s watch does not end on the previous run\'s end before the new run has begun', { timeout: 30000 }, async (t) => {
+  const r = execution(t)
+  state(r, 'ended', { result: { status: 'checkpoint', file: '/r/old.json', complete: false } })
+  const child = spawn(process.execPath, [CLI, 'watch', '--repo', r, '--run', XRUN, '--since', String(seqMax(r, EFFORT))], { env: CHILD_ENV })
+  const exited = new Promise((resolve) => child.on('close', resolve))
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill()
+    await exited
+  })
+  let out = ''
+  const looked = new Promise((resolve) => child.stdout.on('data', (d) => { out += d; if (out.includes('a parked needs_decision')) resolve() }))
+  event(r, 'parked', 'a', { return: 'needs_decision', question: 'keep the cache?' })
+  await looked
+  state(r, 'run', { program: 'execute', scope: { effort: EFFORT, folder: '.' }, pid: process.pid })
+  state(r, 'ended', { result: done })
+  assert.equal(await exited, 0)
+  assert.equal(out, 'a parked needs_decision\nended done: complete=true result=/r/result.json\n')
+})
+
+test('an execution\'s end after the since the watch was given is printed to a watch armed after it', (t) => {
+  const r = execution(t)
+  const since = seqMax(r, EFFORT)
+  state(r, 'ended', { result: done })
+  assert.equal(watchFrom(r, since), 'ended done: complete=true result=/r/result.json\n')
+})
+
 test('watch takes --run only: watch --execution is refused', (t) => {
   const r = execution(t)
   const out = spawnSync(process.execPath, [CLI, 'watch', '--repo', r, '--effort', EFFORT, '--execution', STAMP], { encoding: 'utf8', env: CHILD_ENV, timeout: 20000 })

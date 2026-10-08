@@ -1,6 +1,6 @@
 // tools/rules/fast-tier.mjs — a spawning test landing in the tier meant to run in seconds.
 //
-// test/fast/ is the tier `node tools/test.mjs --fast` runs: files that start no process, so the
+// test/fast/ is the tier `node tools/suite.mjs --fast` runs: files that start no process, so the
 // whole tier finishes in about a second. One test that shells out to git or node there puts the
 // tier's cost back, and nothing else would notice. A fast file gets a process in two ways, and
 // this rule flags both at the import:

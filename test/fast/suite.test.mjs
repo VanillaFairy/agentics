@@ -1,4 +1,4 @@
-// test/fast/test-script.test.mjs — what tools/test.mjs decides: which tests were flakes and which
+// test/fast/suite.test.mjs — what tools/suite.mjs decides: which tests were flakes and which
 // red, what a command line means, and which state file two checkouts do not share. The runs
 // themselves are node's and are not repeated here.
 
@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { DEFAULT_CONCURRENCY, classify, parseArgs, readFailures, stateFileFor } from '../../tools/test.mjs'
+import { DEFAULT_CONCURRENCY, classify, parseArgs, readFailures, stateFileFor } from '../../tools/suite.mjs'
 
 const run = (code, failed = []) => ({ code, failed })
 
@@ -68,7 +68,7 @@ test('the state file is stable for a checkout and commit and differs for another
 })
 
 test('failures are read back as repo-relative ids, and a missing file is no failures', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'test-script-'))
+  const dir = mkdtempSync(join(tmpdir(), 'suite-test-'))
   try {
     const file = join(dir, 'failures.jsonl')
     assert.deepEqual(readFailures(file, dir), [])

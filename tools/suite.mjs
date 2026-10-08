@@ -1,6 +1,6 @@
-// tools/test.mjs — the suite, with a rerun of what failed before anything is called red.
+// tools/suite.mjs — the suite, with a rerun of what failed before anything is called red.
 //
-//   node tools/test.mjs [--fast] [--concurrency N] [file...]
+//   node tools/suite.mjs [--fast] [--concurrency N] [file...]
 //
 // Runs `node --test` over the fast tier (--fast), the named files, or everything. A failed run
 // is repeated at --test-concurrency=2: node re-runs only the tests that failed and reads the
@@ -24,7 +24,7 @@ const FAST_TIER = 'test/fast/**/*.test.mjs'
 export const DEFAULT_CONCURRENCY = 8
 export const RERUN_CONCURRENCY = 2
 
-const USAGE = 'usage: node tools/test.mjs [--fast] [--concurrency N] [file...]'
+const USAGE = 'usage: node tools/suite.mjs [--fast] [--concurrency N] [file...]'
 
 /** @returns {{fast: boolean, concurrency: number, files: string[]} | {error: string}} */
 export function parseArgs(argv) {
@@ -162,16 +162,13 @@ async function main(argv) {
   }
 }
 
-// `node --test` with no arguments also discovers this file (its name is `test.mjs`) and runs it
-// as a test file; the runner's context variable tells that apart from a command line.
-const isMain = !process.env.NODE_TEST_CONTEXT &&
-  (import.meta.main ?? (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url))
+const isMain = import.meta.main ?? (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url)
 
 if (isMain) {
   try {
     process.exitCode = await main(process.argv.slice(2))
   } catch (error) {
-    console.error(`test could not run: ${error.message}`)
+    console.error(`suite could not run: ${error.message}`)
     process.exitCode = 1
   }
 }

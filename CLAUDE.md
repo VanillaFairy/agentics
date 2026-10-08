@@ -16,9 +16,9 @@ that enforces it.
 
 Run the checks with:
 
-    node tools/lint.mjs && node tools/test.mjs
+    node tools/lint.mjs && node tools/suite.mjs
 
-`node tools/test.mjs --fast` runs only `test/fast/`, the tests that spawn no process, in about a
+`node tools/suite.mjs --fast` runs only `test/fast/`, the tests that spawn no process, in about a
 second; the script reruns a failed run's failures before calling any of them red.
 
 ## Moving to 5.0.0
@@ -129,8 +129,8 @@ The laws themselves are in `docs/DESIGN.md#laws`.
 
 ## Build
 
-    node tools/lint.mjs && node tools/test.mjs
-    node tools/test.mjs --fast
+    node tools/lint.mjs && node tools/suite.mjs
+    node tools/suite.mjs --fast
     node --test test/<file>.test.mjs
     claude plugin validate .
 

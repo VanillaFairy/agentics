@@ -59,8 +59,8 @@ The runtime artifacts are prompts and code, so they are checked in layers — de
 [Self-checks](#self-checks): lint judges form, the programs run against real git with a scripted
 runner, an opt-in contract test runs the real host, real-git tests run every boundary, and pins
 keep restated contracts, allowlists and design pointers from drifting. Run everything with
-`node tools/lint.mjs && node tools/test.mjs`, or just the spawn-free tier with
-`node tools/test.mjs --fast` (see [Self-checks](#self-checks)).
+`node tools/lint.mjs && node tools/suite.mjs`, or just the spawn-free tier with
+`node tools/suite.mjs --fast` (see [Self-checks](#self-checks)).
 
 ---
 
@@ -3299,7 +3299,7 @@ whether a loop converges, `{ruling: converging | not_converging, why}`. The inve
   for a model to carry reaches one (P2); no skill that starts an agent; gate clauses in gated
   skills; a stated task-tool fallback; size budgets; and that nothing in `test/fast/` imports
   `child_process` or a helper from `test/` outside it (`fast-tier`).
-- **The suite** runs through `tools/test.mjs`: `node tools/test.mjs` runs everything and
+- **The suite** runs through `tools/suite.mjs`: `node tools/suite.mjs` runs everything and
   `--fast` only `test/fast/`, the files that spawn no process, which finish in about a second.
   A failed run is repeated at `--test-concurrency=2` over only the tests that failed, and each
   first-run failure is named `flake` (it passed the repeat) or `red`; the exit code is 1 only

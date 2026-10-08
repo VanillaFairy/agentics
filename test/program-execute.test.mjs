@@ -65,7 +65,7 @@ import {
 } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
 import { executionRig } from './harness/program-rig.mjs'
-import { scriptedRunner } from './harness/scripted-runner.mjs'
+import { scriptedRunner } from './fast/harness/scripted-runner.mjs'
 
 // leaf-close, merge-batch and the suite gate measure through `node --test` grandchildren, which
 // refuse to run under the test runner's marker; the rig does not clear it.

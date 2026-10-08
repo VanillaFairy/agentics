@@ -6,7 +6,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
-import { compileWorkflow, runWorkflow, scriptedAgents } from './harness/workflow-host.mjs'
+import { compileWorkflow, runWorkflow, scriptedAgents } from './fast/harness/workflow-host.mjs'
 
 const wf = (name) => fileURLToPath(new URL('../service-workflows/' + name, import.meta.url))
 const WF = wf('answer-codebase-question-from-evidence.workflow.js')

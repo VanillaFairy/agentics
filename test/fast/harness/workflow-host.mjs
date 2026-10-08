@@ -1,4 +1,4 @@
-// test/harness/workflow-host.mjs — executes a *.workflow.js the way the runtime does:
+// test/fast/harness/workflow-host.mjs — executes a *.workflow.js the way the runtime does:
 // strip the meta export, compile the body as an async function whose parameters are the
 // runtime globals, and inject scripted fakes. This is what makes the orchestration
 // arithmetic — coverage derivation, escalation routing, checkpoint gating — executable
@@ -17,8 +17,8 @@
 
 import { readFileSync } from 'node:fs'
 
-import { roundOf } from '../../lib/evidence.mjs'
-import { canonical, fnv1a } from '../../lib/plan-digest.mjs'
+import { roundOf } from '../../../lib/evidence.mjs'
+import { canonical, fnv1a } from '../../../lib/plan-digest.mjs'
 
 const AsyncFunction = (async function () {}).constructor
 

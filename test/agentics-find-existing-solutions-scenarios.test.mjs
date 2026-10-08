@@ -17,10 +17,10 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import {
   WROTE, carriedEnvelope, contextPath, courierCommand, courierProblems, flagValues, returnFileOf, runWorkflow, scriptedAgents,
-} from './harness/workflow-host.mjs'
+} from './fast/harness/workflow-host.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
 import { nameKey } from '../lib/store.mjs'
-import { overruns } from './harness/path-limits.mjs'
+import { overruns } from './fast/harness/path-limits.mjs'
 
 const WF = fileURLToPath(new URL('../service-workflows/search-for-existing-solutions-before-building.workflow.js', import.meta.url))
 

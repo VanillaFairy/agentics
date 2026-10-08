@@ -23,7 +23,7 @@ Run the checks with:
 Branch `v5` moves the plugin from 4.x to 5.0.0 in four phases: foundations, the evidence
 programs, execution, and removing what 4.x alone used. Until the last phase what is left of the
 4.x runtime still lives here: the evidence workflows in `service-workflows/`, the agents in
-`agents/` they name, the courier, `test/harness/workflow-host.mjs` with the workflows' scenario
+`agents/` they name, the courier, `test/fast/harness/workflow-host.mjs` with the workflows' scenario
 tests, and the lint rules that guard them. An execution runs only as the `execute` program, over
 the in-process boundaries in `lib/boundaries/`; no boundary is reached through the courier. Keep
 the 4.x runtime working and never add to it. New code follows `docs/DESIGN.md` and the rules below.
@@ -149,7 +149,7 @@ The laws themselves are in `docs/DESIGN.md#laws`.
 - `test/` — the `node --test` suite; `test/harness/` holds the scripted runner and the fake CLI
 - 4.x, until the last phase: the evidence workflows in `service-workflows/`
   (`service-workflows/INDEX.md`), the agents they name in `agents/` (`docs/kb/agents.md`), the
-  courier and `test/harness/workflow-host.mjs`; no execution runs through them
+  courier and `test/fast/harness/workflow-host.mjs`; no execution runs through them
 
 ## Knowledge base
 

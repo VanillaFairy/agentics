@@ -19,7 +19,7 @@ import { loadRole, tierFor } from '../lib/roles.mjs'
 import { launch } from '../lib/run.mjs'
 import { posix, readJson, resultPath, revParse, runJsonPath, specPath } from '../lib/store.mjs'
 import { programRig } from './harness/program-rig.mjs'
-import { scriptedRunner } from './harness/scripted-runner.mjs'
+import { scriptedRunner } from './fast/harness/scripted-runner.mjs'
 
 const NOW = new Date('2026-01-01T00:00:00.000Z')
 const QUESTION = 'Where is the store written?'

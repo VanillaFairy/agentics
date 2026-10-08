@@ -12,8 +12,8 @@ import { join } from 'node:path'
 
 import { dispatchedEntry, returnedEntry } from '../lib/runner.mjs'
 import { dispatchKey, returnPath, sessionOf } from '../lib/store.mjs'
-import { memoryLog } from './harness/memory-log.mjs'
-import { scriptedRunner } from './harness/scripted-runner.mjs'
+import { memoryLog } from './fast/harness/memory-log.mjs'
+import { scriptedRunner } from './fast/harness/scripted-runner.mjs'
 
 const ids = { effort: '', execution: '20260101-000000-test', node: '', role: 'scout', thread: 'plan' }
 const S = sessionOf(ids)

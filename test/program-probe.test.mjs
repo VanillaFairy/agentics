@@ -24,7 +24,7 @@ import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
 import { evidenceReturnsDir, posix, resultPath } from '../lib/store.mjs'
 import { programRig } from './harness/program-rig.mjs'
-import { scriptedRunner } from './harness/scripted-runner.mjs'
+import { scriptedRunner } from './fast/harness/scripted-runner.mjs'
 
 const STANDING = ['ambiguity', 'invariants', 'yagni', 'reinvention']
 const ART = 'docs/spec.md'

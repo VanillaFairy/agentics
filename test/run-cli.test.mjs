@@ -20,7 +20,7 @@ import {
   configPath, effortDir, mainCheckout, posix, projectStateDir, readJson, resultPath, runDir, runJsonPath,
   runLogFile, runLogPath, specPath, stampNow, writeJson,
 } from '../lib/store.mjs'
-import { scriptedRunner } from './harness/scripted-runner.mjs'
+import { scriptedRunner } from './fast/harness/scripted-runner.mjs'
 import { DEAD_PID } from './harness/dead-pid.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))

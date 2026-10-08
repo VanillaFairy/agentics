@@ -1,4 +1,4 @@
-// test/harness/path-limits.mjs — the room a name the plugin mints must fit in on any machine,
+// test/fast/harness/path-limits.mjs — the room a name the plugin mints must fit in on any machine,
 // Windows included: 255 characters for one path component and MAX_PATH's 260 (259 and the
 // terminator) for the whole path, each with the Write tool's `.tmp.<pid>.<hex>` suffix on top.
 

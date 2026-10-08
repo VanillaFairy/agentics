@@ -3296,7 +3296,7 @@ whether a loop converges, `{ruling: converging | not_converging, why}`. The inve
   prompts built only by `lib/brief.mjs`, `lib/briefs/` and `renderMessage`, so no command or path
   for a model to carry reaches one (P2); no skill that starts an agent; gate clauses in gated
   skills; a stated task-tool fallback; and size budgets.
-- **The scripted runner** (`test/harness/scripted-runner.mjs`) stands in for the host: it is the
+- **The scripted runner** (`test/fast/harness/scripted-runner.mjs`) stands in for the host: it is the
   real `runAgent` over a scripted CLI, each start of the CLI answered by the next step of a script
   keyed by role, node and thread, so a program run against real git (`test/harness/program-rig.mjs`,
   whose `executionRig` seeds an approved, compiled effort and an execution's home, log port and

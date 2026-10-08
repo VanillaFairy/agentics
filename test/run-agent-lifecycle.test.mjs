@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 
 import { classifyCall, parseStream, runAgent } from '../lib/runner.mjs'
 import { dispatchKey, returnPath, sessionOf } from '../lib/store.mjs'
-import { memoryLog } from './harness/memory-log.mjs'
+import { memoryLog } from './fast/harness/memory-log.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const fixture = readFileSync(join(here, 'fixtures', 'runner', 'stream-success.jsonl'), 'utf8').split(/\r?\n/).filter((l) => l.trim())

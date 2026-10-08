@@ -1,4 +1,4 @@
-// test/harness/memory-log.mjs — an in-memory log port: what lib/runner.mjs appends, kept in order.
+// test/fast/harness/memory-log.mjs — an in-memory log port: what lib/runner.mjs appends, kept in order.
 export function memoryLog() {
   const rows = []
   return {

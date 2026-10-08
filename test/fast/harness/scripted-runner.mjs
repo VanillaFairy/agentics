@@ -1,4 +1,4 @@
-// test/harness/scripted-runner.mjs — the real runAgent over a scripted CLI. Each start of a call's
+// test/fast/harness/scripted-runner.mjs — the real runAgent over a scripted CLI. Each start of a call's
 // CLI plays the next step scripted for its `role|node|thread` as the stream, stderr and exit code the
 // host gives, so a program test sees the records, stored returns, retries, parts and renewals
 // production does. A usage limit's `until` reaches the record as classifyCall reads the host's text:
@@ -6,8 +6,8 @@
 import { writeFileSync, rmSync } from 'node:fs'
 import { dirname } from 'node:path'
 
-import { runAgent as realRunAgent } from '../../lib/runner.mjs'
-import { mkdirState } from '../../lib/store.mjs'
+import { runAgent as realRunAgent } from '../../../lib/runner.mjs'
+import { mkdirState } from '../../../lib/store.mjs'
 
 const STOPS = {
   rate_limit: () => 'API Error: rate limit exceeded',

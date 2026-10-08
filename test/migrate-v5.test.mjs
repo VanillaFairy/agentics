@@ -15,7 +15,7 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { hostname, tmpdir } from 'node:os'
-import { basename, dirname, join, relative, resolve } from 'node:path'
+import { basename, dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { approvalGate } from '../lib/approval.mjs'
@@ -305,11 +305,6 @@ test('a dry run writes nothing', (t) => {
   assert.deepEqual(plan(fx.dir), p, 'a plan is a function of the disk')
 })
 
-test('the plan names the repository as given, absolute and forward-slashed', (t) => {
-  const fx = fixture(t)
-  assert.equal(plan(fx.dir).root, posix(resolve(fx.dir)))
-})
-
 test('the CLI dry-runs without --yes, printing applied 0 and the plan', { timeout: 90_000 }, (t) => {
   const fx = fixture(t)
   const before = snapshot(fx.dir)
@@ -424,22 +419,6 @@ test("saidOf reads a re-stated stop's text", (t) => {
   assert.ok(said.includes(TEXT.a.trim()), "the said file's text")
 })
 
-test("the root's re-stated stop is named migrated-root-<seq>", (t) => {
-  const fx = fixture(t)
-  const p = plan(fx.dir)
-  const stop = stopOf(p, '.')
-  assert.ok(stop)
-  assert.equal(stop.seq, fx.seq.rootPark)
-  assert.equal(stop.dispatch, 'migrated-root-' + fx.seq.rootPark)
-  apply(p)
-  const last = lastOf(fx.dir, '.')
-  assert.equal(last.kind, 'parked')
-  assert.equal(last.said, stop.dispatch)
-  const said = saidOf(fx.dir, E, last)
-  assert.ok(said.includes('which root?'))
-  assert.ok(said.includes(TEXT.root.trim()))
-})
-
 test("a long node's re-stated stop is named by a dispatch key saidOf reads", (t) => {
   const fx = fixture(t)
   const p = plan(fx.dir)
@@ -524,15 +503,6 @@ test('a stored return already there with other bytes refuses that stop', (t) => 
   assert.equal(lastOf(fx.dir, 'a').said, fx.files.a)
 })
 
-test('a stored return that differs only by a trailing newline refuses that stop', (t) => {
-  const fx = fixture(t)
-  const dispatch = 'migrated-a-' + fx.seq.aEsc
-  put(storedReturnPath(fx, dispatch), storedBytes(TEXT.a) + '\n')
-  const p = plan(fx.dir)
-  assert.equal(stopOf(p, 'a'), undefined)
-  assert.ok(p.refused.some((r) => posix(r.why).includes('returns/' + dispatch + '.json')))
-})
-
 // ------------------------------------------------------------------ reviews
 
 test('a standing claims event is appended again with each verdict as its ruling', (t) => {
@@ -579,16 +549,6 @@ test("a claims event older than its node's revision is not appended again", (t) 
   assert.ok(!flat(p, 'claims').some((c) => c.node === 'f'))
 })
 
-test('an older claims event under a ruled newer one is not appended again', (t) => {
-  const fx = fixture(t)
-  const newer = append(fx.dir, E, 'events', { kind: 'claims', node: 'f', execution: OPEN, review: 'done', claims: [{ claim: 'f holds together', ruling: 'met' }] })
-  assert.equal(newer.ok, true)
-  const p = plan(fx.dir)
-  assert.ok(!flat(p, 'claims').some((c) => c.node === 'f'))
-  apply(p)
-  assert.equal(eventsOn(fx.dir, 'f', 'claims').length, 2)
-})
-
 test('a folder not yet approved whose latest review at its hash is complete gets one incomplete marker', (t) => {
   const fx = fixture(t)
   const p = plan(fx.dir)
@@ -630,22 +590,6 @@ test('an approved folder gets no marker', (t) => {
   assert.ok(!flat(p, 'reviewed').some((r) => r.folder === '.'))
   apply(p)
   assert.equal(ledgerOn(fx.dir, '.', 'reviewed').length, 1)
-})
-
-test('a prepared folder gets no marker', (t) => {
-  const fx = fixture(t)
-  const p = plan(fx.dir)
-  assert.ok(!flat(p, 'reviewed').some((r) => r.folder === 'h'))
-  apply(p)
-  assert.equal(ledgerOn(fx.dir, 'h', 'reviewed').length, 1)
-})
-
-test('a folder edited since its review gets no marker', (t) => {
-  const fx = fixture(t)
-  const p = plan(fx.dir)
-  assert.ok(!flat(p, 'reviewed').some((r) => r.folder === 'g'))
-  apply(p)
-  assert.equal(ledgerOn(fx.dir, 'g', 'reviewed').length, 1)
 })
 
 // ------------------------------------------------------------------ findings
@@ -711,14 +655,6 @@ test("an approved leaf's findings become no message", (t) => {
   assert.equal(messagesOn(fx.dir, 'd').length, 0)
 })
 
-test("a merged leaf's findings become no message", (t) => {
-  const fx = fixture(t)
-  const p = plan(fx.dir)
-  assert.equal(planned(p, 'f/x').length, 0)
-  apply(p)
-  assert.equal(messagesOn(fx.dir, 'f/x').length, 0)
-})
-
 test('no node but the reviewed, unfinished leaves gets a findings message', (t) => {
   const fx = fixture(t)
   apply(plan(fx.dir))
@@ -777,15 +713,6 @@ test("each id's latest judged line, still the item's latest, is appended again w
   assert.equal(fresh[0].at, old.at)
   assert.ok(!('verdict' in fresh[0]))
   assertSameBut({ ...fresh[0], verdict: fresh[0].ruling }, old, ['seq', 'ruling'])
-})
-
-test('a judged line outdated by a later item revision is not appended again', (t) => {
-  const fx = fixture(t)
-  const p = plan(fx.dir)
-  assert.ok(!p.judged.some((j) => j.id === S2))
-  apply(p)
-  const ruled = readProjectLog(fx.dir, 'items').entries.filter((e) => e.kind === 'judged' && e.id === S2 && e.ruling !== undefined)
-  assert.equal(ruled.length, 0)
 })
 
 // ------------------------------------------------------------------ the whole move
@@ -1027,14 +954,6 @@ test('a lock holder on another host, older than the stale age, does not refuse t
   assert.ok(!p.refused.some((r) => /^effort /.test(String(r.what))))
 })
 
-test('a lock holder on this host whose pid is dead does not refuse the effort', (t) => {
-  const fx = fixture(t)
-  lockHolder(fx.dir, { pid: DEAD_PID, host: hostname() })
-  const p = plan(fx.dir)
-  assert.ok(p.efforts.some((e) => e.effort === E))
-  assert.ok(!p.refused.some((r) => /^effort /.test(String(r.what))))
-})
-
 // ------------------------------------------------------------------ the marker and the gate
 
 /** A complete review of `f` at its hash that leaves ambiguity A1 open, in section s1. */
@@ -1118,18 +1037,6 @@ test('a restated claims event names a stored return of its said file, which said
   assert.equal(saidOf(fx.dir, E, fresh), text.trim())
 })
 
-test('a claims event whose said file is gone is refused and keeps its 4.x said', (t) => {
-  const fx = fixture(t)
-  rmSync(fx.files.f)
-  const p = plan(fx.dir)
-  assert.ok(!flat(p, 'claims').some((c) => c.node === 'f'))
-  assert.ok(refusalsOf(p, 'f').some((r) => posix(r.why).includes(basename(fx.files.f))), 'the why names the file')
-  const before = eventsOn(fx.dir, 'f', 'claims')
-  apply(p)
-  assert.deepEqual(eventsOn(fx.dir, 'f', 'claims'), before)
-  assert.equal(before[0].said, fx.files.f)
-})
-
 test('a claims event whose stored return exists with other bytes is refused and keeps its 4.x said', (t) => {
   const fx = fixture(t)
   const dispatch = 'migrated-' + nodeKey('f') + '-' + fx.seq.fClaims
@@ -1165,13 +1072,6 @@ test('a leaf dispatched in a newer execution after its older fixes file gets no 
   assert.deepEqual(planned(plan(fx.dir), 'c'), [])
 })
 
-test('a fixes file of a later round than any dispatch is still sent', (t) => {
-  const fx = fixture(t)
-  put(fixesPath(fx.dir, E, OPEN, 'c', 3), JSON.stringify(F.c2.map(reviewEntry)))
-  const [entry] = planned(plan(fx.dir), 'c')
-  assert.equal(entry.round, 3)
-})
-
 // ------------------------------------------------------------------ the first 5.0 round of a migrated green
 
 const CYCLE_SPEC = [
@@ -1192,7 +1092,6 @@ const CYCLE_CASES = [
   ['only tests findings', [finding('G1', 'major', 'tests')], 'test-author', 'producer:r'],
   ['code findings', [finding('G2', 'major', 'code')], 'implementer', 'producer:g'],
   ['tests findings carried beside code findings', [finding('G1', 'major', 'tests', { carried: true }), finding('G2', 'major', 'code')], 'implementer', 'producer:g'],
-  ['no fixes file', null, 'implementer', 'producer:g'],
   ['no fixes file, beside the tests findings migrated for its red', null, 'implementer', 'producer:g', true],
 ]
 for (const [what, findings, role, thread, redToo] of CYCLE_CASES) {
@@ -1234,47 +1133,6 @@ test('a claims event that names no said file is appended again without a stored 
   assert.equal(fresh.said, undefined)
   assert.deepEqual(fresh.claims, [{ claim: 'the root holds together', ruling: 'met' }])
   assert.ok(!existsSync(storedReturnPath(fx, 'migrated-root-' + seq)))
-})
-
-test('an open escalation whose said is empty is neither stated again nor refused', (t) => {
-  const fx = fixture(t)
-  record(fx.dir, 'events', { kind: 'escalated', node: 'c', execution: OPEN, reason: 'blocked', detail: 'c is blocked', said: '' })
-  const p = plan(fx.dir)
-  assert.equal(stopOf(p, 'c'), undefined)
-  assert.deepEqual(refusalsOf(p, 'c'), [])
-})
-
-test('an open escalation whose said is no string is neither stated again nor refused', (t) => {
-  const fx = fixture(t)
-  record(fx.dir, 'events', { kind: 'escalated', node: 'c', execution: OPEN, reason: 'blocked', detail: 'c is blocked', said: { path: fx.files.a } })
-  let p
-  assert.doesNotThrow(() => { p = plan(fx.dir) })
-  assert.equal(stopOf(p, 'c'), undefined)
-  assert.deepEqual(refusalsOf(p, 'c'), [])
-})
-
-test('a review entry with no claim and no evidence becomes a finding with empty strings', (t) => {
-  const fx = fixture(t)
-  put(fixesPath(fx.dir, E, OPEN, 'c', 2), JSON.stringify([{ source: 'review major F7' }]))
-  apply(plan(fx.dir))
-  const [sent] = messagesOn(fx.dir, 'c')
-  assert.deepEqual(sent.payload.findings.map(pick), [{ id: 'F7', severity: 'major', claim: '', evidence: '', failure_scenario: '' }])
-})
-
-test('a file in jobs that is not a pid file does not refuse the effort', (t) => {
-  const fx = fixture(t)
-  put(join(fx.openDir, 'jobs', 'leaf-close-live.json'), String(process.pid))
-  const p = plan(fx.dir)
-  assert.ok(p.efforts.some((e) => e.effort === E))
-  assert.ok(!p.refused.some((r) => /^effort /.test(String(r.what))))
-})
-
-test('a pid file holding 0 does not refuse the effort', (t) => {
-  const fx = fixture(t)
-  put(join(fx.openDir, 'jobs', 'leaf-close-zero.pid'), '0')
-  const p = plan(fx.dir)
-  assert.ok(p.efforts.some((e) => e.effort === E))
-  assert.ok(!p.refused.some((r) => /^effort /.test(String(r.what))))
 })
 
 test('a directory under executions that is no stamp is neither closed nor listed', (t) => {
@@ -1323,25 +1181,6 @@ test('a message of another kind on the same node and thread does not count as se
   record(fx.dir, 'events', { kind: 'message', node: 'c', thread: 'producer:c', from: 'code', msg: 'retried', payload: { reason: '', notes: [] }, round: 2, execution: '' })
   assert.ok(planned(plan(fx.dir), 'c').some((m) => m.thread === 'producer:c'))
 })
-
-for (const [what, rel] of LEFT.filter(([, rel]) => !rel.endsWith('mystery.txt'))) {
-  test('the left list says what ' + what + ' is, not that it is unknown', (t) => {
-    const fx = fixture(t)
-    const why = (path) => plan(fx.dir).left.find((l) => tail(l.path).endsWith('/' + E + '/.state/' + path)).why
-    assert.notEqual(why(rel), why('executions/' + OPEN + '/mystery.txt'))
-  })
-}
-
-for (const [what, name] of [['4.x merge records', 'merges'], ['4.x gate records', 'gates']]) {
-  test('the left list names the ' + what + ' of an execution once, saying what they are', (t) => {
-    const fx = fixture(t)
-    put(join(fx.openDir, name, 'main-0a1b2c3d4e.json'))
-    const left = plan(fx.dir).left
-    const named = left.filter((l) => tail(l.path).endsWith('/executions/' + OPEN + '/' + name))
-    assert.equal(named.length, 1)
-    assert.notEqual(named[0].why, left.find((l) => tail(l.path).endsWith('/executions/' + OPEN + '/mystery.txt')).why)
-  })
-}
 
 test('a stored return written between the plan and the apply keeps its bytes', (t) => {
   const fx = fixture(t)

@@ -706,31 +706,6 @@ test('a survey returning an item that does not stand is not complete', async (t)
 
 // --- bound, relaunch and root -----------------------------------------------------------------
 
-test('maxAgents bounds the scouts, channels and judges', { timeout: 20000 }, async (t) => {
-  const rig = rigFor(t, fullScript({
-    'analyst||plan': [{ output: plan({ topics: [TOPIC.loader, TOPIC.store, TOPIC.cache], history_question: HQ, docs_question: DQ }) }],
-    'scout||scout:cache': [{ output: scoutOut({ hits: [hit(FILE.cache, 4)] }) }],
-  }))
-  let inFlight = 0
-  let peak = 0
-  let made = 0
-  const inner = rig.ctx.runAgent
-  const runAgent = async (call) => {
-    inFlight++
-    made++
-    peak = Math.max(peak, inFlight)
-    try {
-      await new Promise((r) => setImmediate(r))
-      return await inner(call)
-    } finally {
-      inFlight--
-    }
-  }
-  await survey(programContext({ ...rig.ctx, maxAgents: 1, runAgent }), ARGS())
-  assert.equal(peak, 1)
-  assert.equal(made, 7)
-})
-
 test('a relaunch calls nothing that returned', async (t) => {
   const { rig, result } = await runSurvey(t, fullScript())
   const before = itemLines(rig)

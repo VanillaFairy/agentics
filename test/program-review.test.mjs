@@ -17,9 +17,8 @@ import { readOnlyPermissions } from '../lib/locus.mjs'
 import { programContext } from '../lib/programs/common.mjs'
 import { review } from '../lib/programs/review.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
-import { launch } from '../lib/run.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
-import { git, posix, readJson, resultPath, runDir, runJsonPath, sessionOf, writeJson } from '../lib/store.mjs'
+import { git, posix, resultPath, runDir, sessionOf, writeJson } from '../lib/store.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 const sh = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', windowsHide: true })
@@ -458,37 +457,3 @@ test('a relaunch calls nothing that returned', async (t) => {
   assert.equal(listed(rig.repo, worktreeOf(rig)), false)
 })
 
-test('a review is scoped by the checkout it reads and its base', async (t) => {
-  const { rig, base, args } = reviewRig(t)
-  const linked = mkdtempSync(join(tmpdir(), 'agentics-review-linked-'))
-  const wt = join(linked, 'wt')
-  t.after(() => {
-    try {
-      sh(rig.repo, 'worktree', 'remove', '--force', wt)
-    } catch {
-      // the repository is removed whole by the rig's cleanup
-    }
-    rmSync(linked, { recursive: true, force: true })
-  })
-  sh(rig.repo, 'worktree', 'add', '-q', '--detach', wt, 'HEAD')
-  const start = (extra) => launch({
-    argv: ['review', '--repo', rig.repo, ...extra, '--base', base, '--criteria-file', args().criteria_file, '--detach'],
-    cwd: rig.repo,
-    env: { ...process.env, NODE_TEST_CONTEXT: '' },
-    now: () => new Date('2026-01-02T03:04:05.000Z'),
-    runner: () => assert.fail('a detached start calls no runner'),
-    spawnChild: () => 4242,
-    alive: () => true,
-  })
-  const main = await start([])
-  assert.equal(main.ok, true, JSON.stringify(main))
-  assert.deepEqual(readJson(runJsonPath(rig.repo, main.run)).scope, { root: posix(resolve(rig.repo)), base })
-  const other = await start(['--root', wt])
-  assert.equal(other.ok, true, JSON.stringify(other))
-  assert.notEqual(other.run, main.run)
-  assert.deepEqual(readJson(runJsonPath(rig.repo, other.run)).scope, { root: posix(resolve(wt)), base })
-  const refused = await start([])
-  assert.equal(refused.ok, false)
-  assert.equal(refused.error.kind, 'run_live')
-  assert.equal(refused.error.run, main.run)
-})

@@ -31,6 +31,7 @@ test('child_process is flagged in every import form, with its line', () => {
     "import * as cp from \"node:child_process\"",
     "import 'node:child_process'",
     "export { execFile } from 'node:child_process'",
+    "export * from 'node:child_process'",
     "const cp = await import('node:child_process')",
     "const cp = require('child_process')",
   ]
@@ -60,7 +61,13 @@ test('an import from test/ outside the tier is flagged, wherever the importer si
     assert.equal(found.length, 1, `${file} -> ${specifier}`)
     assert.match(found[0].message, /outside test\/fast/)
   }
-  assert.equal(check(`const m = await import('../harness/x.mjs')`, TEST).length, 1)
+  const forms = [
+    `const m = await import('../harness/x.mjs')`,
+    `export { x } from '../harness/x.mjs'`,
+    `export * from '../harness/x.mjs'`,
+    `const m = require('../harness/x.mjs')`,
+  ]
+  for (const form of forms) assert.equal(check(form, TEST).length, 1, form)
 })
 
 test('imports that stay in the tier, or leave test/ for lib and tools, pass', () => {

@@ -5,7 +5,7 @@ import {
   NAME_KEY_MAX, ROOT_ID, WORKTREE_KEY_MAX, branchOf, closePath, gatePath, mergePath, nameKey, nodeIdProblem, nodeKey,
   respecPath, reviewPath, specCopyPath, stalePath, worktreeOf,
 } from '../lib/store.mjs'
-import { EFFORT, PROJECT_PATH_BUDGET, ROOT, overruns } from './harness/path-limits.mjs'
+import { EFFORT, PROJECT_PATH_BUDGET, ROOT, overruns } from './fast/harness/path-limits.mjs'
 
 // The longest node id the id rule admits, nested as deep as its length allows.
 const LONGEST_ID = Array.from({ length: 8 }, (_, i) => 'growth-axes-and-ports-' + i).join('/').padEnd(200, 'x')

@@ -19,7 +19,7 @@ import { programContext } from '../../lib/programs/common.mjs'
 import {
   ROOT_ID, branchOf, configPath, executionDir, mkdirState, specPath, worktreeOf, writeJson,
 } from '../../lib/store.mjs'
-import { scriptedRunner } from './scripted-runner.mjs'
+import { scriptedRunner } from '../fast/harness/scripted-runner.mjs'
 import { seededRepo } from './seeded-repo.mjs'
 
 const RUN = '20260101-000000-test'

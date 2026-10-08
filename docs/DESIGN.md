@@ -28,7 +28,7 @@ judgment.
 | `lib/briefs/` | The prompts the programs build, one file per program: the execution's (its reviewers, integration reviewers, rulers, planner and investigator; a leaf round's thread brief is `lib/brief.mjs`'s), the survey's, the probe's, the solutions sweep's, the drafts', the inline review's and the investigation's; a ruling's is `lib/respec.mjs`'s (see [Briefs and returns](#briefs-and-returns)). |
 | `roles/` | One file per agent role: its instructions, tools and kind (see [Roles](#roles)). The host never loads them as agents: only the runner starts one. |
 | `tools/` | `lint.mjs`, its rules under `tools/rules/`, `budgets.json`, and the one-shot migrations. |
-| `test/` | The `node --test` suite, including the scripted runner. |
+| `test/` | The `node --test` suite, including the scripted runner; `test/fast/` holds the tests that spawn no process. |
 
 **Programs are code with the filesystem.** A program reads and writes the store and git itself,
 calls every deterministic step as a function, and starts every agent itself through one runner
@@ -58,14 +58,16 @@ a plan entry of its own.
 The runtime artifacts are prompts and code, so they are checked in layers — detailed under
 [Self-checks](#self-checks): lint judges form, the programs run against real git with a scripted
 runner, an opt-in contract test runs the real host, real-git tests run every boundary, and pins
-keep restated contracts, allowlists and design pointers from drifting. Run everything with `node tools/lint.mjs && node --test`.
+keep restated contracts, allowlists and design pointers from drifting. Run everything with
+`node tools/lint.mjs && node tools/suite.mjs`, or just the spawn-free tier with
+`node tools/suite.mjs --fast` (see [Self-checks](#self-checks)).
 
 ---
 
 ## Laws
 
 Four laws. Each names the mechanism that enforces it, and says so where a mechanism stops short;
-a law without a mechanism is a defect, and `test/design-doc.test.mjs` fails a law whose section
+a law without a mechanism is a defect, and `test/fast/design-doc.test.mjs` fails a law whose section
 names none.
 
 ### L1 — Honest state
@@ -78,7 +80,7 @@ what was established, what was tried, what remains and how to resume; or **done*
 its intent traced to work and to a passing check ([Traceability](#traceability)). Nothing reads as
 more complete than it is, and what stays incomplete leads every report.
 
-*Enforced by:* `test/schemas.test.mjs` (every searcher's and judge's return schema in
+*Enforced by:* `test/fast/schemas.test.mjs` (every searcher's and judge's return schema in
 `lib/schemas.mjs` requires its coverage); the `coverage-block` lint rule (every program result
 computes `complete` from its fields); `resolveHandle` in `lib/store.mjs`, the one way a CLI turns
 an argument into a thing, which refuses an unknown one as `unknown_<kind>`; status derived on read
@@ -197,7 +199,7 @@ names the property that earns it and the consumer that reads it, and goes when i
 - **Leanness never touches verdicts.** What shrinks is dispatches, tiers and phases; the
   predicates a verdict is computed from never shrink once a check runs.
 - **No mechanism outlives its consumer.** A format change ships a one-shot migration, never a
-  permanent second reader. `test/liveness.test.mjs` enforces it ([Self-checks](#self-checks)).
+  permanent second reader. `test/fast/liveness.test.mjs` enforces it ([Self-checks](#self-checks)).
 
 ### P5 — Faults are fixed in their class, where they live
 
@@ -3295,8 +3297,18 @@ whether a loop converges, `{ruling: converging | not_converging, why}`. The inve
   judge's (L3); no bound in a return schema; role frontmatter (kind, tools, commands, schema);
   prompts built only by `lib/brief.mjs`, `lib/briefs/` and `renderMessage`, so no command or path
   for a model to carry reaches one (P2); no skill that starts an agent; gate clauses in gated
-  skills; a stated task-tool fallback; and size budgets.
-- **The scripted runner** (`test/harness/scripted-runner.mjs`) stands in for the host: it is the
+  skills; a stated task-tool fallback; size budgets; and that nothing in `test/fast/` imports
+  `child_process` or a helper from `test/` outside it (`fast-tier`).
+- **The suite** runs through `tools/suite.mjs`: `node tools/suite.mjs` runs everything and
+  `--fast` only `test/fast/`, the files that spawn no process, which finish in about a second.
+  The fast tier runs under a preload (`test/fast/harness/no-spawn.mjs`) that makes every
+  `child_process` call throw, so a test there that starts a process, directly or through `lib/`,
+  fails; `test/fast-tier-spawns.test.mjs` runs the tier under it in every full run, and the
+  `fast-tier` lint rule is the static half that catches the import.
+  A failed run is repeated at `--test-concurrency=2` over only the tests that failed, and each
+  first-run failure is named `flake` (it passed the repeat) or `red`; the exit code is 1 only
+  for red.
+- **The scripted runner** (`test/fast/harness/scripted-runner.mjs`) stands in for the host: it is the
   real `runAgent` over a scripted CLI, each start of the CLI answered by the next step of a script
   keyed by role, node and thread, so a program run against real git (`test/harness/program-rig.mjs`,
   whose `executionRig` seeds an approved, compiled effort and an execution's home, log port and
@@ -3319,10 +3331,10 @@ whether a loop converges, `{ruling: converging | not_converging, why}`. The inve
   A host release that changes one of them fails here before it fails an execution.
 - **Real git.** Every boundary, the locus, the resume ladder, verification and landing are tested
   against real repositories and worktrees.
-- **Pins:** verbatim blocks match across files (`test/verbatim-blocks.test.mjs`); every role's
-  tools and commands are pinned (`test/role-allowlists.test.mjs`); every pointer into this document
-  resolves and every law names its enforcement (`test/design-doc.test.mjs`).
-- **Liveness** (P4, `test/liveness.test.mjs`): every role is dispatched by a program; every record
+- **Pins:** verbatim blocks match across files (`test/fast/verbatim-blocks.test.mjs`); every role's
+  tools and commands are pinned (`test/fast/role-allowlists.test.mjs`); every pointer into this document
+  resolves and every law names its enforcement (`test/fast/design-doc.test.mjs`).
+- **Liveness** (P4, `test/fast/liveness.test.mjs`): every role is dispatched by a program; every record
   kind is written somewhere and read somewhere; every message kind has a route and a reader; every
   field a role's schema asks for is read; every lint rule has its test; every library export is
   used somewhere. Defined-never-dispatched, written-never-read and read-never-written fail the
@@ -3404,8 +3416,8 @@ second time; a 3.x or early-4.x store runs them in that order before `migrate-v5
   definitions and skill texts count as code here.
 - It describes the present. No history, no increment numbers, no links to documents that no
   longer exist. Git has the history.
-- `test/design-doc.test.mjs` pins that every section has a body and every pointer into this
-  document resolves; `test/verbatim-blocks.test.mjs` pins the `severity-ladder` block above
+- `test/fast/design-doc.test.mjs` pins that every section has a body and every pointer into this
+  document resolves; `test/fast/verbatim-blocks.test.mjs` pins the `severity-ladder` block above
   against its copy in `roles/reviewer.md`.
 - `docs/superpowers/` is gitignored local scratch for planning sessions. Nothing in the repository
   may point into it.

@@ -21,7 +21,7 @@ import {
   claimLockPath, executionDir, executionRunId, posix, readJson, resolveHandle, resultPath, runDir,
   runHome, runJsonPath, runLogFile, runLogPath, runsDir, writeJson, writeWhole,
 } from '../lib/store.mjs'
-import { scriptedRunner } from './harness/scripted-runner.mjs'
+import { scriptedRunner } from './fast/harness/scripted-runner.mjs'
 import { DEAD_PID } from './harness/dead-pid.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))

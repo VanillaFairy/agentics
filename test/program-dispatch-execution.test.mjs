@@ -27,7 +27,7 @@ import { loadRole, tierFor } from '../lib/roles.mjs'
 import { dispatchedEntry } from '../lib/runner.mjs'
 import { dispatchKey, executionDir, returnPath, runDir, sessionOf, specPath } from '../lib/store.mjs'
 import { programRig } from './harness/program-rig.mjs'
-import { scriptedRunner } from './harness/scripted-runner.mjs'
+import { scriptedRunner } from './fast/harness/scripted-runner.mjs'
 
 const E = 'e1'
 const STAMP = '20261005-120000'

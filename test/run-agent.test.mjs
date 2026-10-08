@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 
 import { classifyCall, cleanEnv, dispatchedEntry, parseStream, returnedEntry, runAgent, spawner } from '../lib/runner.mjs'
 import { dispatchKey, livePath, returnPath, sessionOf } from '../lib/store.mjs'
-import { memoryLog } from './harness/memory-log.mjs'
+import { memoryLog } from './fast/harness/memory-log.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const FAKE = join(here, 'harness', 'fake-claude.mjs')

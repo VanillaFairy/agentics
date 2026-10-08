@@ -529,6 +529,7 @@ test("the card's report is the latest return that carries text, with its lead", 
     mkdirSync(dirname(path), { recursive: true })
     writeFileSync(path, path.endsWith('.json') ? JSON.stringify({ items: [{ name: 'Parser', state: 'done' }] }) : 'a 4.x file\n')
   }
+  assert.deepEqual(cardsOf(repo, effort)['a/impl'].report, { dispatch: D_IMPL, lead: IMPL_TEXT }, 'the report is the stored return, not a 4.x file')
   const dispatched = (d, n, role) => append(repo, effort, 'events', { kind: 'dispatched', node: 'a/impl', execution: stamp, dispatch: d, role, round: n, model: 'sonnet', effort: 'medium' })
   const second = round('a/impl', 2)
   const lead = ['The suite fails on two tests', 'outside this locus.']

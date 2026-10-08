@@ -95,8 +95,12 @@ let interrupted = false
 /** Kill a child and everything it started: the runner's test files are its children. */
 function killTree(child) {
   if (child.exitCode !== null || child.signalCode !== null) return
-  if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
-  else process.kill(-child.pid, 'SIGTERM')
+  try {
+    if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
+    else process.kill(-child.pid, 'SIGTERM')
+  } catch {
+    // The group ended between the check above and the kill: there is nothing left to stop.
+  }
 }
 
 function stopOnSignals() {

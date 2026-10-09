@@ -39,7 +39,7 @@ premise defects, because the premises are the part not being questioned.
 ## Step 1 — Start the probe
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" probe --repo . --detach --artifact <path> --roots <roots> [--context "<one line>"] [--per-axis]
+node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" probe --repo . --detach --artifact <path> [--roots <roots>] [--context "<one line>"] [--per-axis]
 ```
 
 `--artifact` is the path to the document. `--roots` is the repository it would be implemented in,

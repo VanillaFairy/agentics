@@ -40,7 +40,7 @@ a manifest states the language and the runtime, and asking a person for what a f
 says is the waste this plugin exists to remove. Ask only for what only they know — a licence
 policy, an appetite for dependencies.
 
-**Roots.** Which repositories are in play. Default to the current working directory.
+**Roots.** Which repositories are in play, comma-separated. Default to the current working directory.
 
 **Intelligence.** `low`, `normal` or `max` — the tier the framing and assessing agents run at:
 Sonnet, Opus, or Opus one effort step deeper.

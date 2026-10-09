@@ -5,12 +5,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-
 import { roundOf } from '../lib/evidence.mjs'
-import { cli, returnFile } from './harness/evidence-fixture.mjs'
 
 const hit = (path, line, kind = 'ground') => ({ path, line, note: 'n', kind })
 const report = (over = {}) => ({ hits: [hit('src/a.js', 1)], searched: ['src/'], no_match: '', not_reached: '', stop_reason: 'exhausted', ...over })
@@ -93,14 +88,4 @@ test('a researcher\'s candidates are its progress, by name', () => {
 test('a round says whether it names something it looked for and did not find', () => {
   assert.equal(roundOf(report({ no_match: 'no maintained crate' })).absent, true)
   assert.equal(roundOf(report()).absent, false)
-})
-
-test('the round verb reads the files and prints handles only', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'rounds-'))
-  const first = returnFile(dir, report({ stop_reason: 'unfinished', not_reached: 'lines 356-768 never read' }))
-  const second = returnFile(dir, report({ stop_reason: 'unfinished', hits: [hit('src/c.js', 3)] }))
-  const out = cli(dir)('round', '--from', second, '--earlier', first)
-  assert.equal(out.next, 'continue')
-  assert.equal(out.gained_n, 1)
-  assert.equal(cli(dir)('round', '--from', join(dir, 'never-written.json')).why, 'unreadable')
 })

@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, rmSync } from 'node:fs'
 
 import { carriedFindings, recordProbe, reviewScope, sectionsOf, unitsOf } from '../lib/evidence.mjs'
-import { cli, gitRepo, lines, returnFile, text, withLine, write } from './harness/evidence-fixture.mjs'
+import { gitRepo, lines, returnFile, text, withLine, write } from './harness/evidence-fixture.mjs'
 
 /** The fields a section is read by. */
 const shape = (sections) => sections.map(({ slug, title, start, end }) => ({ slug, title, start, end }))
@@ -100,7 +100,7 @@ function specRepo(t) {
 
 const finding = (over) => ({ axis: 'yagni', severity: 'gap', section: 'Design / Contracts', claim: 'c', evidence: 'e', start: 2, end: 3, ...over })
 
-test('carried items become finding handles numbered from P1, as the review-scope verb names them', (t) => {
+test('carried items become finding handles numbered from P1, in the order the scope carries them', (t) => {
   const repo = specRepo(t)
   const { snapshot } = reviewScope(repo, SPEC)
   recordProbe(repo, {
@@ -111,8 +111,8 @@ test('carried items become finding handles numbered from P1, as the review-scope
   const scope = reviewScope(repo, SPEC, snapshot)
   const handles = carriedFindings(scope)
   assert.deepEqual(handles.map((f) => [f.id, f.item, f.carried]), scope.carried.map((it, i) => ['P' + (i + 1), it.id, true]))
-  const verb = cli(repo)('review-scope', '--file', SPEC, '--since', snapshot)
-  assert.deepEqual(handles.map(({ item, severity, axis, section }) => ({ item, severity, axis, section })), verb.carried)
+  assert.deepEqual(handles.map((f) => f.severity).sort(), ['ambiguity', 'gap'])
+  assert.deepEqual(handles.map((f) => f.axis), ['yagni', 'yagni'])
   assert.equal(handles.length, 2)
 })
 
@@ -146,11 +146,10 @@ test('every unit\'s ruling is written into the findings file beside the findings
   assert.deepEqual(written.findings.map((f) => f.id), out.findings.map((f) => f.id))
 })
 
-test('a round given no units writes an empty list beside the findings, through the 4.x record verb too', (t) => {
+test('a round given no units writes an empty list beside the findings', (t) => {
   const repo = specRepo(t)
   const { snapshot } = reviewScope(repo, SPEC)
-  const out = cli(repo)('record', '--kind', 'probe', '--file', SPEC, '--snapshot', snapshot,
-    '--from', returnFile(repo, { findings: [finding()] }), '--bundle', 'yagni')
+  const out = recordProbe(repo, { file: SPEC, snapshot, from: [returnFile(repo, { findings: [finding()] })], bundle: ['yagni'] })
   assert.equal(out.recorded, true)
   const written = JSON.parse(readFileSync(out.findings_file, 'utf8'))
   assert.deepEqual([written.units, written.findings.map((f) => f.id)], [[], ['P1']])

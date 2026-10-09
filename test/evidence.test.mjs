@@ -6,11 +6,10 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync, spawn, spawnSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import {
   ITEM_KINDS, REQUIRED, RETURN_KINDS, checkItem, itemId, liveItems, recordItems, recordRaw, snapshotSpec,
@@ -22,7 +21,6 @@ import {
   evidenceItemsPath, evidenceReturnsDir, evidenceSnapshotsDir, projectStateDir, safePath,
 } from '../lib/store.mjs'
 
-const CLI = fileURLToPath(new URL('../lib/evidence.mjs', import.meta.url))
 const LEDGER_URL = new URL('../lib/ledger.mjs', import.meta.url).href
 const NOW = new Date('2026-09-26T10:00:00Z')
 const TODAY = NOW.toISOString().slice(0, 10)
@@ -346,26 +344,6 @@ test('a refused return leaves no raw file behind', () => {
   assert.equal(out.refused.length, 1)
   const dir = evidenceReturnsDir(repo)
   assert.ok(!existsSync(dir) || readdirSync(dir).length === 0)
-})
-
-test('the CLI records an approach draft from the file its author wrote, and prints only handles', () => {
-  const repo = gitRepo()
-  const draft = { approach: 'minimal-change', shape: "it's C:\\src\\x — \"quoted\"\n", contracts: [], cites: [], risks: [] }
-  const file = join(repo, 'draft.json')
-  writeFileSync(file, JSON.stringify(draft))
-  const run = (...args) => spawnSync(process.execPath, [CLI, 'record', '--repo', repo, '--kind', 'approach', ...args], { encoding: 'utf8' })
-
-  const good = run('--from', file)
-  assert.equal(good.status, 0, good.stdout + good.stderr)
-  const out = JSON.parse(good.stdout)
-  assert.equal(out.payload_digest, fnv1a(canonical(out.payload)))
-  assert.equal(out.payload.ok, true)
-  assert.deepEqual(JSON.parse(readFileSync(join(evidenceReturnsDir(repo), out.payload.return + '.json'), 'utf8')), draft)
-
-  const missing = run('--from', join(repo, 'nothing.json'))
-  assert.equal(missing.status, 0, 'an unreadable file is a typed refusal, not a failed program')
-  assert.deepEqual(JSON.parse(missing.stdout).payload, { ok: false, error: { kind: 'return_unreadable' } })
-  assert.match(missing.stderr, /nothing\.json/, 'the reason goes to stderr; stdout carries handles only')
 })
 
 // ------------------------------------------------------------------ where the store lives

@@ -1,171 +1,129 @@
-// test/fast/no-self-verdict.test.mjs — pins the ban on self-reported verdict booleans in the
-// return schemas (IRON LAW §2, extended to review).
+// test/fast/no-self-verdict.test.mjs — pins the two checks of the no-self-verdict rule over the return
+// schemas: no verdict-named boolean (`approved`, `passed`, `ok`, …) while fact names such as
+// `build_ok` stay legal; and the ruling fields — none in a producer's or a searcher's schema, and
+// per-unit rulings required in every judge's.
 //
-// The line this rule draws is verdict names vs. fact names: `approved`/`passed`/`ok`/... are
-// judgments a schema must never let a model set for itself, while `build_ok`/`suite_pass`/...
-// describe an observed command exit status and stay legal. The clean case below is the real
-// VERIFY schema, verbatim — if this rule ever flagged that schema, every workflow carrying it
-// would trip the lint on day one.
+// Design: docs/DESIGN.md#l3--separate-judges and docs/DESIGN.md#self-checks.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+
 import { id, applies, check } from '../../tools/rules/no-self-verdict.mjs'
 
 const FILE = 'lib/schemas.mjs'
+const SCHEMAS = readFileSync(new URL('../../lib/schemas.mjs', import.meta.url), 'utf8')
+const lines = (src) => check(src, FILE).map((v) => v.line)
+
+/** A schema table in lib/schemas.mjs's shape, one entry per argument. */
+const table = (...entries) => ['export const SCHEMAS = {', ...entries, '}'].join('\n')
+
+test('its id is no-self-verdict', () => {
+  assert.equal(id, 'no-self-verdict')
+})
 
 test('it applies to the return schemas, and nothing else', () => {
   assert.ok(applies.test('lib/schemas.mjs'))
-  assert.ok(!applies.test('service-workflows/x.workflow.js'))
-  assert.ok(!applies.test('roles/reviewer.md'))
-  assert.ok(!applies.test('tools/lint.mjs'))
-  assert.ok(!applies.test('lib/runner.mjs'))
+  for (const path of ['lib/runner.mjs', 'roles/reviewer.md', 'tools/lint.mjs', 'lib/programs/review.mjs', 'test/fast/schemas.test.mjs']) {
+    assert.ok(!applies.test(path), path)
+  }
 })
 
-test('flags approved declared as a boolean schema property', () => {
-  const src = [
-    'const FINDINGS = {',
-    '  type: "object",',
-    "  properties: { approved: { type: 'boolean' } },",
-    '}',
-  ].join('\n')
+test('lib/schemas.mjs as it stands passes both checks', () => {
+  assert.deepEqual(check(SCHEMAS, FILE), [])
+})
 
-  const found = check(src, FILE)
+// --- verdict booleans ---------------------------------------------------------------------------
+
+test('flags approved declared as a boolean schema property', () => {
+  const found = check(['const FINDINGS = {', '  type: "object",', "  properties: { approved: { type: 'boolean' } },", '}'].join('\n'), FILE)
   assert.equal(found.length, 1)
   assert.equal(found[0].line, 3)
   assert.match(found[0].message, /approved/)
 })
 
-test('flags complete declared as a boolean schema property', () => {
-  // The coverage block's `complete` is DERIVED in JS and never appears in a schema — a
-  // schema declaring it is exactly the laundering IRON LAW §2 forbids.
-  const src = "properties: { complete: { type: 'boolean' } }"
-
-  const found = check(src, FILE)
-  assert.equal(found.length, 1)
-  assert.equal(found[0].line, 1)
-  assert.match(found[0].message, /complete/)
-})
-
-test('flags two banned keys in one file as two findings', () => {
-  const src = [
-    'const SCHEMA = {',
-    '  properties: {',
-    "    passed: { type: 'boolean' },",
-    "    lgtm: { type: 'boolean' },",
-    '  },',
-    '}',
-  ].join('\n')
-
-  const found = check(src, FILE)
-  assert.equal(found.length, 2)
-  assert.deepEqual(found.map((v) => v.line), [3, 4])
-  assert.match(found[0].message, /passed/)
-  assert.match(found[1].message, /lgtm/)
-})
-
 test('flags every key in the banned list', () => {
-  // Mirrors test/fast/no-schema-bounds.test.mjs's "flags all four banned keys": a literal copy
-  // of the rule's BANNED_KEYS, kept here rather than exported, since the rule module's
-  // contract is exactly `id`, `applies`, `check` and this is not reason enough to widen it.
-  // If a key is ever typo'd or dropped from the rule, this loop is what catches it — the
-  // four keys covered by name above are not the whole list.
-  const bannedKeys = [
-    'approved', 'approve', 'passed', 'ok', 'accepted', 'lgtm', 'complete', 'success', 'valid',
-  ]
-
-  for (const key of bannedKeys) {
+  for (const key of ['approved', 'approve', 'passed', 'ok', 'accepted', 'lgtm', 'complete', 'success', 'valid']) {
     const found = check(`${key}: { type: 'boolean' }`, FILE)
     assert.equal(found.length, 1, `${key} should be flagged`)
     assert.match(found[0].message, new RegExp(key))
   }
 })
 
-test('flags two banned keys declared on the same line', () => {
-  const src = "{ ok: { type: 'boolean' }, valid: { type: 'boolean' } }"
+test('flags two banned keys on one line, and a key whose type is on the next line, on the key line', () => {
+  assert.deepEqual(lines("{ ok: { type: 'boolean' }, valid: { type: 'boolean' } }"), [1, 1])
+  assert.deepEqual(lines(['properties: {', '  accepted: {', "    type: 'boolean',", '  },', '}'].join('\n')), [2])
+})
 
+test('does not flag fact names, a banned key as a substring, a non-boolean, or prose', () => {
+  assert.deepEqual(lines("build_ok: { type: 'boolean' },\nsuite_pass: { type: 'boolean' },"), [])
+  assert.deepEqual(lines("passed_tests: { type: 'boolean' }"), [])
+  assert.deepEqual(lines("passed: { type: 'array', items: { type: 'string' } }"), [])
+  assert.deepEqual(lines('const PROMPT = `\n  Say whether it passed the suite and whether the fix is complete.\n`'), [])
+})
+
+// --- ruling fields -------------------------------------------------------------------------------
+
+test('a producer schema with a ruling field is a finding on that field', () => {
+  for (const field of ['ruling', 'rulings', 'units', 'verdict']) {
+    const src = table("  draft: {\n    kind: 'producer',", `    schema: obj({ text: str, ${field}: strings }),`, '  },')
+    const found = check(src, FILE)
+    assert.deepEqual(found.map((v) => v.line), [4], field)
+    assert.match(found[0].message, new RegExp(field))
+    assert.match(found[0].message, /draft/)
+  }
+})
+
+test('a ruling field nested in a searcher schema is a finding', () => {
+  const src = table("  hits: { kind: 'searcher', schema: long({ hits: arr(obj({ path: str, verdict: str })), searched: strings }) },")
+  assert.deepEqual(lines(src), [2])
+})
+
+test('a producer schema that builds a per-unit ruling is a finding', () => {
+  const src = table("  draft: { kind: 'producer', schema: obj({ text: str, parts: arr(unit('a', 'b')) }) },")
+  assert.deepEqual(lines(src), [2])
+})
+
+test('a judge schema that requires a units array, a rulings array or one ruling passes', () => {
+  assert.deepEqual(lines(table("  j: { kind: 'judge', schema: long({ notes: str, units: arr(unit('clean', 'findings')) }) },")), [])
+  assert.deepEqual(lines(table("  j: { kind: 'judge', schema: long({ rulings: arr(obj({ id: str, why: str })) }, ['rulings']) },")), [])
+  assert.deepEqual(lines(table("  j: { kind: 'judge', schema: long({ ruling: one('converging', 'not_converging'), why: str }, ['ruling', 'why']) },")), [])
+})
+
+test('a judge schema with no ruling field is a finding on its entry line', () => {
+  const src = table("  j: { kind: 'judge', schema: long({ notes: str, text: str }) },")
   const found = check(src, FILE)
-  assert.equal(found.length, 2)
-  assert.deepEqual(found.map((v) => v.line), [1, 1])
-  assert.match(found[0].message, /ok/)
-  assert.match(found[1].message, /valid/)
+  assert.deepEqual(found.map((v) => v.line), [2])
+  assert.match(found[0].message, /\bj\b/)
 })
 
-test('flags a key and its type on separate lines, on the key line', () => {
-  // Pins the claim in the rule's header comment: [^}]* deliberately spans newlines so a
-  // schema written one property per line — how every real schema in this codebase is
-  // written — still matches. Asserting the line is the KEY's line, not the type's line,
-  // is what would catch a future "tightening" of [^}]* to [^}\n]*: that change only ever
-  // produces fewer findings, so only a positive case here can catch it.
-  const src = [
-    'properties: {',
-    '  accepted: {',
-    "    type: 'boolean',",
-    '  },',
-    '}',
-  ].join('\n')
-
-  const found = check(src, FILE)
-  assert.equal(found.length, 1)
-  assert.equal(found[0].line, 2)
+test('a judge whose units are not required is a finding', () => {
+  assert.deepEqual(lines(table("  j: { kind: 'judge', schema: long({ notes: str, units: arr(unit('a')) }, ['notes']) },")), [2])
 })
 
-test('does not flag fact-named booleans build_ok or suite_pass', () => {
-  const src = [
-    "build_ok: { type: 'boolean' },",
-    "suite_pass: { type: 'boolean' },",
-  ].join('\n')
-
-  assert.deepEqual(check(src, FILE), [])
+test('a judge whose units are not an array is a finding', () => {
+  assert.deepEqual(lines(table("  j: { kind: 'judge', schema: long({ units: str }) },")), [2])
 })
 
-test('does not flag a key that merely contains a banned key as a substring', () => {
-  const src = "passed_tests: { type: 'boolean' }"
-  assert.deepEqual(check(src, FILE), [])
+test("a ruling nested under another of a judge's fields does not count as its rulings", () => {
+  assert.deepEqual(lines(table("  j: { kind: 'judge', schema: long({ found: arr(obj({ id: str, ruling: one('a', 'b') })) }) },")), [2])
 })
 
-test('does not flag an exact-match key whose type is not boolean', () => {
-  const src = "passed: { type: 'array', items: { type: 'string' } }"
-  assert.deepEqual(check(src, FILE), [])
+test('a judge written as a JSON Schema object is read through its properties and required', () => {
+  const judge = (required) => table(
+    "  j: { kind: 'judge', schema: { type: 'object', properties: { units: { type: 'array', items: {} } }" + required + ' } },')
+  assert.deepEqual(lines(judge(", required: ['units']")), [])
+  assert.deepEqual(lines(judge(", required: ['notes']")), [2])
+  assert.deepEqual(lines(judge('')), [2])
 })
 
-test('does not flag banned words in prose or prompt strings', () => {
-  const src = [
-    'const PROMPT = `',
-    '  Report clearly say whether it passed the suite and whether the fix is complete.',
-    '`',
-  ].join('\n')
-
-  assert.deepEqual(check(src, FILE), [])
+test('a schema entry in a comment is no finding', () => {
+  assert.deepEqual(lines("// j: { kind: 'judge', schema: obj({ text: str }) },\n// p: { kind: 'producer', schema: obj({ units: strings }) },"), [])
 })
 
-test('the real VERIFY schema is clean', () => {
-  const src = `
-const VERIFY = {
-  type: 'object', additionalProperties: false,
-  required: ['stop_reason', 'build', 'suite', 'suite_output_tail',
-             'discriminator', 'series_findings', 'notes'],
-  properties: {
-    stop_reason: { type: 'string', enum: ['completed', 'environment_broken'] },
-    build: { type: 'string', enum: ['passed', 'failed', 'absent'] },  // observed — a fact, not a judgment
-    suite: { type: 'string', enum: ['passed', 'failed', 'absent'] },
-    suite_output_tail: { type: 'string' },  // last ~40 lines of real output, verbatim
-    discriminator: { type: 'array', items: {
-      type: 'object', additionalProperties: false,
-      required: ['test_id', 'failed_on_base', 'passes_now'],
-      properties: {
-        test_id: { type: 'string' },
-        failed_on_base: { type: 'boolean' },   // observed at base_sha in THIS worktree
-        passes_now: { type: 'boolean' },
-      } } },
-    series_findings: { type: 'array', items: {
-      type: 'object', additionalProperties: false,
-      required: ['sha', 'check', 'message', 'blocking'],
-      properties: { sha: { type: 'string' }, check: { type: 'string' },
-                    message: { type: 'string' }, blocking: { type: 'boolean' } } } },
-    notes: { type: 'string' },
-  },
-}
-`
-
-  assert.deepEqual(check(src, FILE), [])
+test('lib/schemas.mjs with a ruling field added to a producer fails the rule', () => {
+  const broken = SCHEMAS.replace("investigate_report: { kind: 'producer', schema: obj({ report: str }) }",
+    "investigate_report: { kind: 'producer', schema: obj({ report: str, units: strings }) }")
+  assert.notEqual(broken, SCHEMAS, 'the fixture edit applies')
+  assert.equal(check(broken, FILE).length, 1)
 })

@@ -2,11 +2,6 @@
   "unit": "lines",
   "why": "docs/DESIGN.md#p2--code-does-what-is-deterministic-models-only-judge — a definition is sized to its role; raising a budget is a reviewed diff, not a drift",
   "files": {
-    "agents/analyst.md": 95,
-    "agents/courier.md": 25,
-    "agents/doc-researcher.md": 105,
-    "agents/historian.md": 100,
-    "agents/scout.md": 95,
     "roles/doc-researcher.md": 80,
     "roles/historian.md": 74,
     "roles/scout.md": 69,

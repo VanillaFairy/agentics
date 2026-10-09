@@ -1,4 +1,4 @@
-// tools/rules/size-budget.mjs — every agent and skill definition fits the budget it was given.
+// tools/rules/size-budget.mjs — every role and skill definition fits the budget it was given.
 //
 // Design: docs/DESIGN.md#self-checks. Runtime text is re-read on every turn of every dispatch
 // that loads it, so its size is a recurring cost, and reasons belong in DESIGN.md rather than in
@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 
 export const id = 'size-budget'
 
-export const applies = /^((agents|roles)\/[^/]+\.md|skills\/.+\.md)$/
+export const applies = /^(roles\/[^/]+\.md|skills\/.+\.md)$/
 
 let budgets = null
 const load = () => {

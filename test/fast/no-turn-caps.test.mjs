@@ -21,15 +21,16 @@ const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 const PROGRAM = 'lib/programs/survey.mjs'
 const SKILL = 'skills/investigate/SKILL.md'
 
-test('it applies to SKILL.md, agent charters, the programs and lib/run.mjs — not to workflows, tools or the rest of lib', () => {
-  // Agent charters were originally out of scope; the self-audit widened the rule, since
-  // CLAUDE.md's clause table assigns IL1 to this rule alone and a cap written
-  // into a charter reaches every dispatch of that agent. The programs and lib/run.mjs start
-  // every dispatch, so they are in scope too.
+test('it applies to SKILL.md, the role files, the programs and lib/run.mjs — not to workflows, tools or the rest of lib', () => {
+  // A cap written into a role file reaches every dispatch of that role, and CLAUDE.md's clause
+  // table assigns IL1 to this rule alone. The programs and lib/run.mjs start every dispatch, so
+  // they are in scope too.
   assert.ok(applies.test(PROGRAM))
   assert.ok(!applies.test('service-workflows/gather-evidence-without-concluding.workflow.js'))
   assert.ok(applies.test(SKILL))
-  assert.ok(applies.test('agents/scout.md'))
+  assert.ok(applies.test('roles/scout.md'))
+  assert.ok(!applies.test('roles/drafts/scout.md'))
+  assert.ok(!applies.test('agents/scout.md'))
   assert.ok(applies.test('lib/programs/survey.mjs'))
   assert.ok(applies.test('lib/programs/common.mjs'))
   assert.ok(applies.test('lib/programs/converge.mjs'))
@@ -45,6 +46,22 @@ test('flags a max_turns in a program file and in lib/run.mjs, on its line', () =
   for (const path of ['lib/programs/survey.mjs', 'lib/run.mjs']) {
     const found = lintSource(src, path, [{ id, applies, check }])
     assert.deepEqual(found.map((f) => [f.file, f.rule, f.line]), [[path, id, 2]], path)
+  }
+})
+
+test('a cap written into a role file is flagged on its line', () => {
+  const src = ['---', 'name: scout', '---', 'Search until you are done.', 'Stop after 10 tool calls and report.'].join('\n')
+  const found = lintSource(src, 'roles/scout.md', [{ id, applies, check }])
+  assert.deepEqual(found.map((f) => [f.file, f.rule, f.line]), [['roles/scout.md', id, 5]])
+})
+
+test('the shipped role files are judged and carry no cap', () => {
+  const roles = readdirSync(join(ROOT, 'roles')).filter((name) => name.endsWith('.md'))
+  assert.ok(roles.length > 0, 'no role files found')
+  for (const name of roles) {
+    const path = 'roles/' + name
+    assert.ok(applies.test(path), path + ' is not judged')
+    assert.deepEqual(check(readFileSync(join(ROOT, path), 'utf8'), path), [], path)
   }
 })
 

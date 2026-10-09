@@ -42,8 +42,8 @@ const REQUIRED_IDS = [
   // Probe and design both dispose of the same findings, and a disposition described twice
   // drifts toward whichever copy was edited last.
   'probe-disposition',
-  // Two halves of one cost model: what a dispatcher owes, and what a dispatched agent owes.
-  'dispatch-economy', 'dispatched-economy',
+  // What a dispatcher owes: the cost model every dispatch decision is made to.
+  'dispatch-economy',
   // Every phase that records into an effort says the same thing about what a record is worth.
   'effort-store',
   // Every visible command ends on the same computed Next line; a copy that drifts lets one command
@@ -55,9 +55,6 @@ const REQUIRED_IDS = [
   // Every skill that asks the user a question puts it the same way; a copy that drifts lets one
   // skill re-ask without the explanation the user asked for, or number a set differently.
   'asking-the-user',
-  // Every evidence agent writes its full return where its dispatch names and hands back handles; a
-  // copy that drifts is an agent that retypes its findings into its return, or writes elsewhere.
-  'return-file',
 ]
 
 const OPEN = /<!--\s*agentics:verbatim\s+([a-z0-9-]+)\s*-->/g

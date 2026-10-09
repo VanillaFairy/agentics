@@ -131,13 +131,14 @@ test('a blank capability searches nothing', async (t) => {
 
 // --- the frame -------------------------------------------------------------------------------
 
+const MAX = 13
 test("the frame's brief holds the capability, the roots, the caller's constraints and notes and the angle bound", async (t) => {
   const constraints = 'must stay under a kilobyte of glue'
   const notes = 'the team once tried a YAML reader and dropped it'
   const roots = ['packages/parser', 'tools/cfg']
-  const { rig } = await sweep(t, scriptOf({ assess: DEFAULT_ASSESS }), { args: { constraints, notes, roots, max_angles: 13 } })
+  const { rig } = await sweep(t, scriptOf({ assess: DEFAULT_ASSESS }), { args: { constraints, notes, roots, max_angles: MAX } })
   const brief = firstBrief(rig, 'frame')
-  for (const text of [CAPABILITY, ...roots, constraints, notes, '13']) assert.ok(brief.includes(text), 'the frame brief lacks ' + text)
+  for (const text of [CAPABILITY, ...roots, constraints, notes, 'at most ' + MAX + ' independent']) assert.ok(brief.includes(text), 'the frame brief lacks ' + text)
 })
 
 test("each dispatch's tier is its role's at the dial", async (t) => {

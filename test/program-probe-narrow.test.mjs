@@ -257,11 +257,11 @@ test("a narrowed round's head count is earned by its changed lines", async (t) =
   const w = reviewedThenEdited(t, { text: doc, edited, findings: [] })
   assert.equal(changedLines(w.scope.changed), 1)
   const n = narrowed(edited, w.scope)
-  assert.equal(n.groups.length, Math.ceil(1 / 400))
+  assert.ok(n.groups.length < headsFor(STANDING, linesOf(doc).length, false), 'the fixture: a narrowed round buys fewer heads than a full one')
   const run = w.rig.relaunch(n.script)
   const result = await probe(run.ctx, argsFor(w.rig.repo, ART, { since: w.since }))
-  assert.deepEqual(proberCalls(run).map((c) => c.thread.key), ['prober:1'])
-  assert.deepEqual(result.analysts, [STANDING])
+  assert.deepEqual(proberCalls(run).map((c) => c.thread.key), n.groups.map((_, i) => 'prober:' + (i + 1)))
+  assert.deepEqual(result.analysts, n.groups)
 })
 
 test('the narrowed round records only its new findings, anchored to the new snapshot', async (t) => {

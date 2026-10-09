@@ -170,6 +170,7 @@ test('an artefact outside every checkout is probed in full and nothing is record
   assert.equal(itemsIn(rig.repo).length, 0)
 })
 
+const WT_FINDINGS = [finding('ambiguity', 'ambiguity', 'intent', 4)]
 test("a probe in a linked worktree reads and anchors the worktree's text", async (t) => {
   const rig = rigFor(t, { files: { [ART]: DOC } })
   const dir = mkdtempSync(join(tmpdir(), 'agentics-probe-wt-'))
@@ -180,9 +181,10 @@ test("a probe in a linked worktree reads and anchors the worktree's text", async
   })
   git(rig.repo, 'worktree', 'add', '-q', '-b', 'side', wt)
   const WT_DOC = DOC.replace('limit inbound requests per key', 'WORKTREE_ONLY_TOKEN limit outbound calls per host')
+  assert.notEqual(WT_DOC, DOC, 'the fixture: the worktree text differs')
   writeFileSync(native(wt, ART), WT_DOC)
   const { script } = scriptFor(WT_DOC, STANDING, {
-    probers: { 1: (units) => [{ output: proberOut(units, { findings: [finding('ambiguity', 'ambiguity', 'intent', 4)] }) }] },
+    probers: { 1: (units) => [{ output: proberOut(units, { findings: WT_FINDINGS }) }] },
   })
   const ctx = programContext({ ...rig.ctx, repo: wt, root: wt, runAgent: scriptedRunner(script, { log: rig.log }).runAgent })
   const args = argsFor(wt, ART)
@@ -192,7 +194,7 @@ test("a probe in a linked worktree reads and anchors the worktree's text", async
   const scope = reviewScope(wt, args.artifact, '', { root: wt })
   assert.equal(result.snapshot, scope.snapshot)
   assert.notEqual(result.snapshot, reviewScope(rig.repo, native(rig.repo, ART)).snapshot, "the worktree's text, not the main checkout's")
-  assert.ok(result.findings.length > 0)
+  assert.equal(result.findings.length, WT_FINDINGS.length)
   const items = liveItems(rig.repo)
   for (const f of result.findings) {
     const item = items.get(f.item)
@@ -606,7 +608,7 @@ test('a prober that fails records nothing and leaves its units open', async (t) 
   assert.equal(itemsIn(rig.repo).length, 0)
   assert.ok(result.coverage.failed_channels.includes('probe'), JSON.stringify(result.coverage))
   assert.deepEqual(sorted(result.units.open), sorted(unitsOfGroup[1]))
-  assert.equal(result.findings.length, 3, "the other probers' findings are listed")
+  assert.equal(result.findings.length, STANDING.length - 1, 'every prober but the failed one lists its finding')
   assert.ok(result.findings.every((f) => f.item === ''))
   assert.deepEqual(sorted(result.unrecorded), sorted(result.findings.map((f) => f.id)))
   assert.equal(result.snapshot, '')

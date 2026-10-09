@@ -95,12 +95,11 @@ test('only survey items are reused', async (t) => {
 test('an item off the ground is not reused', async (t) => {
   const OFF = 'OFF-2d9 the lib folder has its own loader'
   const { rig, result, s } = await surveyOver(t, (repo) => {
-    const [off] = seed(repo, [seedItem({ topic: 'elsewhere', claim: OFF, ground: ['lib'] })])
+    const [off] = seed(repo, [{ ...seedItem({ topic: 'elsewhere', claim: OFF, ground: ['lib'] }), spans: [{ path: 'lib/b.js', start: 10, end: 12 }] }])
     const [id] = seed(repo, [seedItem({ topic: 'known', claim: KNOWN })])
     return { id, off }
   }, script())
   assert.deepEqual(result.reused, [s.id])
-  assert.ok(!result.reused.includes(s.off))
   assert.ok(!planBrief(rig).includes(OFF))
 })
 
@@ -211,10 +210,16 @@ test('reused items come first in the result', async (t) => {
 })
 
 test("a judge's brief holds what the pool establishes", async (t) => {
-  const { rig } = await surveyOver(t, (repo) => { seed(repo, [seedItem({ topic: 'known', claim: KNOWN })]) }, script())
+  const OFF = 'OFF-2d9 the lib folder has its own loader'
+  const { rig } = await surveyOver(t, (repo) => {
+    seed(repo, [{ ...seedItem({ topic: 'elsewhere', claim: OFF, ground: ['lib'] }), spans: [{ path: 'lib/b.js', start: 10, end: 12 }] }])
+    seed(repo, [seedItem({ topic: 'known', claim: KNOWN })])
+  }, script())
   const judges = judgeCalls(rig).filter((c) => c.round === 1)
   assert.equal(judges.length, 1)
-  assert.ok(judges[0].brief.includes(KNOWN))
+  const est = judges[0].brief.split('ESTABLISHED —')[1] || ''
+  assert.ok(est.includes(KNOWN), 'the standing item is established')
+  assert.ok(!judges[0].brief.includes(OFF), 'an item off the ground is not')
 })
 
 test('an unreadable pool runs the survey in full and says so', async (t) => {

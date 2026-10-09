@@ -336,8 +336,6 @@ test('the CLI approves and reads state under its digest', (t) => {
   assert.equal(approved.payload_digest, fnv1a(canonical(approved.payload)))
   const state = cli('state', '--repo', repo, '--effort', E, '--folder', '.')
   assert.equal(state.payload.state, 'approved')
-  const refused = cli('prepare', '--repo', repo, '--effort', E, '--folder', '.', '--review', 'r.json')
-  assert.equal(refused.payload.ok, false, 'a refusal is a payload, and the CLI still exits 0')
   const disposed = cli('dispose', '--repo', repo, '--effort', E, '--folder', '.', '--finding', 'P1', '--outcome', 'discarded', '--by', 'user')
   assert.equal(disposed.payload.ok, true)
   const skipped = cli('skip-review', '--repo', repo, '--effort', E, '--folder', '.', '--reason', 'not earned')

@@ -125,20 +125,12 @@ test('listing names each effort and its executions, newest name first', () => {
   for (const row of out.efforts) assert.ok(!('surveys' in row) && !('probes' in row), row.effort)
 })
 
-test('the CLI opens and prints an envelope on every read', () => {
+test('the CLI opens an effort, by positionals or by flags', () => {
   const repo = fresh()
   assert.equal(run('open', repo, 'e1', '--about', 'the change', '--roots', repo).created, true)
-
-  const read = run('read', repo, 'e1')
-  assert.equal(read.payload.exists, true)
-  assert.match(read.payload_digest, /^[0-9a-f]{8}$/)
-
-  const flags = run('read', '--repo', repo, '--effort', 'e1')
-  assert.equal(flags.payload.effort, 'e1', 'the flag spelling reads the same effort')
-
-  const listed = run('list', repo)
-  assert.equal(listed.payload.efforts.length, 1)
-  assert.equal(listed.payload.efforts[0].effort, 'e1')
+  assert.equal(readEffort(repo, 'e1').exists, true)
+  assert.equal(run('open', '--repo', repo, '--effort', 'e2', '--about', 'another change').created, true)
+  assert.deepEqual(listEfforts(repo).efforts.map((e) => e.effort).sort(), ['e1', 'e2'])
 })
 
 test('the CLI has no link verb any more', () => {
@@ -148,10 +140,10 @@ test('the CLI has no link verb any more', () => {
     { encoding: 'utf8', stdio: 'pipe' }))
 })
 
-test('the CLI has no record or standing verb any more: evidence is lib/evidence.mjs\'s', () => {
+test('the CLI has no record, standing, read or list verb: evidence is lib/evidence.mjs\'s, and reads are in-process', () => {
   const repo = fresh()
   run('open', repo, 'e1', '--about', 'x')
-  for (const verb of ['record', 'standing']) {
+  for (const verb of ['record', 'standing', 'read', 'list']) {
     assert.throws(() => execFileSync(process.execPath, [CLI, verb, repo, 'e1'], { encoding: 'utf8', stdio: 'pipe' }), verb)
   }
 })

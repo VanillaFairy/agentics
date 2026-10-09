@@ -291,3 +291,26 @@ test('a session call refuses a value that is not a handle and a text past its li
   assert.deepEqual([landed.ok, landed.error.kind], [false, 'args_unreadable'])
   assert.equal(eventsOf(r, 'noted').length, 0)
 })
+
+test('a note past one line is refused naming --text-file, and --text-file records the file\'s text whole', (t) => {
+  const r = seeded(t)
+  const long = ['what stopped it:', 'the vault key was rotated', 'y'.repeat(400)].join('\n')
+  const refused = call(r, 'note', '--node', 'b', '--text', long.replace(/\n/g, ' '))
+  assert.deepEqual([refused.noted, refused.error.kind], ['', 'args_unreadable'])
+  assert.match(refused.error.message, /--text-file/)
+  assert.equal(eventsOf(r, 'noted').length, 0)
+
+  const file = join(r, 'note.txt')
+  writeFileSync(file, long)
+  assert.deepEqual(call(r, 'note', '--node', 'b', '--text-file', file), { noted: 'b', error: null })
+  assert.deepEqual(eventsOf(r, 'noted').map((e) => e.text), [long], 'the text, not the path')
+})
+
+test('a note by --text and --text-file is refused bad_args, and by a file that is none unknown_file', (t) => {
+  const r = seeded(t)
+  const file = join(r, 'note.txt')
+  writeFileSync(file, 'x')
+  assert.equal(call(r, 'note', '--node', 'b', '--text', 'y', '--text-file', file).error.kind, 'bad_args')
+  assert.equal(call(r, 'note', '--node', 'b', '--text-file', join(r, 'missing.txt')).error.kind, 'unknown_file')
+  assert.equal(eventsOf(r, 'noted').length, 0)
+})

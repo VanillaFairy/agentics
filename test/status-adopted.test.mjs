@@ -99,3 +99,21 @@ test("a folder review older than the adoption has not judged it", (t) => {
   assert.ok(text.includes('not yet judged'), text)
   assert.equal(text.includes('findings: c/a works'), false)
 })
+
+test('a folder only rolled up from a parked leaf carries no event, whatever outside records it holds', (t) => {
+  const r = world(t)
+  outside(r)
+  append(r, E, 'events', { kind: 'parked', node: 'c/a', execution: STAMP, return: 'needs_respec', question: 'edit it' })
+  const n = nodeOf(r, E, 'c')
+  assert.equal(n.status, 'parked')
+  assert.equal(n.event, null)
+})
+
+test('a folder only rolled up from an escalated leaf carries no event either', (t) => {
+  const r = world(t)
+  outside(r)
+  append(r, E, 'events', { kind: 'escalated', node: 'c/a', execution: STAMP, reason: 'stuck' })
+  const n = nodeOf(r, E, 'c')
+  assert.equal(n.status, 'escalated')
+  assert.equal(n.event, null)
+})

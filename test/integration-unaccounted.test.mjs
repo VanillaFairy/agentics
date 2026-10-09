@@ -180,3 +180,29 @@ test('a git read that fails is an error, never an empty list', (t) => {
   assert.notEqual(out.error, '')
   assert.deepEqual(out.commits, [])
 })
+
+test('a fork point git cannot find is an error, never the whole history', (t) => {
+  const w = world(t)
+  const one = commitIn(w.wt, { 'src/one.mjs': '1\n' }, 'one')
+  const noFork = (cwd, args, input) => (args[0] === 'merge-base' && !args.includes('--is-ancestor') ? { ok: false, status: 1, stdout: '', stderr: 'boom' } : storeGit(cwd, args, input))
+  const out = unaccountedOf(w.r, E, 'c', { nodes: w.nodes, events: [], base: { base_branch: 'main', base_sha: w.base } }, noFork)
+  assert.notEqual(out.error, '')
+  assert.deepEqual(out.commits, [])
+  assert.deepEqual(of(w, 'c').commits, [one], 'with git answering, the same branch holds only its own commit')
+})
+
+test('the root with no known base is an error, never the whole history', (t) => {
+  const w = world(t)
+  commitIn(worktreeOf(w.r, E, '.') && w.r, { 'docs/x.md': 'x\n' }, 'x')
+  const out = unaccountedOf(w.r, E, '.', { nodes: w.nodes, events: [] })
+  assert.notEqual(out.error, '')
+  assert.deepEqual(out.commits, [])
+})
+
+test("a folder whose parent has no integration branch is an error: its cut cannot be placed", (t) => {
+  const w = world(t)
+  git(w.r, 'branch', '-D', branchOf(E, '.'))
+  const out = of(w, 'c')
+  assert.match(out.error, /no integration branch/)
+  assert.deepEqual(out.commits, [])
+})

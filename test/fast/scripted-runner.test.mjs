@@ -144,6 +144,19 @@ test('a start with no step left rejects, naming its key', async (t) => {
   await assert.rejects(r.runAgent(callIn(dir, { thread: 'tests' })), /scout\|\|tests/)
 })
 
+test('a step the runner cannot play rejects, naming its key and what is wrong', async (t) => {
+  const dir = scratch(t)
+  for (const [step, wrong] of [
+    [{ status: 'stopped', cause: 'meteor' }, /scout\|\|plan: no host stop is named "meteor"/],
+    [{ status: 'failed', cause: 'meteor' }, /scout\|\|plan: no scripted failure is named "meteor"/],
+    [{}, /scout\|\|plan: a step needs an output or a status/],
+    [{ output: 'text' }, /scout\|\|plan: a step needs an output or a status/],
+  ]) {
+    const r = scriptedRunner({ [KEY]: [step] }, { log: memoryLog() })
+    await assert.rejects(r.runAgent(callIn(dir)), wrong, JSON.stringify(step))
+  }
+})
+
 test('calls lists every call passed in', async (t) => {
   const dir = scratch(t)
   const r = scriptedRunner({ [KEY]: [{ output: { items: [] } }, { output: { items: [] } }] }, { log: memoryLog() })

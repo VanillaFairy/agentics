@@ -17,6 +17,7 @@ import { buildArgs, classifyCall, cleanEnv, parseStream, spawner } from '../lib/
 
 const ON = process.env.AGENTICS_HOST === '1'
 const skip = ON ? false : 'set AGENTICS_HOST=1 to run against the real claude CLI'
+const netSkip = skip || (process.env.AGENTICS_HOST_NET === '1' ? false : 'set AGENTICS_HOST_NET=1 to fetch https://example.com')
 const SCHEMA = { type: 'object', additionalProperties: false, properties: { x: { type: 'integer' } }, required: ['x'] }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -175,7 +176,7 @@ test('the bare Read rule reads a file outside the folder with no denial', { skip
   assert.equal(r.parsed.structured.x, 1234, r.why)
 })
 
-test('the bare WebFetch rule fetches a page with no denial', { skip, timeout: 180000 }, async (t) => {
+test('the bare WebFetch rule fetches a page with no denial', { skip: netSkip, timeout: 180000 }, async (t) => {
   const dir = scratch(t)
   const schema = { type: 'object', additionalProperties: false, properties: { heading: { type: 'string' } }, required: ['heading'] }
   const r = await readOnly(dir, { tools: ['WebFetch'], schema, prompt: "Use the WebFetch tool to fetch https://example.com and return heading = the page's main heading, exactly as written." })
@@ -187,6 +188,8 @@ test('the bare WebFetch rule fetches a page with no denial', { skip, timeout: 18
 
 test('the CLI accepts --effort xhigh', { skip, timeout: 180000 }, async (t) => {
   const dir = scratch(t)
+  const bogus = await readOnly(dir, { tools: ['Read'], model: 'sonnet', effort: 'bogus-effort', prompt: 'Return x = 1.' })
+  assert.notEqual(bogus.cls.status, 'returned', 'the CLI refuses an effort it does not know: ' + bogus.why)
   const r = await readOnly(dir, { tools: ['Read'], model: 'sonnet', effort: 'xhigh', prompt: 'Return x = 1.' })
   assert.ok(!/unknown --effort/i.test(r.out.stderr), 'the CLI ignored the effort: ' + r.why)
   assert.deepEqual(r.parsed.denials, [], r.why)

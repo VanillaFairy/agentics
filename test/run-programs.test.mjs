@@ -17,6 +17,7 @@ import { readRunLog } from '../lib/ledger.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { launch } from '../lib/run.mjs'
+import { ARGS as SURVEY_ARGS } from '../lib/programs/survey.mjs'
 import { posix, readJson, resultPath, revParse, runJsonPath, specPath } from '../lib/store.mjs'
 import { programRig } from './harness/program-rig.mjs'
 import { scriptedRunner } from './fast/harness/scripted-runner.mjs'
@@ -134,7 +135,7 @@ test('run.mjs starts a survey from its question file with every default', async 
   assert.deepEqual(calls.map((c) => c.thread.key), ['plan'])
   const [plan] = calls
   assert.deepEqual(plan.tier, tierFor(loadRole('analyst').role, { intelligence: 'normal', base: 'medium' }))
-  assert.match(plan.brief, /\b8\b/, 'max_topics defaults to 8')
+  assert.ok(plan.brief.includes('aim for at most ' + SURVEY_ARGS.max_topics.default + '.'), 'max_topics defaults to its ARGS default')
   assert.ok(plan.brief.includes(GUIDE), "roots default to the repository, whose CLAUDE.md is the guidance")
 })
 

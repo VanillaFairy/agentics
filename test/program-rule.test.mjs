@@ -19,6 +19,7 @@ import { renderMessage } from '../lib/conversation.mjs'
 import { append, fileFor, readLog, readRunLog, runLog, runState } from '../lib/ledger.mjs'
 import { programContext } from '../lib/programs/common.mjs'
 import { rule } from '../lib/programs/rule.mjs'
+import { rulerBrief } from '../lib/briefs/respec.mjs'
 import { respecBrief, respecSettle } from '../lib/respec.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
@@ -190,21 +191,18 @@ test("the ruler's brief names no file to read or write", async (t) => {
   }
 })
 
-test('an inline brief is written where settle records it and returned whole', (t) => {
+test('the brief is written where settle records it and returned whole, as rulerBrief builds it', (t) => {
   const { rig, folder, brief } = changed(t)
-  const inline = respecBrief(rig.repo, E, folder, { inline: true })
-  assert.equal(inline.status, 'brief', JSON.stringify(inline))
-  assert.deepEqual([inline.brief, inline.rulings, inline.basis, inline.hash, inline.from], [brief.brief, brief.rulings, brief.basis, brief.hash, brief.from])
-  assert.deepEqual(inline.nodes, brief.nodes)
-  assert.equal(typeof inline.text, 'string')
-  assert.ok(inline.text.length > 0)
-  assert.equal(readFileSync(inline.brief, 'utf8'), inline.text, 'the brief file holds the text returned')
-  assert.ok(!Object.hasOwn(inline, 'prompt'), 'an inline brief has no prompt pointing at files')
-  assert.ok(!inline.text.includes(inline.rulings), 'the rulings come back as the structured return, not through a file')
+  assert.equal(brief.status, 'brief', JSON.stringify(brief))
+  assert.ok(brief.text.length > 0)
+  assert.equal(brief.text, rulerBrief(brief.parts))
+  assert.equal(readFileSync(brief.brief, 'utf8'), brief.text, 'the brief file holds the text returned')
+  assert.ok(!Object.hasOwn(brief, 'prompt'), 'the brief has no prompt pointing at files')
+  assert.ok(!brief.text.includes(brief.rulings), 'the rulings come back as the structured return, not through a file')
 
-  writeFileSync(inline.rulings, JSON.stringify(rulingsOf(inline)))
+  writeFileSync(brief.rulings, JSON.stringify(rulingsOf(brief)))
   const out = respecSettle(rig.repo, E, folder)
-  assert.equal(ledger(rig.repo, 'ruled').find((l) => l.seq === out.ruled).brief, inline.brief)
+  assert.equal(ledger(rig.repo, 'ruled').find((l) => l.seq === out.ruled).brief, brief.brief)
 })
 
 // --- settling --------------------------------------------------------------------------------
@@ -791,7 +789,7 @@ function promoted(t) {
   assert.equal(compiled.ok, true, JSON.stringify(compiled.problems))
   event(rig.repo, { kind: 'dispatched', node: 'api/parse/tokens', role: 'implementer', round: 1 })
   writeSpec(rig.repo, 'api', EDITS.wording.text)
-  const brief = respecBrief(rig.repo, E, 'api', { inline: true })
+  const brief = respecBrief(rig.repo, E, 'api')
   assert.equal(brief.status, 'brief', JSON.stringify(brief))
   const heading = (id) => '### ' + posix(relative(mainCheckout(rig.repo), specPath(rig.repo, E, id)))
   return { brief, specs: brief.text.slice(brief.text.indexOf('\n## The specs\n')), heading }

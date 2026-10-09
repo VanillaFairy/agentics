@@ -5,7 +5,6 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,12 +13,10 @@ import { fileURLToPath } from 'node:url'
 import { approvalState, recordApproval } from '../lib/approval.mjs'
 import { compileEffort } from '../lib/compile.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
-import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import { respecBrief, respecSettle } from '../lib/respec.mjs'
 import { specCopyPath, specPath } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
 
-const CLI = fileURLToPath(new URL('../lib/respec.mjs', import.meta.url))
 const FIXTURES = fileURLToPath(new URL('./fixtures/compile/', import.meta.url))
 const read = (name) => readFileSync(join(FIXTURES, name), 'utf8').replace(/\r\n/g, '\n')
 const ROOT = read('root.md')
@@ -83,7 +80,7 @@ test('a compile preview says what approving the edited spec would do, and writes
   assert.deepEqual(compileEffort(repo, E, { folder: 'api' }).parked, preview.parked, 'the real compile parks what the preview said')
 })
 
-test('the brief holds the change and every node it reaches, and names where the rulings go', () => {
+test('the brief holds the change and every node it reaches, and names no file to write', () => {
   const repo = changed()
   const brief = respecBrief(repo, E, 'api')
   assert.equal(brief.status, 'brief', JSON.stringify(brief))
@@ -93,7 +90,9 @@ test('the brief holds the change and every node it reaches, and names where the 
   assert.match(text, /^-`load\(path\)`, then `parse\(text\)`\.$/m)
   assert.match(text, /^\+`load\(path\)` returns a frozen object\.$/m)
   for (const id of brief.nodes) assert.ok(text.includes('### ' + id + '\n'))
-  assert.ok(text.includes(brief.rulings) && brief.prompt.includes(brief.brief) && brief.prompt.includes(brief.rulings))
+  assert.equal(text, brief.text, 'the brief file holds the text returned')
+  assert.ok(!Object.hasOwn(brief, 'prompt'), 'the brief has no prompt pointing at files')
+  assert.ok(!text.includes(brief.rulings), "the rulings come back as the ruler's return, not through a file")
 })
 
 test('a change every node is ruled unaffected by is approved by that ruling, and no node it reaches is stopped', () => {
@@ -291,25 +290,11 @@ test('an approval recorded on a ruling and not yet compiled is compiled by the n
   assert.equal(recordApproval(changed(), E, 'api', { by: 'ruling' }).ok, false, 'an approval by ruling names its ruling')
 })
 
-test('the CLI prints each result under its digest', () => {
-  const repo = changed()
-  const run = (...args) => JSON.parse(execFileSync(process.execPath, [CLI, ...args, '--repo', repo, '--effort', E, '--folder', 'api'], { encoding: 'utf8' }))
-  const brief = run('brief')
-  assert.equal(brief.payload_digest, fnv1a(canonical(brief.payload)))
-  rule(repo, brief.payload, { api: { ruling: 'affected', why: 'contradicts its Intent', fix: 'say "frozen" in the Intent too' } })
-  assert.equal(run('settle').payload.status, 'needs_user')
-  const refusal = run('settle', '--user-approved').payload
-  assert.deepEqual([refusal.status, refusal.next], ['refused', 'ask_user'])
-  assert.ok(refusal.why.includes('run.mjs rule --user-approved'), refusal.why)
-  assert.equal(approvalState(repo, E, 'api').state, 'edited')
-})
-
-test('the CLI hands a changed decision to the user however its rulings read', () => {
+test('a changed decision goes to the user however its rulings read', () => {
   const repo = changed(null)
   write(repo, '.', ROOT.replace('Unknown keys are an error.', 'Unknown keys are an error, named in the message.'))
-  const run = (...args) => JSON.parse(execFileSync(process.execPath, [CLI, ...args, '--repo', repo, '--effort', E, '--folder', '.'], { encoding: 'utf8' }))
-  rule(repo, run('brief').payload)
-  const out = run('settle').payload
+  rule(repo, respecBrief(repo, E, '.'))
+  const out = respecSettle(repo, E, '.', { checkUserBound: true })
   assert.equal(out.status, 'needs_user', JSON.stringify(out))
   assert.ok(out.reasons.length > 0, JSON.stringify(out))
   assert.equal(approvalState(repo, E, '.').state, 'edited')

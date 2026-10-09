@@ -405,3 +405,24 @@ test('a rename rewrites a group heading\'s after, and a group\'s name counts as 
   assert.equal(renameSubEffort(repo, E, 'api', 'loader').ok, true)
   assert.deepEqual(parseSpec(readSpec(repo, '.')).groups[0].after, ['loader'])
 })
+
+test('the effort CLI refuses a value that is not a handle, a free text past its line, and a flag it does not take', () => {
+  const refusal = (...args) => {
+    try {
+      execFileSync(process.execPath, [CLI, ...args], {
+        encoding: 'utf8', stdio: 'pipe', env: { ...process.env, NODE_TEST_CONTEXT: '' }, timeout: 30_000,
+      })
+      return [0, '']
+    } catch (err) {
+      return [err.status, JSON.parse(err.stdout).kind]
+    }
+  }
+  const repo = fresh()
+  assert.deepEqual(refusal('slug', 'one\ntwo'), [1, 'args_unreadable'])
+  assert.deepEqual(refusal('open', repo, 'e1', '--about', 'x'.repeat(301)), [1, 'args_unreadable'])
+  assert.deepEqual(refusal('open', repo, 'e1', '--about', 'the change', '--roots', 'src\nlib'), [1, 'args_unreadable'])
+  assert.deepEqual(refusal('open', repo, 'e1', '--about', 'the change', '--link', 'x'), [1, 'unknown_flag'])
+  assert.equal(existsSync(effortPath(repo, 'e1')), false, 'nothing was opened')
+  const about = 'the "loader", in the user\'s words — see `load()`'
+  assert.equal(run('open', repo, 'e1', '--about', about).created, true, 'a line of free text, quotes and all, is taken')
+})

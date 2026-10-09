@@ -349,3 +349,22 @@ test('the CLI approves and reads state under its digest', (t) => {
   const gate = cli('gate', '--repo', repo, '--effort', E, '--folder', '.')
   assert.deepEqual([gate.payload.ratifiable, gate.payload.open], [false, ['Iaaaaaaaa', 'Ibbbbbbbb']])
 })
+
+test('the approval CLI refuses a value that is not a handle, a reason past its line, and a flag it does not take', () => {
+  const refusal = (...args) => {
+    try {
+      execFileSync(process.execPath, [CLI, ...args], {
+        encoding: 'utf8', stdio: 'pipe', env: { ...process.env, NODE_TEST_CONTEXT: '' }, timeout: 30_000,
+      })
+      return [0, '']
+    } catch (err) {
+      return [err.status, JSON.parse(err.stdout).kind]
+    }
+  }
+  const repo = effort({ '.': ROOT })
+  assert.deepEqual(refusal('state', '--repo', repo, '--effort', E, '--folder', 'a b'), [1, 'args_unreadable'])
+  assert.deepEqual(refusal('skip-review', '--repo', repo, '--effort', E, '--folder', '.', '--reason', 'x'.repeat(301)), [1, 'args_unreadable'])
+  assert.deepEqual(refusal('skip-review', '--repo', repo, '--effort', E, '--folder', '.', '--reason', 'one\ntwo'), [1, 'args_unreadable'])
+  assert.deepEqual(refusal('gate', '--repo', repo, '--effort', E, '--review', 'r.json'), [1, 'unknown_flag'])
+  assert.equal(ledger(repo).filter((l) => l.kind === 'review_skipped').length, 0, 'nothing was recorded')
+})

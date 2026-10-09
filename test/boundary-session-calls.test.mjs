@@ -279,3 +279,15 @@ test('a merge over no effort branch and nothing landed is refused no_effort_bran
   assert.equal(out.error.kind, 'no_effort_branch')
   assert.equal(landedEvents(r).length, 0)
 })
+
+test('a session call refuses a value that is not a handle and a text past its line, recording nothing', (t) => {
+  const r = seeded(t)
+  for (const out of [call(r, 'note', '--node', 'b', '--text', 'one\ntwo'), call(r, 'note', '--node', 'b', '--text', 'x'.repeat(301))]) {
+    assert.deepEqual([out.noted, out.error.kind], ['', 'args_unreadable'])
+  }
+  const retried = call(r, 'retry', '--node', 'a b')
+  assert.deepEqual([retried.retried, retried.error.kind], [[], 'args_unreadable'])
+  const landed = call(r, 'land', '--action', 'check now')
+  assert.deepEqual([landed.ok, landed.error.kind], [false, 'args_unreadable'])
+  assert.equal(eventsOf(r, 'noted').length, 0)
+})

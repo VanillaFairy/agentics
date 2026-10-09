@@ -17,8 +17,8 @@
 //
 // Strings and comments are blanked before matching, so a test that quotes an import as fixture
 // text is not flagged; the specifier is then read back from the source at the quote the blanked
-// code shows after a real `from` / `import` / `require(`. The blanker is duplicated from
-// no-imports deliberately — rule modules are pure and may not import each other. It has no
+// code shows after a real `from` / `import` / `require(`. The blanker is this rule's own copy
+// (coverage-block keeps another) — rule modules are pure and may not import each other. It has no
 // notion of a regex literal, so an unpaired quote inside one swallows real code; hoist such a
 // pattern into `new RegExp('...')`.
 

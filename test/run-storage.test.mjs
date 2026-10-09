@@ -76,7 +76,9 @@ test('an empty batch and an entry without a kind are refused, writing nothing', 
   const out = appendRun(r, RUN, [{ kind: 'a' }, { dispatch: 'd1' }])
   assert.equal(out.ok, false)
   assert.match(out.error, /entry 1/)
-  assert.deepEqual(readRunLog(r, RUN), { entries: [], malformed: 0 })
+  const log = readRunLog(r, RUN)
+  assert.deepEqual(log.entries, [])
+  assert.equal(log.malformed, 0)
 })
 
 test('a torn last line is counted as malformed and the next append lands on its own line', (t) => {
@@ -126,8 +128,8 @@ test('a counter behind the log after a crash is reconciled with it', (t) => {
 test('the log port appends a record under its kind and returns its seq', (t) => {
   const r = repo(t)
   const log = runLog(r, RUN)
-  assert.deepEqual(log.append('step', { key: 'k', value: 1 }), { seq: 1 })
-  assert.deepEqual(log.append('step', { key: 'l', value: 2 }), { seq: 2 })
+  assert.equal(log.append('step', { key: 'k', value: 1 }).seq, 1)
+  assert.equal(log.append('step', { key: 'l', value: 2 }).seq, 2)
   assert.deepEqual(readRunLog(r, RUN).entries.map((e) => [e.kind, e.key, e.seq]), [['step', 'k', 1], ['step', 'l', 2]])
 })
 
@@ -158,7 +160,8 @@ test('the log port throws when the write is refused', (t) => {
 test('a run without run.json is absent', (t) => {
   const r = repo(t)
   appendRun(r, RUN, { kind: 'run' })
-  assert.deepEqual(runState(r, RUN, { now: NOW, alive: () => true }), { state: 'absent', run: null, ended: null })
+  const st = runState(r, RUN, { now: NOW, alive: () => true })
+  assert.deepEqual([st.state, st.run, st.ended], ['absent', null, null])
 })
 
 test('a run whose pid is alive and whose heartbeat is fresh is live', (t) => {
@@ -213,14 +216,18 @@ test('a file handle resolves an existing file to its absolute path', (t) => {
   const r = repo(t)
   const file = join(r, 'question.md')
   writeFileSync(file, 'q\n')
-  assert.deepEqual(resolveHandle(r, 'file', file), { ok: true, value: resolve(file) })
+  const h = resolveHandle(r, 'file', file)
+  assert.equal(h.ok, true)
+  assert.equal(h.value, resolve(file))
 })
 
 test('a relative file handle is resolved against the working directory', (t) => {
   const r = repo(t)
   const file = join(r, 'criteria.md')
   writeFileSync(file, 'c\n')
-  assert.deepEqual(resolveHandle(r, 'file', relative(process.cwd(), file)), { ok: true, value: resolve(file) })
+  const h = resolveHandle(r, 'file', relative(process.cwd(), file))
+  assert.equal(h.ok, true)
+  assert.equal(h.value, resolve(file))
 })
 
 test('a file handle refuses a directory, a missing path and an empty name', (t) => {

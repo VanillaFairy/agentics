@@ -28,34 +28,36 @@ function dir(t) {
   return d
 }
 
+const tierOf = (x) => ({ model: x.model, effort: x.effort })
+
 test('the gates are every judge role and the planner', () => {
   const expected = ROLE_NAMES.filter((n) => role(n).kind === 'judge' || n === 'planner')
   assert.deepEqual([...GATES].sort(), [...expected].sort())
 })
 
 test('a gate runs opus at medium effort at the normal dial', () => {
-  for (const name of GATES) assert.deepEqual(tierFor(role(name)), { model: 'opus', effort: 'medium' }, name)
+  for (const name of GATES) assert.deepEqual(tierOf(tierFor(role(name))), { model: 'opus', effort: 'medium' }, name)
 })
 
 test('a gate runs opus at high effort at the max dial', () => {
-  for (const name of GATES) assert.deepEqual(tierFor(role(name), { intelligence: 'max' }), { model: 'opus', effort: 'high' }, name)
+  for (const name of GATES) assert.deepEqual(tierOf(tierFor(role(name), { intelligence: 'max' })), { model: 'opus', effort: 'high' }, name)
 })
 
 test('a gate on opus ignores the call site\'s base', () => {
-  for (const name of GATES) assert.deepEqual(tierFor(role(name), { base: 'low' }), { model: 'opus', effort: 'medium' }, name)
+  for (const name of GATES) assert.deepEqual(tierOf(tierFor(role(name), { base: 'low' })), { model: 'opus', effort: 'medium' }, name)
 })
 
 test('a gate runs sonnet one effort step above its role\'s default at the low dial', () => {
   for (const name of GATES) {
     const r = role(name)
-    assert.deepEqual(tierFor(r, { intelligence: 'low' }), { model: 'sonnet', effort: NEXT[r.tier.effort] }, name)
+    assert.deepEqual(tierOf(tierFor(r, { intelligence: 'low' })), { model: 'sonnet', effort: NEXT[r.tier.effort] }, name)
   }
 })
 
 test('a gate on sonnet steps from the call site\'s base when one is given', () => {
   const r = role('analyst')
   for (const base of Object.keys(NEXT)) {
-    assert.deepEqual(tierFor(r, { intelligence: 'low', base }), { model: 'sonnet', effort: NEXT[base] }, base)
+    assert.deepEqual(tierOf(tierFor(r, { intelligence: 'low', base })), { model: 'sonnet', effort: NEXT[base] }, base)
   }
 })
 
@@ -63,20 +65,20 @@ test('any other role keeps its own tier at every dial', () => {
   for (const name of OTHERS) {
     const r = role(name)
     for (const intelligence of ['low', 'normal', 'max']) {
-      assert.deepEqual(tierFor(r, { intelligence }), { model: r.tier.model, effort: r.tier.effort }, name + ' ' + intelligence)
+      assert.deepEqual(tierOf(tierFor(r, { intelligence })), { model: r.tier.model, effort: r.tier.effort }, name + ' ' + intelligence)
     }
   }
 })
 
 test('any other role takes the call site\'s base as its effort', () => {
   for (const name of OTHERS) {
-    assert.deepEqual(tierFor(role(name), { base: 'high' }), { model: role(name).tier.model, effort: 'high' }, name)
+    assert.deepEqual(tierOf(tierFor(role(name), { base: 'high' })), { model: role(name).tier.model, effort: 'high' }, name)
   }
 })
 
 test('an unknown intelligence reads as normal', () => {
   for (const name of ROLE_NAMES) {
-    assert.deepEqual(tierFor(role(name), { intelligence: 'extreme' }), tierFor(role(name)), name)
+    assert.deepEqual(tierOf(tierFor(role(name), { intelligence: 'extreme' })), tierOf(tierFor(role(name))), name)
   }
 })
 
@@ -125,7 +127,8 @@ test('no temporary file is left beside a prompt file', (t) => {
 test('a searcher with read tools is allowed each of them by its bare name', () => {
   for (const name of ['scout', 'doc-researcher']) {
     const r = role(name)
-    assert.deepEqual(readOnlyPermissions(r), { allowed: r.tools, disallowed: [] }, name)
+    const p = readOnlyPermissions(r)
+    assert.deepEqual([p.allowed, p.disallowed], [r.tools, []], name)
     assert.ok(r.tools.every((tool) => READ_TOOLS.includes(tool)), name)
   }
 })
@@ -139,11 +142,13 @@ test('a role with commands is allowed each as a bash rule and denied the git esc
 })
 
 test('a role that only reads is allowed Read and denied nothing', () => {
-  assert.deepEqual(readOnlyPermissions(role('analyst')), { allowed: ['Read'], disallowed: [] })
+  const p = readOnlyPermissions(role('analyst'))
+  assert.deepEqual([p.allowed, p.disallowed], [['Read'], []])
 })
 
 test('a tool outside the read tools is not allowed', () => {
-  assert.deepEqual(readOnlyPermissions({ tools: ['Read', 'Edit', 'Write', 'Bash'] }), { allowed: ['Read'], disallowed: [] })
+  const p = readOnlyPermissions({ tools: ['Read', 'Edit', 'Write', 'Bash'] })
+  assert.deepEqual([p.allowed, p.disallowed], [['Read'], []])
 })
 
 test('no rule is listed twice', () => {

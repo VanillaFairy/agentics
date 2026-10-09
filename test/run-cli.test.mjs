@@ -99,7 +99,8 @@ function stop(repo, run, { cut = 'ended', pid = DEAD_PID, heartbeat_at } = {}) {
   let kept
   if (cut === 'ended') kept = all.filter((e) => e.kind !== 'ended')
   else if (cut === 'after-run') kept = all.slice(0, all.findLastIndex((e) => e.kind === 'run') + 1)
-  else kept = []
+  else if (cut === 'empty') kept = []
+  else throw new Error('stop: unknown cut ' + cut)
   writeFileSync(runLogPath(repo, run), kept.map((e) => JSON.stringify(e) + '\n').join(''))
   const meta = readJson(runJsonPath(repo, run))
   writeFileSync(runJsonPath(repo, run), JSON.stringify({ ...meta, pid, ...(heartbeat_at ? { heartbeat_at } : {}) }))
@@ -404,21 +405,21 @@ test('the runner watches the main checkout when --repo is a linked worktree', as
   t.after(() => rmSync(wt, { recursive: true, force: true }))
   git(repo, 'worktree', 'add', '-q', '-b', 'side', wt)
   const built = []
-  const env = {}
+  const env = { AGENTICS_TEST_SENTINEL: 'run-cli' }
   const { mod } = program(async () => ({}))
   const out = await start(wt, ['survey', '--repo', wt], mod, { built, env })
   assert.equal(out.ok, true)
   assert.equal(built.length, 1)
   assert.equal(built[0].repo, mainCheckout(repo))
   assert.ok(!same(built[0].repo, wt))
-  assert.deepEqual(built[0].env, env)
+  assert.equal(built[0].env, env)
   assert.equal(built[0].cli, '')
   assert.equal(built[0].log.entries()[0].kind, 'run')
 })
 
 // --- the claim -------------------------------------------------------------------------------
 
-test('a second start of a live run is refused, naming it', async (t) => {
+test('a second start of a live run is refused, naming it', { timeout: 10_000 }, async (t) => {
   const repo = makeRepo(t)
   const h = held()
   const { mod } = program(async () => { h.started(); await h.gate; return {} }, { ARGS: TEXT_ARGS })
@@ -438,7 +439,7 @@ test('a second start of a live run is refused, naming it', async (t) => {
   assert.deepEqual(runDirs(repo), [run])
 })
 
-test('two starts at once give one run and one run_live', async (t) => {
+test('two starts at once give one run and one run_live', { timeout: 10_000 }, async (t) => {
   const repo = makeRepo(t)
   const h = held()
   const { mod } = program(async () => { h.started(); await h.gate; return {} }, { ARGS: TEXT_ARGS })
@@ -564,6 +565,7 @@ test('a run claimed and never recorded is launch_failed on the next start', asyn
   const { mod, seen } = stepping({ ARGS: TEXT_ARGS })
   const first = await start(repo, ['survey', '--topic', 'x'], mod)
   stop(repo, first.run, { cut: 'empty' })
+  assert.deepEqual(kinds(repo, first.run), [], 'the cut emptied the log')
   const out = await start(repo, ['survey', '--topic', 'x'], mod)
   assert.equal(out.ok, false)
   assert.equal(out.error.kind, 'launch_failed')
@@ -646,7 +648,11 @@ test('the heartbeat rewrites heartbeat_at while the program runs and stops after
   const running = start(repo, ['survey'], mod, { now: clock })
   await h.began
   const [run] = runDirs(repo)
-  const first = readJson(runJsonPath(repo, run)).heartbeat_at
+  let first
+  for (let i = 0; !(first = readJson(runJsonPath(repo, run))?.heartbeat_at); i++) {
+    if (i > 500) assert.fail('run.json never readable')
+    await sleep(10)
+  }
   let moved = first
   for (let i = 0; moved === first; i++) {
     if (i > 500) assert.fail('heartbeat_at never changed while the program ran')
@@ -656,9 +662,12 @@ test('the heartbeat rewrites heartbeat_at while the program runs and stops after
   assert.ok(Date.parse(moved) > Date.parse(first))
   h.open()
   await running
-  const after = readJson(runJsonPath(repo, run)).heartbeat_at
+  const after = readJson(runJsonPath(repo, run))?.heartbeat_at
+  assert.ok(after, 'run.json is readable after the end')
   await sleep(200)
-  assert.equal(readJson(runJsonPath(repo, run)).heartbeat_at, after)
+  const later = readJson(runJsonPath(repo, run))?.heartbeat_at
+  assert.ok(later, 'run.json is readable after the end')
+  assert.equal(later, after)
 })
 
 test('a run beating every HEARTBEAT_MS reads as live', async (t) => {

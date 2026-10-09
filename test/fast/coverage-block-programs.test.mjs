@@ -134,3 +134,32 @@ test('every shipped program is judged and passes', () => {
   for (const name of PROGRAM_NAMES) assert.ok(judged.includes('lib/programs/' + name + '.mjs'), name + ' is not judged')
   for (const path of judged) assert.deepEqual(lintSource(readFileSync(join(ROOT, path), 'utf8'), path, [rule]), [], path)
 })
+
+test('the rule applies to the program files and to nothing else, whatever it was asked before', () => {
+  // A /g flag would make RegExp.test() carry lastIndex between calls, and tools/lint.mjs tests this
+  // one object against every file in the tree, so each path is asked twice.
+  for (const [path, judged] of [
+    [PROGRAM, true], ['lib/programs/execute/leaf.mjs', false], ['lib/run.mjs', false],
+    ['service-workflows/gather-evidence-without-concluding.workflow.js', false], ['roles/scout.md', false],
+  ]) {
+    assert.equal(rule.applies.test(path), judged, path)
+    assert.equal(rule.applies.test(path), judged, path + ', asked again')
+  }
+})
+
+test('braces and an apostrophe in template literals do not hide the coverage resultOf returns', () => {
+  assert.deepEqual(lint(program(
+    "const NOTE = `Don't stop: reply with { hits: [] } and write nothing after the closing }.`",
+    '',
+    RESULT_OF,
+    '  return { drafts: drafted, note: `Reply with { hits: [] }. Nothing after }.`, coverage: coverageOf({ resumable: ctx.resumable }) }',
+    '}',
+  )), [])
+})
+
+test('a key that merely ends in coverage, or a coverage key inside a template literal, does not count', () => {
+  for (const body of ['  return { drafts: drafted, has_coverage: true }', '  return { drafts: drafted, note: `{ coverage: { complete: true } }` }']) {
+    const lines = program(RESULT_OF, body, '}')
+    assert.deepEqual(lint(lines).map((f) => f.line), [lineOf(lines, RESULT_OF)], body)
+  }
+})

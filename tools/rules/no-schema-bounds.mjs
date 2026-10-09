@@ -9,7 +9,7 @@
 export const id = 'no-schema-bounds'
 
 /** RegExp tested against the POSIX-style repo-relative path. */
-export const applies = /(\.workflow\.js|^lib\/schemas\.mjs)$/
+export const applies = /^lib\/schemas\.mjs$/
 
 const BANNED = /\b(minItems|maxItems|minLength|maxLength)\s*:/g
 

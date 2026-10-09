@@ -5,7 +5,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import { fnv1a } from '../lib/plan-digest.mjs'
@@ -130,8 +130,9 @@ test('a stance whose analyst failed has no draft and is a failed channel', async
 
 test('a draft whose record failed is a failed channel, its draft still returned', async (t) => {
   const rig = rigOf(t, script(['minimal-change']))
-  blockStore(rig.repo)
+  t.after(blockStore(rig.repo))
   const out = await drafts(rig.ctx, argsOf({ stances: ['minimal-change'] }))
+  assert.ok(statSync(evidenceReturnsDir(rig.repo)).isFile(), 'the fixture: the store stayed blocked')
   assert.deepEqual(out.drafts, [{ stance: 'minimal-change', return: '', draft: draft('minimal-change') }])
   assert.deepEqual(out.coverage.failed_channels, ['record:minimal-change'])
   assert.ok(out.coverage.unreached.some((l) => l.includes('record:minimal-change')))

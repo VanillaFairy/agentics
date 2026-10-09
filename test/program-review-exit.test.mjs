@@ -65,8 +65,10 @@ test('with a prior run, its open findings are in the brief to rule', async (t) =
   priorRound(rig.repo)
   await review(rig.ctx, args({ prior: PRIOR }))
   const brief = briefOf(rig)
-  assert.ok(brief.includes(PRIOR_FINDING.id))
-  assert.ok(brief.includes(PRIOR_FINDING.claim))
+  const section = brief.split('## Prior blockers')[1]
+  assert.ok(section, 'a Prior blockers section')
+  const line = section.split('\n').find((l) => l.includes('[' + PRIOR_FINDING.id + ']'))
+  assert.ok(line && line.includes('(' + PRIOR_FINDING.severity + ')') && line.includes(PRIOR_FINDING.claim), line)
 })
 
 test('a prior blocker ruled fixed approves', async (t) => {

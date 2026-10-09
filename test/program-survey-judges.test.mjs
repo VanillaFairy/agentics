@@ -68,8 +68,10 @@ test("a judge's brief holds its scouts' excerpts and coverage inline", async (t)
 test("a judge's brief names each kind's anchor and the units it rules", async (t) => {
   const { rig } = await runSurvey(t, fullScript())
   const brief = on(rig, 'judge:1')[0].brief
-  for (const kind of ITEM_KINDS) assert.ok(brief.includes(kind), kind)
-  for (const key of ['loader', 'store']) assert.ok(brief.includes(key), key)
+  for (const kind of ITEM_KINDS) assert.match(brief, new RegExp('^  ' + kind + ': ', 'm'), kind)
+  const unitsLine = brief.split('\n').find((l) => l.startsWith('UNITS —'))
+  assert.ok(unitsLine, 'a UNITS line')
+  assert.deepEqual(unitsLine.split(': ').at(-1).split(', '), ['loader', 'store'])
 })
 
 /** Every port and every kind of later round: a continued scout and a refusals round. */

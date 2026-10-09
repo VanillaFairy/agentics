@@ -227,16 +227,12 @@ test("declared names each searcher's stop as it stated it", async (t) => {
     'analyst||judge:1': [{ output: judgeOut({ items: [behaviour('loader', CLAIM)], units: [anchoredUnit('loader')] }) }],
   }))
   const expect = [
-    ['topic loader', ['exhausted', 'NR-vendor dir']],
-    ['common ground', ['exhausted', 'NR-common tests']],
-    ['history', ['unfinished', 'NR-old tags', 'no_progress']],
-    ['docs', ['exhausted', 'NR-v1 docs']],
+    'topic loader: exhausted, not reached: NR-vendor dir',
+    'common ground: exhausted, not reached: NR-common tests',
+    'history: unfinished, not reached: NR-old tags (ended short: no_progress)',
+    'docs: exhausted, not reached: NR-v1 docs',
   ]
-  for (const [prefix, parts] of expect) {
-    const found = lineStarting(result, prefix)
-    assert.equal(found.length, 1, prefix + ' in ' + JSON.stringify(cov(result).declared))
-    for (const part of parts) assert.ok(found[0].includes(part), prefix + ': ' + part)
-  }
+  assert.deepEqual([...cov(result).declared].sort(), [...expect].sort())
 })
 
 test('a history question runs the historian with it, and a docs question the doc-researcher', async (t) => {

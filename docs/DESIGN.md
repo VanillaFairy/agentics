@@ -1981,7 +1981,9 @@ that fails alone on the new head gets a fix round on its branch refreshed from t
 head, told what failed by a `failures` message (`source: integration`), and is kept out of merges
 while it runs; a composite or a cycle that fails alone has no one producer to send it to, and escalates
 (`fails_on_integration`); leaves that each pass alone and fail together escalate as a
-**combination failure** naming all of them — it is a design question, not a leaf's. A batch that
+**combination failure** naming all of them — it is a design question, not a leaf's. A conflict the
+batch's first merge met stands through the bisect: the unit it stopped at was never merged, so no
+bisect measures it, and it escalates `merge_conflict` in the same batch. A batch that
 cannot run at all escalates its target (`merge_batch_failed`), and one that merged nothing and
 reported no failure escalates too (`merge_no_progress`): nothing is re-batched into a stopped
 target.
@@ -2405,7 +2407,9 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
   `refs/worktree/agentics-verify/`. Before it rewrites a file that is as the head has it, verify
   writes the path into `agentics-verify-rewriting` in the worktree's own git directory (a JSON
   array) and takes it off once the file is back. leaf-close runs `undoLeftover` before it commits,
-  reverts or measures: it checks the leaf's branch out again where HEAD is detached, puts each
+  reverts or measures: it checks the leaf's branch out again where HEAD is detached — naming, in
+  the close's notes, the sha HEAD was detached at when the branch does not hold it, so commits made
+  there are reachable and never dropped silently —, puts each
   noted file back to the head's text (removed where the head has none), and applies the kept work
   again and deletes its ref. What stands after that is the round's, and a close run again commits
   and measures it as the first run did.

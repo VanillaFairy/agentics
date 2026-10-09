@@ -104,6 +104,23 @@ test('a conflict escalates merge_conflict naming the paths; what merged before i
   assert.equal(out.head_sha, headOf(w.r, '.'))
 })
 
+test('a conflict the first merge met stands through the bisect of a red head', SLOW, async (t) => {
+  const w = world(inTest(t), [root(),
+    leaf('m', { rigor: 'trivial', locus: ['src/add.mjs', 'README.md'] }),
+    leaf('n', { rigor: 'trivial', locus: ['NOTES.md'], deps: ['m'] })])
+  // m breaks the suite, so the merged head is red and bisected; n wrote README.md, which m changed
+  // too, so the first merge stopped at n, which no bisect measures.
+  const m = ready(w, 'm', { 'src/add.mjs': BREAK_ADD, 'README.md': 'from m\n' }, 'Break add, say m')
+  const n = ready(w, 'n', { 'README.md': 'from n\n' }, 'Say n')
+  const out = await batch(w, handed(m, n))
+
+  assert.deepEqual(ids(out.merged), [])
+  assert.deepEqual(ids(out.failed_alone), ['m'], 'm fails alone and goes back to a fix round')
+  assert.ok(stopsOf(out).some(([id, status, reason]) => id === 'n' && status === 'escalated' && reason === 'merge_conflict'), JSON.stringify(stopsOf(out)))
+  assert.equal(statusOf(w.r, 'n'), 'escalated')
+  assert.equal(kindOf(stateOf(w.r), 'batch').at(-1).conflict, 'n')
+})
+
 test('a batch that merged nothing and saw nothing fail escalates merge_no_progress', SLOW, async (t) => {
   const w = world(inTest(t), [root(), addOne('x')])
   integrationOf(w)

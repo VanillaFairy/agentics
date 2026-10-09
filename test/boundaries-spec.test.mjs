@@ -18,6 +18,7 @@ import {
   approvalState, recordApproval, recordDisposition, recordPreparation, recordReviewed,
 } from '../lib/approval.mjs'
 import { compileEffort } from '../lib/compile.mjs'
+import { renderMessage } from '../lib/conversation.mjs'
 import { executionLog, readLog } from '../lib/ledger.mjs'
 import { checkFolder, hashSpec } from '../lib/spec.mjs'
 import { dispatchKey, posix, returnPath, specPath } from '../lib/store.mjs'
@@ -654,6 +655,19 @@ test("spec-settle: a discarded ambiguity is refused once, with a refusals messag
   assert.notEqual(refusal.problem.trim(), '')
   assert.deepEqual(ledger(xc, 'disposition'), [], 'a refused settlement records nothing')
   assert.deepEqual(escalations(xc), [])
+})
+
+test("spec-settle: the planner's refusals message says the ledger refused its dispositions", (t) => {
+  const findings = [finding('P1', 'ambiguity', 'Two meanings of tick', { item: 'Ip1badc0de' })]
+  const { xc, asked } = settling(t, findings)
+  const dispatch = planner(xc, 1, { status: 'settled', dispositions: [{ finding: 'P1', outcome: 'discarded' }] })
+  assert.equal(specSettle(xc, { folder: 'p', dispatch, findings: asked }).status, 'refused')
+  const [sent] = messages(xc, 'refusals')
+  assert.equal(sent.payload.of, 'dispositions')
+  assert.equal(sent.thread, 'planner:p', 'back to the thread whose return was refused')
+  const text = renderMessage({ msg: sent.msg, payload: sent.payload })
+  assert.ok(text.includes('dispositions'), text)
+  assert.ok(!/evidence store/i.test(text), text)
 })
 
 test('spec-settle: a discarded gap is refused', (t) => {

@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { schedule, summarize } from '../../lib/schedule.mjs'
+import { outsideWorkOf, reviewOf, schedule, summarize } from '../../lib/schedule.mjs'
 import { deriveStatus, liveNodes } from '../../lib/tree.mjs'
 import { flat } from '../../lib/store.mjs'
 
@@ -185,4 +185,35 @@ test('an execution rooted at a group runs its tasks and is done when they have a
   const nodes = [folder('.'), group('x'), leaf('x/a'), leaf('x/b'), leaf('c')]
   assert.deepEqual(leafIds(effort(nodes, [], { root: 'x' })), ['x/a', 'x/b'])
   assert.equal(summarize(effort(nodes, [{ kind: 'merged', node: 'x/a' }, { kind: 'merged', node: 'x/b' }], { root: 'x' })).done, true)
+})
+
+const WHERE = () => ({ base: 'b', head: 'h', worktree: '' })
+const byHand = (node, commits = ['c1']) => ({ kind: 'merged', node, into: 'agentics/e1--c', merged_sha: commits[0], head_sha: commits[commits.length - 1], by: 'user', commits })
+
+test('an adopted leaf counts as unreviewed whatever its rigor', () => {
+  const nodes = [folder('.'), folder('c'), leaf('c/p', { rigor: 'tdd-pair', role: 'red' }), leaf('c/q', { rigor: 'tdd-pair', role: 'red' })]
+  const input = effort(nodes, [byHand('c/p'), { kind: 'merged', node: 'c/q', head_sha: 'h' }], { integrationOf: WHERE })
+  assert.deepEqual(reviewOf(input, 'c').unreviewed, ['c/p'])
+})
+
+test('an adopted verify leaf earns its folder review; one agentics merged does not', () => {
+  const nodes = [folder('.'), folder('c'), leaf('c/v', { rigor: 'verify' })]
+  assert.equal(reviewOf(effort(nodes, [byHand('c/v')], { integrationOf: WHERE }), 'c').earned, true)
+  assert.equal(reviewOf(effort(nodes, [{ kind: 'merged', node: 'c/v', head_sha: 'h' }], { integrationOf: WHERE }), 'c').earned, false)
+})
+
+test("an outside event on the folder earns its review; one on another folder does not", () => {
+  const nodes = [folder('.'), folder('c'), leaf('c/v', { rigor: 'verify' }), folder('d'), leaf('d/w', { rigor: 'verify' })]
+  const merged = [{ kind: 'merged', node: 'c/v', head_sha: 'h' }, { kind: 'merged', node: 'd/w', head_sha: 'h' }]
+  const outside = { kind: 'outside', node: 'd', commits: ['s1'], by: 'user' }
+  assert.equal(reviewOf(effort(nodes, [...merged, outside], { integrationOf: WHERE }), 'd').earned, true)
+  assert.equal(reviewOf(effort(nodes, [...merged, outside], { integrationOf: WHERE }), 'c').earned, false)
+})
+
+test("outsideWorkOf names a folder's adopted units with their commits and its own outside commits", () => {
+  const events = [byHand('c/a', ['a1', 'a2']), { kind: 'merged', node: 'c/b', head_sha: 'h' },
+    { kind: 'outside', node: 'c', commits: ['s1'], by: 'user' }, { kind: 'outside', node: 'd', commits: ['s9'], by: 'user' },
+    { kind: 'outside', node: 'c', commits: ['s2', 's3'], by: 'terminal' }]
+  assert.deepEqual(outsideWorkOf(events, 'c', ['c/a', 'c/b']), { leaves: [{ id: 'c/a', commits: ['a1', 'a2'] }], commits: ['s1', 's2', 's3'] })
+  assert.deepEqual(outsideWorkOf([], 'c', ['c/a']), { leaves: [], commits: [] })
 })

@@ -16,6 +16,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, rmSync } from 'node:fs'
+import { runLeaf } from '../lib/programs/execute/leaf.mjs'
 import { heldOf } from '../lib/boundaries/records.mjs'
 import { renderMessage } from '../lib/conversation.mjs'
 import { acquire } from '../lib/locks.mjs'
@@ -128,6 +129,15 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.equal(faults[0].channel, 'program')
     assert.ok(heldOf(stateOf(w.rig)).has('b'))
     assert.deepEqual(stopsOn(w.rig), [])
+  })
+
+  test('a throw inside the unit whose fault cannot be recorded still ends the leaf faulted', T, async (t) => {
+    const w = world(t)
+    w.rig.script({})
+    const refusing = { ...w.rig.xc, log: { ...w.rig.xc.log, append() { throw new Error('the ledger refused the write') } } }
+    const out = await runLeaf(w.ctx, refusing, { id: 'b' })
+    assert.equal(out.outcome, 'faulted')
+    assert.deepEqual(faultsOf(w.rig), [])
   })
 
   // ------------------------------------------------------------------ a relaunch

@@ -11,7 +11,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { preflight } from '../lib/boundaries/execution.mjs'
+import { preflight, writeSessionCommands } from '../lib/boundaries/execution.mjs'
 import { mergeBatch } from '../lib/boundaries/merge.mjs'
 import { executionContext } from '../lib/boundaries/records.mjs'
 import { leafBrief } from '../lib/brief.mjs'
@@ -203,6 +203,28 @@ test('a refused preflight writes no gotcha', (t) => {
   const out = preflight(relaunch(r), { base_ref: 'no-such-branch', commands_file: commandsFile(t, ALL) })
   assert.deepEqual([out.ok, out.error.kind], [false, 'no_base'])
   assert.deepEqual(ids(r), [])
+})
+
+test('a session command gotcha the store refuses is named, and the commands after it are still written', (t) => {
+  const r = world(t)
+  const xc = relaunch(r)
+  const refusing = (repo, effort, g, opts) => (g.command.name === 'suite' ? { ok: false, error: 'the store refused it' } : writeGotcha(repo, effort, g, opts))
+  const refused = writeSessionCommands(xc, { base_sha: '', commands: { ...ALL } }, { write: refusing })
+  assert.deepEqual(refused, [{ name: 'suite', error: 'the store refused it' }])
+  const known = commandsOf(r, E)
+  for (const name of NAMES.filter((n) => n !== 'suite')) assert.equal(known[name], ALL[name], name)
+  assert.ok(!known.suite, 'the refused command is not written')
+})
+
+test('a preflight whose command gotcha the store refuses is refused commands_unwritable, and a run again writes it', (t) => {
+  const r = world(t)
+  const refusing = (repo, effort, g, opts) => (g.command.name === 'suite' ? { ok: false, error: 'the store refused it' } : writeGotcha(repo, effort, g, opts))
+  const out = preflight(relaunch(r), { commands_file: commandsFile(t, ALL), write: refusing })
+  assert.deepEqual([out.ok, out.error && out.error.kind], [false, 'commands_unwritable'], JSON.stringify(out))
+  assert.match(out.error.message, /suite: the store refused it/)
+  assert.ok(!commandsOf(r, E).suite, 'the refused command is not written')
+  assert.equal(preflight(relaunch(r), {}).ok, true, 'the adopted envelope names the commands again')
+  assert.equal(commandsOf(r, E).suite, ALL.suite)
 })
 
 test('the leaf brief\'s Commands section shows the session\'s commands', (t) => {

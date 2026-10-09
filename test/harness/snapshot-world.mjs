@@ -14,7 +14,7 @@ import {
   branchOf, dispatchKey, executionDir, posix, returnPath, specPath, worktreeOf, writeJson,
 } from '../../lib/store.mjs'
 
-export const { liveOf, nodeOf, renderNode, snapshotOf } = statusModule
+export const { nodeOf, renderNode, snapshotOf } = statusModule
 
 export const CLI = fileURLToPath(new URL('../../lib/status.mjs', import.meta.url))
 

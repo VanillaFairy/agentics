@@ -24,7 +24,7 @@ import {
 import { readTree } from '../lib/tree.mjs'
 import { DEAD_PID } from './harness/dead-pid.mjs'
 import {
-  liveOf, nodeOf, renderNode, snapshotOf, CLI, git, FIX_REASON, FIX_DETAIL, round, D_IMPL, IMPL_TEXT,
+  nodeOf, renderNode, snapshotOf, CLI, git, FIX_REASON, FIX_DETAIL, round, D_IMPL, IMPL_TEXT,
   effortFixture, sharedFixture, statusFixture,
 } from './harness/snapshot-world.mjs'
 
@@ -161,24 +161,25 @@ test('live is the running dispatch\'s activity while its execution\'s run is liv
   const dir = executionDir(repo, effort, stamp)
   const running = round('a/impl', 2)
   append(repo, effort, 'events', { kind: 'dispatched', node: 'a/impl', execution: stamp, dispatch: running, role: 'implementer', round: 2, model: 'sonnet', effort: 'medium' })
-  const activity = { turns: 7, tool: 'Edit src/a-impl.js', at: '2026-09-27T10:00:00.000Z' }
+  const activity = { turns: 7, tool: { name: 'Edit', target: 'src/a-impl.js' }, at: '2026-09-27T10:00:00.000Z' }
   writeJson(livePath(dir, running), activity)
-  writeJson(livePath(dir, D_IMPL), { turns: 1, tool: 'Read', at: '2026-09-27T09:00:00.000Z' })
-  assert.equal(liveOf(repo, effort, 'a/impl'), null, 'no run holds the execution')
+  writeJson(livePath(dir, D_IMPL), { turns: 1, tool: { name: 'Read', target: '' }, at: '2026-09-27T09:00:00.000Z' })
+  assert.equal(nodeOf(repo, effort, 'a/impl').live, null, 'no run holds the execution')
 
   const run = executionRunId(effort, stamp)
   const meta = (pid) => writeJson(runJsonPath(repo, run), { run, pid, heartbeat_at: new Date().toISOString() })
   meta(process.pid)
   const expected = { dispatch: running, ...activity }
-  assert.deepEqual(liveOf(repo, effort, 'a/impl'), expected, 'the latest dispatch\'s activity, never an earlier one\'s')
+  assert.deepEqual(nodeOf(repo, effort, 'a/impl').live, expected, 'the latest dispatch\'s activity, never an earlier one\'s')
   const byId = Object.fromEntries(snapshotOf(repo, effort).nodes.map((n) => [n.id, n]))
   assert.deepEqual(byId['a/impl'].live, expected)
   assert.equal(byId['a/fix'].live, null, 'a dispatch with no live file')
   assert.equal(byId['a/wait'].live, null, 'a node never dispatched')
   assert.match(renderNode(byId['a/impl']), /^live: .*7 turn\(s\), last Edit src\/a-impl\.js/m)
+  assert.match(renderNode({ ...byId['a/impl'], live: { ...expected, tool: { name: 'Read', target: '' } } }), /^live: .*, last Read at /m)
 
   meta(DEAD_PID)
-  assert.equal(liveOf(repo, effort, 'a/impl'), null, 'a run whose process is gone')
+  assert.equal(nodeOf(repo, effort, 'a/impl').live, null, 'a run whose process is gone')
 })
 
 test('a node\'s card shows the latest checkout change of its own dispatches', () => {

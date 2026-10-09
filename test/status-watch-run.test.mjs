@@ -110,6 +110,25 @@ test('watch refuses a --since that is not a non-negative integer', (t) => {
   }
 })
 
+test('watch refuses a --since beyond the largest safe integer', { timeout: 30_000 }, (t) => {
+  const r = repo(t)
+  writeJson(runJsonPath(r, RUN), { run: RUN, pid: process.pid, heartbeat_at: new Date().toISOString() })
+  appendRun(r, RUN, [{ kind: 'run', program: 'survey' }, ended(0)])
+  const beyond = String(BigInt(Number.MAX_SAFE_INTEGER) + 2n)
+  const out = spawnSync(process.execPath, [CLI, 'watch', '--repo', r, '--run', RUN, '--since', beyond], { encoding: 'utf8', env: CHILD_ENV, timeout: 20000 })
+  assert.equal(out.status, 1, out.stdout)
+  assert.match(JSON.parse(out.stdout).error, /--since/)
+})
+
+test('watch follows the run its --run resolves to, a space around the name included', { timeout: 30_000 }, (t) => {
+  const r = repo(t)
+  writeJson(runJsonPath(r, RUN), { run: RUN, pid: process.pid, heartbeat_at: new Date().toISOString() })
+  appendRun(r, RUN, [{ kind: 'run', program: 'survey' }, ended(0)])
+  const out = spawnSync(process.execPath, [CLI, 'watch', '--repo', r, '--run', ' ' + RUN + ' '], { encoding: 'utf8', env: CHILD_ENV, timeout: 10000 })
+  assert.equal(out.stdout, 'ended done: complete=true result=/r/result.json\n')
+  assert.equal(out.status, 0)
+})
+
 test('an ended record before the latest run is not the current run\'s end', () => {
   const entries = [{ kind: 'run', seq: 1 }, ended(2), { kind: 'run', seq: 3 }, stop(4)]
   assert.equal(runWatchLines(entries, 0).ended, null)

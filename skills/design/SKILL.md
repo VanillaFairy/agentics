@@ -137,7 +137,7 @@ develop's planner: say so and point to `/agentics:develop`.
 |---|---|
 | no `DESIGN.md`, or its Intent is empty | Analyze |
 | a `blocking` open question | Grill |
-| Design or Plan empty, or `check-plan-block` reports problems | Draft |
+| Design or Plan empty, or `lib/spec.mjs check` reports problems | Draft |
 | `state` is `none` or `edited` | Review |
 | approved, and its compiled hash is not its current hash | Approve (compile only) |
 | otherwise | Move on |
@@ -155,7 +155,7 @@ happens in the ancestor's spec, in that folder's own loop.
 ## The spec
 
 Headings, in this order. Everything is prose except the Decisions rows, the open-question bullets
-and the plan entries, which `check-plan-block` parses:
+and the plan entries, which `lib/spec.mjs check` parses:
 
 - `# <title>`
 - `## Intent`: who it is for, the outcome, success criteria, boundaries, what is out of scope; the
@@ -375,7 +375,7 @@ never sees, does not count, nor does a re-ask that refers to one ("given those u
 A spec with an open `blocking` question does not hand off: not to Draft, not to `develop`, not to
 "we can settle that during the build".
 
-### Draft. Gate: `check-plan-block` passes and no decision is unrealised
+### Draft. Gate: `lib/spec.mjs check` passes and no decision is unrealised
 
 Write Design and Plan at this layer's level of detail. Show each section in chat, and write it
 into the spec once the user okays it. Then run the check:
@@ -557,9 +557,9 @@ By the result's `status`:
   node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" rule --repo . --effort <e> --folder <id> --user-approved
   ```
 
-  It prints its result: `approved`, or `refused` with `next: ask_user` when the answer did not
-  choose `Approve` (ask again with the `token` it prints), or `rule_it` when the spec moved on
-  since it was ruled (start `rule` again).
+  It prints its result, read as the first run's below: `approved`, `compile_refused`, or `refused`
+  by its `next`, where `ask_user` means the answer did not choose `Approve` (ask again with the
+  `token` it prints) and `rule_it` that the spec moved on since it was ruled (start `rule` again).
 - `compile_refused`: its `problems` name file and line; the fix is an edit, ruled again.
 - `refused`, by its `next`: `user_approves`, the never-compiled path above; `fix_spec`, edit what
   `problems` name; `rule_parent_first`, rule the spec `why` names first; `rule_it`, start `rule`

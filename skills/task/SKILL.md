@@ -164,7 +164,9 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" review --repo . --detach --base <the pr
 
 Repeat until `approved` is true. `next: fix` means what is `open` still stands; `next: escalate`
 means the loop does not converge (`reason` says why): stop and tell the user. Majors and minors go
-to the user as reported.
+to the user as reported. `complete=false` with `coverage.unreached` naming the prior run means
+that run left no exit, so its open findings were not ruled again: this round's findings and exit
+stand on their own; say so in the report.
 
 ## Step 7 — Verify, then report
 

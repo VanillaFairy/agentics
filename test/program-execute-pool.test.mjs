@@ -21,7 +21,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { append } from '../lib/ledger.mjs'
-import { acquire, releaseSlots } from '../lib/locks.mjs'
+import { acquireAsync, releaseSlots } from '../lib/locks.mjs'
 import { dispatchKey } from '../lib/store.mjs'
 import {
   T, E, YIELD, leafEntry, specText, done, failed, claim, reviewed, rootReview, IMPL, work, world, entriesOf,
@@ -52,7 +52,7 @@ describe('the execute program', { concurrency: 4 }, () => {
   test('a leaf whose files another leaf holds is reported blocked by its holder, at no dispatch', T, async (t) => {
     const w = world(t, { spec: specText([leafEntry('z', { locus: ['src/z.txt', 'src/b.txt'] }), leafEntry('b')]) })
     const { rig } = w
-    const held = acquire(rig.repo, { effort: E, execution: rig.stamp, node: 'z', locus: ['src/z.txt', 'src/b.txt'], waitMs: 0 })
+    const held = await acquireAsync(rig.repo, { effort: E, execution: rig.stamp, node: 'z', locus: ['src/z.txt', 'src/b.txt'], waitMs: 0 })
     assert.equal(held.ok, true, JSON.stringify(held))
     rig.log.append('escalated', { node: 'z', reason: 'blocked', detail: 'stopped before the run' })
     w.script({})
@@ -69,7 +69,7 @@ describe('the execute program', { concurrency: 4 }, () => {
     })
     const { rig } = w
     rig.log.append('escalated', { node: 'z', reason: 'blocked', detail: 'stopped before the run' })
-    const held = acquire(rig.repo, { effort: E, execution: '20250101-000000', node: 'x', locus: ['src/x.txt'], waitMs: 0 })
+    const held = await acquireAsync(rig.repo, { effort: E, execution: '20250101-000000', node: 'x', locus: ['src/x.txt'], waitMs: 0 })
     assert.equal(held.ok, true, JSON.stringify(held))
     w.script({ [IMPL('b')]: [done()] })
     const sleepsAtFirstCall = []

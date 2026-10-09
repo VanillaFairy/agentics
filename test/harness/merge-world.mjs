@@ -10,7 +10,7 @@ import { mergeBatch } from '../../lib/boundaries/merge.mjs'
 import { executionContext } from '../../lib/boundaries/records.mjs'
 import { ensureIntegration, ensureLeaf } from '../../lib/integration.mjs'
 import { executionLog, readLog } from '../../lib/ledger.mjs'
-import { acquire } from '../../lib/locks.mjs'
+import { acquireAsync } from '../../lib/locks.mjs'
 import { branchOf, executionDir, mkdirState } from '../../lib/store.mjs'
 import { readTree } from '../../lib/tree.mjs'
 import { COMMANDS, STAMP, commitIn, git, leaf, repo } from './boundary-fixture.mjs'
@@ -77,9 +77,9 @@ export const dispatch = (w, id, round) => w.xc.log.append('dispatched', {
 })
 
 /** What leaf-open does: the locus, the folder's branch, the leaf's branch and worktree, round 1. */
-function openLeaf(w, id, { folder = '.', from, cycleMember = false } = {}) {
+async function openLeaf(w, id, { folder = '.', from, cycleMember = false } = {}) {
   const node = readTree(w.r, E).nodes.get(id)
-  const held = acquire(w.r, { effort: E, execution: STAMP, node: id, locus: node.locus })
+  const held = await acquireAsync(w.r, { effort: E, execution: STAMP, node: id, locus: node.locus })
   assert.equal(held.ok, true, JSON.stringify(held))
   const integ = integrationOf(w, folder)
   const made = ensureLeaf(w.r, E, id, { from: from || integ.head, parentBranch: integ.branch, cycleMember })
@@ -89,8 +89,8 @@ function openLeaf(w, id, { folder = '.', from, cycleMember = false } = {}) {
 }
 
 /** A leaf opened and its change committed: `{id, head_sha, worktree, branch}`. */
-export function ready(w, id, files, subject, opts) {
-  const open = openLeaf(w, id, opts)
+export async function ready(w, id, files, subject, opts) {
+  const open = await openLeaf(w, id, opts)
   return { ...open, head_sha: commitIn(open.worktree, files, subject) }
 }
 

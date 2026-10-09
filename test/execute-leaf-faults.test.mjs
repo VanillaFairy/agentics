@@ -19,7 +19,7 @@ import { existsSync, rmSync } from 'node:fs'
 import { runLeaf } from '../lib/programs/execute/leaf.mjs'
 import { heldOf } from '../lib/boundaries/records.mjs'
 import { renderMessage } from '../lib/conversation.mjs'
-import { acquire } from '../lib/locks.mjs'
+import { acquireAsync } from '../lib/locks.mjs'
 import { closePath, configPath, returnPath, writeJson } from '../lib/store.mjs'
 import {
   T, E, leafEntry, specText, YARD, bLeaf, git, work, world, ofKind, stateOf, faultsOf, startsOf, approvals,
@@ -48,7 +48,7 @@ describe('the leaf unit', { concurrency: 4 }, () => {
   test('no slot: the leaf goes back to the scheduler, nothing dispatched', T, async (t) => {
     const w = world(t, { leaves: [bLeaf(), leafEntry('x', { locus: ['src/x.txt'] })] })
     writeJson(configPath(w.rig.repo), { max_parallel: 1 })
-    const held = acquire(w.rig.repo, { effort: E, execution: w.rig.stamp, node: 'x', locus: ['src/x.txt'], waitMs: 0 })
+    const held = await acquireAsync(w.rig.repo, { effort: E, execution: w.rig.stamp, node: 'x', locus: ['src/x.txt'], waitMs: 0 })
     assert.equal(held.ok, true, JSON.stringify(held))
     w.rig.script({})
     const out = await w.run('b')
@@ -61,7 +61,7 @@ describe('the leaf unit', { concurrency: 4 }, () => {
 
   test('a locus another leaf holds: the leaf goes back to the scheduler, nothing dispatched', T, async (t) => {
     const w = world(t, { leaves: [bLeaf(), leafEntry('x', { locus: ['src/x.txt', 'src/b.txt'] })] })
-    const held = acquire(w.rig.repo, { effort: E, execution: w.rig.stamp, node: 'x', locus: ['src/x.txt', 'src/b.txt'], waitMs: 0 })
+    const held = await acquireAsync(w.rig.repo, { effort: E, execution: w.rig.stamp, node: 'x', locus: ['src/x.txt', 'src/b.txt'], waitMs: 0 })
     assert.equal(held.ok, true, JSON.stringify(held))
     w.rig.script({})
     const out = await w.run('b')

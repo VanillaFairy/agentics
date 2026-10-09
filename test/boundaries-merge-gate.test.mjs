@@ -8,7 +8,7 @@
 //              cannot be attached; the checkout moving; the refusals
 //
 // Every repository is built with the fixture's seeding helpers; preflight and leaf-open are stood
-// in for by the lib calls they make (`execution.json`, `acquire`, `ensureIntegration`,
+// in for by the lib calls they make (`execution.json`, `acquireAsync`, `ensureIntegration`,
 // `ensureLeaf`, a `dispatched` event). Expected heads, branches, rounds and record paths are
 // computed. The worlds the parts share are in test/harness/merge-world.mjs.
 //

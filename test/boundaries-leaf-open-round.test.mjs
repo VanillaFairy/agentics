@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
 import { leafOpen } from '../lib/boundaries/leaf-open.mjs'
 import { append, executionLog, readLog } from '../lib/ledger.mjs'
-import { acquire, withBranchLockAsync } from '../lib/locks.mjs'
+import { acquireAsync, withBranchLockAsync } from '../lib/locks.mjs'
 import { producerTier } from '../lib/roles.mjs'
 import {
   branchOf, closePath, configPath, effortStateDir, returnPath, reviewPath, worktreeOf, writeWhole,
@@ -118,7 +118,7 @@ test('a full pool answers no_slot, naming the holder', async (t) => {
   const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] }), leaf('b', { locus: ['src/b.mjs'] })])
   mkdirSync(join(configPath(r), '..'), { recursive: true })
   writeFileSync(configPath(r), JSON.stringify({ max_parallel: 1 }))
-  assert.equal(acquire(r, { effort: E, execution: STAMP, node: 'b', locus: ['src/b.mjs'], waitMs: 0 }).ok, true)
+  assert.equal((await acquireAsync(r, { effort: E, execution: STAMP, node: 'b', locus: ['src/b.mjs'], waitMs: 0 })).ok, true)
   const out = await leafOpen(xc, { node: 'a' })
   assert.equal(out.status, 'no_slot')
   assert.deepEqual(out.held_by.map((h) => h.node), ['b'])
@@ -126,7 +126,7 @@ test('a full pool answers no_slot, naming the holder', async (t) => {
 
 test('a locus path another leaf holds answers locus_held, naming the holder', async (t) => {
   const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] }), leaf('b', { locus: ['src/a.mjs'] })])
-  assert.equal(acquire(r, { effort: E, execution: STAMP, node: 'b', locus: ['src/a.mjs'], waitMs: 0 }).ok, true)
+  assert.equal((await acquireAsync(r, { effort: E, execution: STAMP, node: 'b', locus: ['src/a.mjs'], waitMs: 0 })).ok, true)
   const out = await leafOpen(xc, { node: 'a' })
   assert.equal(out.status, 'locus_held')
   assert.deepEqual(out.held_by, [{ node: 'b', status: 'planned' }])

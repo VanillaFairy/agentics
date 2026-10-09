@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import { postflight, preflight, schedule } from '../lib/boundaries/execution.mjs'
 import { executionContext, fault, recordAll } from '../lib/boundaries/records.mjs'
 import { executionLog, readLog } from '../lib/ledger.mjs'
-import { acquire, heldBy, maxParallel } from '../lib/locks.mjs'
+import { acquireAsync, heldBy, maxParallel } from '../lib/locks.mjs'
 import { branchExists, branchOf, configPath, executionDir, posix, worktreeOf } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
 import { COMMANDS, STAMP, commitIn, git, leaf, root } from './harness/boundary-fixture.mjs'
@@ -65,8 +65,8 @@ const ids = (launch) => launch.map((l) => l.unit + ':' + l.id)
 
 test("preflight frees this execution's slots and no other execution's", async (t) => {
   const r = world(t, NO_GAPS)
-  assert.equal(acquire(r, { effort: E, execution: STAMP, node: 'a', locus: [ADD] }).ok, true)
-  assert.equal(acquire(r, { effort: E, execution: STAMP2, node: 'b', locus: ['README.md'] }).ok, true)
+  assert.equal((await acquireAsync(r, { effort: E, execution: STAMP, node: 'a', locus: [ADD] })).ok, true)
+  assert.equal((await acquireAsync(r, { effort: E, execution: STAMP2, node: 'b', locus: ['README.md'] })).ok, true)
   assert.equal(heldBy(r).slots.length, 2)
   const out = await preflight(ctxOf(r), { commands_file: commandsFile(t) })
   assert.equal(out.ok, true)
@@ -392,8 +392,8 @@ test('below the effort root, postflight closes only once the root folder merged 
 test("postflight frees this execution's slots", async (t) => {
   const r = world(t, NO_GAPS)
   envelopeFor(r)
-  assert.equal(acquire(r, { effort: E, execution: STAMP, node: 'a', locus: [ADD] }).ok, true)
-  assert.equal(acquire(r, { effort: E, execution: STAMP2, node: 'b', locus: ['README.md'] }).ok, true)
+  assert.equal((await acquireAsync(r, { effort: E, execution: STAMP, node: 'a', locus: [ADD] })).ok, true)
+  assert.equal((await acquireAsync(r, { effort: E, execution: STAMP2, node: 'b', locus: ['README.md'] })).ok, true)
   const out = await postflight(ctxOf(r))
   assert.equal(out.ok, true)
   assert.deepEqual(heldBy(r).slots.map((s) => [s.execution, s.node]), [[STAMP2, 'b']])

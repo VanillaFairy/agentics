@@ -9,7 +9,7 @@
 //               leaves nothing merged; a batch run again after its outcome merges nothing twice
 //
 // Every repository is built with the fixture's seeding helpers; preflight and leaf-open are stood
-// in for by the lib calls they make (`execution.json`, `acquire`, `ensureIntegration`,
+// in for by the lib calls they make (`execution.json`, `acquireAsync`, `ensureIntegration`,
 // `ensureLeaf`, a `dispatched` event). Expected heads, branches, rounds and record paths are
 // computed. The worlds the parts share are in test/harness/merge-world.mjs.
 //
@@ -42,9 +42,9 @@ let bisectedP
 /** x breaks the suite alone, y does not; x has been dispatched twice. */
 const bisected = () => (bisectedP ??= (async () => {
   const w = world(whenFileEnds, [root(), addOne('x'), leaf('y', { rigor: 'trivial', locus: ['README.md'] })])
-  const x = ready(w, 'x', { 'src/add.mjs': BREAK_ADD }, 'Break add')
+  const x = await ready(w, 'x', { 'src/add.mjs': BREAK_ADD }, 'Break add')
   dispatch(w, 'x', 2)
-  const y = ready(w, 'y', { 'README.md': 'hello world\n' }, 'Greet the world')
+  const y = await ready(w, 'y', { 'README.md': 'hello world\n' }, 'Greet the world')
   const pre = headOf(w.r, '.')
   const children = handed(x, y)
   const out = await batch(w, children)
@@ -55,7 +55,7 @@ let passingP
 /** x passes: the one leaf of the root, merged. */
 const passing = () => (passingP ??= (async () => {
   const w = world(whenFileEnds, [root(), addOne('x')])
-  const x = ready(w, 'x', { 'src/add.mjs': FLIP_ADD }, 'Add in the other order')
+  const x = await ready(w, 'x', { 'src/add.mjs': FLIP_ADD }, 'Add in the other order')
   const pre = headOf(w.r, '.')
   const children = handed(x)
   const out = await batch(w, children)
@@ -68,8 +68,8 @@ test('children merge in dependency order, whatever order they are handed in', SL
   const w = world(inTest(t), [root(),
     leaf('x', { rigor: 'trivial', locus: ['x.txt'] }),
     leaf('y', { rigor: 'trivial', locus: ['y.txt'], deps: ['x'] })])
-  const x = ready(w, 'x', { 'x.txt': 'x\n' }, 'Add x')
-  const y = ready(w, 'y', { 'y.txt': 'y\n' }, 'Add y')
+  const x = await ready(w, 'x', { 'x.txt': 'x\n' }, 'Add x')
+  const y = await ready(w, 'y', { 'y.txt': 'y\n' }, 'Add y')
   const pre = headOf(w.r, '.')
   const out = await batch(w, handed(y, x))
 
@@ -85,8 +85,8 @@ test('a cycle merges through its tip in one merge, and every member is recorded 
   const w = world(inTest(t), [root(),
     leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'] }),
     leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], locus: ['src/r.mjs'] })])
-  const r = ready(w, 'r', { 'test/r.test.mjs': R_TEST }, 'Pin r')
-  const g = ready(w, 'g', { 'src/r.mjs': 'export const r = () => 1\n' }, 'Implement r', { from: r.head_sha, cycleMember: true })
+  const r = await ready(w, 'r', { 'test/r.test.mjs': R_TEST }, 'Pin r')
+  const g = await ready(w, 'g', { 'src/r.mjs': 'export const r = () => 1\n' }, 'Implement r', { from: r.head_sha, cycleMember: true })
   const pre = headOf(w.r, '.')
   const out = await mergeBatch(w.xc, { target: '.', children: handed(r, g), cycles: [['r', 'g']] })
 
@@ -103,7 +103,7 @@ test('a cycle merges through its tip in one merge, and every member is recorded 
 
 test('the merged head is measured with the fast suite, through measure', SLOW, async (t) => {
   const w = world(inTest(t), [root(), addOne('a')], { commands: SPLIT, prepare: addBigTest })
-  const a = ready(w, 'a', { 'src/add.mjs': BREAK_BIG }, 'Break only the big test')
+  const a = await ready(w, 'a', { 'src/add.mjs': BREAK_BIG }, 'Break only the big test')
   const out = await batch(w, handed(a))
 
   assert.equal(out.verified, true, 'the fast suite does not run the big test')

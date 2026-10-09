@@ -12,7 +12,7 @@
 //   driftOf     (pure) what a landed diff touched under a contract a pending node consumes
 //
 // Every repository is built with the fixture's seeding helpers; preflight and leaf-open are stood
-// in for by the lib calls they make (`execution.json`, `acquire`, `ensureIntegration`,
+// in for by the lib calls they make (`execution.json`, `acquireAsync`, `ensureIntegration`,
 // `ensureLeaf`, a `dispatched` event). Expected heads, branches, rounds and record paths are
 // computed. The worlds the parts share are in test/harness/merge-world.mjs.
 //
@@ -45,8 +45,8 @@ test('children that pass alone and fail together are a combination failure, and 
       git(r, 'commit', '-q', '-m', 'pair rule')
     },
   })
-  const p = ready(w, 'p', { 'p.txt': 'p\n' }, 'Add p')
-  const q = ready(w, 'q', { 'q.txt': 'q\n' }, 'Add q')
+  const p = await ready(w, 'p', { 'p.txt': 'p\n' }, 'Add p')
+  const q = await ready(w, 'q', { 'q.txt': 'q\n' }, 'Add q')
   const pre = headOf(w.r, '.')
   const out = await batch(w, handed(p, q))
 
@@ -77,8 +77,8 @@ test('a cycle failing alone on the merged head escalates every member fails_on_i
   const w = world(inTest(t), [root(),
     leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'] }),
     leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], locus: ['src/r.mjs'] })])
-  const r = ready(w, 'r', { 'test/r.test.mjs': R_TEST }, 'Pin r')
-  const g = ready(w, 'g', { 'src/r.mjs': 'export const r = () => 2\n' }, 'Implement r wrongly', { from: r.head_sha, cycleMember: true })
+  const r = await ready(w, 'r', { 'test/r.test.mjs': R_TEST }, 'Pin r')
+  const g = await ready(w, 'g', { 'src/r.mjs': 'export const r = () => 2\n' }, 'Implement r wrongly', { from: r.head_sha, cycleMember: true })
   const out = await mergeBatch(w.xc, { target: '.', children: handed(r, g), cycles: [['r', 'g']] })
 
   assert.deepEqual(stopsOf(out).sort(), [['g', 'escalated', 'fails_on_integration'], ['r', 'escalated', 'fails_on_integration']])
@@ -91,9 +91,9 @@ test('a conflict escalates merge_conflict naming the paths; what merged before i
   const w = world(inTest(t), [root(),
     leaf('m', { rigor: 'trivial', locus: ['README.md'] }),
     leaf('n', { rigor: 'trivial', locus: ['NOTES.md'], deps: ['m'] })])
-  const m = ready(w, 'm', { 'README.md': 'from m\n' }, 'Say m')
+  const m = await ready(w, 'm', { 'README.md': 'from m\n' }, 'Say m')
   // n declared a disjoint locus and wrote README.md anyway: the plan was wrong about independence.
-  const n = ready(w, 'n', { 'README.md': 'from n\n' }, 'Say n')
+  const n = await ready(w, 'n', { 'README.md': 'from n\n' }, 'Say n')
   const out = await batch(w, handed(m, n))
 
   assert.deepEqual(ids(out.merged), ['m'])
@@ -110,8 +110,8 @@ test('a conflict the first merge met stands through the bisect of a red head', S
     leaf('n', { rigor: 'trivial', locus: ['NOTES.md'], deps: ['m'] })])
   // m breaks the suite, so the merged head is red and bisected; n wrote README.md, which m changed
   // too, so the first merge stopped at n, which no bisect measures.
-  const m = ready(w, 'm', { 'src/add.mjs': BREAK_ADD, 'README.md': 'from m\n' }, 'Break add, say m')
-  const n = ready(w, 'n', { 'README.md': 'from n\n' }, 'Say n')
+  const m = await ready(w, 'm', { 'src/add.mjs': BREAK_ADD, 'README.md': 'from m\n' }, 'Break add, say m')
+  const n = await ready(w, 'n', { 'README.md': 'from n\n' }, 'Say n')
   const out = await batch(w, handed(m, n))
 
   assert.deepEqual(ids(out.merged), [])
@@ -131,7 +131,7 @@ test('a batch that merged nothing and saw nothing fail escalates merge_no_progre
 
 test('a batch that cannot run escalates merge_batch_failed, once', SLOW, async (t) => {
   const w = world(inTest(t), [root(), addOne('x')])
-  const x = ready(w, 'x', { 'src/add.mjs': FLIP_ADD }, 'Add in the other order')
+  const x = await ready(w, 'x', { 'src/add.mjs': FLIP_ADD }, 'Add in the other order')
   takeWorktree(w, integrationOf(w))
 
   const first = await batch(w, handed(x))
@@ -151,7 +151,7 @@ test('a batch that cannot run escalates merge_batch_failed, once', SLOW, async (
 
 test('a batch started and never finished is reset to where it started and done again', SLOW, async (t) => {
   const w = world(inTest(t), [root(), addOne('x')])
-  const x = ready(w, 'x', { 'src/add.mjs': BREAK_ADD }, 'Break add')
+  const x = await ready(w, 'x', { 'src/add.mjs': BREAK_ADD }, 'Break add')
   // The kill: the batch started and the merge landed; nothing was measured or recorded.
   const wt = integrationOf(w).worktree
   const pre = git(wt, 'rev-parse', 'HEAD')
@@ -169,7 +169,7 @@ test('a batch started and never finished is reset to where it started and done a
 
 test('a batch killed after its outcome and before its merged events records them when run again', SLOW, async (t) => {
   const w = world(inTest(t), [root(), addOne('x')])
-  const x = ready(w, 'x', { 'src/add.mjs': FLIP_ADD }, 'Add in the other order')
+  const x = await ready(w, 'x', { 'src/add.mjs': FLIP_ADD }, 'Add in the other order')
   const first = await batch(w, handed(x))
   assert.deepEqual(ids(first.merged), ['x'])
   const head = headOf(w.r, '.')
@@ -198,7 +198,7 @@ const driftWorld = (t) => world(inTest(t), [root(),
 
 test('a merge under a contract a pending node consumes writes the drift record and one ruler brief', SLOW, async (t) => {
   const w = driftWorld(t)
-  const p = ready(w, 'p', { 'README.md': 'hello world\n' }, 'Greet the world')
+  const p = await ready(w, 'p', { 'README.md': 'hello world\n' }, 'Greet the world')
   const out = await batch(w, handed(p))
 
   assert.deepEqual(out.drift, [{ node: 'c', contract: 'docs', stopped: '' }])
@@ -221,7 +221,7 @@ test('a merge under a contract a pending node consumes writes the drift record a
 
 test("a stopped consumer's drift is recorded and briefed to no ruler", SLOW, async (t) => {
   const w = driftWorld(t)
-  const p = ready(w, 'p', { 'README.md': 'hello world\n' }, 'Greet the world')
+  const p = await ready(w, 'p', { 'README.md': 'hello world\n' }, 'Greet the world')
   w.xc.log.append('escalated', { node: 'c', reason: 'blocked' })
   const out = await batch(w, handed(p))
 
@@ -259,7 +259,7 @@ test('drift: a landed diff under a contract a pending node consumes is flagged; 
 
 test('the event loop runs while the merge measures', SLOW, async (t) => {
   const w = world(inTest(t), [root(), addOne('x')])
-  const x = ready(w, 'x', { 'src/add.mjs': FLIP_ADD }, 'Add in the other order')
+  const x = await ready(w, 'x', { 'src/add.mjs': FLIP_ADD }, 'Add in the other order')
   let ticks = 0
   const timer = setInterval(() => {
     const state = stateOf(w.r)
@@ -278,7 +278,7 @@ test('the event loop runs while the merge measures', SLOW, async (t) => {
 
 test('a checkout moved while the merge measured is a checkout fault on the target, and nothing is decided', SLOW, async (t) => {
   const w = world(inTest(t), [root(), addOne('x')])
-  const x = ready(w, 'x', { 'src/add.mjs': FLIP_ADD }, 'Add in the other order')
+  const x = await ready(w, 'x', { 'src/add.mjs': FLIP_ADD }, 'Add in the other order')
   const pre = headOf(w.r, '.')
   const seen = { moved: false, error: null }
   const timer = setInterval(() => {

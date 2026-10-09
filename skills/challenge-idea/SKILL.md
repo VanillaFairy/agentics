@@ -101,6 +101,10 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" open <repo> <name> --about "<the cha
 
 Opening is idempotent: a later phase adopts the identity the first one recorded.
 
+Free text here (the words, `--about`, `--gap`) is one line of at most 300 characters. Longer
+text goes in a file you write with Write, passed as `--about-file <path>` (`slug` takes it too) or
+`--gap-file <path>`.
+
 **Evidence is project-wide, and every item carries its own anchors.** The survey, the
 existing-solutions search and the challenge review record what they find themselves, as evidence
 items in `.agentics/.state/evidence/`: one claim each, with the lines, searches, sources or other

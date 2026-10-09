@@ -104,7 +104,8 @@ path from the root, `foundations/entities`), its effort, its approval state and 
 equal to the words is the match; otherwise every folder whose name or title contains them.
 **One match** resumes that folder. **Several**: ask which with `AskUserQuestion`. **None**: propose
 a new effort with a short name the user confirms or changes (`^[a-z0-9][a-z0-9-]*$`, no `--`, at
-most 120 characters), and open it:
+most 120 characters), and open it, with `--about-file <file>` in place of `--about` when the change
+is longer than one line of 300 characters:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" open . <name> --about "<the change, in the user's words>" --roots .
@@ -298,6 +299,10 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" open <repo> <name> --about "<the cha
 
 Opening is idempotent: a later phase adopts the identity the first one recorded.
 
+Free text here (the words, `--about`, `--gap`) is one line of at most 300 characters. Longer
+text goes in a file you write with Write, passed as `--about-file <path>` (`slug` takes it too) or
+`--gap-file <path>`.
+
 **Evidence is project-wide, and every item carries its own anchors.** The survey, the
 existing-solutions search and the challenge review record what they find themselves, as evidence
 items in `.agentics/.state/evidence/`: one claim each, with the lines, searches, sources or other
@@ -395,7 +400,7 @@ now. Here it is one entry.
 
 **A review is earned** by the spec's length, or by a contract other entries consume (an entry
 `provides` one). Name what earned it. When nothing did, record that and why, and go straight to
-the user's read:
+the user's read (a reason past one line of 300 characters goes in a file, as `--reason-file`):
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" skip-review --repo . --effort <e> --folder <id> --reason "<why it was not earned>"

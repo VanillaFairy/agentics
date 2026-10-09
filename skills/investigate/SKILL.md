@@ -53,8 +53,8 @@ An override arrives either way round: `/investigate max how does X work` or
 
 **Roots.** Which repositories are in play, comma-separated. Default to the current working
 directory, `.`. Anything else the user said that bears on the search — a suspect, a place to start
-— goes in `--notes`. Pass `--pace fast` only when they ask for speed: each topic gets its own
-judge, which costs more.
+— goes in `--notes`, or in a file under `--notes-file` past one line of 300 characters. Pass
+`--pace fast` only when they ask for speed: each topic gets its own judge, which costs more.
 
 Ask **at most one** clarifying question, and only when two readings would produce materially
 different work. Otherwise state your assumption and continue.

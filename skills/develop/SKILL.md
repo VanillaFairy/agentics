@@ -183,6 +183,10 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" open <repo> <name> --about "<the cha
 
 Opening is idempotent: a later phase adopts the identity the first one recorded.
 
+Free text here (the words, `--about`, `--gap`) is one line of at most 300 characters. Longer
+text goes in a file you write with Write, passed as `--about-file <path>` (`slug` takes it too) or
+`--gap-file <path>`.
+
 **Evidence is project-wide, and every item carries its own anchors.** The survey, the
 existing-solutions search and the challenge review record what they find themselves, as evidence
 items in `.agentics/.state/evidence/`: one claim each, with the lines, searches, sources or other
@@ -208,7 +212,8 @@ The program decides what stands, never the session.
 
 Make sure `.claude/worktrees/` is gitignored; add the line yourself. `.agentics/` ignores itself.
 
-Open the effort as that block says, with `--about "<the request, in the user's words>" --roots .`.
+Open the effort as that block says, with `--about "<the request, in the user's words>" --roots .`,
+or `--about-file <file> --roots .` when the request is longer than one line of 300 characters.
 
 Write its root spec, `.agentics/<name>/DESIGN.md`. There is no Grill and no challenge here: a
 settled request is its own design, and the user approves the spec before anything is built.
@@ -384,10 +389,12 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e> --node
 
 **Leave a note on the node** whenever you establish why it stopped, the user rules on it, or you
 touch its branch by hand, before you relaunch. One paragraph, plain words; the next session
-reads it on the card instead of finding it out again:
+reads it on the card instead of finding it out again. Write it to a file with Write when it is
+longer than one line of 300 characters:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" note --repo . --effort <e> --node <id> --text "<what stopped it, what was done or ruled>"
+node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" note --repo . --effort <e> --node <id> --text-file <file>
 ```
 
 **Faults** — `{id, channel}`: a plugin fault, never a question. Relaunch at once (step 3), asking

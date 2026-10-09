@@ -179,11 +179,17 @@ program resolves the name or refuses it (L1). A lib CLI a skill's session calls 
 a path, an id, a sha, an enum, a number, a short token — and free text only under a flag it names
 free text (`--about`, `--title`, `--text`, `--gap`, `--notes`, `--context`, `--constraints`,
 `--reason`, `effort.mjs slug`'s words), one line of at most 300 characters; anything longer is a
-file the session wrote, passed by path. It refuses any other argument with `args_unreadable` (an
-unknown flag `unknown_flag`) before it reads or writes anything: `handleArgs` and `argProblem` in
-`lib/store.mjs`, each CLI declaring its flags' kinds once. A conclusion or any other text a session
-hands a program beyond one line goes as a file (`survey --prior-file`, `--question-file`,
-`--criteria-file`, …), never as a flag's value.
+file the session wrote with its Write tool, passed by path under the flag's `-file` twin instead
+(`--about-file`, `--title-file`, `--text-file`, `--gap-file`, `--notes-file`, `--context-file`,
+`--constraints-file`, `--reason-file`; `slug --about-file`), which lib reads whole. Giving a text
+by both its flag and its twin is refused (`bad_args`; `bad_arg` from `run.mjs`), a twin naming no
+file `unknown_file`, and the refusal of a text past its line names the twin, never a path to put in
+the flag. A CLI refuses any other argument with `args_unreadable` before it reads or writes
+anything, and an unknown flag with `unknown_flag` — except `run.mjs` and `boundary.mjs`, which
+refuse an unknown flag as `bad_arg` (below, and [Session calls](#session-calls)): `handleArgs`,
+`argProblem` and `textFlag` in `lib/store.mjs`, each CLI declaring its flags' kinds once. A
+conclusion or any other text a session hands a program beyond one line goes as a file
+(`survey --prior-file`, `--question-file`, `--criteria-file`, …), never as a flag's value.
 
 **Why:** a model that retypes bytes is slow, costly and lossy in proportion to their length, and
 a checksum over what it typed only turns the loss into a retry.
@@ -389,7 +395,7 @@ the program the resolved values:
 | kind | given as | resolved to |
 |---|---|---|
 | `file` | a path, absolute or from the working directory | the absolute path of an existing file, and its text — `\r\n` read as `\n`, trimmed — under the name the program asks for, so a file's line endings never change a run's arguments or its scope |
-| `text` | a string | the string |
+| `text` | a string | the string; its `<name>_file` twin (a `file` argument whose `as` names it) gives it from a file, and giving both is `bad_arg` |
 | `list` | `a,b,c` | the entries, trimmed, empty ones dropped |
 | `int` | digits | a non-negative integer |
 | `bool` | the flag alone | `true`; absent, `false` |
@@ -2687,7 +2693,7 @@ and reads its result, so every dispatch is recorded, confined and judged as the 
 The session writes every text longer than a phrase that a program takes — a question, a capability,
 criteria, the drafts' excerpts — to a file outside the repository with its Write tool, so no
 snapshot holds it, and passes the path; a phrase (`--notes`, `--context`, `--constraints`) is the
-flag's value. It starts each program with `--detach`, keeps the `run` printed, follows it with
+flag's value, or a file under its `-file` twin past one line of 300 characters. It starts each program with `--detach`, keeps the `run` printed, follows it with
 `lib/status.mjs watch --run <run> --since 0` on its monitor — develop's watch of an execution with
 `--since <seq>`, the effort's `seq` read before the start, because an execution's log spans every
 run of it ([Progress](#progress)) — re-armed until the run's end, and reads the result from the
@@ -2910,7 +2916,8 @@ settlement id: its evidence item id, or `<hash>#<P-id>` when the review could no
 are derived, never stored, and a spec with an open `blocking` question is refused approval.
 `node lib/approval.mjs approve|dispose|skip-review|reviewed|state|gate --repo <r> --effort <e>
 --folder <id>` prints each function's result; `state` prints the folder's act token, and `approve`
-verifies the user's answer to it ([The user's word](#the-users-word)). A folder a planner wrote is
+verifies the user's answer to it ([The user's word](#the-users-word)). `skip-review` takes its
+`reason` as `--reason <line>` or `--reason-file <path>`. A folder a planner wrote is
 prepared in-process, by the spec boundary (`recordPreparation`). `reviewed
 --from-run <run>` records a probe run's round from its result, so no list passes through a model:
 `complete` as its coverage says, and only with no finding the store refused; `remaining` its open
@@ -3133,16 +3140,16 @@ the session's, called as CLIs:
 - **retry** — `retry --node <id>…`: `{retried[], error}`; each `replanned {reason:
   retry_escalated}` names the open execution holding the node (the latest open one whose root is
   the node or above it), or `''`.
-- **note** — `note --node <id> --text <t>`: `{noted, error}`, `noted` the node a `noted` event was
-  appended for, empty when the node is not live or the text is empty; the event names the holding
-  execution the same way.
+- **note** — `note --node <id> (--text <t> | --text-file <path>)`: `{noted, error}`, `noted` the
+  node a `noted` event was appended for, empty when the node is not live or the text is empty; the
+  event names the holding execution the same way.
 
 Neither `retry` nor `note` takes `--execution`: any flag but its own, wherever it stands, refuses
 `bad_arg` naming that flag, and records nothing; any other argument that is not a handle, and a
 `--text` past one line of 300 characters, refuses `args_unreadable` before anything is recorded
-(`handleArgs`). Both are live inputs to an execution: leaf-open hands the cleared stop's reason and
-the notes left since it, or since the thread's latest return when that is later, to the leaf's next
-round as `retried` ([Conversations](#conversations)); a leaf its review loop stopped goes on at that
+(`handleArgs`), naming `--text-file`, which takes the note from a file the session wrote. Both are
+live inputs to an execution: leaf-open hands the cleared stop's reason and the notes left since it,
+or since the thread's latest return when that is later, to the leaf's next round as `retried` ([Conversations](#conversations)); a leaf its review loop stopped goes on at that
 next round, handed the stopping review's open findings beside it. `retry` also makes the node's next
 check measure again: `measure` hands back no `verify-observed` line of the node older than its
 latest `retry_escalated` event.
@@ -3201,7 +3208,7 @@ draft or a clean `probe` round carries no items), spec snapshots in `snapshots/<
 The programs call the store in-process. A session calls two verbs: `items --ground <a,b>
 [--states <s,s>] [--return-kind <kind>]` → `{items[{id, state, topic, kind, seq, ground[]}],
 context}`, and `cite --effort <e> --folder <id> --from-run <run> [--from-run <run>]… [--exclude
-<id>]… [--gap <text>]…` → `{ok, seq, items_n}`, which cites every item the named runs' results list
+<id>]… [--gap <text> | --gap-file <path>]…` → `{ok, seq, items_n}`, which cites every item the named runs' results list
 — a survey's or a sweep's `items`, an investigation's `evidence.items` — the union in run order,
 each once, less the excluded, so no list passes through a model. It refuses a run that resolves to
 nothing (`unknown_run`), left no readable result (`no_result`) or whose result carries no items list
@@ -3244,7 +3251,8 @@ with `renamed_from`.
 - **Every program `lib/run.mjs` starts** has its result written to `result.json` in its run's home
   by `lib/run.mjs`, with `run` and `cost {dispatches, by_model, tokens, usd, unmeasured}` added,
   each `by_model` entry `{dispatches, tokens, usd, unmeasured}` ([Programs](#programs)).
-- **`survey`** — takes `question_file` (required), `roots` (default `.`), `notes`, `prior_file` (a
+- **`survey`** — takes `question_file` (required), `roots` (default `.`), `notes` (or `notes_file`),
+  `prior_file` (a
   file the session wrote: what an earlier pass concluded, which the planner reads and no searcher is
   shown), `max_topics` (default 8), `intelligence` (`low | normal | max`, default `normal`), `pace`
   (`frugal | balanced | fast`, default `balanced`), `ground`. Returns `{question, topics[{key,
@@ -3253,7 +3261,7 @@ with `renamed_from`.
   item it returns in full, the judges' risks and the channels' returns; a `forced` topic is searched
   again for its stale items; `history` and `docs` are the path of that channel's last stored return,
   or null when it did not run or returned no round.
-- **`probe`** — takes `artifact` (required), `roots` (default `.`), `context`, `per_axis`,
+- **`probe`** — takes `artifact` (required), `roots` (default `.`), `context` (or `context_file`), `per_axis`,
   `since`. Returns `{artifact, axes[{key, source}], analysts[[axis]], shared_ground{resolved, cited,
   files, excerpts, unresolved}, guidance_read, repo_ground{located, unresolved}, units{total, ruled,
   open[]}, findings[{id, item, severity, axis, section, carried}], findings_file, ambiguities[],
@@ -3264,12 +3272,12 @@ with `renamed_from`.
   round was not recorded or a finding was refused, so the next round is whole; when
   `coverage.complete` is false its loss is named in `units.open`, `coverage.failed_channels` or
   `coverage.incomplete`, which `approval.mjs reviewed --from-run` reads.
-- **`solutions`** — takes `capability_file` (required), `roots` (default `.`), `constraints`,
-  `notes`, `max_angles` (default 4), `intelligence` (default `normal`). Returns `{capability,
+- **`solutions`** — takes `capability_file` (required), `roots` (default `.`), `constraints` (or
+  `constraints_file`), `notes` (or `notes_file`), `max_angles` (default 4), `intelligence` (default `normal`). Returns `{capability,
   constraints, summary, counts{present, candidates, viable, ruled_out, invented, lost, unanchored,
   unsettled}, measured, items[{id, topic, kind}], recorded, coverage}`.
-- **`investigate`** — takes `question_file` (required), `roots` (default `.`), `notes`,
-  `as_tasks`, `intelligence` (default `normal`), `pace` (default `balanced`). Returns `{question,
+- **`investigate`** — takes `question_file` (required), `roots` (default `.`), `notes` (or
+  `notes_file`), `as_tasks`, `intelligence` (default `normal`), `pace` (default `balanced`). Returns `{question,
   mode: tasks | report, tasks: {summary, gaps[], tasks[{ref, subject, description, activeForm,
   blocked_by[]}]} | null, report: <text> | null, evidence{items, context, risks, history, docs},
   coverage}`: the survey's evidence is there whether or not the synthesis returned

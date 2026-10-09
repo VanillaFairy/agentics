@@ -17,6 +17,7 @@ import { appendRun, fileFor, logOf, readLog, readRunLog, runState } from '../lib
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import { coverageOf, step } from '../lib/programs/common.mjs'
 import { launch } from '../lib/run.mjs'
+import { costOf as costReport } from '../lib/status.mjs'
 import {
   claimLockPath, executionDir, executionRunId, posix, readJson, resolveHandle, resultPath, runDir,
   runHome, runJsonPath, runLogFile, runLogPath, runsDir, writeJson, writeWhole,
@@ -452,8 +453,8 @@ test('the cost carries by_model, each returned record joined to the latest dispa
   assert.equal(cost.usd, 0.5 + 0.25 + 1)
   assert.equal(cost.unmeasured, 1)
   assert.deepEqual(cost.by_model, {
-    sonnet: { dispatches: 1, tokens: tokens(a), usd: 0.5 },
-    opus: { dispatches: 2, tokens: tokens(b) + tokens(c), usd: 0.25 },
+    sonnet: { dispatches: 1, tokens: tokens(a), usd: 0.5, unmeasured: 0 },
+    opus: { dispatches: 2, tokens: tokens(b) + tokens(c), usd: 0.25, unmeasured: 1 },
   })
   assert.deepEqual(readJson(out.result_file).cost, cost)
 })
@@ -472,10 +473,28 @@ test("a home's cost joins its returned records to the dispatched events of its e
   const events = readLog(repo, E, 'events').entries
   assert.deepEqual(events.map((e) => [e.kind, e.execution]), [['dispatched', S], ['dispatched', S]])
   assert.deepEqual(out.result.cost.by_model, {
-    haiku: { dispatches: 1, tokens: 6, usd: 0.125 },
-    opus: { dispatches: 1, tokens: 6, usd: 0.25 },
+    haiku: { dispatches: 1, tokens: 6, usd: 0.125, unmeasured: 0 },
+    opus: { dispatches: 1, tokens: 6, usd: 0.25, unmeasured: 0 },
   })
   assert.equal(out.result.cost.dispatches, 2)
+})
+
+test("a home's cost is the effort cost report's over the same execution, unmeasured calls per model included", async (t) => {
+  const repo = makeRepo(t)
+  const u = { input_tokens: 4, output_tokens: 2 }
+  const { mod } = homed(async (ctx) => {
+    ctx.log.append('dispatched', { node: 'a', dispatch: 'd1', model: 'haiku' })
+    ctx.log.append('dispatched', { node: 'b', dispatch: 'd2', model: 'opus' })
+    ctx.log.append('returned', returned('d1', u, 0.125))
+    ctx.log.append('returned', returned('d2', u, null))
+    return {}
+  })
+  const out = await start(repo, ['survey', '--topic', 'x'], mod)
+  const report = costReport(repo, E)
+  const pick = (s) => ({ dispatches: s.dispatches, tokens: s.tokens, usd: s.usd, unmeasured: s.unmeasured })
+  assert.deepEqual(pick(out.result.cost), pick(report))
+  assert.deepEqual(out.result.cost.by_model, Object.fromEntries(Object.entries(report.by_model).map(([m, s]) => [m, pick(s)])))
+  assert.equal(out.result.cost.by_model.opus.unmeasured, 1, 'the call with no cost figure is unmeasured under its model')
 })
 
 // --- launch_failed that cannot be recorded ---------------------------------------------------

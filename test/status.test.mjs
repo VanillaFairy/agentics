@@ -416,3 +416,20 @@ test('the snapshot says who writes each node\'s spec', () => {
   assert.equal(authors.f, 'planner', 'the viewer queues a planner-written design instead of asking the user')
   assert.equal(authors.a, 'you')
 })
+
+test('the status CLI refuses a value that is not a handle, and a flag it does not take', () => {
+  const refusal = (...args) => {
+    try {
+      execFileSync(process.execPath, [CLI, ...args], {
+        encoding: 'utf8', stdio: 'pipe', env: { ...process.env, NODE_TEST_CONTEXT: '' }, timeout: 30_000,
+      })
+      return [0, '']
+    } catch (err) {
+      return [err.status, JSON.parse(err.stdout).kind]
+    }
+  }
+  assert.deepEqual(refusal('show', '--repo', '.', '--effort', 'e f'), [1, 'args_unreadable'])
+  assert.deepEqual(refusal('watch', '--repo', '.', '--run', 'e1.2026\n'), [1, 'args_unreadable'])
+  assert.deepEqual(refusal('list', '--repo', '.\n'), [1, 'args_unreadable'])
+  assert.deepEqual(refusal('list', '--repo', '.', '--verbose', 'x'), [1, 'unknown_flag'])
+})

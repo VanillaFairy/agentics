@@ -893,3 +893,18 @@ test('a group may not take the name of a task with merged work', () => {
   assert.equal(out.ok, false)
   assert.ok(out.problems.some((p) => /takes the name/.test(p.problem)), JSON.stringify(out.problems))
 })
+
+test('the compile CLI refuses a value that is not a handle, and a flag it does not take', () => {
+  const refusal = (...args) => {
+    try {
+      execFileSync(process.execPath, [CLI, ...args], {
+        encoding: 'utf8', stdio: 'pipe', env: { ...process.env, NODE_TEST_CONTEXT: '' }, timeout: 30_000,
+      })
+      return [0, '']
+    } catch (err) {
+      return [err.status, JSON.parse(err.stdout).kind]
+    }
+  }
+  assert.deepEqual(refusal('--repo', '.', '--effort', 'e`1'), [1, 'args_unreadable'])
+  assert.deepEqual(refusal('--repo', '.', '--effort', 'e1', '--force'), [1, 'unknown_flag'])
+})

@@ -7,7 +7,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { closeSync, openSync, readFileSync } from 'node:fs'
 
 import {
   itemId, liveItems, recordProbe, recordSolutions, recordSurvey, reviewScope, sectionSlug, surveyContext,
@@ -205,6 +205,14 @@ test('with no assessment the researchers\' candidates are carried unmeasured: ne
   assert.equal(out.measured, false)
   assert.deepEqual([out.counts.candidates, out.counts.viable, out.counts.ruled_out, out.counts.unread], [1, 0, 0, 1])
   assert.match(readFileSync(out.summary_file, 'utf8'), /UNMEASURED/)
+})
+
+test('a return handed as a number is unread, never read as a file descriptor', (t) => {
+  const repo = gitRepo({ 'package.json': text(lines(4)) })
+  const fd = openSync(returnFile(repo, { candidates: [candidate('a')] }), 'r')
+  t.after(() => closeSync(fd))
+  const out = sweep(repo, { candidates: [fd] })
+  assert.deepEqual([out.counts.unread, out.counts.candidates], [1, 0])
 })
 
 test('a frame whose capability is not the sweep\'s refuses it', () => {

@@ -36,6 +36,24 @@ test('a ## line inside a fenced block is no heading', () => {
   assert.deepEqual(shape(sectionsOf(text(doc))), [{ slug: 'design', title: 'Design', start: 1, end: doc.length }])
 })
 
+test('a backtick line whose info string holds a backtick opens no fence', () => {
+  const doc = ['## Design', '```not`a fence', '## Risks', 'none']
+  assert.deepEqual(shape(sectionsOf(text(doc))), [
+    { slug: 'design', title: 'Design', start: 1, end: at(doc, '## Risks') - 1 },
+    { slug: 'risks', title: 'Risks', start: at(doc, '## Risks'), end: doc.length },
+  ])
+})
+
+test('a tilde fence may hold a backtick in its info string', () => {
+  const doc = ['## Design', '~~~ a`b', '## not a heading', '~~~', 'after']
+  assert.deepEqual(shape(sectionsOf(text(doc))), [{ slug: 'design', title: 'Design', start: 1, end: doc.length }])
+})
+
+test("a heading's closing # run is not part of its title; a # glued to the text is", () => {
+  const doc = ['## Design ##', 'how', '## Risks #  ', 'x', '## C#', 'y', '## ##', 'z']
+  assert.deepEqual(sectionsOf(text(doc)).map((s) => s.title), ['Design', 'Risks', 'C#', ''])
+})
+
 test('text before the first heading other than blank lines and a # title is the preamble', () => {
   const doc = ['# Title', '', 'An opening paragraph.', '', '## Design', 'how']
   assert.deepEqual(shape(sectionsOf(text(doc))), [

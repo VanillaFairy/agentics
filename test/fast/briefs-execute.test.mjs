@@ -272,3 +272,17 @@ test('the same input gives the same text, and the input is left as it was', () =
     assert.deepEqual(input, before, fn.name + ' left its input as it was')
   }
 })
+
+test('the convergence brief names the ruling and its schema, and carries each review round with what it left open', async () => {
+  const { convergenceBrief } = await import('../../lib/briefs/execute.mjs')
+  assert.equal(typeof convergenceBrief, 'function')
+  const second = { ...blocker, id: 'F2', claim: 'lower-case keys are doubled' }
+  const reviews = [
+    { review_round: 1, round: 1, open: [blocker], unfixed: [] },
+    { review_round: 2, round: 2, open: [second], unfixed: ['F1'] },
+  ]
+  const text = convergenceBrief({ leaf: leaf(), reviews })
+  for (const s of ['api/parse', 'ruler_convergence', 'F1', blocker.claim, 'F2', second.claim]) assert.ok(text.includes(s), s)
+  assert.ok(text.indexOf(blocker.claim) < text.indexOf(second.claim), 'the oldest round first')
+  assert.equal(convergenceBrief({ leaf: leaf(), reviews }), text, 'the same input gives the same text')
+})

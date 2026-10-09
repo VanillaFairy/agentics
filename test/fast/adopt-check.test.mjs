@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 
 import { actToken } from '../../lib/approval.mjs'
 import { adoptDigest, adoptRecords, checkAdoption, parseMapping } from '../../lib/adopt.mjs'
+import { branchOf } from '../../lib/store.mjs'
 import { deriveStatus, liveNodes } from '../../lib/tree.mjs'
 
 const NODES = [
@@ -142,6 +143,18 @@ test('a sha named by two entries, or already by a record, refuses claimed_twice'
   assert.deepEqual(kinds(recorded), [['outside[0]', 'claimed_twice']])
 })
 
+test('a sha a merged record carries as its merged_sha refuses claimed_twice, in a done entry and in an outside one', () => {
+  const facts = factsOf({ on: [S1, S2, S3, TIP, OLD], events: [{ kind: 'merged', node: 'c/b', into: 'agentics/e1--c', merged_sha: S2, head_sha: OLD, commits: [S1] }] })
+  assert.deepEqual(kinds(check({ done: [{ node: 'c/a', commits: [S2] }] }, facts)), [['done[0]', 'claimed_twice']])
+  assert.deepEqual(kinds(check({ outside: [{ commits: [S2] }] }, facts)), [['outside[0]', 'claimed_twice']])
+})
+
+test('a sha a merged record carries as its head_sha refuses claimed_twice, in a done entry and in an outside one', () => {
+  const facts = factsOf({ on: [S1, S2, S3, TIP, OLD], events: [{ kind: 'merged', node: 'c/b', into: 'agentics/e1--c', merged_sha: S2, head_sha: OLD, commits: [S1] }] })
+  assert.deepEqual(kinds(check({ done: [{ node: 'c/a', commits: [OLD] }] }, facts)), [['done[0]', 'claimed_twice']])
+  assert.deepEqual(kinds(check({ outside: [{ commits: [OLD] }] }, facts)), [['outside[0]', 'claimed_twice']])
+})
+
 test('an abbreviated sha counts as the full one it names', () => {
   const out = check({ done: [{ node: 'c/a', commits: [S2.slice(0, 8)] }], outside: [{ commits: [S2] }] })
   assert.deepEqual(kinds(out), [['outside[0]', 'claimed_twice']])
@@ -253,6 +266,33 @@ test("a done entry records merged into the folder branch, its last commit as hea
   assert.equal(m.merged_sha, S3)
   assert.equal(m.by, 'terminal')
   assert.deepEqual(m.commits, [S1, S2])
+})
+
+test("a handed-over green or audit whose predecessor is adopted done gets the predecessor's canonical branch, at its last commit", () => {
+  const tip = { head: TIP, commits: [TIP] }
+  const green = factsOf({ handoverBranches: { g: tip } })
+  const afterRed = check({ done: [{ node: 'c/r', commits: [S1, S2] }], handover: [{ node: 'c/g', branch: 'g' }] }, green)
+  assert.deepEqual(afterRed.refusals, [])
+  assert.deepEqual(adoptRecords(afterRed.normalized, green, 'user').branches, [
+    { node: 'c/r', branch: branchOf('e1', 'c/r'), head: S2 },
+    { node: 'c/g', branch: branchOf('e1', 'c/g'), head: TIP },
+  ])
+  const audit = factsOf({ handoverBranches: { a: tip } })
+  const afterGreen = check({ done: [{ node: 'c/tr', commits: [S1] }, { node: 'c/tg', commits: [S2] }], handover: [{ node: 'c/ta', branch: 'a' }] }, audit)
+  assert.deepEqual(afterGreen.refusals, [])
+  assert.deepEqual(adoptRecords(afterGreen.normalized, audit, 'user').branches.map((b) => [b.node, b.head]), [['c/tg', S2], ['c/ta', TIP]])
+})
+
+test("a predecessor whose canonical branch exists is not given another, and a handover with no done predecessor adds none", () => {
+  const exists = factsOf({ handoverBranches: { g: { head: TIP, commits: [TIP] } }, canonical: { 'c/r': OLD } })
+  const out = check({ done: [{ node: 'c/r', commits: [S1] }], handover: [{ node: 'c/g', branch: 'g' }] }, exists)
+  assert.deepEqual(adoptRecords(out.normalized, exists, 'user').branches.map((b) => b.node), ['c/g'])
+  const redMerged = factsOf({
+    handoverBranches: { g: { head: TIP, commits: [TIP] } },
+    events: [{ kind: 'merged', node: 'c/r', into: 'agentics/e1--c', merged_sha: OLD, head_sha: OLD }],
+  })
+  const alone = check({ handover: [{ node: 'c/g', branch: 'g' }] }, redMerged)
+  assert.deepEqual(adoptRecords(alone.normalized, redMerged, 'user').branches.map((b) => b.node), ['c/g'])
 })
 
 test('an outside entry records outside on the folder; a handover a note naming its branch and head, and the canonical branch', () => {

@@ -6,7 +6,9 @@
 // The sections after the whole move pin what 5.0 then reads of the moved store: a migrated message
 // beside a boundary's own, the effort lock judged as the lock does, the gate's open ambiguities,
 // the evidence the landing view prints, a fixes file a later round superseded, a migrated green's
-// first round, and the edges of each part.
+// first round, and the edges of each part. A claims event whose said text cannot be stated again is
+// still renamed, a 5.0 round never supersedes a 4.x fixes file, and an apply the ledger refuses
+// partway returns what it appended and why it stopped, to be finished by the next run.
 //
 // Design: docs/DESIGN.md#migration-from-4x.
 
@@ -25,7 +27,9 @@ import { append, appendProject, executionLog, readLog, readProjectLog } from '..
 import { renderLanding } from '../lib/render.mjs'
 import { hashSpec } from '../lib/spec.mjs'
 import { executionSummary } from '../lib/status.mjs'
-import { effortStateDir, executionDir, executionsRoot, nodeKey, posix, saidOf, specPath, stalePath } from '../lib/store.mjs'
+import {
+  dispatchKey, effortStateDir, executionDir, executionsRoot, nodeKey, posix, projectStateDir, saidOf, specPath, stalePath,
+} from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
 import { apply, plan } from '../tools/migrate-v5.mjs'
 import { executionRig } from './harness/program-rig.mjs'
@@ -329,6 +333,31 @@ test('the CLI applies with --yes and prints how many records it appended', { tim
   assert.ok(added > 0)
   assert.equal(out.applied, added)
   assert.equal(executionSummary(fx.dir, E, OPEN).status, 'migrated')
+})
+
+test('the CLI prints how many records it appended and why it stopped when the ledger refuses partway, and exits 1', { timeout: 90_000 }, (t) => {
+  const fx = fixture(t)
+  const keys = Object.keys(plan(fx.dir))
+  blockProjectSeq(fx.dir)
+  const lines = totalLines(fx.dir)
+  const r = cli(fx.dir, '--yes')
+  assert.equal(r.status, 1, r.stderr)
+  const out = JSON.parse(r.stdout)
+  assert.ok(out.applied > 0)
+  assert.equal(out.applied, totalLines(fx.dir) - lines)
+  assert.match(out.error, /refused/)
+  for (const key of keys) assert.ok(key in out, "the plan's " + key + ' is printed beside applied and error')
+})
+
+test('the CLI prints an empty error and the plan beside applied, and exits 0, when every record landed', { timeout: 90_000 }, (t) => {
+  const fx = fixture(t)
+  const keys = Object.keys(plan(fx.dir))
+  const r = cli(fx.dir, '--yes')
+  assert.equal(r.status, 0, r.stderr)
+  const out = JSON.parse(r.stdout)
+  assert.ok(out.applied > 0)
+  assert.equal(out.error, '')
+  for (const key of keys) assert.ok(key in out, "the plan's " + key + ' is printed beside applied and error')
 })
 
 // ------------------------------------------------------------------ executions
@@ -784,6 +813,141 @@ test('an apply cut short is finished by the next one', (t) => {
   assert.deepEqual(statuses(fx.dir), before)
 })
 
+test('an apply that lands every record returns an empty error', (t) => {
+  const fx = fixture(t)
+  const out = apply(plan(fx.dir))
+  assert.ok(out.applied > 0)
+  assert.equal(out.error, '')
+})
+
+test('an apply the ledger refuses partway returns how many records it appended and why it stopped', (t) => {
+  const fx = fixture(t)
+  const p = plan(fx.dir)
+  assert.ok(p.judged.length > 0, 'the judged lines go to the project log, appended last')
+  blockProjectSeq(fx.dir)
+  const lines = totalLines(fx.dir)
+  const out = apply(p)
+  assert.ok(out.applied > 0)
+  assert.equal(out.applied, totalLines(fx.dir) - lines)
+  assert.match(out.error, /refused/)
+})
+
+test('an apply stopped by a refused record is finished by the next run, each record once', (t) => {
+  const fx = fixture(t)
+  const p = plan(fx.dir)
+  blockProjectSeq(fx.dir)
+  const lines = totalLines(fx.dir)
+  const first = apply(p)
+  assert.match(first.error, /refused/)
+  rmSync(join(projectStateDir(fx.dir), 'seq'), { recursive: true, force: true })
+  const second = apply(plan(fx.dir))
+  assert.equal(second.error, '')
+  assert.equal(second.applied, p.judged.length, 'only the judged lines were left')
+  assert.equal(first.applied + second.applied, totalLines(fx.dir) - lines)
+  const third = plan(fx.dir)
+  for (const part of ['executions', 'stops', 'claims', 'reviewed', 'messages']) assert.deepEqual(flat(third, part), [], part)
+  assert.deepEqual(third.judged, [])
+})
+
+/** How many lines of a log repeat an earlier line of the same log in every field but `seq`. */
+function repeatedLines(dir) {
+  let repeats = 0
+  for (const [rel, bytes] of snapshot(dir)) {
+    if (bytes === null || !rel.endsWith('.jsonl')) continue
+    const seen = new Set()
+    for (const line of bytes.toString('utf8').split('\n').filter((l) => l.trim() !== '')) {
+      const { seq: _seq, ...rest } = JSON.parse(line)
+      const key = JSON.stringify(rest)
+      if (seen.has(key)) repeats++
+      seen.add(key)
+    }
+  }
+  return repeats
+}
+
+test('an apply stopped at a refused record of a later effort keeps what the earlier effort appended and appends nothing after it', (t) => {
+  const fx = fixture(t)
+  const other = 'e2'
+  const stamp = '20260905-100000'
+  const seeded = seedTree(fx.dir, other, [{ id: '.', kind: 'composite', title: 'root' }, leaf('z')])
+  assert.equal(seeded.ok, true, JSON.stringify(seeded.problems))
+  put(join(executionDir(fx.dir, other, stamp), 'execution.json'), JSON.stringify({ root: '.' }))
+  assert.equal(append(fx.dir, other, 'state:' + stamp, { kind: 'invocation' }).ok, true)
+  const repeatsBefore = repeatedLines(fx.dir)
+
+  const p = plan(fx.dir)
+  assert.equal(p.efforts.length, 2)
+  assert.ok(p.judged.length > 0, 'the judged lines come after every effort')
+  const blocked = p.efforts.at(-1).effort
+  const seq = join(effortStateDir(fx.dir, blocked), 'seq')
+  rmSync(seq, { force: true })
+  mkdirSync(seq, { recursive: true })
+  const held = hexed(snapshot(fx.dir), blocked + '/')
+  const items = readProjectLog(fx.dir, 'items').entries.length
+  const lines = totalLines(fx.dir)
+
+  const first = apply(p)
+  assert.match(first.error, /refused/)
+  assert.ok(first.applied > 0, 'the earlier effort landed')
+  assert.equal(first.applied, totalLines(fx.dir) - lines)
+  assert.deepEqual(hexed(snapshot(fx.dir), blocked + '/'), held, 'the blocked effort wrote nothing')
+  assert.equal(readProjectLog(fx.dir, 'items').entries.length, items, 'the run stopped: the judged lines after it were not appended')
+
+  rmSync(seq, { recursive: true, force: true })
+  const second = apply(plan(fx.dir))
+  assert.equal(second.error, '')
+  assert.ok(second.applied > 0)
+  const third = plan(fx.dir)
+  for (const part of ['executions', 'stops', 'claims', 'reviewed', 'messages']) assert.deepEqual(flat(third, part), [], part)
+  assert.deepEqual(third.judged, [])
+  assert.equal(repeatedLines(fx.dir), repeatsBefore, 'no record was appended twice')
+})
+
+const GONE = 900_000
+const STALE = {
+  stops: (p) => ({ ...p, efforts: p.efforts.map((e) => ({ ...e, stops: e.stops.map((s) => ({ ...s, seq: s.seq + GONE })) })) }),
+  claims: (p) => ({ ...p, efforts: p.efforts.map((e) => ({ ...e, claims: e.claims.map((c) => ({ ...c, seq: c.seq + GONE })) })) }),
+  judged: (p) => ({ ...p, judged: p.judged.map((j) => ({ ...j, seq: j.seq + GONE })) }),
+  messages: (p) => ({
+    ...p,
+    efforts: p.efforts.map((e) => ({ ...e, messages: e.messages.map((m) => ({ ...m, node: 'no-such-node', thread: 'producer:no-such-node' })) })),
+  }),
+}
+
+test('apply never throws: a plan entry naming a line or node that is gone still returns applied and error', (t) => {
+  for (const [part, stale] of Object.entries(STALE)) {
+    const fx = fixture(t)
+    const p = plan(fx.dir)
+    assert.ok((part === 'judged' ? p.judged : flat(p, part)).length > 0, 'the fixture plans some ' + part)
+    const lines = totalLines(fx.dir)
+    let out
+    try {
+      out = apply(stale(p))
+    } catch (err) {
+      assert.fail(part + ': apply threw ' + err.message)
+    }
+    assert.ok(Number.isInteger(out.applied) && out.applied >= 0, part)
+    assert.equal(typeof out.error, 'string', part)
+    assert.equal(out.applied, totalLines(fx.dir) - lines, part)
+  }
+})
+
+test('a marker whose review line is gone from the ledger is still written', (t) => {
+  const fx = fixture(t)
+  const p = plan(fx.dir)
+  assert.ok(flat(p, 'reviewed').some((x) => x.folder === 'f'))
+  const gone = { ...p, efforts: p.efforts.map((e) => ({ ...e, reviewed: e.reviewed.map((x) => (x.folder === 'f' ? { ...x, seq: x.seq + 100000 } : x)) })) }
+  const before = ledgerOn(fx.dir, 'f', 'reviewed').length
+  assert.equal(approvalGate(fx.dir, E, 'f').ratifiable, true)
+  assert.equal(apply(gone).error, '')
+  const lines = ledgerOn(fx.dir, 'f', 'reviewed')
+  assert.equal(lines.length, before + 1)
+  assert.equal(lines.at(-1).complete, false)
+  assert.deepEqual(lines.at(-1).remaining, ['migrated: a 5.0 review rules units'])
+  assert.equal(lines.at(-1).hash, fx.hashes.f, "the marker stands at the folder's hash")
+  assert.equal(approvalGate(fx.dir, E, 'f').ratifiable, false, 'the gate waits for a 5.0 review')
+})
+
 // ------------------------------------------------------------------ refusals
 
 test('a live 4.x job refuses the effort', (t) => {
@@ -892,6 +1056,13 @@ function record(dir, log, entries) {
   const out = append(dir, E, log, entries)
   assert.equal(out.ok, true, out.error)
   return out.seqs
+}
+
+/** Make the project log refuse every append: its seq counter becomes a directory. */
+function blockProjectSeq(dir) {
+  const seq = join(projectStateDir(dir), 'seq')
+  rmSync(seq, { force: true })
+  mkdirSync(seq, { recursive: true })
 }
 
 /** The `findings` message of `node` that leaf-review would record at `round`, as freshRecords keeps it over the disk. */
@@ -1025,19 +1196,66 @@ test('a restated claims event names a stored return of its said file, which said
   assert.equal(saidOf(fx.dir, E, fresh), text.trim())
 })
 
-test('a claims event whose stored return exists with other bytes is refused and keeps its 4.x said', (t) => {
+test('a claims event whose stored return exists with other bytes is refused its text and appended again with each verdict as its ruling', (t) => {
   const fx = fixture(t)
   const dispatch = 'migrated-' + nodeKey('f') + '-' + fx.seq.fClaims
   const other = JSON.stringify({ status: 'migrated', text: 'someone else wrote this' })
   put(storedReturnPath(fx, dispatch), other)
   const p = plan(fx.dir)
-  assert.ok(!flat(p, 'claims').some((c) => c.node === 'f'))
+  const entry = flat(p, 'claims').find((c) => c.node === 'f')
+  assert.equal(entry.seq, fx.seq.fClaims)
+  assert.equal(entry.dispatch, undefined)
   assert.ok(refusalsOf(p, 'f').some((r) => posix(r.why).includes('returns/' + dispatch + '.json')), 'the why names the path')
-  const before = eventsOn(fx.dir, 'f', 'claims')
+  const old = eventsOn(fx.dir, 'f', 'claims').find((e) => e.seq === fx.seq.fClaims)
   apply(p)
   assert.equal(readFileSync(storedReturnPath(fx, dispatch), 'utf8'), other)
-  assert.deepEqual(eventsOn(fx.dir, 'f', 'claims'), before)
-  assert.equal(before[0].said, fx.files.f)
+  const fresh = eventsOn(fx.dir, 'f', 'claims').filter((e) => e.seq !== old.seq)
+  assert.equal(fresh.length, 1)
+  assert.equal(fresh[0].said, old.said, 'its 4.x said, as a refused stop keeps its own')
+  assert.deepEqual(fresh[0].claims, old.claims.map(({ verdict, ...rest }) => ({ ...rest, ruling: verdict })))
+  assertSameBut(fresh[0], old, ['seq', 'claims'])
+})
+
+test('a claims event whose said file is gone is refused its text and appended again with each verdict as its ruling', (t) => {
+  const fx = fixture(t)
+  rmSync(fx.files.f)
+  const before = statuses(fx.dir)
+  const p = plan(fx.dir)
+  assert.equal(flat(p, 'claims').find((c) => c.node === 'f').dispatch, undefined)
+  assert.ok(refusalsOf(p, 'f').some((r) => posix(r.why).includes(posix(fx.files.f))), 'the why names the file')
+  const old = eventsOn(fx.dir, 'f', 'claims').find((e) => e.seq === fx.seq.fClaims)
+  apply(p)
+  const fresh = eventsOn(fx.dir, 'f', 'claims').filter((e) => e.seq !== old.seq)
+  assert.equal(fresh.length, 1)
+  assert.equal(fresh[0].said, old.said)
+  assert.ok(fresh[0].claims.every((c) => !('verdict' in c) && 'ruling' in c))
+  assert.deepEqual(statuses(fx.dir), before)
+  assert.deepEqual(flat(plan(fx.dir), 'claims').filter((c) => c.node === 'f'), [], 'converted once')
+})
+
+test('a claims event that names no execution is refused its text and appended again with each verdict as its ruling', (t) => {
+  const fx = fixture(t)
+  const file = posix(join(fx.openDir, 'said', 'root-review.md'))
+  put(file, 'the root review, whose event recorded no execution to keep it in\n')
+  const [seq] = record(fx.dir, 'events', {
+    kind: 'claims', node: '.', execution: '', head_sha: '6'.repeat(40), review: 'done', said: file,
+    claims: [{ claim: 'the root holds together', verdict: 'met' }, { claim: 'the root is fast', verdict: 'under' }],
+  })
+  const before = statuses(fx.dir)
+  const p = plan(fx.dir)
+  const entry = flat(p, 'claims').find((c) => c.node === '.')
+  assert.equal(entry.seq, seq)
+  assert.equal(entry.dispatch, undefined)
+  assert.ok(refusalsOf(p, '.').some((r) => String(r.what).includes(String(seq))), 'the refusal names the seq')
+  const old = eventsOn(fx.dir, '.', 'claims').find((e) => e.seq === seq)
+  apply(p)
+  const fresh = eventsOn(fx.dir, '.', 'claims').filter((e) => e.seq !== old.seq)
+  assert.equal(fresh.length, 1)
+  assert.equal(fresh[0].said, old.said, 'its 4.x said, as a refused stop keeps its own')
+  assert.deepEqual(fresh[0].claims, old.claims.map(({ verdict, ...rest }) => ({ ...rest, ruling: verdict })))
+  assertSameBut(fresh[0], old, ['seq', 'claims'])
+  assert.ok(!existsSync(storedReturnPath(fx, 'migrated-root-' + seq)))
+  assert.deepEqual(statuses(fx.dir), before)
 })
 
 // ------------------------------------------------------------------ the fixes file a later round superseded
@@ -1058,6 +1276,17 @@ test('a leaf dispatched in a newer execution after its older fixes file gets no 
   assert.ok(tail(fixes).includes('/executions/' + OPEN + '/'), 'the newest fixes file is in the older execution')
   record(fx.dir, 'events', { kind: 'dispatched', node: 'c', execution: NOENV, role: 'implementer', round: 3 })
   assert.deepEqual(planned(plan(fx.dir), 'c'), [])
+})
+
+test('dispatchedRound counts only 4.x dispatch lines', (t) => {
+  const fx = fixture(t)
+  const before = byThread(planned(plan(fx.dir), 'c'))
+  assert.ok(before.length > 0)
+  record(fx.dir, 'events', {
+    kind: 'dispatched', node: 'c', execution: V5, dispatch: dispatchKey({ node: 'c', role: 'implementer', thread: 'producer:c', round: 3 }),
+    thread: 'producer:c', role: 'implementer', round: 3, model: 'sonnet', effort: 'medium',
+  })
+  assert.deepEqual(byThread(planned(plan(fx.dir), 'c')), before, 'a 5.0 round never read a 4.x fixes file')
 })
 
 // ------------------------------------------------------------------ the first 5.0 round of a migrated green

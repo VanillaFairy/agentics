@@ -199,7 +199,9 @@ test('a design node the planner writes is written, checked, reviewed once, prepa
   assert.equal(nodeOf(w.rig, 'p/x').kind, 'leaf')
   const scope = stepValue(w.rig, 'probe:p:1/scope')
   assert.equal(scope.full, true, 'probe round 1 is not narrowed')
-  assert.equal(under(w.rig, 'probe:p:2/').length, 0)
+  const probes = under(w.rig, 'probe:')
+  assert.ok(probes.length > 0, 'the round probed')
+  assert.deepEqual(probes.map((c) => c.thread.key).filter((k) => !k.startsWith('probe:p:1/')), [], 'one probe round only')
 })
 
 test("a ratifiable round is prepared naming the probe's review return, else its snapshot", async (t) => {

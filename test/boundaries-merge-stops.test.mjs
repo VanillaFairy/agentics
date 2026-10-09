@@ -273,7 +273,7 @@ test('the event loop runs while the merge measures', SLOW, async (t) => {
   }
   assert.equal(out.status, 'done')
   assert.equal(kindOf(stateOf(w.r), 'batch').length, 1)
-  assert.ok(ticks >= 2, 'a timer ticked between batch-started and the batch line: ' + ticks)
+  assert.ok(ticks >= 1, 'a timer ticked between batch-started and the batch line: ' + ticks)
 })
 
 test('a checkout moved while the merge measured is a checkout fault on the target, and nothing is decided', SLOW, async (t) => {

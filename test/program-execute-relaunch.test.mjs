@@ -62,8 +62,13 @@ describe('the execute program', { concurrency: 4 }, () => {
         await NEVER()
       }
     })
-    w.run().catch(() => {})
-    await killed.reached
+    const first = w.run()
+    const at = await Promise.race([
+      killed.reached.then(() => 'killed'),
+      first.then((r) => 'returned ' + JSON.stringify(r && r.status), (e) => 'threw ' + e.message),
+    ])
+    first.catch(() => {})
+    assert.equal(at, 'killed', 'the first run reached the point it is killed at')
     const closeFile = closePath(w.rig.repo, E, w.rig.stamp, 'a', 'implementer', 1)
     assert.equal(existsSync(closeFile), false, 'killed before the close')
 
@@ -88,8 +93,13 @@ describe('the execute program', { concurrency: 4 }, () => {
       killed.hit()
       return NEVER()
     }
-    w.run({}, { sleep }).catch(() => {})
-    await killed.reached
+    const first = w.run({}, { sleep })
+    const at = await Promise.race([
+      killed.reached.then(() => 'killed'),
+      first.then((r) => 'returned ' + JSON.stringify(r && r.status), (e) => 'threw ' + e.message),
+    ])
+    first.catch(() => {})
+    assert.equal(at, 'killed', 'the first run reached the point it is killed at')
     const [cut] = startsOf(w, 'reviewer', '.')
     assert.ok(cut, 'the first run called the root reviewer')
 

@@ -40,6 +40,7 @@ import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
 import { dispatchKey, mergePath, nodeKey, specPath, stalePath, writeWhole } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
+import { programContext } from '../lib/programs/common.mjs'
 import { gateUnit, mergeUnit, reviewUnit, ruleUnit } from '../lib/programs/execute/integrate.mjs'
 import { executionRig } from './harness/program-rig.mjs'
 
@@ -464,6 +465,17 @@ test('a dispatch that failed for any other cause is a role fault on the folder',
   assert.deepEqual(kinds(w.rig, 'fault').map((f) => [f.node, f.channel]), [['.', 'role']])
   assert.equal(kinds(w.rig, 'claims').length, 0)
 })
+
+for (const cause of ['checkout', 'watch_failed']) {
+  test(`an integration review whose dispatch failed ${cause} is a checkout fault on the folder and a lost check`, SLOW, async (t) => {
+    const w = abWorld(t)
+    const runAgent = async (call) => ({ status: 'failed', cause, message: 'the host said ' + cause, session: call.thread.session })
+    const out = await reviewUnit(programContext({ ...w.rig.ctx, runAgent }), w.rig.xc, { id: '.', where: w.where, unreviewed: w.unreviewed })
+    assert.deepEqual([out.outcome, out.said], ['lost', ''])
+    assert.deepEqual(kinds(w.rig, 'fault').map((f) => [f.node, f.channel]), [['.', 'checkout']])
+    assert.equal(kinds(w.rig, 'claims').length, 0)
+  })
+}
 
 test('a relaunch takes a lost integration review up again in its own session', SLOW, async (t) => {
   const w = abWorld(t)

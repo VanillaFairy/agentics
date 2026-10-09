@@ -72,7 +72,7 @@ test('an import from test/ outside the tier is flagged, wherever the importer si
 
 test('imports that stay in the tier, or leave test/ for lib and tools, pass', () => {
   const allowed = [
-    [TEST, './harness/workflow-host.mjs'],
+    [TEST, './harness/scripted-runner.mjs'],
     [TEST, './other.test.mjs'],
     [TEST, '../../lib/store.mjs'],
     [TEST, '../../tools/rules/fast-tier.mjs'],

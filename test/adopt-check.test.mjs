@@ -231,3 +231,34 @@ test("at the root, a done commit the base holds refuses not_on_folder_branch", (
   envelope(w, '20261009-120000', { root: '.', base_branch: 'main', base_sha: w.base })
   assert.deepEqual(kinds(checkOf(w, { done: [{ node: 'top', commits: [w.base] }] }, '.')), [['done[0]', 'not_on_folder_branch']])
 })
+
+test("at the root, a commit the base branch holds now, fast-forwarded onto the effort branch, is the effort's ground", (t) => {
+  const w = world(t)
+  envelope(w, '20261009-120000', { root: '.', base_branch: 'main', base_sha: w.base })
+  const rootWt = rootWorktree(w)
+  const fromBase = commitIn(w.r, { 'docs/base.md': 'b\n' }, 'the user moved main on')
+  git(rootWt, 'merge', '-q', '--ff-only', fromBase)
+  const top = commitIn(rootWt, { 'src/top.mjs': '1\n' }, 'top')
+  assert.deepEqual(kinds(checkOf(w, { outside: [{ commits: [fromBase] }] }, '.')), [['outside[0]', 'not_on_folder_branch']])
+  assert.deepEqual(kinds(checkOf(w, { done: [{ node: 'top', commits: [fromBase] }] }, '.')), [['done[0]', 'not_on_folder_branch']])
+  const own = checkOf(w, { done: [{ node: 'top', commits: [top] }] }, '.')
+  assert.equal(own.ok, true, JSON.stringify(own.refusals))
+})
+
+test("at the root, the base branch itself is no done branch once the effort holds it, and a branch that carried a refresh from it adopts only its own commits", (t) => {
+  const w = world(t)
+  envelope(w, '20261009-120000', { root: '.', base_branch: 'main', base_sha: w.base })
+  const rootWt = rootWorktree(w)
+  const fromBase = commitIn(w.r, { 'docs/base.md': 'b\n' }, 'the user moved main on')
+  const hand = handBranch(w, 'hand/t', branchOf(E, '.'))
+  const own = commitIn(hand, { 'src/top.mjs': '1\n' }, 'own work')
+  git(hand, 'merge', '--no-ff', '--no-edit', 'main')
+  git(rootWt, 'merge', '--no-ff', '--no-edit', 'hand/t')
+  const doc = { done: [{ node: 'top', branch: 'hand/t' }] }
+  const mapping = parseMapping(JSON.stringify(doc)).mapping
+  const [adopted] = checkAdoption(mapping, adoptFacts(w.r, E, '.', mapping)).normalized.done
+  assert.ok(adopted.commits.includes(own), "the branch's own commit is adopted")
+  assert.ok(!adopted.commits.includes(fromBase), "main's commit is the effort's ground")
+  git(rootWt, 'merge', '-q', '--ff-only', 'main')
+  assert.deepEqual(kinds(checkOf(w, { done: [{ node: 'top', branch: 'main' }] }, '.')), [['done[0]', 'not_on_folder_branch']])
+})

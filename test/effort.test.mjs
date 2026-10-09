@@ -419,3 +419,86 @@ test('the effort CLI refuses a value that is not a handle, a free text past its 
   const about = 'the "loader", in the user\'s words — see `load()`'
   assert.equal(run('open', repo, 'e1', '--about', about).created, true, 'a line of free text, quotes and all, is taken')
 })
+
+// ------------------------------------------------------------------ free text longer than a line
+
+/** What the effort CLI printed and its exit status, whether it refused or not. */
+function printed(...args) {
+  try {
+    return [0, JSON.parse(execFileSync(process.execPath, [CLI, ...args], {
+      encoding: 'utf8', stdio: 'pipe', env: { ...process.env, NODE_TEST_CONTEXT: '' }, timeout: 30_000,
+    }))]
+  } catch (err) {
+    return [err.status, JSON.parse(err.stdout)]
+  }
+}
+
+/** A file the session wrote, in a directory of its own, and the text it holds. */
+function written(text) {
+  const dir = mkdtempSync(join(tmpdir(), 'agentics-effort-text-'))
+  const path = join(dir, 'text.txt')
+  writeFileSync(path, text)
+  return path
+}
+
+const LONG = ['The request, in the user\'s words,', 'runs over several lines', 'x'.repeat(400)].join('\n')
+
+test('a request past one line is refused naming the file flag, and the file flag takes it whole', () => {
+  const repo = fresh()
+  const [status, refusal] = printed('open', repo, 'e1', '--about', LONG.replace(/\n/g, ' '))
+  assert.equal(status, 1)
+  assert.match(refusal.error, /--about-file/)
+  assert.equal(existsSync(effortPath(repo, 'e1')), false, 'nothing was opened')
+
+  const file = written(LONG)
+  const [ok, out] = printed('open', repo, 'e1', '--about-file', file)
+  assert.equal(ok, 0, JSON.stringify(out))
+  assert.equal(out.about, LONG, 'the file\'s text is the description, not its path')
+  assert.equal(readEffort(repo, 'e1').identity.about, LONG)
+})
+
+test('an effort is opened by --about or --about-file, not both, and by a file that exists', () => {
+  const repo = fresh()
+  assert.equal(printed('open', repo, 'e1', '--about', 'x', '--about-file', written('y'))[1].kind, 'bad_args')
+  assert.equal(printed('open', repo, 'e1', '--about-file', join(repo, 'missing.txt'))[1].kind, 'unknown_file')
+  assert.equal(existsSync(effortPath(repo, 'e1')), false, 'nothing was opened')
+})
+
+test('a folder\'s title past one line is refused naming --title-file, which takes it as the one-line heading', () => {
+  const repo = fresh()
+  putSpec(repo, '.', ROOT_SPEC)
+  const long = Array.from({ length: 40 }, (_, i) => 'word' + i).join('\n')
+  const [status, refusal] = printed('folder', repo, E, 'api', '--title', long.replace(/\n/g, ' ') + ' ' + 'x'.repeat(100))
+  assert.equal(status, 1)
+  assert.match(refusal.error, /--title-file/)
+  assert.equal(existsSync(store.specPath(repo, E, 'api')), false)
+
+  const [ok, out] = printed('folder', repo, E, 'api', '--title-file', written(long))
+  assert.equal(ok, 0, JSON.stringify(out))
+  const spec = parseSpec(readSpec(repo, 'api'))
+  assert.deepEqual(spec.problems, [])
+  assert.equal(spec.title, long.replace(/\n/g, ' '), 'the lines of the file are one heading')
+})
+
+test('the slug command takes the words from --about-file, and names it when its words are past a line', () => {
+  const words = 'Efforts and what a probe should cost'
+  const [, out] = printed('slug', '--about-file', written(words + '\n' + LONG))
+  assert.equal(out.slug, slugFor(words))
+  const [status, refusal] = printed('slug', 'x'.repeat(301))
+  assert.equal(status, 1)
+  assert.match(refusal.error, /--about-file/)
+  assert.equal(printed('slug', 'some', 'words', '--about-file', written(words))[1].kind, 'bad_args')
+})
+
+test('a word of the slug command that starts with -- is a word, never dropped', () => {
+  assert.equal(printed('slug', 'fix', '--9', 'login')[1].slug, 'fix-9-login')
+})
+
+test('a positional of open, folder or rename that holds a quote is refused before anything is written', () => {
+  const repo = fresh()
+  for (const args of [['open', repo, 'e"1'], ['folder', repo, 'e1', 'a"b'], ['rename', repo, 'e"1', '--from', 'a', '--to', 'b']]) {
+    const [status, refusal] = printed(...args)
+    assert.deepEqual([status, refusal.kind], [1, 'args_unreadable'], args.join(' '))
+  }
+  assert.equal(existsSync(effortPath(repo, 'e1')), false)
+})

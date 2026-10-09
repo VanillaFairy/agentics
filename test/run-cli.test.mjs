@@ -943,3 +943,42 @@ test('survey reads its prior from the file the session wrote, and takes no --pri
   assert.deepEqual([refused.ok, refused.error.kind], [false, 'bad_arg'])
   assert.equal(started.length, 1, 'only the start with a prior file launched')
 })
+
+// ------------------------------------------------------------------ free text longer than a line
+
+const NOTES_ARGS = { notes: { kind: 'text' }, notes_file: { kind: 'file', as: 'notes' } }
+const LONG_NOTES = ['What the user said:', 'a change over several lines', 'n'.repeat(400)].join('\n')
+
+test('a text past its line is refused naming its -file twin, where the program declares one', async (t) => {
+  const repo = makeRepo(t)
+  const twin = program(async () => ({}), { ARGS: NOTES_ARGS })
+  const out = await start(repo, ['survey', '--notes', 'n'.repeat(301)], twin.mod)
+  assert.deepEqual([out.ok, out.error.kind], [false, 'args_unreadable'])
+  assert.match(out.error.message, /--notes-file/)
+
+  const alone = program(async () => ({}), { ARGS: { notes: { kind: 'text' } } })
+  const none = await start(repo, ['survey', '--notes', 'n'.repeat(301)], alone.mod)
+  assert.doesNotMatch(none.error.message, /file/, 'no flag is named where the program has none')
+  assert.deepEqual(runDirs(repo), [])
+})
+
+test('a text under its -file twin reaches the program whole, and one under --notes is not lost to the absent twin', async (t) => {
+  const repo = makeRepo(t)
+  writeFileSync(join(repo, 'notes.txt'), LONG_NOTES.replace(/\n/g, '\r\n') + '\r\n')
+  const { mod, seen } = program(async () => ({}), { ARGS: NOTES_ARGS })
+  assert.equal((await start(repo, ['survey', '--notes-file', 'notes.txt'], mod)).ok, true)
+  assert.equal(seen.calls[0].args.notes, LONG_NOTES, 'the file\'s text, not its path')
+  assert.equal((await start(repo, ['survey', '--notes', 'one line'], mod)).ok, true)
+  assert.equal(seen.calls[1].args.notes, 'one line')
+})
+
+test('a text given by its flag and by its file is refused bad_arg, and by a file that is none unknown_file', async (t) => {
+  const repo = makeRepo(t)
+  writeFileSync(join(repo, 'notes.txt'), 'x')
+  const { mod, seen } = program(async () => ({}), { ARGS: NOTES_ARGS })
+  const both = await start(repo, ['survey', '--notes', 'y', '--notes-file', 'notes.txt'], mod)
+  assert.deepEqual([both.ok, both.error.kind], [false, 'bad_arg'])
+  const none = await start(repo, ['survey', '--notes-file', 'missing.txt'], mod)
+  assert.deepEqual([none.ok, none.error.kind], [false, 'unknown_file'])
+  assert.equal(seen.calls.length, 0)
+})

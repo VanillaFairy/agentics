@@ -61,7 +61,9 @@ judgment nobody asked it for. Only the user moves it off that mapping — a bare
 ## Step 2 — Run it
 
 Write the capability, in the user's words, to a file outside the repository with the Write tool,
-and start the program detached from the repository root:
+and start the program detached from the repository root. `--constraints` and `--notes` are one line
+of at most 300 characters each; longer, write it to a file and pass `--constraints-file` or
+`--notes-file` instead:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" solutions --repo . --detach --capability-file <file> --roots <roots> --constraints "<constraints>" [--notes "<notes>"] --intelligence <tier>

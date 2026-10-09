@@ -31,6 +31,7 @@ const BLOCKING_QUESTION = BLOCKING.slice('- **blocking:**'.length).trim()
 const ROOT = DRAFT.replace(BLOCKING + '\n', '')
 const EDITED = ROOT.replace('Local, and writable', 'Local and writable')
 const EFFORT_BRANCH = 'agentics/' + E
+const INTO = 'main'
 
 const temp = (t, name) => {
   const dir = mkdtempSync(join(tmpdir(), 'agentics-' + name + '-'))
@@ -113,7 +114,7 @@ const git = (cwd, ...args) => {
 /** A repository on `main` with one commit; with `effort`, `agentics/e1` one commit ahead. */
 function landRepo(t, { effort = true } = {}) {
   const dir = temp(t, 'acts-land')
-  git(dir, 'init', '-q', '-b', 'main')
+  git(dir, 'init', '-q', '-b', INTO)
   git(dir, 'config', 'user.email', 't@example.com')
   git(dir, 'config', 'user.name', 'T')
   writeFileSync(join(dir, 'README.md'), 'hello\n')
@@ -124,7 +125,7 @@ function landRepo(t, { effort = true } = {}) {
     writeFileSync(join(dir, 'feature.txt'), 'the effort\n')
     git(dir, 'add', '-A')
     git(dir, 'commit', '-q', '-m', 'effort work')
-    git(dir, 'checkout', '-q', 'main')
+    git(dir, 'checkout', '-q', INTO)
   }
   return dir
 }
@@ -295,7 +296,7 @@ test('landAct merges on a confirmed Land and records landed by the user', async 
   assert.ok(holds(repo, head, effortHead), 'the new HEAD holds the effort head')
   const events = landedEvents(repo)
   assert.equal(events.length, 1)
-  assert.equal(events[0].into, 'main')
+  assert.equal(events[0].into, INTO)
   assert.equal(events[0].merged_sha, head)
   assert.equal(events[0].by, 'user')
 })
@@ -378,10 +379,12 @@ test('with no effort branch and nothing landed, a confirmed Land merges nothing'
   const repo = landRepo(t, { effort: false })
   const before = revParse(repo, 'HEAD')
   const token = land(repo, E, 'check').token
+  assert.equal(token, '', 'no effort branch: no token to confirm')
   const env = session(t, [[askedAbout(token), 'Land']])
   const out = await landAct(repo, E, { env, stdinIsTTY: false })
   assert.equal(out.ok, false, JSON.stringify(out))
-  assert.ok(JSON.stringify(out.error).includes(EFFORT_BRANCH), JSON.stringify(out.error))
+  assert.equal(out.error.kind, 'no_effort_branch')
+  assert.ok(out.error.message.includes(EFFORT_BRANCH), out.error.message)
   assert.equal(revParse(repo, 'HEAD'), before)
   assert.equal(landedEvents(repo).length, 0)
 })
@@ -635,7 +638,7 @@ test('over a merge with no landed record, a confirmed Land records it once, by t
   assert.equal(revParse(repo, 'HEAD'), head)
   const events = landedEvents(repo)
   assert.equal(events.length, 1)
-  assert.equal(events[0].into, 'main')
+  assert.equal(events[0].into, INTO)
   assert.equal(events[0].merged_sha, head)
   assert.equal(events[0].by, 'terminal')
 })
@@ -644,10 +647,12 @@ test('over a merge already recorded, a confirmed Land adds no second landed reco
   const repo = landRepo(t)
   const effortHead = revParse(repo, 'refs/heads/' + EFFORT_BRANCH)
   assert.equal(land(repo, E, 'merge').ok, true)
+  const landedHead = revParse(repo, 'HEAD')
   git(repo, 'branch', EFFORT_BRANCH, effortHead)
   const { opts } = terminal(landToken(repo))
   const out = await landAct(repo, E, opts)
   assert.equal(out.ok, true, JSON.stringify(out.error))
   assert.equal(out.already, true)
   assert.equal(landedEvents(repo).length, 1)
+  assert.equal(revParse(repo, 'HEAD'), landedHead, 'the second Land merged nothing')
 })

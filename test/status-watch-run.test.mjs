@@ -90,6 +90,26 @@ test('--since prints records appended before the watch started (a run)', (t) => 
   assert.equal(out, 'fault program: after since\nended done: complete=true result=/r/result.json\n')
 })
 
+test('watch follows a live run, printing a fault as it lands, then its end', { timeout: 20000 }, async (t) => {
+  const r = repo(t)
+  writeJson(runJsonPath(r, RUN), { run: RUN, pid: process.pid, heartbeat_at: new Date().toISOString() })
+  appendRun(r, RUN, [{ kind: 'run', program: 'survey' }])
+  const since = runWatchLines(readRunLog(r, RUN).entries, 0).seq_max
+  const child = spawn(process.execPath, [CLI, 'watch', '--repo', r, '--run', RUN, '--since', String(since)], { env: { ...process.env, NODE_TEST_CONTEXT: '' } })
+  const exited = new Promise((resolve) => child.on('close', resolve))
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill()
+    await exited
+  })
+  let out = ''
+  const printed = new Promise((resolve) => child.stdout.on('data', (d) => { out += d; if (out.includes('fault program: live')) resolve() }))
+  appendRun(r, RUN, [{ kind: 'fault', node: '', channel: 'program', detail: 'live' }])
+  await printed
+  appendRun(r, RUN, [ended(0)])
+  assert.equal(await exited, 0)
+  assert.equal(out, 'fault program: live\nended done: complete=true result=/r/result.json\n')
+})
+
 test('watch on an unknown run prints the refusal and exits 0', (t) => {
   const r = repo(t)
   const out = JSON.parse(watch(r, '20260101-000000-nothing'))

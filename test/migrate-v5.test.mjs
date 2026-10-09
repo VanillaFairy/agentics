@@ -952,6 +952,8 @@ test('a marker whose review line is gone from the ledger is still written', (t) 
 
 test('a live 4.x job refuses the effort', (t) => {
   const fx = fixture(t)
+  const ofEffort = (l) => posix(l.path).split('/').includes(E)
+  assert.ok(plan(fx.dir).left.some(ofEffort), 'the fixture: the effort leaves something to list')
   put(join(fx.openDir, 'jobs', 'leaf-close-live.pid'), String(process.pid))
   const before = hexed(snapshot(fx.dir), E + '/')
   const p = plan(fx.dir)
@@ -959,7 +961,7 @@ test('a live 4.x job refuses the effort', (t) => {
   const refusal = p.refused.find((r) => r.what === 'effort ' + E)
   assert.ok(refusal)
   assert.ok(String(refusal.why).includes(String(process.pid)), 'the why names the pid')
-  assert.ok(!p.left.some((l) => posix(l.path).includes('/' + E + '/')), 'nothing of the effort is listed')
+  assert.ok(!p.left.some(ofEffort), 'nothing of the effort is listed')
   apply(p)
   assert.deepEqual(hexed(snapshot(fx.dir), E + '/'), before)
   // the same job under a closed execution refuses too

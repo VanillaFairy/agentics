@@ -326,7 +326,7 @@ test('a ruler that fails leaves the change unruled, the ruler lost', async (t) =
   assert.equal(approvalState(rig.repo, E, folder).state, 'edited')
 })
 
-test('a compile refusal passes through as compile_refused', async (t) => {
+test('a compile refusal passes through as compile_refused', { skip: process.getuid?.() === 0 && 'root writes through 0o444' }, async (t) => {
   const { rig, folder, brief } = changed(t, 'types')
   const nodes = fileFor(rig.repo, E, 'nodes').path
   chmodSync(nodes, 0o444)
@@ -854,7 +854,7 @@ test('a detached rule run of a folder never compiled ends refused user_approves'
         // gone already
       }
     }
-    while (pid && pidAlive(pid)) await new Promise((wake) => setTimeout(wake, 50))
+    for (const by = Date.now() + 10_000; pid && pidAlive(pid) && Date.now() < by;) await new Promise((wake) => setTimeout(wake, 50))
     rig.cleanup()
   })
   const out = cli(rig, '--detach', '--effort', E, '--folder', '.')
@@ -865,7 +865,8 @@ test('a detached rule run of a folder never compiled ends refused user_approves'
   assert.equal(out.log, runLogFile(rig.repo, out.run))
   assert.equal(out.result_file, resultPath(rig.repo, out.run))
 
-  for (;;) {
+  for (const deadline = Date.now() + 45_000; ;) {
+    if (Date.now() > deadline) assert.fail('the detached run never ended: ' + runState(rig.repo, out.run).state)
     if (runState(rig.repo, out.run).state === 'ended' && !pidAlive(out.pid)) break
     await new Promise((wake) => setTimeout(wake, 50))
   }

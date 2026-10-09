@@ -19,8 +19,10 @@ import { existsSync, rmSync } from 'node:fs'
 import { runLeaf } from '../lib/programs/execute/leaf.mjs'
 import { heldOf } from '../lib/boundaries/records.mjs'
 import { renderMessage } from '../lib/conversation.mjs'
+import { append } from '../lib/ledger.mjs'
 import { acquireAsync } from '../lib/locks.mjs'
 import { closePath, configPath, returnPath, writeJson } from '../lib/store.mjs'
+import { readTree } from '../lib/tree.mjs'
 import {
   T, E, leafEntry, specText, YARD, bLeaf, git, work, world, ofKind, stateOf, faultsOf, startsOf, approvals,
   stopsOn, stepsOf, keyOf, IMPL, REV, done, said, failed, verdict,
@@ -68,6 +70,18 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.equal(out.outcome, 'requeue')
     assert.equal(w.rig.calls.length, 0)
     assert.equal(ofKind(w.rig, 'dispatched', 'b').length, 0)
+    assert.deepEqual(faultsOf(w.rig), [])
+  })
+
+  test('a leaf-open that refuses stops the leaf, nothing dispatched', T, async (t) => {
+    const w = world(t, { leaves: [bLeaf()] })
+    const b = readTree(w.rig.repo, E).nodes.get('b')
+    assert.equal(append(w.rig.repo, E, 'nodes', [{ kind: 'node', node: { ...b, locus: ['../out.txt'] } }]).ok, true)
+    w.rig.script({})
+    const out = await w.run('b')
+    assert.equal(out.outcome, 'stopped')
+    assert.equal(w.rig.calls.length, 0)
+    assert.deepEqual(stopsOn(w.rig).map((e) => e.reason), ['open_refused'])
     assert.deepEqual(faultsOf(w.rig), [])
   })
 

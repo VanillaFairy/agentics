@@ -36,9 +36,8 @@ export const id = 'task-tool-fallback'
 /**
  * RegExp tested against the POSIX-style repo-relative path.
  *
- * Skills only. Agents in this plugin are read-only and never land a result, and workflow
- * scripts cannot call host tools at all — their whole surface is agent/pipeline/parallel.
- * The landing step is a skill's job, so the skill is where the fallback has to be written.
+ * Skills only: a role never lands a result, and landing is a skill's job, so the skill is where
+ * the fallback has to be written.
  */
 export const applies = /SKILL\.md$/
 

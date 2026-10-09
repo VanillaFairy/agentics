@@ -368,3 +368,36 @@ test('the approval CLI refuses a value that is not a handle, a reason past its l
   assert.deepEqual(refusal('gate', '--repo', repo, '--effort', E, '--review', 'r.json'), [1, 'unknown_flag'])
   assert.equal(ledger(repo).filter((l) => l.kind === 'review_skipped').length, 0, 'nothing was recorded')
 })
+
+test('a skipped review\'s reason past one line is refused naming --reason-file, which records the file\'s text', () => {
+  const repo = effort({ '.': ROOT })
+  const reason = ['not earned:', 'the user shipped it by hand', 'z'.repeat(400)].join('\n')
+  const long = (flag, value) => {
+    try {
+      return [0, cli('skip-review', '--repo', repo, '--effort', E, '--folder', '.', flag, value)]
+    } catch (err) {
+      return [err.status, JSON.parse(err.stdout)]
+    }
+  }
+  const [status, refusal] = long('--reason', reason.replace(/\n/g, ' '))
+  assert.equal(status, 1)
+  assert.match(refusal.error, /--reason-file/)
+  assert.equal(ledger(repo).filter((l) => l.kind === 'review_skipped').length, 0)
+
+  const file = join(repo, 'reason.txt')
+  writeFileSync(file, reason)
+  const [ok, out] = long('--reason-file', file)
+  assert.equal(ok, 0, JSON.stringify(out))
+  assert.equal(out.payload.ok, true, JSON.stringify(out))
+  assert.deepEqual(ledger(repo).filter((l) => l.kind === 'review_skipped').map((l) => l.reason), [reason], 'the text, not the path')
+})
+
+test('a reason given by --reason and --reason-file, or by a file that is none, is refused and records nothing', () => {
+  const repo = effort({ '.': ROOT })
+  const file = join(repo, 'reason.txt')
+  writeFileSync(file, 'because')
+  const skip = (...flags) => cli('skip-review', '--repo', repo, '--effort', E, '--folder', '.', ...flags).payload
+  assert.equal(skip('--reason', 'x', '--reason-file', file).error.kind, 'bad_args')
+  assert.equal(skip('--reason-file', join(repo, 'missing.txt')).error.kind, 'unknown_file')
+  assert.equal(ledger(repo).filter((l) => l.kind === 'review_skipped').length, 0)
+})

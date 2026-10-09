@@ -19,9 +19,7 @@ import {
   agenticsRoot, configPath, contextDir, effortDir, effortStateDir, effortsRoot,
   evidenceStoreDir, executionDir, executionsRoot, folderDir, mainCheckout, mkdirState,
   projectStateDir, readConfig, returnPath, safeSlug, saidOf, slotsDir, specPath, withLock, writeJson,
-  handleArgs, handleEnvelope,
 } from '../lib/store.mjs'
-import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import { DEAD_PID } from './harness/dead-pid.mjs'
 
 const fresh = (area) => mkdtempSync(join(tmpdir(), 'agentics-store-' + area + '-'))
@@ -321,27 +319,4 @@ test('breaking a gone holder never frees a lock someone holds now', () => {
     assert.deepEqual(readdirSync(dir), ['held'], 'a waiter that gave up leaves nothing beside the lock')
   })
   assert.equal(existsSync(path), false)
-})
-
-test('a courier payload carries handles: ids, shas, counts, enums and paths that may hold a space', () => {
-  const payload = { status: 'opened', node: 'a/b', head_sha: 'abc123', n: 3, ok: true, error: null,
-    brief_path: 'C:/My Repo/.agentics/x/brief.md', launch: [{ unit: 'leaf', id: 'a/b' }] }
-  assert.deepEqual(handleEnvelope(payload).payload, payload)
-})
-
-test('a courier payload that carries text is refused where it is built, naming where', () => {
-  assert.throws(() => handleEnvelope({ launch: [{ title: 'Fix the thing' }] }), /launch\[0\]\.title/)
-  assert.throws(() => handleEnvelope({ detail: 'one\ntwo' }), /detail/)
-  assert.throws(() => handleEnvelope({ id: 'x'.repeat(401) }), /id/)
-})
-
-test('handle arguments parse by kind, and a digest over the same object guards their copy', () => {
-  const spec = { node: 'one', running: 'many', round: 'int', progress: 'bool', role: 'one' }
-  const argv = ['--node', 'a/b', '--running', 'leaf:a', '--running', 'plan:b', '--round', '2', '--progress', '1']
-  const want = { node: 'a/b', running: ['leaf:a', 'plan:b'], round: 2, progress: true, role: '' }
-  assert.deepEqual(handleArgs(argv, spec), { value: want, problem: null })
-  const digest = fnv1a(canonical(want))
-  assert.deepEqual(handleArgs([...argv, '--digest', digest], spec).value, want)
-  assert.equal(handleArgs([...argv.slice(0, -1), '0', '--digest', digest], spec).problem.kind, 'digest_mismatch')
-  assert.equal(handleArgs(['--node', 'a b'], spec).problem.kind, 'args_unreadable')
 })

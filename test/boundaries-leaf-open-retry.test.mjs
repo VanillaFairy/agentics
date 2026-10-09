@@ -184,6 +184,19 @@ test('a second retry after the retried round returned is told again, with the no
     [[2, first.payload], [3, { reason: 'fix_without_commits', notes: ['second'] }]])
 })
 
+test('a retry whose latest stop is older than the thread\'s latest return quotes only the notes left since that return', async (t) => {
+  const { r, xc } = await blocked(t)
+  note(r, 'a', 'first')
+  retry(r, 'a')
+  assert.equal((await leafOpen(xc, { node: 'a' })).round, 2)
+  ran(xc, { node: 'a', round: 2, role: 'implementer', thread: 'producer:a', ret: { status: 'done' } })
+  closed(xc, { node: 'a', role: 'implementer', round: 2 })
+  note(r, 'a', 'second')
+  retry(r, 'a')
+  assert.equal((await leafOpen(xc, { node: 'a' })).round, 3)
+  assert.deepEqual(retriedOf(r).map((m) => m.payload.notes), [['first'], ['second']])
+})
+
 test('a round with a failures message waiting delivers it with the retried message, oldest first', async (t) => {
   const { r, xc } = await blocked(t)
   const failure = { check: 'suite', claim: 'the merged head fails', evidence: 'test/a.test.mjs:3' }

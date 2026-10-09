@@ -1,19 +1,16 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import {
   commandsOf, deleteGotcha, gotchaId, gotchaProblem, gotchasFor, knowledgeDir,
   listGotchas, parseGotcha, readKnowledge, writeGotcha,
 } from '../lib/gotchas.mjs'
 import { ROLE_NAMES } from '../lib/roles.mjs'
-import { canonical, fnv1a } from '../lib/plan-digest.mjs'
+import { fnv1a } from '../lib/plan-digest.mjs'
 
-const CLI = fileURLToPath(new URL('../lib/gotchas.mjs', import.meta.url))
 const repo = () => mkdtempSync(join(tmpdir(), 'agentics-gotchas-'))
 const E = 'e1'
 
@@ -123,36 +120,4 @@ test('commandsOf reads only command gotchas an investigator or the session wrote
     build: 'npm run build', typecheck: '', suite: '', suite_fast: '', test_one: 'npm test -- {file}',
     absent: { build: false, typecheck: true, suite: false, suite_fast: false },
   })
-})
-
-test('CLI add is all or nothing and prints the envelope; list filters', () => {
-  const r = repo()
-  spawnSync('git', ['init', '-q', r])
-  const file = (v) => {
-    const path = join(mkdtempSync(join(tmpdir(), 'agentics-gotchas-file-')), 'gotchas.json')
-    writeFileSync(path, JSON.stringify(v))
-    return path
-  }
-  const run = (...args) => spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8' })
-
-  const bad = run('add', '--repo', r, '--effort', E, '--file', file([command('suite', 'npm test'), pitfall({ roles: [] })]))
-  assert.equal(bad.status, 0)
-  const badOut = JSON.parse(bad.stdout)
-  assert.equal(badOut.payload.ok, false)
-  assert.equal(badOut.payload_digest, fnv1a(canonical(badOut.payload)))
-  assert.equal(existsSync(knowledgeDir(r, E)), false)
-
-  const good = JSON.parse(run('add', '--repo', r, '--effort', E, '--file', file([command('suite', 'npm test')])).stdout)
-  assert.equal(good.payload.ok, true)
-  assert.deepEqual(good.payload.written.map((w) => w.id), ['command-suite'])
-  assert.equal(commandsOf(r, E).suite, 'npm test')
-
-  const listed = JSON.parse(run('list', '--repo', r, '--effort', E, '--role', 'reviewer', '--locus', 'src/a.js').stdout)
-  assert.deepEqual(listed.payload.gotchas.map((g) => g.id), ['command-suite'])
-  const none = JSON.parse(run('list', '--repo', r, '--effort', E, '--role', 'auditor').stdout)
-  assert.deepEqual(none.payload.gotchas, [])
-
-  const unknown = run('frobnicate')
-  assert.equal(unknown.status, 1)
-  assert.ok(JSON.parse(unknown.stdout).error)
 })

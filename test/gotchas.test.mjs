@@ -10,6 +10,7 @@ import {
   commandsOf, deleteGotcha, gotchaId, gotchaProblem, gotchasFor, knowledgeDir,
   listGotchas, parseGotcha, readKnowledge, writeGotcha,
 } from '../lib/gotchas.mjs'
+import { ROLE_NAMES } from '../lib/roles.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/gotchas.mjs', import.meta.url))
@@ -51,6 +52,12 @@ test('gotchaProblem enforces the checkable qualification rules', () => {
   assert.match(gotchaProblem(command('build', '')), /no value/)
   assert.equal(gotchaProblem(command('typecheck', '', { command: { name: 'typecheck', absent: true } })), null)
   assert.match(gotchaProblem('nope'), /object/)
+})
+
+test('a gotcha may be addressed to every role lib/roles.mjs defines, a ruler included, and a courier is refused', () => {
+  assert.equal(gotchaProblem(pitfall({ roles: ['ruler'] })), null)
+  for (const role of ROLE_NAMES) assert.equal(gotchaProblem(pitfall({ roles: [role] })), null, role)
+  assert.match(gotchaProblem(pitfall({ roles: ['courier'] })), /not an agent/)
 })
 
 test('writeGotcha is idempotent on the id and round-trips through the file format', () => {

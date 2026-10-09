@@ -126,6 +126,14 @@ test('a snapshot git cannot take throws, naming the git command', async (t) => {
   assert.equal(listed(rig.repo, worktreeOf(rig)), false)
 })
 
+test('a snapshot git cannot finish leaves no temporary index behind', async (t) => {
+  const { rig, args } = reviewRig(t, scriptOf(returnOf()))
+  // A ref below the run's own name makes `update-ref` of that name fail, after the index is written.
+  sh(rig.repo, 'update-ref', 'refs/agentics/review/' + rig.ctx.run + '/blocker', 'HEAD')
+  await assert.rejects(review(rig.ctx, args()), (err) => /update-ref/.test(String(err && err.message)))
+  assert.equal(existsSync(join(rig.ctx.dir, 'review.index')), false)
+})
+
 // --- the worktree ------------------------------------------------------------------------------
 
 test('the reviewer runs in a throwaway worktree at the snapshot, removed when the program ends', async (t) => {

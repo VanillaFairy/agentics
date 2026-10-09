@@ -166,6 +166,24 @@ test('note refuses --execution as an unknown flag, recording nothing', (t) => {
   assert.equal(eventsOf(r, 'noted').length, 0)
 })
 
+test('an unknown flag where a value was due is the flag named, not the word after it', (t) => {
+  const r = seeded(t)
+  execution(r, OLDER, '.')
+  const out = call(r, 'note', '--node', '--execution', OLDER, '--text', 'learned')
+  assert.equal(out.error.kind, 'bad_arg')
+  assert.ok(out.error.message.includes('--execution'), out.error.message)
+  assert.ok(!out.error.message.includes(OLDER), out.error.message)
+  assert.equal(eventsOf(r, 'noted').length, 0)
+})
+
+test('a text that starts with -- is the text of note, not a flag', (t) => {
+  const r = seeded(t)
+  execution(r, OLDER, '.')
+  const out = call(r, 'note', '--node', 'b', '--text', '--force is wrong')
+  assert.deepEqual([out.noted, out.error], ['b', null], JSON.stringify(out))
+  assert.deepEqual(eventsOf(r, 'noted').map((e) => e.text), ['--force is wrong'])
+})
+
 test('note refuses a node that is not live and a text that says nothing, recording nothing', (t) => {
   const r = seeded(t)
   assert.match(call(r, 'note', '--node', 'nope', '--text', 'x').error, /no live node/)

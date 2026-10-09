@@ -156,3 +156,12 @@ test('checkFolder outside git reports the unlisted path without throwing', (t) =
   assert.equal(out.problems.length, 1, JSON.stringify(out.problems))
   assert.equal(out.problems[0].line, checkLine)
 })
+
+test('checkFolder in a repository git cannot list reports the listing, not each path', (t) => {
+  const repo = effortWith(t, 'node --test tests/x.test.mjs', { git: true })
+  writeFileSync(join(repo, '.git', 'index'), 'not an index')
+  const out = checkFolder(repo, 'e1', '.')
+  assert.equal(out.problems.length, 1, JSON.stringify(out.problems))
+  assert.match(out.problems[0].problem, /could not be listed/)
+  assert.match(out.problems[0].problem, /ls-files/)
+})

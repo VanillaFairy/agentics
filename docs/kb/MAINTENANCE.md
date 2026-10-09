@@ -10,8 +10,8 @@ read it; their rules live in `CLAUDE.md`'s `## Knowledge base` section. It's als
 |---|---|---|
 | `CLAUDE.md` (`## Build`, `## Architecture`, `## Knowledge base`) | agents, every session | `CLAUDE.md`; keep `## Knowledge base` identical to `docs/kb/KB_RULES.md` |
 | `docs/kb/KB_RULES.md` | agents, through `CLAUDE.md` | here, then copy into `CLAUDE.md` |
-| `lib/INDEX.md`, `service-workflows/INDEX.md`, `tools/INDEX.md`, `test/harness/INDEX.md` | agents | beside the source |
-| `docs/kb/agents.md`, `docs/kb/skills.md` | agents | `docs/kb/`: a file inside `agents/` would load as an agent, and one inside `skills/` fails lint |
+| `lib/INDEX.md`, `lib/programs/INDEX.md`, `lib/boundaries/INDEX.md`, `lib/briefs/INDEX.md`, `tools/INDEX.md`, `test/harness/INDEX.md` | agents | beside the source |
+| `docs/kb/roles.md`, `docs/kb/skills.md` | agents | `docs/kb/`: a file inside `roles/` would be judged as a role, and one inside `skills/` fails lint |
 | `docs/kb/BUILD.md`, `TESTING.md`, `CONVENTIONS.md`, `GOTCHAS.md` | agents | `docs/kb/` |
 | `docs/kb/MAINTENANCE.md`, `README.md` | humans only | here |
 
@@ -33,7 +33,7 @@ commit. Development commits never touch the KB.
 
 An index needs a change when an effort:
 
-- adds or breaks a coupling, such as a new copy of `plan-digest`, a new verbatim block, or a CLI
+- adds or breaks a coupling, such as a new copy of the lint rules' string blanker, a new verbatim block, or a CLI
   whose output a skill parses;
 - changes locking, slots, worktree or branch lifecycle;
 - adds a module or a dependency between modules.
@@ -54,7 +54,7 @@ already records.
 
 - Run `/kb:check` and fix the drift it reports.
 - Put a few real questions to a fresh agent with only the KB (for example "where does a leaf get
-  its slot", or "what else changes when I edit `fnv1a`"), and fix the files behind the wrong answers first.
+  its slot", or "what else changes when I rename a thread"), and fix the files behind the wrong answers first.
 - Delete gotchas whose mechanism is gone. The old KB's per-order branch naming and its CRLF
   fixture advice were both dead by the time this KB was built.
 

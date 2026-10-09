@@ -79,7 +79,7 @@ describe('the execute program', { concurrency: 4 }, () => {
     assert.equal(ARGS.pause.kind, 'bool')
     assert.equal(ARGS.budget.kind, 'int')
     assert.equal(ARGS.confirmed.kind, 'int')
-    assert.equal(ARGS.base_ref.kind, 'text', 'the envelope keeps the branch name the session gave, not a resolved commit')
+    assert.equal(ARGS.base_ref.kind, 'token','the envelope keeps the branch name the session gave, not a resolved commit')
     assert.equal(ARGS.commands_file.kind, 'file')
     for (const [key, a] of Object.entries(ARGS)) if (key !== 'effort') assert.notEqual(a.required, true, key + ' is optional')
 

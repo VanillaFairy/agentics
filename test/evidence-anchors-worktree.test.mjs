@@ -156,3 +156,15 @@ test('a survey recorded with a root reads the checkout out of it', () => {
   const [item] = [...liveItems(repo).values()]
   assert.deepEqual([item.from_return, item.spans[0].at], [out.return, head])
 })
+
+test('the evidence verbs refuse a value that is not a handle, and a free text past its bound, reading nothing', () => {
+  const { repo } = spanFixture()
+  const run = cli(repo)
+  const refused = { ok: false, error: { kind: 'args_unreadable' } }
+  assert.deepEqual(run('items', '--ground', 'src\nlib'), refused, 'a list of paths is one line')
+  assert.deepEqual(run('items', '--ground', 'src', '--states', 'standing suspect'), refused, 'a handle holds no space')
+  assert.deepEqual(run('items', '--ground', 'src', '--context', 'x'), { ok: false, error: { kind: 'unknown_flag' } })
+  assert.deepEqual(run('cite', '--effort', 'e1', '--folder', '.', '--items', 'I00000000', '--gap', 'x'.repeat(301)), refused)
+  assert.deepEqual(run('cite', '--effort', 'e1', '--folder', '.', '--items', 'I00000000', '--gap', 'one\ntwo'), refused)
+  assert.equal(existsSync(join(repo, '.agentics', 'e1')), false, 'nothing was cited')
+})

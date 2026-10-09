@@ -903,3 +903,26 @@ test('a program that throws makes the CLI exit 1 with {error}', { timeout: 30_00
   const printed = JSON.parse(r.stdout)
   assert.equal(printed.error, 'the fixture broke')
 })
+
+test('a value that is not a handle, or a free text past its line, is refused args_unreadable before any run', async (t) => {
+  const repo = makeRepo(t)
+  const ARGS = { notes: { kind: 'text' }, base: { kind: 'token' }, roots: { kind: 'list' }, question_file: { kind: 'file' } }
+  const { mod, seen } = program(async () => ({}), { ARGS })
+  for (const argv of [
+    ['--notes', 'one\ntwo'], ['--notes', 'x'.repeat(301)], ['--base', 'main branch'], ['--roots', 'src\nlib'],
+    ['--question-file', 'q"x.md'], ['--repo', repo + '\n'],
+  ]) {
+    const out = await start(repo, ['survey', ...argv], mod)
+    assert.deepEqual([out.ok, out.error && out.error.kind], [false, 'args_unreadable'], argv.join(' '))
+  }
+  assert.equal(seen.calls.length, 0)
+  assert.deepEqual(runDirs(repo), [])
+})
+
+test('a line of free text under a text flag, spaces and quotes and all, reaches the program as given', async (t) => {
+  const repo = makeRepo(t)
+  const { mod, seen } = program(async () => ({}), { ARGS: { notes: { kind: 'text' }, base: { kind: 'token' } } })
+  const notes = 'the "loader" is untested, see `load()`'
+  await start(repo, ['survey', '--notes', notes, '--base', 'origin/main'], mod)
+  assert.deepEqual([seen.calls[0].args.notes, seen.calls[0].args.base], [notes, 'origin/main'])
+})

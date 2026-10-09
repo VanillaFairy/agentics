@@ -32,6 +32,7 @@ test('a for loop whose condition compares its counter to a number is one finding
 
 test('a SCREAMING_CASE bound is a bound', () => {
   assert.deepEqual(lines('for (let n = 0; n < MAX_ROUNDS; n++) go()'), [1])
+  assert.deepEqual(lines('for (let n = 0; n < ROUNDS; n++) go()'), [1])
 })
 
 test('a name with a max, limit or cap part is a bound', () => {
@@ -63,6 +64,7 @@ test("a collection's length or size is not a bound", () => {
   assert.deepEqual(lines('for (let i = 0; i < items.length; i++) {}'), [])
   assert.deepEqual(lines('for (let i = 0; i < suspect.length; i += BATCH) batches.push(i)'), [])
   assert.deepEqual(lines('while (i < seen.size) { i++ }'), [])
+  assert.deepEqual(lines('while (i < maxItems.size) { i++ }'), [])
 })
 
 test('a for…of or for…in loop has no counter', () => {
@@ -106,7 +108,7 @@ test('a loop in a comment or a string is no finding', () => {
 })
 
 test('the message names the counter and askAfter', () => {
-  const [v] = check('for (let round = 1; round <= 3; round++) {}')
-  assert.match(v.message, /round/)
+  const [v] = check('for (let tries = 1; tries <= 3; tries++) {}')
+  assert.match(v.message, /`tries`/)
   assert.match(v.message, /askAfter/)
 })

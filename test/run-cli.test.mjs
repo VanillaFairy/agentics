@@ -926,3 +926,20 @@ test('a line of free text under a text flag, spaces and quotes and all, reaches 
   await start(repo, ['survey', '--notes', notes, '--base', 'origin/main'], mod)
   assert.deepEqual([seen.calls[0].args.notes, seen.calls[0].args.base], [notes, 'origin/main'])
 })
+
+test('survey reads its prior from the file the session wrote, and takes no --prior', async (t) => {
+  const repo = makeRepo(t)
+  writeFileSync(join(repo, 'q.md'), 'how are configs loaded\n')
+  writeFileSync(join(repo, 'prior.md'), 'An earlier pass concluded:\r\nthe loader caches.\n')
+  const survey = await import('../lib/programs/survey.mjs')
+  const started = []
+  const detached = (...argv) => start(repo, ['survey', '--detach', ...argv], survey, { spawnChild: () => { started.push(argv); return 4242 } })
+  const out = await detached('--question-file', 'q.md', '--prior-file', 'prior.md')
+  assert.equal(out.ok, true, JSON.stringify(out))
+  const meta = readJson(runJsonPath(repo, out.run))
+  assert.equal(meta.args.prior, 'An earlier pass concluded:\nthe loader caches.')
+  assert.equal(meta.raw.prior_file, 'prior.md')
+  const refused = await detached('--question-file', 'q.md', '--prior', 'the loader caches')
+  assert.deepEqual([refused.ok, refused.error.kind], [false, 'bad_arg'])
+  assert.equal(started.length, 1, 'only the start with a prior file launched')
+})

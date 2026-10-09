@@ -566,3 +566,18 @@ test('group prose may be indented, a group may not wait for its own task, and a 
   const deeper = swap(GROUPED, '### checks', '#### checks — group')
   refusedAt(problemsOf(deeper), lineOf(deeper, '#### checks'), /opens a group/)
 })
+
+test('the spec CLI refuses a value that is not a handle, and a flag it does not take', () => {
+  const refusal = (...args) => {
+    try {
+      execFileSync(process.execPath, [CLI, ...args], {
+        encoding: 'utf8', stdio: 'pipe', env: { ...process.env, NODE_TEST_CONTEXT: '' }, timeout: 30_000,
+      })
+      return [0, '']
+    } catch (err) {
+      return [err.status, JSON.parse(err.stdout).kind]
+    }
+  }
+  assert.deepEqual(refusal('check', '--repo', '.', '--effort', 'e1', '--folder', 'a\nb'), [1, 'args_unreadable'])
+  assert.deepEqual(refusal('check', '--repo', '.', '--effort', 'e1', '--file', 'DESIGN.md'), [1, 'unknown_flag'])
+})

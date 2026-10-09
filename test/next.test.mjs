@@ -368,3 +368,19 @@ test('an open execution names a live run to watch apart from a stopped one to re
   meta(DEAD_PID)
   assert.match(nextAction(r, 'e1').why, /is stopped: relaunch it$/, 'a run whose process is gone')
 })
+
+test('the next CLI refuses a value that is not a handle, and a flag it does not take', () => {
+  const refusal = (...args) => {
+    try {
+      execFileSync(process.execPath, [NEXT, ...args], {
+        encoding: 'utf8', stdio: 'pipe', env: { ...process.env, NODE_TEST_CONTEXT: '' }, timeout: 30_000,
+      })
+      return [0, '']
+    } catch (err) {
+      return [err.status, JSON.parse(err.stdout).kind]
+    }
+  }
+  assert.deepEqual(refusal('--repo', '.', '--effort', 'e\n1'), [1, 'args_unreadable'])
+  assert.deepEqual(refusal('folders', '--repo', '."'), [1, 'args_unreadable'])
+  assert.deepEqual(refusal('--repo', '.', '--all'), [1, 'unknown_flag'])
+})

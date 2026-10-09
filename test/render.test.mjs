@@ -322,3 +322,18 @@ test('the landing view gives what the review said from its stored return, and sa
   claims(r, [{ claim: 'it builds', ruling: 'met' }], 'h3')
   assert.match(renderLanding(r, 'e1'), /evidence was not written down\.\n$/)
 })
+
+test('the render CLI refuses a value that is not a handle, and a flag it does not take', () => {
+  const refusal = (...args) => {
+    try {
+      execFileSync(process.execPath, [fileURLToPath(new URL('../lib/render.mjs', import.meta.url)), ...args], {
+        encoding: 'utf8', stdio: 'pipe', env: { ...process.env, NODE_TEST_CONTEXT: '' }, timeout: 30_000,
+      })
+      return [0, '']
+    } catch (err) {
+      return [err.status, JSON.parse(err.stdout).kind]
+    }
+  }
+  assert.deepEqual(refusal('evidence', '--repo', '.', '--effort', 'e1', '--folder', 'a b'), [1, 'args_unreadable'])
+  assert.deepEqual(refusal('evidence', '--repo', '.', '--effort', 'e1', '--text', 'x'), [1, 'unknown_flag'])
+})

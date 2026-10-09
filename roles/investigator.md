@@ -41,7 +41,7 @@ command you established, each a gotcha of kind `command`:
      "action": "<how>", "evidence": {"command": "<what you ran>", "output": "<the line that showed it>"},
      "command": {"name": "build|typecheck|suite|suite_fast|test_one", "value": "<command>", "absent": false}}
 
-`established` names the commands you ran and proved; `unresolved` names the ones you could not.
+`unresolved` names the commands you could not establish.
 "I could not establish it" and "there is none" are different answers: the first goes in
 `unresolved`, the second is an entry with `absent: true`. `text` carries what you established,
 what you tried and what you need, its first line the gist. Write nothing to any file for anyone

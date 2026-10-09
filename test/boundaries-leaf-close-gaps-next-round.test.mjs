@@ -189,7 +189,7 @@ describe('G17: recordCommands', () => {
   test('G17.1 each command gotcha recordCommands writes is observed at the repository HEAD', SLOW, async (t) => {
     const w = world(t, [root(), lfNode('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })], { commands: null })
     const commands = [command('suite', COMMANDS.suite), command('test_one', COMMANDS.test_one)]
-    const inv = stored(w, { node: 'a', role: 'investigator', round: 1, thread: 'investigator', dispatch: 'inv-1', ret: { commands, established: ['suite', 'test_one'], unresolved: [], text: 'found them' } })
+    const inv = stored(w, { node: 'a', role: 'investigator', round: 1, thread: 'investigator', dispatch: 'inv-1', ret: { commands, unresolved: [], text: 'found them' } })
     const result = recordCommands(w.xc, { dispatch: inv })
     assert.deepEqual([...result.written].sort(), commands.map(gotchaId).sort())
     const tip = git(w.r, 'rev-parse', 'HEAD')

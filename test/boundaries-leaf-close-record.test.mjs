@@ -35,7 +35,7 @@ describe('recordCommands', { concurrency: 4 }, () => {
     assert.equal((await close(w, { ...spec, dispatch })).decision.next, 'command_unknown')
 
     const commands = ESTABLISHED()
-    const inv = stored(w, { node: 'a', role: 'investigator', round: 1, thread: 'investigator', dispatch: 'inv-1', ret: { commands, established: ['suite', 'test_one'], unresolved: [], text: 'found them' } })
+    const inv = stored(w, { node: 'a', role: 'investigator', round: 1, thread: 'investigator', dispatch: 'inv-1', ret: { commands, unresolved: [], text: 'found them' } })
     const result = recordCommands(w.xc, { dispatch: inv })
     assert.deepEqual([...result.written].sort(), commands.map(gotchaId).sort())
     assert.deepEqual(result.unresolved, [])
@@ -48,7 +48,7 @@ describe('recordCommands', { concurrency: 4 }, () => {
   test('recordCommands reports what the investigator left unresolved and every command refused', SLOW, async (t) => {
     const w = world(t, [root(), lf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })], { commands: null })
     const refused = { ...command('suite', 'node --test'), evidence: { command: '', output: '' } }
-    const inv = stored(w, { node: 'a', role: 'investigator', round: 1, thread: 'investigator', dispatch: 'inv-1', ret: { commands: [refused], established: [], unresolved: ['typecheck'], text: 'could not find them' } })
+    const inv = stored(w, { node: 'a', role: 'investigator', round: 1, thread: 'investigator', dispatch: 'inv-1', ret: { commands: [refused], unresolved: ['typecheck'], text: 'could not find them' } })
     const result = recordCommands(w.xc, { dispatch: inv })
     assert.deepEqual(result.written, [])
     assert.ok(result.unresolved[0].startsWith('typecheck'), 'the return\'s own unresolved come first')

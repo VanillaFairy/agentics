@@ -1,13 +1,15 @@
-// test/fast/courier-handles.test.mjs — GP6: no command a model is handed carries data.
+// test/fast/skill-handles.test.mjs — P2: no command a skill runs carries data.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { applies, check } from '../../tools/rules/courier-handles.mjs'
+import { applies, check, id } from '../../tools/rules/skill-handles.mjs'
 
-test('it applies to workflows, agents and skills, and to nothing else', () => {
-  assert.ok(applies.test('service-workflows/x.workflow.js'))
-  assert.ok(applies.test('agents/courier.md'))
+test("it applies to the skills' files, and to nothing else", () => {
+  assert.equal(id, 'skill-handles')
   assert.ok(applies.test('skills/develop/SKILL.md'))
+  assert.ok(applies.test('skills/develop/landing.md'))
+  assert.ok(!applies.test('service-workflows/x.workflow.js'))
+  assert.ok(!applies.test('roles/scout.md'))
   assert.ok(!applies.test('lib/boundary.mjs'))
   assert.ok(!applies.test('docs/DESIGN.md'))
 })
@@ -24,7 +26,7 @@ test('every way of putting data into a command is flagged on its line', () => {
     const found = check('const a = 1\n' + line)
     assert.equal(found.length, 1, line)
     assert.equal(found[0].line, 2)
-    assert.match(found[0].message, /GP6/)
+    assert.match(found[0].message, /^P2:/)
   }
 })
 

@@ -1,5 +1,5 @@
 // tools/lint.mjs — mechanical enforcement of the Iron Laws and the platform constraints
-// across this plugin's declarative artifacts (agents, workflows, skills).
+// across this plugin's skills, roles, programs and return schemas.
 //
 // This file loads and runs rules. It never judges source itself — every judgement lives
 // in a single-purpose module under tools/rules/. See docs/DESIGN.md#how-the-plugin-checks-itself.

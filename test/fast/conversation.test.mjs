@@ -39,6 +39,7 @@ const TABLE = [
   { msg: 'needs_locus', from: 'test-author', to: 'planner_or_park' },
   { msg: 'needs_locus', from: 'code', to: 'planner_or_park' },
   { msg: 'retried', from: 'code', to: 'thread' },
+  { msg: 'notes', from: 'code', to: 'thread' },
 ]
 
 const SENDERS = ['reviewer', 'code', 'implementer', 'test-author', 'probe', 'producer', 'judge',
@@ -524,4 +525,12 @@ test('a carried message is never pending again, whatever happened to its carrier
     assert.ok(!(plan.carries ?? []).includes(1), `${label}: never carried twice`)
     if (plan.prompt !== undefined) assert.ok(!plan.prompt.includes('carried once'), `${label}: not sent again`)
   }
+})
+
+test('the notes message hands a fresh session every note, one per line', () => {
+  const text = renderMessage({ msg: 'notes', payload: { notes: ['started on hand/b at abc', 'mind the cache'] } })
+  assert.ok(text.includes('- started on hand/b at abc'))
+  assert.ok(text.includes('- mind the cache'))
+  const lines = text.split('\n')
+  assert.ok(lines.includes('- started on hand/b at abc') && lines.includes('- mind the cache'), 'each on a line of its own')
 })

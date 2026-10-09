@@ -6,26 +6,20 @@
 //   merging      overlapping windows in one file collapse into the fewest that cover them
 //   the three    resolved / out_of_range / missing, kept apart
 //   discipline   nothing outside the repository is read, and a dead citation is a FINDING
-//   reports      the Assemble-context step: scouts' report files in, their hits and merged excerpts
-//                written to one context file, its path out under a digest
+//   context      written whole or in parts one Read returns, named by its digest, pruned at a week
 //
 // Design: docs/DESIGN.md#what-a-probe-costs, docs/DESIGN.md#survey.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 
 import {
   citationsIn, mergeRanges, resolveCitations, resolveLocations, safePath, splitParts, writeContext,
 } from '../lib/citations.mjs'
 import { contextDir } from '../lib/store.mjs'
-import { canonical, fnv1a } from '../lib/plan-digest.mjs'
-
-const CLI = fileURLToPath(new URL('../lib/citations.mjs', import.meta.url))
 
 function repo(files) {
   const dir = mkdtempSync(join(tmpdir(), 'agentics-cite-')).split('\\').join('/')
@@ -160,58 +154,6 @@ test('an absolute path inside the repository is read as the relative one it is',
   const out = resolveLocations(dir, [{ path: dir + '/src/a.js', line: 2 }], 1)
   assert.deepEqual(out.files.map((f) => [f.path, f.excerpts[0].from, f.excerpts[0].to]), [['src/a.js', 1, 3]])
   assert.deepEqual(out.unresolved, [])
-})
-
-const cli = (...args) => {
-  const out = JSON.parse(execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8' }))
-  assert.equal(out.payload_digest, fnv1a(canonical(out.payload)))
-  return out.payload
-}
-
-function report(dir, value) {
-  const path = join(dir, 'report-' + fnv1a(JSON.stringify(value)) + '.json').split('\\').join('/')
-  writeFileSync(path, JSON.stringify(value), 'utf8')
-  return path
-}
-
-test('the excerpts CLI reads the scouts\' own report files and writes their hits and excerpts to one context file', () => {
-  const dir = repo({ 'src/a.js': numbered(20, 'line') })
-  const scout = report(dir, {
-    hits: [{ path: 'src/a.js', line: 10, note: 'the loader', kind: 'ground' }, { path: 'src/ghost.js', line: 3, note: 'gone', kind: 'ground' },
-      { path: 'CLAUDE.md', line: 1, note: 'guidance', kind: 'guidance' }],
-    searched: ['grep load'], no_match: 'no retry anywhere', not_reached: 'lib/', stop_reason: 'unfinished',
-  })
-  const out = cli('excerpts', '--repo', dir, '--hits', scout, '--hits', join(dir, 'missing.json'), '--hit-kind', 'ground', '--context', '2')
-
-  assert.ok(out.context.startsWith(resolve(contextDir(dir)).split('\\').join('/') + '/'))
-  assert.deepEqual([out.counts.reports, out.counts.unread_reports, out.counts.locations], [2, 1, 2])
-  const text = readFileSync(out.context, 'utf8')
-  assert.match(text, /the search did NOT finish \(unfinished\)\nLOCATIONS FOUND:\n  src\/a\.js:10 — the loader\n  src\/ghost\.js:3 — gone\n/)
-  assert.match(text, /SEARCHED AND NOT FOUND \(evidence of absence\):\n  no retry anywhere\nNEVER SEARCHED: lib\//)
-  assert.match(text, /missing\.json — this report could not be read/)
-  assert.match(text, /--- src\/a\.js \(20 line\(s\)\)\n\s+8\tline8\n/)
-  assert.match(text, /NOT EXCERPTED[\s\S]*src\/ghost\.js:3 — missing/, 'what was not read is named in the file')
-  assert.doesNotMatch(text, /guidance/, 'a hit of another kind is left out')
-})
-
-test('the excerpts CLI refuses an argument that is not a handle, and reads nothing', () => {
-  const dir = repo({ 'src/a.js': numbered(20, 'line') })
-  assert.deepEqual(cli('excerpts', '--repo', dir, '--hit-kind', 'two words'), { ok: false, error: { kind: 'args_unreadable' } })
-  assert.ok(!existsSync(contextDir(dir)))
-})
-
-test('the cited CLI writes the document\'s cited lines, dead citations last, and prints the file and counts', () => {
-  const dir = repo({ 'src/a.js': numbered(20, 'line') })
-  const artifact = writeArtifact(dir, 'see src/a.js:10 and src/gone.js:4')
-  const out = cli('cited', '--repo', dir, '--file', artifact, '--context', '2')
-
-  assert.deepEqual([out.readable, out.counts.unresolved, out.artifact_lines], [true, 1, 1])
-  const text = readFileSync(out.context, 'utf8')
-  assert.match(text, /--- src\/a\.js \(20 line\(s\); the document cites 10\)\n\s+8\tline8\n/)
-  assert.match(text, /CITATIONS THAT RESOLVE TO NOTHING[\s\S]*src\/gone\.js/)
-  assert.deepEqual(cli('cited', '--repo', dir, '--file', join(dir, 'no-such.md')), {
-    readable: false, context: '', counts: { cited: 0, files: 0, excerpts: 0, unresolved: 0 }, artifact_lines: 0,
-  })
 })
 
 test('context longer than one Read is named by an index of its parts', () => {

@@ -6,16 +6,14 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
 import { readFileSync, rmSync } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 
 import { excerptsText } from '../lib/citations.mjs'
 import {
   checkAnchors, itemsFor, liveItems, poolText, recordJudgement, recordRulings, recordSurvey, supersede, surveyContext,
 } from '../lib/evidence.mjs'
-import { canonical, fnv1a } from '../lib/plan-digest.mjs'
+import { fnv1a } from '../lib/plan-digest.mjs'
 import {
   cli, commit, gitRepo, lines, linkedWorktree, logOf, record, returnFile, span, stateOf, text, withLine, write,
 } from './harness/evidence-fixture.mjs'
@@ -263,7 +261,6 @@ test('a survey\'s context result carries the text it wrote, whole', (t) => {
 
 // ------------------------------------------------------------------ excerptsText
 
-const CITATIONS = fileURLToPath(new URL('../lib/citations.mjs', import.meta.url))
 const scoutReturn = (hits, over = {}) => ({ hits, searched: [], no_match: '', not_reached: '', stop_reason: 'exhausted', ...over })
 
 test('scout returns become one body: each location with its note, what each scout searched and declared absent, and the lines', (t) => {
@@ -317,17 +314,4 @@ test('a location that cannot be read is named with why, and counted', (t) => {
 test('a return that is not an object is named as unread', (t) => {
   const repo = repoOf(t, { 'src/a.js': text(lines(20)) })
   assert.ok(excerptsText(repo, [{ label: 'scout:lost', output: null }]).text.includes('=== scout:lost — this report could not be read'))
-})
-
-test('the excerpts verb writes the text excerptsText renders', (t) => {
-  const repo = repoOf(t, { 'src/a.js': text(lines(20)) })
-  const scout = scoutReturn([{ path: 'src/a.js', line: 10, note: 'the loader' }, { path: 'src/ghost.js', line: 2, note: 'gone' }],
-    { no_match: 'no retry', stop_reason: 'unfinished' })
-  const file = returnFile(repo, scout)
-  const { NODE_TEST_CONTEXT: _, ...env } = process.env
-  const r = spawnSync(process.execPath, [CITATIONS, 'excerpts', '--repo', repo, '--hits', file], { encoding: 'utf8', env })
-  assert.equal(r.status, 0, r.stdout + r.stderr)
-  const printed = JSON.parse(r.stdout)
-  assert.equal(printed.payload_digest, fnv1a(canonical(printed.payload)))
-  assert.equal(readFileSync(printed.payload.context, 'utf8'), excerptsText(repo, [{ label: basename(file), output: scout }]).text)
 })

@@ -5,6 +5,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -12,11 +13,13 @@ import { fileURLToPath } from 'node:url'
 
 import { adopt } from '../lib/adopt.mjs'
 import { adoptAct, land } from '../lib/boundary.mjs'
+import { leafOpen } from '../lib/boundaries/leaf-open.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
 import { resumeLeaves } from '../lib/resume.mjs'
 import { branchOf, effortStateDir, git as storeGit, revParse, worktreeOf } from '../lib/store.mjs'
 import { readTree, standingReview } from '../lib/tree.mjs'
 import { commitIn, git, leaf, repo, root } from './harness/boundary-fixture.mjs'
+import { RED, setup as openWorld } from './harness/leaf-open-world.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 
 const BOUNDARY = fileURLToPath(new URL('../lib/boundary.mjs', import.meta.url))
@@ -60,6 +63,45 @@ function terminal(typed, before = () => {}) {
 }
 const nobody = () => ({ env: {}, stdinIsTTY: false, ask: async () => { throw new Error('nobody may be asked') } })
 const tokenOf = (w, folder, map) => adopt(w.r, E, folder, map, 'check').token
+
+/** A transcript line of one AskUserQuestion answer, shaped as the host writes it (test/acts.test.mjs). */
+const answerLine = (question, answer) => JSON.stringify({
+  type: 'user',
+  message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't-x', content: 'answered' }] },
+  toolUseResult: { questions: [{ question }], answers: { [question]: answer } },
+})
+const askedAbout = (token) => '1/1. Adopt this? ' + token
+/** A session whose transcript records `answers` ([question, answer] pairs, oldest first): its env. */
+function session(t, answers) {
+  const config = mkdtempSync(join(tmpdir(), 'agentics-adopt-config-'))
+  t.after(() => rmSync(config, { recursive: true, force: true }))
+  const id = randomUUID()
+  const folder = join(config, 'projects', 'some-project')
+  mkdirSync(folder, { recursive: true })
+  writeFileSync(join(folder, id + '.jsonl'), answers.map(([q, a]) => answerLine(q, a) + '\n').join(''))
+  return { CLAUDE_CODE_SESSION_ID: id, CLAUDE_CONFIG_DIR: config }
+}
+const noSessionEnv = () => {
+  const env = { ...process.env }
+  delete env.CLAUDE_CODE_SESSION_ID
+  return env
+}
+const adoptCli = (w, map, action, input = '') => spawnSync(process.execPath,
+  [BOUNDARY, 'adopt', '--repo', w.r, '--effort', E, '--folder', 'c', '--map-file', map, '--action', action],
+  { encoding: 'utf8', env: noSessionEnv(), input, timeout: 30_000 })
+const rootWorktree = (w) => {
+  const path = worktreeOf(w.r, E, '.')
+  git(w.r, 'worktree', 'add', '-q', path, branchOf(E, '.'))
+  return path
+}
+/** A mapping that acts cleanly: a done leaf and a handover. */
+const cleanMapping = (w) => {
+  const one = commitIn(w.wt, { 'src/a.mjs': '1\n' }, 'one')
+  commitIn(handBranch(w, 'hand/b'), { 'src/b.mjs': 'half\n' }, 'started by hand')
+  const map = w.mapFile({ done: [{ node: 'c/a', commits: [one] }], handover: [{ node: 'c/b', branch: 'hand/b' }] })
+  assert.equal(adopt(w.r, E, 'c', map, 'check').ok, true, 'the mapping would act cleanly')
+  return map
+}
 
 // ---------------------------------------------------------------- what an act records
 
@@ -400,4 +442,146 @@ test('the adopt verb with --action act and nobody to give the word writes nothin
   const printed = JSON.parse(out.stdout)
   assert.equal(printed.ok, false)
   assert.equal(events(w.r).length, before)
+})
+
+// ---------------------------------------------------------------- an action that is not check or act
+
+test('an action other than check or act refuses bad_arg and writes nothing: no record, no branch', (t) => {
+  const w = world(t)
+  const map = cleanMapping(w)
+  const before = events(w.r).length
+  const out = adopt(w.r, E, 'c', map, 'acts', { by: 'user' })
+  assert.equal(out.ok, false)
+  assert.equal(out.error.kind, 'bad_arg')
+  assert.equal(events(w.r).length, before)
+  assert.equal(revParse(w.r, 'refs/heads/' + branchOf(E, 'c/b')), '')
+})
+
+test('the adopt verb with an action other than check or act prints bad_arg, exits 0 and writes nothing', (t) => {
+  const w = world(t)
+  const map = cleanMapping(w)
+  const before = events(w.r).length
+  const out = adoptCli(w, map, 'acts')
+  assert.equal(out.status, 0, out.stderr)
+  const printed = JSON.parse(out.stdout)
+  assert.equal(printed.ok, false)
+  assert.equal(printed.error.kind, 'bad_arg')
+  assert.equal(events(w.r).length, before)
+  assert.equal(revParse(w.r, 'refs/heads/' + branchOf(E, 'c/b')), '')
+})
+
+// ---------------------------------------------------------------- who may give the word
+
+test('the adopt verb takes a typed token only from an interactive console: piped on stdin it is answer_unverifiable', (t) => {
+  const w = world(t)
+  const map = cleanMapping(w)
+  const before = events(w.r).length
+  const out = adoptCli(w, map, 'act', tokenOf(w, 'c', map) + '\n')
+  assert.equal(out.status, 0, out.stderr)
+  const printed = JSON.parse(out.stdout)
+  assert.equal(printed.ok, false)
+  assert.equal(printed.error.kind, 'answer_unverifiable')
+  assert.equal(events(w.r).length, before)
+  assert.equal(revParse(w.r, 'refs/heads/' + branchOf(E, 'c/b')), '')
+})
+
+test("in a session, an 'Adopt' to the question holding the token records every event by the user", async (t) => {
+  const w = world(t)
+  const map = cleanMapping(w)
+  const env = session(t, [[askedAbout(tokenOf(w, 'c', map)), 'Adopt']])
+  const out = await adoptAct(w.r, E, 'c', map, { env, stdinIsTTY: false })
+  assert.equal(out.ok, true, JSON.stringify(out))
+  const mine = events(w.r).filter((e) => out.recorded.includes(e.seq))
+  assert.deepEqual(mine.map((e) => e.kind).sort(), ['merged', 'noted'])
+  for (const e of mine) assert.equal(e.by, 'user', e.kind)
+})
+
+test('in a session, any other answer to the question holding the token refuses not_approved and writes nothing', async (t) => {
+  const w = world(t)
+  const map = cleanMapping(w)
+  const before = events(w.r).length
+  const env = session(t, [[askedAbout(tokenOf(w, 'c', map)), 'Land']])
+  const out = await adoptAct(w.r, E, 'c', map, { env, stdinIsTTY: false })
+  assert.equal(out.ok, false)
+  assert.equal(out.error.kind, 'not_approved')
+  assert.equal(events(w.r).length, before)
+  assert.equal(revParse(w.r, 'refs/heads/' + branchOf(E, 'c/b')), '')
+})
+
+test("adoptAct over a mapping its check refuses returns the check's refusals and asks nobody", async (t) => {
+  const w = world(t)
+  const one = commitIn(w.wt, { 'src/a.mjs': '1\n' }, 'one')
+  const map = w.mapFile({ done: [{ node: 'c/zz', commits: [one] }], outside: [{ commits: ['deadbeefdeadbeef'] }] })
+  const checked = adopt(w.r, E, 'c', map, 'check')
+  assert.deepEqual(checked.refusals.map((x) => x.kind), ['unknown_node', 'unknown_commit'])
+  const { opts, prompts } = terminal('anything')
+  const out = await adoptAct(w.r, E, 'c', map, opts)
+  assert.equal(out.ok, false)
+  assert.deepEqual(out.refusals, checked.refusals)
+  assert.equal(prompts.length, 0)
+})
+
+// ---------------------------------------------------------------- what the folder's cut holds
+
+test("a hand merge of the parent into the folder does not make the parent's branch the folder's work", (t) => {
+  const w = world(t)
+  commitIn(rootWorktree(w), { 'docs/parent.md': 'p\n' }, 'parent moved on')
+  git(w.wt, 'merge', '--no-ff', '--no-edit', branchOf(E, '.'))
+  const map = w.mapFile({ done: [{ node: 'c/a', branch: branchOf(E, '.') }] })
+  const before = events(w.r).length
+  const out = adopt(w.r, E, 'c', map, 'act', { by: 'user' })
+  assert.equal(out.ok, false)
+  assert.deepEqual(out.refusals.map((x) => [x.entry, x.kind]), [['done[0]', 'not_on_folder_branch']])
+  assert.equal(events(w.r).length, before)
+  assert.notEqual(statusOf(w.r, 'c/a'), 'merged')
+})
+
+// ---------------------------------------------------------------- a handed-over cycle member stays openable
+
+/** A red and its green under the root: the red's commit R is on the effort branch, the green's work on a hand branch cut from there. */
+function handedCycle(t) {
+  const { r, xc } = openWorld(t, [
+    leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'] }),
+    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], locus: ['src/r.mjs'] }),
+  ])
+  const base = git(r, 'rev-parse', 'HEAD')
+  git(r, 'branch', branchOf(E, '.'), base)
+  const wt = worktreeOf(r, E, '.')
+  git(r, 'worktree', 'add', '-q', wt, branchOf(E, '.'))
+  const red = commitIn(wt, { 'test/r.test.mjs': RED }, 'Pin r')
+  const hand = join(r, '.claude', 'worktrees', 'hand-g')
+  git(r, 'worktree', 'add', '-q', '-b', 'hand/g', hand, branchOf(E, '.'))
+  const green = commitIn(hand, { 'src/r.mjs': 'export const r = 1\n' }, 'green, started by hand')
+  const dir = mkdtempSync(join(tmpdir(), 'agentics-map-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  const map = join(dir, 'map.json')
+  writeFileSync(map, JSON.stringify({ done: [{ node: 'r', commits: [red] }], handover: [{ node: 'g', branch: 'hand/g' }] }))
+  return { r, xc, map, base, red, green }
+}
+
+test("an act handing a green over, its red adopted done, also creates the red's canonical branch at its head", (t) => {
+  const c = handedCycle(t)
+  const out = adopt(c.r, E, '.', c.map, 'act', { by: 'user' })
+  assert.equal(out.ok, true, JSON.stringify(out))
+  assert.equal(revParse(c.r, 'refs/heads/' + branchOf(E, 'r')), c.red)
+  assert.equal(revParse(c.r, 'refs/heads/' + branchOf(E, 'g')), c.green)
+  assert.deepEqual([...out.created].sort(), [branchOf(E, 'r'), branchOf(E, 'g')].sort())
+})
+
+test('after that act the green opens: cut from the red, on the green branch past it', async (t) => {
+  const c = handedCycle(t)
+  assert.equal(adopt(c.r, E, '.', c.map, 'act', { by: 'user' }).ok, true)
+  const opened = await leafOpen(c.xc, { node: 'g' })
+  assert.equal(opened.status, 'opened', JSON.stringify(opened))
+  assert.equal(spawnSync('git', ['-C', c.r, 'merge-base', '--is-ancestor', c.red, opened.base_sha]).status, 0, 'the base is the red head or past it')
+  assert.ok(git(c.r, 'rev-list', '--first-parent', branchOf(E, 'g')).split('\n').includes(opened.base_sha), 'the base is on the green first-parent line')
+})
+
+test('a red whose canonical branch exists is left where it is, and is not named in created', (t) => {
+  const c = handedCycle(t)
+  git(c.r, 'branch', branchOf(E, 'r'), c.base)
+  const out = adopt(c.r, E, '.', c.map, 'act', { by: 'user' })
+  assert.equal(out.ok, true, JSON.stringify(out))
+  assert.equal(revParse(c.r, 'refs/heads/' + branchOf(E, 'r')), c.base)
+  assert.deepEqual(out.created, [branchOf(E, 'g')])
 })

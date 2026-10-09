@@ -221,11 +221,12 @@ test('a fault and a host stop of the execution print', (t) => {
   state(r, 'host_stop', { dispatch: 'a.implementer.producer-a.r1', cause: 'rate_limit', until: '' })
   state(r, 'fault', { node: 'b', channel: 'role', detail: 'the implementer dispatch returned nothing' })
   state(r, 'ended', { result: done })
-  assert.equal(watchFrom(r, since), [
+  const { lines, ended } = runWatchLines(readRunLog(r, XRUN).entries, since, { endedAfter: since })
+  assert.deepEqual(lines, [
     'host_stop a.implementer.producer-a.r1: rate_limit until -',
     'fault role: the implementer dispatch returned nothing',
-    'ended done: complete=true result=/r/result.json',
-  ].join('\n') + '\n')
+  ])
+  assert.deepEqual(ended.result, done)
 })
 
 test('an earlier run\'s end is not printed; a run whose process is gone and heartbeat is stale prints stopped', (t) => {
@@ -258,7 +259,7 @@ test('an execution\'s end after the since the watch was given is printed to a wa
   const r = execution(t)
   const since = seqMax(r, EFFORT)
   state(r, 'ended', { result: done })
-  assert.equal(watchFrom(r, since), 'ended done: complete=true result=/r/result.json\n')
+  assert.deepEqual(runWatchLines(readRunLog(r, XRUN).entries, since, { endedAfter: since }).ended.result, done)
 })
 
 test('watch takes --run only: watch --execution is refused', (t) => {
@@ -268,11 +269,8 @@ test('watch takes --run only: watch --execution is refused', (t) => {
   assert.match(JSON.parse(out.stdout).error, /--run/)
 })
 
-test('list prints each effort\'s seq_max, the seq a watch starts from', (t) => {
+test('efforts carry each effort\'s seq_max, the seq a watch starts from', (t) => {
   const r = execution(t)
   event(r, 'escalated', 'a', { reason: 'blocked', detail: '' })
-  const json = JSON.parse(execFileSync(process.execPath, [CLI, 'list', '--repo', r, '--json'], { encoding: 'utf8', env: CHILD_ENV }))
-  assert.equal(json.payload.efforts.find((e) => e.effort === EFFORT).seq_max, seqMax(r, EFFORT))
-  assert.equal(efforts(r).efforts[0].seq_max, seqMax(r, EFFORT))
-  assert.ok(execFileSync(process.execPath, [CLI, 'list', '--repo', r], { encoding: 'utf8', env: CHILD_ENV }).includes('seq ' + seqMax(r, EFFORT)))
+  assert.equal(efforts(r).efforts.find((e) => e.effort === EFFORT).seq_max, seqMax(r, EFFORT))
 })

@@ -6,7 +6,6 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -19,6 +18,7 @@ import { renderMessage } from '../lib/conversation.mjs'
 import { append, fileFor, readLog, readRunLog, runLog, runState } from '../lib/ledger.mjs'
 import { programContext } from '../lib/programs/common.mjs'
 import { rule } from '../lib/programs/rule.mjs'
+import { launch } from '../lib/run.mjs'
 import { rulerBrief } from '../lib/briefs/respec.mjs'
 import { respecBrief, respecSettle } from '../lib/respec.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
@@ -26,7 +26,6 @@ import { schemaOf } from '../lib/schemas.mjs'
 import { mainCheckout, pidAlive, posix, readJson, resultPath, runLogFile, specPath } from '../lib/store.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
-const RUN_CLI = fileURLToPath(new URL('../lib/run.mjs', import.meta.url))
 const FIXTURES = fileURLToPath(new URL('./fixtures/compile/', import.meta.url))
 const read = (name) => readFileSync(join(FIXTURES, name), 'utf8').replace(/\r\n/g, '\n')
 const ROOT = read('root.md')
@@ -828,7 +827,7 @@ test("the user is asked for this folder's latest ruled seq, not a later one of a
   assert.deepEqual([out.status, out.ruled], ['approved', first.ruled], JSON.stringify(out))
 })
 
-// --- the real CLI ----------------------------------------------------------------------------
+// --- through launch, as the CLI starts it ----------------------------------------------------------------------------
 
 /** A rig holding the root spec, never approved, whose host CLI resolves. */
 function neverApproved(t) {
@@ -836,12 +835,10 @@ function neverApproved(t) {
   writeSpec(rig.repo, '.', ROOT)
   return rig
 }
-const cli = (rig, ...flags) => {
-  const out = execFileSync(process.execPath, [RUN_CLI, 'rule', '--repo', rig.repo, ...flags], {
-    encoding: 'utf8', env: { ...process.env, NODE_TEST_CONTEXT: '', CLAUDE_CODE_SESSION_ID: '' }, windowsHide: true,
-  })
-  return JSON.parse(out.trim().split('\n').at(-1))
-}
+/** Start `rule` as `node lib/run.mjs rule` does, with no session; what it returns. */
+const cli = (rig, ...flags) => launch({
+  argv: ['rule', '--repo', rig.repo, ...flags], env: { ...process.env, NODE_TEST_CONTEXT: '', CLAUDE_CODE_SESSION_ID: '' },
+})
 
 test('a detached rule run of a folder never compiled ends refused user_approves', { timeout: 60000 }, async (t) => {
   const rig = neverApproved(t)
@@ -857,7 +854,7 @@ test('a detached rule run of a folder never compiled ends refused user_approves'
     for (const by = Date.now() + 10_000; pid && pidAlive(pid) && Date.now() < by;) await new Promise((wake) => setTimeout(wake, 50))
     rig.cleanup()
   })
-  const out = cli(rig, '--detach', '--effort', E, '--folder', '.')
+  const out = await cli(rig, '--detach', '--effort', E, '--folder', '.')
   pid = out.pid
   assert.equal(out.ok, true, JSON.stringify(out))
   assert.equal(typeof out.run, 'string')
@@ -876,10 +873,10 @@ test('a detached rule run of a folder never compiled ends refused user_approves'
   assert.equal(result.coverage.complete, true)
 })
 
-test('rule --user-approved refuses --detach', (t) => {
+test('rule --user-approved refuses --detach', async (t) => {
   const rig = neverApproved(t)
   t.after(() => rig.cleanup())
-  const out = cli(rig, '--user-approved', '--detach', '--effort', E, '--folder', '.')
+  const out = await cli(rig, '--user-approved', '--detach', '--effort', E, '--folder', '.')
   assert.equal(out.ok, false, JSON.stringify(out))
   assert.equal(out.error.kind, 'attached_only')
 })

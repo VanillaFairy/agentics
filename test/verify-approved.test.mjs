@@ -177,13 +177,11 @@ test('node lib/verify.mjs --options - reads its options from standard input and 
     'the approved files that came from standard input are held to')
   const [line] = journal(r)
   assert.equal(line.key, 'k-cli')
-})
 
-test('options on standard input that are not a JSON object exit non-zero with no payload', { timeout: 60_000 }, () => {
   for (const input of ['not json', '[]']) {
-    const run = cli(input)
-    assert.notEqual(run.status, 0, `${JSON.stringify(input)} is not a JSON object`)
-    assert.ok(!String(run.stdout).includes('stop_reason'), 'no payload is printed')
-    assert.ok(!String(run.stderr).includes('stop_reason'), 'no payload is printed')
+    const bad = cli(input)
+    assert.notEqual(bad.status, 0, `${JSON.stringify(input)} is not a JSON object`)
+    assert.ok(!String(bad.stdout).includes('stop_reason'), 'no payload is printed')
+    assert.ok(!String(bad.stderr).includes('stop_reason'), 'no payload is printed')
   }
 })

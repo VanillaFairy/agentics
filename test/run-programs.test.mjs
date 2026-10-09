@@ -32,6 +32,7 @@ const ROOT_SPEC = readFileSync(fileURLToPath(new URL('./fixtures/compile/root.md
 const FILES = {
   'CLAUDE.md': '# Guide\n\n' + GUIDE + '\n', 'q.md': QUESTION + '\n', 'q-crlf.md': '\r\n' + QUESTION + '\r\n\r\n', 'cap.md': CAPABILITY + '\n',
   'doc.md': DOC, 'criteria.md': CRITERIA, 'blank.md': '\n',
+  'prior.md': 'what the earlier pass found\r\n',
 }
 const PROBE_SCRIPT = {
   'scout||locate': [{ output: { hits: [], searched: ['.'], no_match: 'nothing guides a review here', not_reached: '', stop_reason: 'exhausted' } }],
@@ -108,11 +109,11 @@ test('survey: an absent flag takes its default', async (t) => {
 
 test('survey: every flag resolves', async (t) => {
   const { meta } = await claimed(t, 'survey', [
-    '--question-file', 'q.md', '--roots', 'src,lib', '--notes', 'the notes', '--prior', 'the prior', '--max-topics', '3',
+    '--question-file', 'q.md', '--roots', 'src,lib', '--notes', 'the notes', '--prior-file', 'prior.md', '--max-topics', '3',
     '--intelligence', 'max', '--pace', 'fast', '--ground', 'src/a.js,src/b.js',
   ])
   assert.deepEqual(pick(meta.args, ['roots', 'notes', 'prior', 'max_topics', 'intelligence', 'pace', 'ground']), {
-    roots: ['src', 'lib'], notes: 'the notes', prior: 'the prior', max_topics: 3, intelligence: 'max', pace: 'fast', ground: ['src/a.js', 'src/b.js'],
+    roots: ['src', 'lib'], notes: 'the notes', prior: 'what the earlier pass found', max_topics: 3, intelligence: 'max', pace: 'fast', ground: ['src/a.js', 'src/b.js'],
   })
 })
 

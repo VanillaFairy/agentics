@@ -383,4 +383,6 @@ test('the next CLI refuses a value that is not a handle, and a flag it does not 
   assert.deepEqual(refusal('--repo', '.', '--effort', 'e\n1'), [1, 'args_unreadable'])
   assert.deepEqual(refusal('folders', '--repo', '."'), [1, 'args_unreadable'])
   assert.deepEqual(refusal('--repo', '.', '--all'), [1, 'unknown_flag'])
+  // the verb is not a positional: the walk starts after it
+  assert.deepEqual(refusal('folders', '--repo', repo(), '--json'), [0, ''])
 })

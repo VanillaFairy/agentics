@@ -140,13 +140,13 @@ test('watch refuses a --since beyond the largest safe integer', { timeout: 30_00
   assert.match(JSON.parse(out.stdout).error, /--since/)
 })
 
-test('watch follows the run its --run resolves to, a space around the name included', { timeout: 30_000 }, (t) => {
+test('watch refuses a run name with a space around it: a handle is one token', { timeout: 30_000 }, (t) => {
   const r = repo(t)
   writeJson(runJsonPath(r, RUN), { run: RUN, pid: process.pid, heartbeat_at: new Date().toISOString() })
   appendRun(r, RUN, [{ kind: 'run', program: 'survey' }, ended(0)])
   const out = spawnSync(process.execPath, [CLI, 'watch', '--repo', r, '--run', ' ' + RUN + ' '], { encoding: 'utf8', env: CHILD_ENV, timeout: 10000 })
-  assert.equal(out.stdout, 'ended done: complete=true result=/r/result.json\n')
-  assert.equal(out.status, 0)
+  assert.equal(out.status, 1, out.stdout)
+  assert.equal(JSON.parse(out.stdout).kind, 'args_unreadable')
 })
 
 test('an ended record before the latest run is not the current run\'s end', () => {

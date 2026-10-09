@@ -116,9 +116,12 @@ function latestFixes(executions, leafId) {
   return null
 }
 
-/** The highest round any `dispatched` event records for `leafId`: a fixes file of an earlier round was answered by it. */
+/**
+ * The highest round a 4.x `dispatched` event (one naming no thread) records for `leafId`: a fixes
+ * file of an earlier round was answered by it. A 5.0 round never read a 4.x fixes file.
+ */
 const dispatchedRound = (events, leafId) =>
-  Math.max(0, ...events.filter((e) => e.kind === 'dispatched' && e.node === leafId && Number.isInteger(e.round)).map((e) => e.round))
+  Math.max(0, ...events.filter((e) => e.kind === 'dispatched' && e.node === leafId && !e.thread && Number.isInteger(e.round)).map((e) => e.round))
 
 /**
  * The dispatch a 4.x said file of `ev` is stated again as: the stored return of its text under the
@@ -175,8 +178,10 @@ function effortPlan(root, effort, out) {
       e.claims.push({ node: id, seq: c.seq })
       continue
     }
+    // A said file that cannot be stated again is refused and keeps its 4.x said, as a stop's is;
+    // its rulings are still written under their 5.0 name, which every 5.0 reader reads.
     const dispatch = restatement(root, effort, id, c, 'the claims of ' + id + ' at seq ' + c.seq + ' in ' + effort, out)
-    if (dispatch) e.claims.push({ node: id, seq: c.seq, file: c.said, dispatch })
+    e.claims.push(dispatch ? { node: id, seq: c.seq, file: c.said, dispatch } : { node: id, seq: c.seq })
   }
 
   const ledger = readLog(root, effort, 'ledger').entries
@@ -236,13 +241,28 @@ export function plan(repo) {
   return out
 }
 
-/** Perform what the plan lists; `applied` is the number of records appended. */
+/**
+ * Perform what the plan lists: `{applied, error}`, `applied` the number of records appended and
+ * `error` '' when every one landed. The first record the ledger refuses, or anything that throws,
+ * stops the run there and `error` says why; what landed before it stays, and a run after it
+ * finishes the rest, as each part recognises its own work.
+ */
 export function apply(p) {
   let applied = 0
   const add = (out) => {
     if (!out.ok) throw new Error('the ledger refused a migrated record: ' + out.error)
     applied += out.seqs.length
   }
+  try {
+    applyParts(p, add)
+  } catch (err) {
+    return { applied, error: String(err && err.message ? err.message : err) }
+  }
+  return { applied, error: '' }
+}
+
+/** Append every part `p` lists, each through `add`, which throws on a refused record. */
+function applyParts(p, add) {
   for (const e of p.efforts) {
     const tree = readTree(p.root, e.effort)
     const bySeq = new Map(tree.events.map((x) => [x.seq, x]))
@@ -265,10 +285,11 @@ export function apply(p) {
       }))
     }
     // The marker keeps the review's ambiguities and the sections that name them, and rules no section
-    // clean: the gate's open ambiguities stay as the review left them.
+    // clean: the gate's open ambiguities stay as the review left them. A review line gone from the
+    // ledger since the plan gives a marker with none.
     const reviews = new Map(readLog(p.root, e.effort, 'ledger').entries.map((x) => [x.seq, x]))
     for (const r of e.reviewed) {
-      const review = reviews.get(r.seq)
+      const review = objectOf(reviews.get(r.seq))
       add(append(p.root, e.effort, 'ledger', {
         kind: 'reviewed', folder: r.folder, hash: r.hash, complete: false, remaining: [MARKER],
         ambiguities: list(review.ambiguities), clean: [], sections: objectOf(review.sections),
@@ -286,7 +307,6 @@ export function apply(p) {
     const { seq: _seq, verdict, ...old } = items.get(j.seq)
     add(appendProject(p.root, 'items', { ...old, ruling: verdict }))
   }
-  return { applied }
 }
 
 const isMain = import.meta.main ??
@@ -296,6 +316,7 @@ if (isMain) {
   const argv = process.argv.slice(2)
   const repo = argv.find((a) => !a.startsWith('--')) || '.'
   const p = plan(repo)
-  const applied = argv.includes('--yes') ? apply(p).applied : 0
-  console.log(JSON.stringify({ applied, ...p }, null, 1))
+  const done = argv.includes('--yes') ? apply(p) : { applied: 0, error: '' }
+  console.log(JSON.stringify({ applied: done.applied, ...p, error: done.error }, null, 1))
+  if (done.error) process.exitCode = 1
 }

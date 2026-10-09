@@ -53,6 +53,7 @@ test('a name bound to made text is judged by its binding, on the property line',
 
 test("each branch of a conditional and each operand of ||, ?? and && is judged", () => {
   assert.deepEqual(lines("await dispatch(ctx, { brief: fresh ? scoutBrief(a) : 'Go on.' })"), [1])
+  assert.deepEqual(lines("await dispatch(ctx, { brief: fresh ? 'Go on.' : scoutBrief(a) })"), [1])
   assert.deepEqual(lines("await dispatch(ctx, { threadBrief: answer || 'Write the spec.' })"), [1])
   assert.deepEqual(lines("await dispatch(ctx, { brief: given ?? 'Write the spec.' })"), [1])
 })

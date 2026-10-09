@@ -1,6 +1,7 @@
 // test/fast/schemas.test.mjs — pins the return schemas the runner hands the host: their kinds, the
-// coverage every searcher declares, the per-unit rulings every judge returns, and what no
-// producer or searcher may carry.
+// coverage every searcher declares, and the ladders their judges grade on. Which fields carry a
+// ruling, and that every judge rules per unit, is the no-self-verdict lint rule's
+// (test/fast/no-self-verdict.test.mjs).
 //
 // Design: docs/DESIGN.md#briefs-and-returns and docs/DESIGN.md#l3--separate-judges.
 
@@ -20,8 +21,6 @@ function walk(value, out = []) {
   }
   return out
 }
-const propertyNames = (schema) => walk(schema).filter(([k, v]) => k === 'properties' && v && typeof v === 'object')
-  .flatMap(([, v]) => Object.keys(v))
 
 test('every schema has a known kind', () => {
   for (const [name, s] of entries) assert.ok(KINDS.includes(s.kind), name + ' has kind ' + s.kind)
@@ -40,24 +39,6 @@ test('every searcher declares its coverage', () => {
   for (const [name, { schema }] of ofKind('searcher')) {
     for (const field of ['searched', 'no_match', 'not_reached', 'stop_reason']) assert.ok(schema.required.includes(field), name + ' lacks ' + field)
     for (const reason of ['exhausted', 'unfinished', 'stuck']) assert.ok(schema.properties.stop_reason.enum.includes(reason), name + ' cannot say ' + reason)
-  }
-})
-
-test('every judge rules per unit', () => {
-  const PER_UNIT = { items: 'units', prober: 'units', rejudge: 'rulings', assessment: 'units', reviewer: 'units',
-    ruler_premises: 'rulings', auditor: 'units' }
-  assert.deepEqual(Object.keys(PER_UNIT).sort(), ofKind('judge').map(([n]) => n).filter((n) => n !== 'ruler_convergence').sort())
-  for (const [name, field] of Object.entries(PER_UNIT)) {
-    const schema = schemaOf(name)
-    assert.ok(schema.required.includes(field), name + ' does not require ' + field)
-    assert.equal(schema.properties[field].type, 'array', name + '.' + field)
-  }
-  assert.ok(schemaOf('ruler_convergence').required.includes('ruling'))
-})
-
-test('no producer or searcher carries a ruling field', () => {
-  for (const [name, { schema }] of [...ofKind('producer'), ...ofKind('searcher')]) {
-    for (const banned of ['ruling', 'rulings', 'units', 'verdict']) assert.ok(!propertyNames(schema).includes(banned), name + ' carries ' + banned)
   }
 })
 

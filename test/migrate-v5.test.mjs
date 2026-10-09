@@ -927,7 +927,7 @@ test('apply never throws: a plan entry naming a line or node that is gone still 
       assert.fail(part + ': apply threw ' + err.message)
     }
     assert.ok(Number.isInteger(out.applied) && out.applied >= 0, part)
-    assert.equal(typeof out.error, 'string', part)
+    assert.notEqual(out.error, '', part + ': a run that could not append what the plan lists does not read as a whole one')
     assert.equal(out.applied, totalLines(fx.dir) - lines, part)
   }
 })

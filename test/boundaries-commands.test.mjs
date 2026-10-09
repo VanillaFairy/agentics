@@ -18,7 +18,7 @@ import { leafBrief } from '../lib/brief.mjs'
 import { commandsOf, deleteGotcha, knowledgeDir, listGotchas, readKnowledge, writeGotcha } from '../lib/gotchas.mjs'
 import { ensureIntegration, ensureLeaf } from '../lib/integration.mjs'
 import { executionLog } from '../lib/ledger.mjs'
-import { acquire } from '../lib/locks.mjs'
+import { acquireAsync } from '../lib/locks.mjs'
 import { loadRole, roleCommands } from '../lib/roles.mjs'
 import { dispatchKey, executionDir } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
@@ -250,7 +250,7 @@ test('a later execution\'s measurement reads the session\'s absent commands from
   const xc = relaunch(r, OTHER)
   preflight(xc, {})
   assert.equal(xc.envelope().commands, null)
-  assert.equal(acquire(r, { effort: E, execution: OTHER, node: 'a', locus: ['src/a.mjs'] }).ok, true)
+  assert.equal((await acquireAsync(r, { effort: E, execution: OTHER, node: 'a', locus: ['src/a.mjs'] })).ok, true)
   const folder = ensureIntegration(r, E, '.', xc.envelope())
   assert.equal(folder.ok, true, folder.error)
   const made = ensureLeaf(r, E, 'a', { from: folder.head, parentBranch: folder.branch })

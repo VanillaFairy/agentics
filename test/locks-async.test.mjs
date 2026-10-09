@@ -5,7 +5,7 @@
 //   withLockAsync        withLock's lock and holder, waited for with an awaited sleep: timers fire
 //                        while it waits; it and withLock exclude each other; the same timeout error;
 //                        a dead holder broken; the lock held until an async fn settles
-//   acquireAsync         acquire's result, its slot wait awaited; a held locus answered at once
+//   acquireAsync         a slot and the locus locks, the slot wait awaited; a held locus answered at once
 //   withBranchLockAsync  one branch held across an awaited fn, other branches free
 //
 // Design: docs/DESIGN.md#slots-and-locks.
@@ -17,7 +17,7 @@ import { hostname, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { append } from '../lib/ledger.mjs'
-import { acquire, acquireAsync, withBranchLock, withBranchLockAsync } from '../lib/locks.mjs'
+import { acquireAsync, withBranchLockAsync } from '../lib/locks.mjs'
 import { configPath, mkdirState, withLock, withLockAsync } from '../lib/store.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 import { DEAD_PID } from './harness/dead-pid.mjs'
@@ -150,9 +150,9 @@ test('withLockAsync holds the lock until an async fn settles, and releases it wh
 
 // ------------------------------------------------------------------ acquireAsync
 
-test('acquireAsync returns what acquire returns once a slot frees', { timeout: 10_000 }, async (t) => {
+test('acquireAsync takes the slot once one frees, and taking it again answers the same', { timeout: 10_000 }, async (t) => {
   const repo = effortRepo(t, ['a', 'b'], 1)
-  assert.equal(acquire(repo, { effort: E, execution: X, node: 'a', waitMs: 0 }).ok, true)
+  assert.equal((await acquireAsync(repo, { effort: E, execution: X, node: 'a', waitMs: 0 })).ok, true)
   let freed = false
   const pauses = []
   const spec = { effort: E, execution: X, node: 'b', holderActive: () => !freed, waitMs: 60_000, pollMs: 5 }
@@ -162,46 +162,46 @@ test('acquireAsync returns what acquire returns once a slot frees', { timeout: 1
   assert.equal(pauses.length, 2, 'it waited until the slot freed, and no longer')
   assert.ok(pauses.every((ms) => ms >= 1 && ms <= spec.pollMs), 'each pause is at most pollMs: ' + pauses)
   assert.equal(result.ok, true)
-  assert.deepEqual(result, acquire(repo, { ...spec, waitMs: 0 }), 'the result acquire gives for the slot b now holds')
+  assert.deepEqual(result, await acquireAsync(repo, { ...spec, waitMs: 0 }), 'the result acquire gives for the slot b now holds')
 })
 
-test('acquireAsync answers locus_held at once, as acquire does', { timeout: 10_000 }, async (t) => {
+test('acquireAsync answers locus_held at once, the same answer every time', { timeout: 10_000 }, async (t) => {
   const repo = effortRepo(t, ['a', 'b'], 4)
-  assert.equal(acquire(repo, { effort: E, execution: X, node: 'a', locus: ['src/shared.js'], waitMs: 0 }).ok, true)
+  assert.equal((await acquireAsync(repo, { effort: E, execution: X, node: 'a', locus: ['src/shared.js'], waitMs: 0 })).ok, true)
   let sleeps = 0
   const spec = { effort: E, execution: X, node: 'b', locus: ['src/b.js', 'src/shared.js'], waitMs: 60_000 }
   const result = await acquireAsync(repo, spec, { sleep: async () => { sleeps++ } })
   assert.equal(result.reason, 'locus_held')
   assert.equal(sleeps, 0, 'a held locus is never waited for')
-  assert.deepEqual(result, acquire(repo, { ...spec, waitMs: 0 }))
+  assert.deepEqual(result, await acquireAsync(repo, { ...spec, waitMs: 0 }))
 })
 
-test('acquireAsync answers no_slot once waitMs has passed, as acquire does', { timeout: 10_000 }, async (t) => {
+test('acquireAsync answers no_slot once waitMs has passed, the same answer every time', { timeout: 10_000 }, async (t) => {
   const repo = effortRepo(t, ['a', 'b'], 1)
-  assert.equal(acquire(repo, { effort: E, execution: X, node: 'a', waitMs: 0 }).ok, true)
+  assert.equal((await acquireAsync(repo, { effort: E, execution: X, node: 'a', waitMs: 0 })).ok, true)
   let sleeps = 0
   const spec = { effort: E, execution: X, node: 'b', waitMs: 0 }
   const result = await acquireAsync(repo, spec, { sleep: async () => { sleeps++ } })
   assert.equal(result.reason, 'no_slot')
   assert.equal(sleeps, 0)
-  assert.deepEqual(result, acquire(repo, spec))
+  assert.deepEqual(result, await acquireAsync(repo, spec))
 })
 
 test('the event loop runs while acquireAsync waits for a slot', { timeout: 10_000 }, async (t) => {
   const repo = effortRepo(t, ['a', 'b'], 1)
-  assert.equal(acquire(repo, { effort: E, execution: X, node: 'a', waitMs: 0 }).ok, true)
+  assert.equal((await acquireAsync(repo, { effort: E, execution: X, node: 'a', waitMs: 0 })).ok, true)
   let freed = false
   setTimeout(() => { freed = true }, 50)
   const result = await acquireAsync(repo, { effort: E, execution: X, node: 'b', holderActive: () => !freed, waitMs: 5000, pollMs: 10 })
   assert.deepEqual([result.ok, result.slot], [true, 1], 'only the timer frees the slot, so the wait let it fire')
 })
 
-test('acquireAsync refuses what acquire refuses', async (t) => {
+test('acquireAsync refuses a bad effort, node or locus, the same answer every time', async (t) => {
   const repo = fresh(t)
   for (const spec of [{ effort: 'Not An Effort', node: 'a' }, { effort: E, node: '' }, { effort: E, node: 'a', locus: ['../out.js'] }]) {
     const result = await acquireAsync(repo, spec)
     assert.equal(result.reason, 'invalid', JSON.stringify(spec))
-    assert.deepEqual(result, acquire(repo, spec))
+    assert.deepEqual(result, await acquireAsync(repo, spec))
   }
 })
 
@@ -211,17 +211,12 @@ test('withBranchLockAsync holds its branch across an awaited fn, and only that b
   const repo = fresh(t)
   const seen = await withBranchLockAsync(repo, E, 'agentics/e1--a', async () => {
     await new Promise((resolve) => setTimeout(resolve, 10))
-    let same
-    try {
-      same = withBranchLock(repo, E, 'agentics/e1--a', () => 'taken', { waitMs: 50 })
-    } catch (err) {
-      same = err.message
-    }
-    return { same, other: withBranchLock(repo, E, 'agentics/e1--b', () => 'taken', { waitMs: 50 }) }
+    const same = await withBranchLockAsync(repo, E, 'agentics/e1--a', async () => 'taken', { waitMs: 50 }).catch((err) => err.message)
+    return { same, other: await withBranchLockAsync(repo, E, 'agentics/e1--b', async () => 'taken', { waitMs: 50 }) }
   })
   assert.match(seen.same, /could not take the lock/)
   assert.equal(seen.other, 'taken')
-  assert.equal(withBranchLock(repo, E, 'agentics/e1--a', () => 'taken', { waitMs: 50 }), 'taken', 'released afterwards')
+  assert.equal(await withBranchLockAsync(repo, E, 'agentics/e1--a', async () => 'taken', { waitMs: 50 }), 'taken', 'released afterwards')
 })
 
 test('withBranchLockAsync rejects a name that is not an effort', async (t) => {

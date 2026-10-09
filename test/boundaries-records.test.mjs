@@ -15,7 +15,7 @@ import {
   approved, escalated, executionContext, fault, faultRecords, freshRecords, heldOf, message, parked, recordAll, stopsOf,
 } from '../lib/boundaries/records.mjs'
 import { executionLog, readLog } from '../lib/ledger.mjs'
-import { acquire, heldBy } from '../lib/locks.mjs'
+import { acquireAsync, heldBy } from '../lib/locks.mjs'
 import { executionDir } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
@@ -293,11 +293,11 @@ test('recordAll with no records appends nothing', (t) => {
   assert.equal(xc.log.entries().length, 0)
 })
 
-test('a fault recorded gives its node\'s slot in this execution back', (t) => {
+test('a fault recorded gives its node\'s slot in this execution back', async (t) => {
   const repo = store(t)
   const on = () => true
-  assert.equal(acquire(repo, { effort: E, execution: S, node: 'a', locus: ['a.mjs'], holderActive: on, waitMs: 0 }).ok, true)
-  assert.equal(acquire(repo, { effort: E, execution: S, node: 'b', locus: ['b.mjs'], holderActive: on, waitMs: 0 }).ok, true)
+  assert.equal((await acquireAsync(repo, { effort: E, execution: S, node: 'a', locus: ['a.mjs'], holderActive: on, waitMs: 0 })).ok, true)
+  assert.equal((await acquireAsync(repo, { effort: E, execution: S, node: 'b', locus: ['b.mjs'], holderActive: on, waitMs: 0 })).ok, true)
   const xc = executionContext({ repo, effort: E, execution: S, log: executionLog(repo, E, S) })
   recordAll(xc, [fault('a', 'program')])
   assert.deepEqual(heldBy(repo).slots.map((s) => s.node), ['b'])

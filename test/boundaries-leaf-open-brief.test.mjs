@@ -13,7 +13,7 @@ import { join, resolve } from 'node:path'
 import { leafOpen } from '../lib/boundaries/leaf-open.mjs'
 import { leafBrief } from '../lib/brief.mjs'
 import { commandsOf, writeGotcha } from '../lib/gotchas.mjs'
-import { acquire } from '../lib/locks.mjs'
+import { acquireAsync } from '../lib/locks.mjs'
 import { TEST_GLOBS, permissionsFor } from '../lib/locus.mjs'
 import { roleCommands } from '../lib/roles.mjs'
 import { worktreeOf } from '../lib/store.mjs'
@@ -44,7 +44,7 @@ test('a round\'s permissions come from its leaf\'s locus, with its role\'s comma
 
 test('paths another unmerged leaf holds are denied, and freed once it merged', async (t) => {
   const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] }), leaf('b', { locus: ['src/b.mjs'] })])
-  assert.equal(acquire(r, { effort: E, execution: STAMP, node: 'b', locus: ['src/b.mjs'], waitMs: 0 }).ok, true)
+  assert.equal((await acquireAsync(r, { effort: E, execution: STAMP, node: 'b', locus: ['src/b.mjs'], waitMs: 0 })).ok, true)
   const held = await leafOpen(xc, { node: 'a' })
   for (const rule of editWrite('src/b.mjs')) assert.ok(held.permissions.disallowed.includes(rule), rule)
   xc.log.append('merged', { node: 'b', merged_sha: git(r, 'rev-parse', 'main') })

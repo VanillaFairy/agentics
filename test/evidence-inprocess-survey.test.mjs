@@ -1,6 +1,6 @@
 // test/evidence-inprocess-survey.test.mjs — the survey's evidence called in-process: judges' returns
 // as objects, a re-judge's rulings, superseded items, the pool and the scouts' excerpts as prompt
-// text, and the 4.x verbs that keep printing handles only.
+// text, and the items verb, which prints handles only.
 //
 // Design: docs/DESIGN.md#survey, docs/DESIGN.md#the-drift-ladder, docs/DESIGN.md#returns-into-items.
 
@@ -87,16 +87,6 @@ test('a survey handed an empty question refuses the record, writing nothing', (t
   const out = recordSurvey(repo, { question: '  ', topics, from: [judged([{ ...span('src/a.js', 2, 4), topic: 'loader' }])] })
   assert.deepEqual([out.ok, out.error.kind], [false, 'no_question'])
   assert.equal(liveItems(repo).size, 0)
-})
-
-test('the record verb prints a refused survey\'s handles, not its refusals', (t) => {
-  const repo = repoOf(t, { 'src/a.js': text(lines(N)) })
-  const plan = returnFile(repo, { question: QUESTION, topics: [] })
-  const from = returnFile(repo, judged([{ ...span('src/a.js', N + 10, N + 11), topic: 'loader' }]))
-  const out = cli(repo)('record', '--kind', 'survey', '--plan', plan, '--question-digest', fnv1a(QUESTION),
-    '--topic', 'loader', '--subtree', 'src', '--from', from)
-  assert.deepEqual([out.ok, out.refused_n], [false, 1])
-  assert.equal('refusals' in out, false)
 })
 
 // ------------------------------------------------------------------ recordRulings
@@ -269,14 +259,6 @@ test('a survey\'s context result carries the text it wrote, whole', (t) => {
   const out = surveyContext(repo, { returns: [rec.return], from: [returnFile(repo, judged([], [{ topic: 'loader', text: 'the loader is untested' }]))] })
   assert.equal(out.text, readFileSync(out.context, 'utf8'))
   assert.ok(out.text.includes('the loader is untested'))
-})
-
-test('the context verb prints handles, not the text', (t) => {
-  const repo = repoOf(t, { 'src/a.js': text(lines(N)) })
-  const rec = inProcess(repo, [judged([{ ...span('src/a.js', 2, 4), topic: 'loader' }])])
-  const out = cli(repo)('context', '--return', rec.return)
-  assert.equal('text' in out, false)
-  assert.equal(readFileSync(out.context, 'utf8'), surveyContext(repo, { returns: [rec.return] }).text)
 })
 
 // ------------------------------------------------------------------ excerptsText

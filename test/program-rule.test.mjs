@@ -275,6 +275,19 @@ test('refused rulings go back to the ruler, and its corrected rulings settle', a
   assert.deepEqual(JSON.parse(readFileSync(brief.rulings, 'utf8')), rulingsOf(brief), 'the rulings file holds the corrected round, whole')
 })
 
+test('the refusals message to the ruler says the settle refused its rulings', async (t) => {
+  const { rig, folder, brief } = changed(t)
+  const missing = { rulings: rulingsOf(brief).rulings.filter((r) => r.node !== 'cli') }
+  const run = rig.relaunch(rulerScript(missing, rulingsOf(brief)))
+  await rule(run.ctx, args(folder))
+  const [message] = runRecords(rig.repo, rig.run, 'message').filter((m) => m.thread === rulerThread(brief))
+  assert.equal(message.payload.of, 'rulings')
+  const text = renderMessage({ msg: message.msg, payload: message.payload })
+  assert.ok(text.includes('rulings'), text)
+  assert.ok(!/evidence store/i.test(text), text)
+  assert.equal(run.calls[1].brief, text, "delivered in the ruler's own session")
+})
+
 test('an empty why, or an affected ruling with neither question nor fix, goes back to the ruler', async (t) => {
   const { rig, folder, brief } = changed(t)
   const run = rig.relaunch(rulerScript(

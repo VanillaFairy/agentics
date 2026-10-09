@@ -140,6 +140,18 @@ test("a refused item goes back to its judge's own session with what is wrong", a
   assert.equal(cov(result).complete, true, JSON.stringify(cov(result)))
 })
 
+test("a refused item's refusals message says the evidence store refused items", async (t) => {
+  const { rig } = await runSurvey(t, basicScript({
+    'analyst||judge:1': [
+      { output: judgeOut({ items: [unanchored('loader', CLAIM)], units: [anchoredUnit('loader')] }) },
+      { output: judgeOut({ items: [behaviour('loader', CLAIM)], units: [anchoredUnit('loader')] }) },
+    ],
+  }))
+  const [m] = rig.log.entries().filter((e) => e.kind === 'message' && e.thread === 'judge:1' && e.msg === 'refusals')
+  assert.equal(m.payload.of, 'items')
+  assert.ok(renderMessage({ msg: m.msg, payload: m.payload }).includes('items'))
+})
+
 test('each pass that refuses fewer is asked again', async (t) => {
   const A = 'CLAIM-A loader reads at line 7'
   const B = 'CLAIM-B loader falls back at line 12'

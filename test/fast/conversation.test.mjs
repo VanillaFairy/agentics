@@ -31,7 +31,7 @@ const TABLE = [
   { msg: 'brief_changed', from: 'code', to: 'thread' },
   { msg: 'findings', from: 'probe', to: 'planner' },
   { msg: 'problems', from: 'code', to: 'planner' },
-  { msg: 'refusals', from: 'code', to: 'judge' },
+  { msg: 'refusals', from: 'code', to: 'thread' },
   { msg: 'continue_search', from: 'code', to: 'searcher' },
   { msg: 'cut_off', from: 'code', to: 'thread' },
   { msg: 'failures', from: 'code', to: 'producer' },
@@ -306,10 +306,51 @@ test('a cut_off message renders without a payload', () => {
   assert.equal(renderMessage({ msg: 'cut_off', payload: {} }), text)
 })
 
-test('refused items or rulings both answer a refusals message', () => {
+test('refused items, dispositions or rulings each answer a refusals message', () => {
   const row = ROUTES.find((r) => r.msg === 'refusals' && r.from === 'code')
   assert.ok(row, 'the refusals route exists')
-  for (const answer of ['items', 'rulings']) assert.ok(row.answers.includes(answer), answer)
+  for (const answer of ['items', 'dispositions', 'rulings']) assert.ok(row.answers.includes(answer), answer)
+})
+
+test('a refusals message goes back to the thread whose return was refused', () => {
+  assert.deepEqual(routeOf({ msg: 'refusals', from: 'code' }), { to: 'thread' })
+})
+
+const REFUSED = [
+  { claim: 'the loader caches zebra-71', problem: 'no anchor for quokka-3' },
+  { id: 'P7', problem: 'discarded, but only a note may be discarded' },
+]
+
+test('a refusals message names each refused claim or id with its problem', () => {
+  for (const of of ['items', 'dispositions', 'rulings']) {
+    const text = renderMessage({ msg: 'refusals', payload: { of, refusals: REFUSED } })
+    for (const r of REFUSED) {
+      assert.ok(text.includes(r.claim || r.id), of + ': names ' + (r.claim || r.id))
+      assert.ok(text.includes(r.problem), of + ': says ' + r.problem)
+    }
+  }
+})
+
+test('a refusals message says what was refused, and names the evidence store for items alone', () => {
+  const texts = Object.fromEntries(['items', 'dispositions', 'rulings']
+    .map((of) => [of, renderMessage({ msg: 'refusals', payload: { of, refusals: REFUSED } })]))
+  assert.equal(new Set(Object.values(texts)).size, 3, 'each `of` reads differently')
+  for (const [of, text] of Object.entries(texts)) assert.ok(text.includes(of), of + ' is named')
+  assert.ok(!/evidence store/i.test(texts.dispositions), "dispositions are not the evidence store's")
+  assert.ok(!/evidence store/i.test(texts.rulings), "rulings are not the evidence store's")
+})
+
+test('a refusals message without of still renders its refusals, naming no evidence store', () => {
+  const text = renderMessage({ msg: 'refusals', payload: { refusals: REFUSED } })
+  for (const r of REFUSED) assert.ok(text.includes(r.problem), r.problem)
+  assert.ok(!/evidence store/i.test(text))
+})
+
+test('a refusals message with an unknown of renders as one without of', () => {
+  const none = renderMessage({ msg: 'refusals', payload: { refusals: REFUSED } })
+  for (const of of ['findings', 'constructor', '']) {
+    assert.equal(renderMessage({ msg: 'refusals', payload: { of, refusals: REFUSED } }), none, JSON.stringify(of))
+  }
 })
 
 test('a rendered message is deterministic', () => {

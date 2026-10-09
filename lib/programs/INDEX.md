@@ -48,6 +48,9 @@ returns its result and writes no result file itself.
   ruler through `askAfter` in `converge.mjs`.
 - `recordOnce` records a message once per node, thread, round and `msg`, so a second message of the
   same kind in one round is silently the first; it needs a new round.
+- `reviewUnit` (`execute/integrate.mjs`) names a child's criterion unit `criterion:<leaf>#<n>`, and
+  `renderLanding`'s adopted-work section (`lib/render.mjs`) looks rulings up by that name. Rename
+  one side and every adopted criterion reads "not ruled" with no error.
 
 ## DEPENDENCIES
 

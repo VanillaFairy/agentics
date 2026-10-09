@@ -40,6 +40,14 @@ put back where it started.
 - `driftOf` in `merge.mjs` finds contract drift only on the batch that landed it. That is why
   `faultRecords` adds the `contract_drift` park while a drift ruling stands unanswered: a fault
   alone would let the next run take the node up on a moved contract.
+- Adopted work's drift is found again at every launch: `adoptedUnruled` returns an adopted record
+  until a `drift-ruled` line of any execution carries its `adopted_seq`. So `rulingOutcome` holds,
+  not parks, a node no ruling reached, and `freshRecords` keys `drift-ruled` on `adopted_seq`; a
+  ruling written without it covers no adoption.
+- Preflight runs `unaccountedOf` over every composite in scope. Whatever commits onto an
+  integration branch must leave a record it reads (a `merged` event's `commits` or `merged_sha`, an
+  `outside` event) or a head `accountingHeads` counts, or every later run stops at `outside_work`,
+  which `--confirmed` never passes.
 - Leaf-close reverts what a producer wrote outside its locus with a commit of its own
   (`REVERT_SUBJECT`), and `revertsOf` reads `breach_reverted` across every execution, so a revert
   already made is not made again.
@@ -48,5 +56,7 @@ put back where it started.
 
 - lib — tree, ledger, locks, integration, measure, verify, verdict, gotchas, and `brief.mjs` for a
   leaf's thread brief and `guidanceOf`.
-- lib/programs — `execute.mjs` and `execute/` are the callers; `lib/boundary.mjs` reads only
-  `openExecutions`.
+- lib/briefs — preflight and merge-batch write the ruler's briefs to disk, and `ruleUnit` hands
+  the file over as the prompt.
+- lib/programs — `execute.mjs` and `execute/` are the callers; `lib/boundary.mjs` and
+  `lib/adopt.mjs` read only `openExecutions`.

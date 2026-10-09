@@ -80,8 +80,8 @@ ground, the brief assembled by `lib/brief.mjs` — never a sentence asking a mod
 ## Versioning
 
 The version lives only in `.claude-plugin/plugin.json`. The plugin ships through the `vanillafairy`
-marketplace (VanillaFairy/agentic-plugins), which holds this repository as a submodule and carries
-no version of its own for it. Verify with:
+marketplace (VanillaFairy/agentic-plugins), which points at this repository on GitHub and carries
+no version of its own for it: a push to the default branch is the release. Verify with:
 
     claude plugin validate .
 

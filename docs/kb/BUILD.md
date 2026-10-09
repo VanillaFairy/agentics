@@ -24,8 +24,10 @@ inside the plugin cache of every user. At run time the programs need the host CL
 
 The version lives only in `.claude-plugin/plugin.json`. Never restate it anywhere else, because
 nothing keeps a second copy in step. The plugin ships through the `vanillafairy` marketplace
-(`VanillaFairy/agentic-plugins`), which holds this repo as a submodule. A release only reaches
-users once that repo's submodule pointer advances.
+(`VanillaFairy/agentic-plugins`), whose `.claude-plugin/marketplace.json` points at this repo on
+GitHub (`"source": "github"`, `VanillaFairy/agentics`), not at a submodule or a pinned ref. A
+release reaches users when this repo's default branch is pushed and they update the marketplace;
+the marketplace repo needs no commit. Should that entry gain a `ref`, this stops being true.
 
 An installed plugin runs from Claude Code's plugin cache, not from this checkout. Editing files
 here changes nothing in a live session until the cache is updated, whether by reinstalling from

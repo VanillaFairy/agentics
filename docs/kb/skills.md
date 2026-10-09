@@ -26,14 +26,15 @@ user's gates; programs and lib CLIs own everything else. This index lives in `do
   not this checkout.
 - `<!-- agentics:verbatim <id> -->` blocks are shared between skills and with `roles/` and
   `docs/DESIGN.md`. Grep the id before editing a block (`test/fast/verbatim-blocks.test.mjs`).
-- Every file, `develop/landing.md` and `develop/respec.md` included, has a line budget in
-  `tools/budgets.json`. Reasons belong in `docs/DESIGN.md`.
+- Every `.md` under `skills/`, the companions beside `develop/SKILL.md` included, has a line
+  budget in `tools/budgets.json`; a new companion without its row fails `size-budget`. Reasons
+  belong in `docs/DESIGN.md`.
 
 ## DEPENDENCIES
 
 - lib — skills shell out to its CLIs (`status`, `approval`, `next`, `effort`, `evidence`,
   `boundary`, `spec`, `render`, `compile`) and to `run.mjs`; a flag or printed-shape change edits
-  every skill that names the CLI. `boundary land` runs only behind the session's gate (L4).
+  every skill that names the CLI. `boundary land` and `boundary adopt --action act` run only behind the session's gate (L4).
 - lib/programs — a result field a skill reads is a contract (`docs/DESIGN.md#data-contracts`).
 - roles, docs/DESIGN.md — shared verbatim contracts, chiefly `vocabulary`.
 - tools — `budgets.json` and the skill lint rules.

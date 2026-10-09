@@ -25,3 +25,6 @@ into it (P2).
 
 - lib/programs — the callers; each program's prompts are in the file of its name, except the `rule`
   program's, which are in `respec.mjs` because `lib/respec.mjs` writes the same ruler brief.
+- lib/boundaries — preflight (`stale`, `adopted`) and merge-batch (`drift`) build the ruler's brief
+  from `execute.mjs` and write it to disk for `ruleUnit`; these are the briefs a boundary, not a
+  program, composes.

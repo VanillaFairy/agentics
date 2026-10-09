@@ -9,15 +9,14 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
+import { reviewedFromResult } from '../lib/approval.mjs'
 import { carriedFindings, liveItems, recordProbe, reviewScope, sectionsOf, unitsOf } from '../lib/evidence.mjs'
 import { readLog } from '../lib/ledger.mjs'
 import { probe } from '../lib/programs/probe.mjs'
-import { evidenceReturnsDir, evidenceSnapshotsDir, resultPath } from '../lib/store.mjs'
+import { evidenceReturnsDir, evidenceSnapshotsDir } from '../lib/store.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 const STANDING = ['ambiguity', 'invariants', 'yagni', 'reinvention']
@@ -44,7 +43,6 @@ const editLine = (text, n, line) => {
 }
 const EDITED = editLine(DOC, 9, 'the refill clock may drift under load')
 
-const APPROVAL = fileURLToPath(new URL('../lib/approval.mjs', import.meta.url))
 
 const native = (root, path) => join(root, ...path.split('/'))
 const textOf = (file) => readFileSync(file, 'utf8').replace(/\r\n/g, '\n').trim()
@@ -410,15 +408,12 @@ test('a relaunch of an unchanged round records nothing twice', async (t) => {
 const E = 'e1'
 const SPEC = '.agentics/e1/DESIGN.md'
 
-/** Write the run's result as lib/run.mjs does, then record it with `approval.mjs reviewed --from-run`. */
+/** Record the run's result as `approval.mjs reviewed --from-run` does once it has read it, in-process; the line it wrote. */
 function readBack(rig, result) {
-  writeFileSync(resultPath(rig.repo, rig.run), JSON.stringify({ ...result, run: rig.run, cost: { dispatches: 0, tokens: 0, usd: 0, unmeasured: 0 } }))
-  const r = spawnSync(process.execPath, [APPROVAL, 'reviewed', '--repo', rig.repo, '--effort', E, '--folder', '.', '--from-run', rig.run], {
-    encoding: 'utf8', env: { ...process.env, NODE_TEST_CONTEXT: '' },
-  })
-  assert.equal(r.status, 0, r.stdout + r.stderr)
+  const out = reviewedFromResult(rig.repo, E, '.', result)
+  assert.equal(out.ok, true, JSON.stringify(out))
   const lines = readLog(rig.repo, E, 'ledger').entries.filter((l) => l.kind === 'reviewed')
-  assert.equal(lines.length, 1, r.stdout)
+  assert.equal(lines.length, 1, JSON.stringify(out))
   return lines[0]
 }
 

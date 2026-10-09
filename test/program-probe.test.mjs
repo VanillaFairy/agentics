@@ -9,12 +9,13 @@
 
 import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { reviewedFromResult } from '../lib/approval.mjs'
 import { excerptsText, resolveCitations } from '../lib/citations.mjs'
 import { liveItems, reviewScope, roundOf, sectionsOf, unitsOf } from '../lib/evidence.mjs'
 import { readLog } from '../lib/ledger.mjs'
@@ -22,7 +23,7 @@ import { programContext } from '../lib/programs/common.mjs'
 import { probe, scopeOf } from '../lib/programs/probe.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
-import { evidenceReturnsDir, posix, resultPath } from '../lib/store.mjs'
+import { evidenceReturnsDir, posix } from '../lib/store.mjs'
 import { programRig } from './harness/program-rig.mjs'
 import { scriptedRunner } from './fast/harness/scripted-runner.mjs'
 
@@ -40,7 +41,6 @@ const DOC = [
 ].join('\n') + '\n'
 
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', windowsHide: true })
-const APPROVAL = fileURLToPath(new URL('../lib/approval.mjs', import.meta.url))
 const DESIGN_SKILL = fileURLToPath(new URL('../skills/design/SKILL.md', import.meta.url))
 
 function rigFor(t, opts) {
@@ -755,15 +755,12 @@ test('a relaunch calls nothing that returned', async (t) => {
 const E = 'e1'
 const SPEC = '.agentics/e1/DESIGN.md'
 
-/** Write the run's result as lib/run.mjs does, then record it with `approval.mjs reviewed --from-run`. */
+/** Record the run's result as `approval.mjs reviewed --from-run` does once it has read it, in-process; the line it wrote. */
 function readBack(rig, result) {
-  writeFileSync(resultPath(rig.repo, rig.run), JSON.stringify({ ...result, run: rig.run, cost: { dispatches: 0, tokens: 0, usd: 0, unmeasured: 0 } }))
-  const r = spawnSync(process.execPath, [APPROVAL, 'reviewed', '--repo', rig.repo, '--effort', E, '--folder', '.', '--from-run', rig.run], {
-    encoding: 'utf8', env: { ...process.env, NODE_TEST_CONTEXT: '' },
-  })
-  assert.equal(r.status, 0, r.stdout + r.stderr)
+  const out = reviewedFromResult(rig.repo, E, '.', result)
+  assert.equal(out.ok, true, JSON.stringify(out))
   const lines = readLog(rig.repo, E, 'ledger').entries.filter((l) => l.kind === 'reviewed')
-  assert.equal(lines.length, 1, r.stdout)
+  assert.equal(lines.length, 1, JSON.stringify(out))
   return lines[0]
 }
 

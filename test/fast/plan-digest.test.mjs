@@ -1,4 +1,4 @@
-// test/plan-digest.test.mjs — pins the tripwire that stands between a plan and a model.
+// test/fast/plan-digest.test.mjs — pins the tripwire that stands between a plan and a model.
 //
 // The digest exists to catch a paraphrase, so the tests that matter are the ones that assert
 // what it does NOT ignore: a reworded context, a dropped acceptance entry, a rewritten locus.
@@ -7,14 +7,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
-import { mkdtemp, writeFile, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { canonical, fnv1a } from '../lib/plan-digest.mjs'
-
-const CLI = fileURLToPath(new URL('../lib/plan-digest.mjs', import.meta.url))
+import { canonical, fnv1a } from '../../lib/plan-digest.mjs'
 
 const order = (over = {}) => ({
   id: 'W1',

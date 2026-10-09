@@ -12,12 +12,12 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { approvalGate, recordDisposition } from '../lib/approval.mjs'
+import { approvalGate, recordDisposition, reviewedFromResult } from '../lib/approval.mjs'
 import { latestCites, liveItems, recordCites, recordSolutions, reviewScope } from '../lib/evidence.mjs'
 import { readLog } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import { hashSpec } from '../lib/spec.mjs'
-import { resultPath, runDir } from '../lib/store.mjs'
+import { readJson, resultPath, runDir } from '../lib/store.mjs'
 import { gitRepo, lines, linkedWorktree, record, returnFile, text, write } from './harness/evidence-fixture.mjs'
 
 /** A git repository with `.agentics/` ignored, removed when the test ends. */
@@ -118,6 +118,8 @@ function cli(script, ...args) {
 }
 const cite = (repo, ...args) => cli(EVIDENCE, 'cite', '--repo', repo, '--effort', E, '--folder', '.', ...args)
 const reviewed = (repo, ...args) => cli(APPROVAL, 'reviewed', '--repo', repo, '--effort', E, '--folder', '.', ...args)
+/** What `reviewed --from-run` records once it has read the run's result, called in-process. */
+const fromRun = (repo, run) => reviewedFromResult(repo, E, '.', readJson(resultPath(repo, run)))
 
 /** A repository holding effort e1's root spec. */
 function specRepo(t) {
@@ -286,7 +288,7 @@ const ambiguity = (id, item) => ({ id, item, severity: 'ambiguity', axis: 'yagni
 
 test('reviewed --from-run records a complete round at the spec\'s current hash', (t) => {
   const repo = specRepo(t)
-  const out = reviewed(repo, '--from-run', result(repo, PROBE_RUN, probe(repo)))
+  const out = fromRun(repo, result(repo, PROBE_RUN, probe(repo)))
   assert.equal(out.ok, true, JSON.stringify(out))
   const [line] = reviewedLines(repo)
   assert.deepEqual([line.seq, line.hash, line.complete, line.remaining, line.ambiguities], [out.seq, hashSpec(SPEC_TEXT), true, [], []])
@@ -300,7 +302,7 @@ test('an incomplete round names its open units, then each failed channel, then t
   const run = result(repo, PROBE_RUN, probe(repo, {
     units: { total: 4, ruled: 2, open }, ratifiable: false, coverage: coverage({ complete: false, failed_channels: failed, incomplete }),
   }))
-  assert.equal(reviewed(repo, '--from-run', run).ok, true)
+  assert.equal(fromRun(repo, run).ok, true)
   const [line] = reviewedLines(repo)
   assert.deepEqual([line.complete, line.remaining], [false, [...open, ...failed.map((c) => 'channel:' + c), ...incomplete]])
 })
@@ -312,14 +314,14 @@ test('each ambiguity is named by its finding\'s evidence item, else by the spec 
     { ...ambiguity('P3', 'Ibbbbbbbb'), severity: 'gap' },
   ]
   const run = result(repo, PROBE_RUN, probe(repo, { findings, ambiguities: ['P1', 'P2'], ratifiable: false }))
-  assert.equal(reviewed(repo, '--from-run', run).ok, true)
+  assert.equal(fromRun(repo, run).ok, true)
   assert.deepEqual(reviewedLines(repo)[0].ambiguities, ['Iaaaaaaaa', hashSpec(SPEC_TEXT) + '#P2'])
 })
 
 test('the gate opens on a recorded complete round once each ambiguity it named is settled', (t) => {
   const repo = specRepo(t)
   const run = result(repo, PROBE_RUN, probe(repo, { findings: [ambiguity('P1', 'Iaaaaaaaa')], ambiguities: ['P1'], ratifiable: false }))
-  reviewed(repo, '--from-run', run)
+  fromRun(repo, run)
   const shut = approvalGate(repo, E, '.')
   assert.deepEqual([shut.ratifiable, shut.open], [false, ['Iaaaaaaaa']])
   assert.equal(recordDisposition(repo, E, '.', { finding: 'Iaaaaaaaa', outcome: 'discarded', by: 'user' }).ok, true)
@@ -329,9 +331,9 @@ test('the gate opens on a recorded complete round once each ambiguity it named i
 test('recording the same probe run again leaves the gate as it was', (t) => {
   const repo = specRepo(t)
   const run = result(repo, PROBE_RUN, probe(repo, { findings: [ambiguity('P1', 'Iaaaaaaaa')], ambiguities: ['P1'], ratifiable: false }))
-  assert.equal(reviewed(repo, '--from-run', run).ok, true)
+  assert.equal(fromRun(repo, run).ok, true)
   const once = approvalGate(repo, E, '.')
-  assert.equal(reviewed(repo, '--from-run', run).ok, true)
+  assert.equal(fromRun(repo, run).ok, true)
   assert.deepEqual(approvalGate(repo, E, '.'), once)
   assert.equal(reviewedLines(repo).length, 2)
 })
@@ -340,8 +342,8 @@ test('a result that rules no units refuses not_a_probe, recording nothing', (t) 
   const repo = specRepo(t)
   const surveyRun = result(repo, '20261004-120000-survey', survey([]))
   const reviewRun = result(repo, '20261004-120000-review', { base: 'HEAD', units: [{ unit: 'u', ruling: 'clean', why: 'w' }], coverage: coverage() })
-  assert.equal(reviewed(repo, '--from-run', surveyRun).error.kind, 'not_a_probe')
-  assert.equal(reviewed(repo, '--from-run', reviewRun).error.kind, 'not_a_probe', 'a review\'s units are a list, not a probe\'s count')
+  assert.equal(fromRun(repo, surveyRun).error.kind, 'not_a_probe')
+  assert.equal(fromRun(repo, reviewRun).error.kind, 'not_a_probe', 'a review\'s units are a list, not a probe\'s count')
   assert.deepEqual(reviewedLines(repo), [])
 })
 
@@ -362,7 +364,7 @@ test('reviewed --from-run on a folder with no spec is refused, recording nothing
   const repo = specRepo(t)
   const run = result(repo, PROBE_RUN, probe(repo))
   rmSync(join(repo, ...SPEC.split('/')))
-  assert.deepEqual(reviewed(repo, '--from-run', run), { ok: false, error: 'there is no spec that was reviewed' })
+  assert.deepEqual(fromRun(repo, run), { ok: false, error: 'there is no spec that was reviewed' })
   assert.deepEqual(reviewedLines(repo), [])
 })
 
@@ -370,7 +372,7 @@ test('a probe of the spec as it stood before an edit refuses spec_changed, recor
   const repo = specRepo(t)
   const run = result(repo, PROBE_RUN, probe(repo))
   write(repo, SPEC, SPEC_TEXT + 'an edit after the probe\n')
-  assert.equal(reviewed(repo, '--from-run', run).error.kind, 'spec_changed')
+  assert.equal(fromRun(repo, run).error.kind, 'spec_changed')
   assert.deepEqual(reviewedLines(repo), [])
 })
 
@@ -379,14 +381,14 @@ test('a probe of another artefact refuses not_this_spec, recording nothing', (t)
   write(repo, 'docs/other.md', text(['## Other', 'another document']))
   const other = reviewScope(repo, 'docs/other.md')
   const run = result(repo, PROBE_RUN, probe(repo, { artifact: other.path, snapshot: other.snapshot }))
-  assert.equal(reviewed(repo, '--from-run', run).error.kind, 'not_this_spec')
+  assert.equal(fromRun(repo, run).error.kind, 'not_this_spec')
   assert.deepEqual(reviewedLines(repo), [])
 })
 
 test('a round whose record kept no snapshot, its findings unrecorded, is recorded incomplete at the spec\'s current hash', (t) => {
   const repo = specRepo(t)
   const findings = [{ ...ambiguity('P1', ''), severity: 'note' }]
-  const out = reviewed(repo, '--from-run', result(repo, PROBE_RUN, probe(repo, { findings, snapshot: '', unrecorded: ['P1'] })))
+  const out = fromRun(repo, result(repo, PROBE_RUN, probe(repo, { findings, snapshot: '', unrecorded: ['P1'] })))
   assert.equal(out.ok, true, JSON.stringify(out))
   const [line] = reviewedLines(repo)
   assert.deepEqual([line.hash, line.complete, line.remaining], [hashSpec(SPEC_TEXT), false, ['unrecorded:P1']])
@@ -395,11 +397,11 @@ test('a round whose record kept no snapshot, its findings unrecorded, is recorde
 test('a result whose coverage disagrees with what it names as left is refused, recording nothing', (t) => {
   const repo = specRepo(t)
   const silent = result(repo, PROBE_RUN, probe(repo, { coverage: coverage({ complete: false, unreached: ['the rest'] }) }))
-  assert.equal(reviewed(repo, '--from-run', silent).ok, false, 'incomplete, yet no unit, channel or incomplete entry named')
+  assert.equal(fromRun(repo, silent).ok, false, 'incomplete, yet no unit, channel or incomplete entry named')
   const open = result(repo, '20261004-130500-probe', probe(repo, { units: { total: 2, ruled: 1, open: ['yagni@design'] } }))
-  assert.equal(reviewed(repo, '--from-run', open).ok, false, 'complete, yet a unit is open')
+  assert.equal(fromRun(repo, open).ok, false, 'complete, yet a unit is open')
   const coherent = result(repo, '20261004-131000-probe', probe(repo))
-  const out = reviewed(repo, '--from-run', coherent)
+  const out = fromRun(repo, coherent)
   assert.equal(out.ok, true, 'the same spec\'s coherent round records')
   assert.deepEqual(reviewedLines(repo).map((l) => l.seq), [out.seq])
 })

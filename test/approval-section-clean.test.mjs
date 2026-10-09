@@ -459,7 +459,7 @@ test('reviewed --from-run records what reviewedFromResult records', { timeout: 1
 test('reviewed --from-run records the clean sections of a round that ruled some', { timeout: 120_000 }, (t) => {
   const repo = specRepo(t)
   const result = round(repo, { findings: [handle('P1', 'design', { item: A })], ruled: ['yagni@design'], over: { ambiguities: ['P1'] } })
-  const out = fromRun(repo, '20261004-130000-probe', result)
+  const out = reviewedFromResult(repo, E, '.', result)
   assert.equal(out.ok, true, JSON.stringify(out))
   const [line] = reviewedLines(repo)
   assert.deepEqual(sorted(line.clean), designOnly())
@@ -469,8 +469,7 @@ test('reviewed --from-run records the clean sections of a round that ruled some'
 test('reviewed --from-run refuses an empty snapshot that unrecorded does not explain, recording nothing', { timeout: 120_000 }, (t) => {
   const repo = specRepo(t)
   const result = round(repo, { over: { snapshot: '', unrecorded: [] } })
-  const out = fromRun(repo, '20261004-130000-probe', result)
+  const out = reviewedFromResult(repo, E, '.', result)
   assert.deepEqual([out.ok, out.error.kind], [false, 'no_snapshot'])
   assert.deepEqual(reviewedLines(repo), [])
-  assert.equal(reviewedFromResult(repo, E, '.', result).error.kind, out.error.kind, 'the in-process refusal is the same')
 })

@@ -113,10 +113,10 @@ The laws themselves are in `docs/DESIGN.md#laws`.
 
 | Law | Enforced by |
 |---|---|
-| L1 — honest state | `tools/rules/coverage-block.mjs`, which requires a coverage block in every program's `resultOf`; `coverageOf` in `lib/programs/common.mjs`; the coverage every searcher's return schema requires (`test/fast/schemas.test.mjs`); `resolveHandle` in `lib/store.mjs`, through which `lib/run.mjs` resolves every effort, folder, run and file argument (a ref is resolved by git or refused); status derived on read |
+| L1 — honest state | `tools/rules/coverage-block.mjs`, which requires a coverage block in every program's `resultOf`; `coverageOf` in `lib/programs/common.mjs`; `unaccountedOf` in `lib/integration.mjs`, which preflight applies to every integration branch in scope, stopping at `outside_work`; the coverage every searcher's return schema requires (`test/fast/schemas.test.mjs`); `resolveHandle` in `lib/store.mjs`, through which `lib/run.mjs` resolves every effort, folder, run and file argument (a ref is resolved by git or refused); status derived on read |
 | L2 — states end work, counts don't | `tools/rules/no-turn-caps.mjs`, over the programs and the execute program's units (`lib/programs/execute/`), `lib/run.mjs`, skills and roles; `tools/rules/no-loop-bounds.mjs`, over the programs and `lib/run.mjs`; the convergence predicates in `lib/verdict.mjs`; `askAfter` in `lib/programs/converge.mjs`; the runner's host-stop classes, waited out by `dispatch` in `lib/programs/common.mjs` |
 | L3 — separate judges | the role kinds in `lib/roles.mjs`; `judgeAllowed` and `dispatchJudge` in `lib/programs/common.mjs`; `tools/rules/no-self-verdict.mjs`, which bars verdict-named booleans and ruling fields from producer and searcher schemas and requires a judge's per-unit rulings; `verdictOf` in `lib/verdict.mjs` |
-| L4 — the user owns decisions and their branch | `verifyAnswer` and `confirmAct` in `lib/host.mjs`, called by `approveAct` in `lib/approval.mjs`, `landAct` in `lib/boundary.mjs` and the `rule` program; `userBound` in `lib/respec.mjs`, which the `rule` program applies; `decisionProblems` in `lib/tree.mjs`; the runner's confinement and its watch on the user's checkout, and `measure`'s watch around every check in `lib/measure.mjs`; leaf-close's revert of what lies outside a leaf's locus in `lib/boundaries/leaf-close.mjs`; the `review` program's snapshot, which leaves the user's tree, index and stash untouched; `lib/verify.mjs`'s linked-worktree refusal; `land`'s refusals |
+| L4 — the user owns decisions and their branch | `verifyAnswer` and `confirmAct` in `lib/host.mjs`, called by `approveAct` in `lib/approval.mjs`, `landAct` and `adoptAct` in `lib/boundary.mjs` and the `rule` program; `userBound` in `lib/respec.mjs`, which the `rule` program applies; `decisionProblems` in `lib/tree.mjs`; the runner's confinement and its watch on the user's checkout, and `measure`'s watch around every check in `lib/measure.mjs`; leaf-close's revert of what lies outside a leaf's locus in `lib/boundaries/leaf-close.mjs`; the `review` program's snapshot, which leaves the user's tree, index and stash untouched; `lib/verify.mjs`'s linked-worktree refusal; `land`'s refusals |
 | P2 — code does what is deterministic; models only judge | `tools/rules/skill-handles.mjs` (a skill's command carries handles only); `tools/rules/prompt-origin.mjs` (a prompt is built only by `lib/brief.mjs`, `lib/briefs/` and `renderMessage`); `tools/rules/no-skill-agents.mjs` (only the runner starts an agent); `resolveHandle` in `lib/store.mjs` |
 | P4 — everything earns its place | `test/fast/liveness.test.mjs`; `tools/rules/size-budget.mjs` |
 
@@ -135,7 +135,7 @@ rule fails it there, and a preload that makes process creation throw fails it at
 
 - `lib/` — deterministic modules and CLIs: the store, tree, ledger, compile, verify, measure,
   runner, host, locus and conversation modules, and the session's calls in `lib/boundary.mjs`
-  (land, retry, note) (`lib/INDEX.md`)
+  (land, adopt, retry, note) (`lib/INDEX.md`)
 - `lib/boundaries/` — the boundaries an execution calls in-process: preflight, schedule and
   postflight, leaf-open, leaf-close, leaf-review, merge-batch and the suite gate, folder-review and
   rule-close, and the autonomous review's, over one records core (`lib/boundaries/INDEX.md`)

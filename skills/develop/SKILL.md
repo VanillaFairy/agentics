@@ -377,7 +377,10 @@ dispatched; what it found is printed by
 |---|---|---|
 | `existing_execution` | an open execution's root is an ancestor or descendant of this one (`detail`) | resume that one (step 3 on its root; `lib/status.mjs list` shows it); relaunch with `--confirmed <checkpoint.seq>` only when both are meant to run |
 | `blocking_gaps` | a decision no entry realises, or evidence a node needs was not reached (the checkpoint's `gaps`) | a re-spec (c): an entry that realises the decision — or, on the user's go, relaunch with `--confirmed <checkpoint.seq>` |
+| `outside_work` | an integration branch holds commits no record accounts for (the checkpoint's `branches`) | adopt them: read `outside-work.md` beside this skill and follow it, then relaunch; `--confirmed` never passes it |
 | `parked` | `--plan-only`: the plan is on disk and nothing was dispatched | show the plan (`lib/status.mjs show`); relaunch without `--plan-only` |
+
+When the user says work was done by hand, read `outside-work.md` too.
 
 **b. Escalations** — `{id, reason, said}`, each to the user: its text is on the node's card
 (step 0), read from the return `said` names. They are decisions, not information; do not resolve

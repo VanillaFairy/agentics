@@ -2,9 +2,9 @@
 //
 // Design: docs/DESIGN.md#self-checks. An element nobody can justify costs as much as a missed
 // check and is harder to see, and a mechanism whose consumer went away keeps being paid for —
-// read on every turn, written on every run, maintained on every change. So for every record kind,
-// lint rule and library export, this finds a producer and a consumer in the source:
-// written-never-read and read-never-written fail.
+// read on every turn, written on every run, maintained on every change. So for every role, record kind,
+// message kind, schema field, lint rule and library export, this finds a producer and a consumer
+// in the source: written-never-read and read-never-written fail.
 //
 // The checks are textual on purpose: the question is "does anything in the shipped source refer
 // to this", and a reference is text. Each one says what it counts as a consumer.
@@ -15,7 +15,9 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { ROUTES, renderMessage } from '../../lib/conversation.mjs'
 import { EVENT_KINDS } from '../../lib/ledger.mjs'
+import { SCHEMAS } from '../../lib/schemas.mjs'
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 const rel = (full) => relative(ROOT, full).split(sep).join('/')
@@ -34,6 +36,9 @@ const lib = files('lib', /\.mjs$/)
 const skills = files('skills', /\.md$/)
 const tools = files('tools', /\.mjs$/)
 const tests = files('test', /\.mjs$/)
+const roles = files('roles', /\.md$/)
+const programs = files('lib/programs', /\.mjs$/)
+const boundaries = files('lib/boundaries', /\.mjs$/)
 const shipped = [...lib, ...skills, ...tools]
 
 /**
@@ -80,6 +85,68 @@ test('every library export is used outside the file that defines it', () => {
     for (const [, name] of source.matchAll(/^export (?:async )?(?:function|const|class) ([A-Za-z0-9_]+)/gm)) {
       const used = everything.some(([f, t]) => f !== full && new RegExp('\\b' + name + '\\b').test(t))
       check(used, rel(full) + ' exports `' + name + '` and nothing uses it')
+    }
+  }
+  assert.deepEqual(problems, [])
+})
+
+/**
+ * Every role is dispatched by a program: in lib/programs/, its name is quoted (`role: 'scout'`, a
+ * channel's role) or is a key of a dispatch table (`{ implementer: 'producer' }`).
+ */
+test('every role is dispatched by a program', () => {
+  const problems = []
+  const dispatchers = programs.map(read).join('\n')
+  for (const full of roles) {
+    const name = full.split(sep).pop().replace(/\.md$/, '')
+    const named = new RegExp("'" + name + "'|[{,]\\s*" + name + '\\s*:')
+    if (!named.test(dispatchers)) problems.push('roles/' + name + '.md is defined and no program dispatches it')
+  }
+  assert.deepEqual(problems, [])
+})
+
+/**
+ * Every message kind — a row of ROUTES, or a template in lib/conversation.mjs — has a route, a
+ * template that renders what its reader is given, and a program or a boundary that sends it (the
+ * kind quoted there).
+ */
+test('every message kind has a route, a reader and a sender', () => {
+  const problems = []
+  const check = (ok, why) => { if (!ok) problems.push(why) }
+  const conversation = read(join(ROOT, 'lib', 'conversation.mjs'))
+  const at = conversation.indexOf('const TEMPLATES = {')
+  const templated = at === -1 ? [] : [...conversation.slice(at, conversation.indexOf('\n}\n', at)).matchAll(/^ {2}([a-z_]+):/gm)].map((m) => m[1])
+  check(templated.length > 0, 'lib/conversation.mjs declares no TEMPLATES this test can read')
+  const senders = [...programs, ...boundaries].map(read).join('\n')
+  for (const kind of new Set([...ROUTES.map((r) => r.msg), ...templated])) {
+    check(ROUTES.some((r) => r.msg === kind), 'message ' + kind + ' has a template and no route')
+    let rendered = ''
+    try {
+      rendered = renderMessage({ msg: kind, payload: {} })
+    } catch {
+      rendered = ''
+    }
+    check(rendered.length > 0, 'message ' + kind + ' is routed and has no template for its reader')
+    check(senders.includes("'" + kind + "'"), 'message ' + kind + ' is routed and no program or boundary sends it')
+  }
+  assert.deepEqual(problems, [])
+})
+
+/**
+ * Every top-level field of every return schema is read: in lib/ outside lib/schemas.mjs (`.field`,
+ * `['field']`, or destructured), or, for a field a program hands back whole, in a skill (`.field`,
+ * or named inside `{…}` on one line). A nested field rides inside its parent.
+ */
+test("every field a role's schema asks for is read", () => {
+  const problems = []
+  const readers = [...lib.filter((f) => !f.endsWith(join('lib', 'schemas.mjs'))), ...skills].map((f) => [f, read(f)])
+  for (const [name, { schema }] of Object.entries(SCHEMAS)) {
+    for (const field of Object.keys(schema.properties)) {
+      const inCode = new RegExp('\\.' + field + '\\b|\\[\'' + field + '\'\\]|\\{[^}]*\\b' + field + '\\b[^}]*\\}\\s*=')
+      const inSkill = new RegExp('\\.' + field + '\\b|\\{[^}\\n]*\\b' + field + '\\b[^}\\n]*\\}')
+      if (!readers.some(([f, t]) => (f.endsWith('.md') ? inSkill : inCode).test(t))) {
+        problems.push('the ' + name + ' schema asks for `' + field + '` and nothing reads it')
+      }
     }
   }
   assert.deepEqual(problems, [])

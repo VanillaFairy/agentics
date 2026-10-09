@@ -52,7 +52,7 @@ describe('the leaf unit', { concurrency: 4 }, () => {
   const TEST_ONE = 'node --test --test-reporter=spec {file}'
   const ESTABLISHED = () => [ABSENT('build'), ABSENT('typecheck'), COMMAND('suite', SUITE), COMMAND('test_one', TEST_ONE)]
   const investigated = () => ({
-    output: { commands: ESTABLISHED(), established: ['build', 'typecheck', 'suite', 'test_one'], unresolved: [], text: 'found them' },
+    output: { commands: ESTABLISHED(), unresolved: [], text: 'found them' },
   })
   const A_TEST = "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { a } from '../src/a.mjs'\ntest('a is 1', () => assert.equal(a(), 1))\n"
 

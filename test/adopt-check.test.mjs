@@ -9,9 +9,11 @@ import { join } from 'node:path'
 
 import { adopt, adoptFacts, checkAdoption, parseMapping } from '../lib/adopt.mjs'
 import { actToken } from '../lib/approval.mjs'
-import { readLog } from '../lib/ledger.mjs'
-import { branchOf, executionDir, worktreeOf } from '../lib/store.mjs'
-import { commitIn, git, leaf, repo, root } from './harness/boundary-fixture.mjs'
+import { unaccountedOf } from '../lib/integration.mjs'
+import { append, readLog } from '../lib/ledger.mjs'
+import { branchOf, executionDir, git as storeGit, worktreeOf } from '../lib/store.mjs'
+import { readTree } from '../lib/tree.mjs'
+import { commitIn, git, leaf, repo, root, STAMP } from './harness/boundary-fixture.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 
 const E = 'e1'
@@ -161,7 +163,7 @@ const envelope = (w, stamp, fields) => {
 test('a live run rooted below the folder refuses run_live', (t) => {
   const w = world(t)
   const top = commitIn(rootWorktree(w), { 'src/top.mjs': '1\n' }, 'top')
-  envelope(w, '20261009-120000', { root: 'c' })
+  envelope(w, '20261009-120000', { root: 'c', base_branch: 'main', base_sha: w.base })
   assert.deepEqual(kinds(checkOf(w, { done: [{ node: 'top', commits: [top] }] }, '.', { live: () => true })), [['', 'run_live']])
 })
 
@@ -261,4 +263,71 @@ test("at the root, the base branch itself is no done branch once the effort hold
   assert.ok(!adopted.commits.includes(fromBase), "main's commit is the effort's ground")
   git(rootWt, 'merge', '-q', '--ff-only', 'main')
   assert.deepEqual(kinds(checkOf(w, { done: [{ node: 'top', branch: 'main' }] }, '.')), [['done[0]', 'not_on_folder_branch']])
+})
+
+// ---------------------------------------------------------------- what a record or a head already accounts for
+
+/** Leaf c/a built by agentics on `hand/a`'s lines: two commits on its own branch, merged into c. */
+function agenticsLeaf(w) {
+  const path = handBranch(w, branchOf(E, 'c/a'), branchOf(E, 'c'))
+  const a1 = commitIn(path, { 'src/a.mjs': '1\n' }, 'a1')
+  const a2 = commitIn(path, { 'src/a.mjs': '2\n' }, 'a2')
+  git(w.wt, 'merge', '--no-ff', '--no-edit', branchOf(E, 'c/a'))
+  return { a1, a2 }
+}
+
+test("an interior commit of a leaf agentics merged is accounted: done and outside refuse claimed_twice", (t) => {
+  const w = world(t)
+  const { a1, a2 } = agenticsLeaf(w)
+  append(w.r, E, 'events', [{ kind: 'approved', node: 'c/a', execution: STAMP, head_sha: a2, review_rounds: 1, at_integration: false },
+    { kind: 'merged', node: 'c/a', execution: STAMP, into: branchOf(E, 'c'), merged_sha: git(w.wt, 'rev-parse', 'HEAD'), head_sha: a2 }])
+  assert.deepEqual(unaccountedOf(w.r, E, 'c', { nodes: readTree(w.r, E).nodes, events: readTree(w.r, E).events }).commits, [])
+  const out = checkOf(w, { done: [{ node: 'c/b', commits: [a1] }], outside: [{ commits: [a1] }] })
+  assert.deepEqual(kinds(out), [['done[0]', 'claimed_twice'], ['outside[0]', 'claimed_twice']])
+})
+
+test("an interior commit of a leaf only approved, its merge killed before the merged record, is accounted", (t) => {
+  const w = world(t)
+  const { a1, a2 } = agenticsLeaf(w)
+  append(w.r, E, 'events', { kind: 'approved', node: 'c/a', execution: STAMP, head_sha: a2, review_rounds: 1, at_integration: false })
+  assert.deepEqual(kinds(checkOf(w, { outside: [{ commits: [a1] }] })), [['outside[0]', 'claimed_twice']])
+})
+
+test("an interior commit of a merged child composite is accounted by its branch head", (t) => {
+  const w = world(t)
+  const inC = commitIn(w.wt, { 'src/c.mjs': 'c\n' }, 'work in c')
+  const rootWt = rootWorktree(w)
+  git(rootWt, 'merge', '--no-ff', '--no-edit', branchOf(E, 'c'))
+  envelope(w, '20261009-120000', { root: '.', base_branch: 'main', base_sha: w.base })
+  assert.deepEqual(kinds(checkOf(w, { outside: [{ commits: [inC] }] }, '.')), [['outside[0]', 'claimed_twice']])
+})
+
+test("a hand commit made before a leaf was cut stays adoptable, though the leaf's head holds it", (t) => {
+  const w = world(t)
+  const stray = commitIn(w.wt, { 'src/stray.mjs': 's\n' }, 'hand commit')
+  const path = handBranch(w, branchOf(E, 'c/a'), branchOf(E, 'c'))
+  const a1 = commitIn(path, { 'src/a.mjs': '1\n' }, 'a1')
+  git(w.wt, 'merge', '--no-ff', '--no-edit', branchOf(E, 'c/a'))
+  append(w.r, E, 'events', { kind: 'approved', node: 'c/a', execution: STAMP, head_sha: a1, review_rounds: 1, at_integration: false })
+  const out = checkOf(w, { outside: [{ commits: [stray] }] })
+  assert.equal(out.ok, true, JSON.stringify(out.refusals))
+})
+
+// ---------------------------------------------------------------- a cut git cannot place
+
+const failing = (match) => (cwd, args, input) => (match(args) ? { ok: false, status: 128, stdout: '', stderr: 'boom' } : storeGit(cwd, args, input))
+const forkPoint = (args) => args[0] === 'merge-base' && !args.includes('--is-ancestor')
+
+test("a folder whose fork point git cannot find refuses unreadable_branch, never adopting base history", (t) => {
+  const w = world(t)
+  commitIn(w.wt, { 'src/a.mjs': '1\n' }, 'one')
+  const out = checkOf(w, { outside: [{ commits: [w.base] }] }, 'c', { run: failing(forkPoint) })
+  assert.deepEqual(kinds(out), [['', 'unreadable_branch']])
+  assert.equal(out.token, '')
+})
+
+test("the root with no known base refuses unreadable_branch, never adopting the whole history", (t) => {
+  const w = world(t)
+  const top = commitIn(rootWorktree(w), { 'src/top.mjs': '1\n' }, 'top')
+  assert.deepEqual(kinds(checkOf(w, { outside: [{ commits: [top] }] }, '.')), [['', 'unreadable_branch']])
 })

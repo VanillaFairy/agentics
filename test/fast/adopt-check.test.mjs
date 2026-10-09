@@ -39,7 +39,7 @@ function factsOf({ events = [], on = [S1, S2, S3, TIP], files = {}, folder = 'c'
     order: Object.fromEntries(on.map((s, i) => [s, i])),
     mergedAt: Object.fromEntries(on.map((s) => [s, s])),
     files: Object.fromEntries(known.map((s) => [s, files[s] || ['src/a.mjs']])),
-    doneBranches: {}, handoverBranches: {}, canonical: {},
+    doneBranches: {}, handoverBranches: {}, canonical: {}, accounted: {}, spanError: '',
     ...extra,
   }
 }

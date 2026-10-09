@@ -211,6 +211,23 @@ test('cite --from-run records every --gap as given, beside the run\'s items', (t
   assert.deepEqual([citation(repo).items, citation(repo).gaps], [ids, gaps])
 })
 
+test('cite takes a gap past one line from --gap-file, whole, and a gap past its line names that flag', (t) => {
+  const repo = specRepo(t)
+  const long = ['the docs channel never reached the 2024 releases,', 'nor did the changelog', 'g'.repeat(400)].join('\n')
+  const file = join(repo, 'gap.txt')
+  writeFileSync(file, long)
+  const run = result(repo, '20261004-120000-survey', survey(itemsIn(repo, 1)))
+  const args = ['cite', '--repo', repo, '--effort', E, '--folder', '.', '--from-run', run, '--gap', long.replace(/\n/g, ' ')]
+  const refused = spawnSync(process.execPath, [EVIDENCE, ...args], { encoding: 'utf8', env: { ...process.env, NODE_TEST_CONTEXT: '' } })
+  assert.deepEqual([refused.status, JSON.parse(refused.stdout).payload.error.kind], [0, 'args_unreadable'])
+  assert.match(refused.stderr, /--gap-file/, 'the reason, on stderr, names the file flag')
+  assert.equal(citation(repo), undefined, 'nothing was cited')
+
+  assert.equal(cite(repo, '--from-run', run, '--gap-file', file, '--gap', 'a short one').ok, true)
+  assert.deepEqual([...citation(repo).gaps].sort(), ['a short one', long].sort(), 'the text, not the path')
+  assert.equal(cite(repo, '--from-run', run, '--gap-file', join(repo, 'missing.txt')).error.kind, 'unknown_file')
+})
+
 test('a cite by run replaces the folder\'s earlier citation whole', (t) => {
   const repo = specRepo(t)
   const [earlier, ...ids] = itemsIn(repo, 3)

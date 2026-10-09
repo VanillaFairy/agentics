@@ -21,25 +21,18 @@ Run the checks with:
 `node tools/suite.mjs --fast` runs only `test/fast/`, the tests that spawn no process, in about a
 second; the script reruns a failed run's failures before calling any of them red.
 
-## Moving to 5.0.0
-
-Branch `v5` moves the plugin from 4.x to 5.0.0 in four phases: foundations, the evidence
-programs, execution, and removing what 4.x alone used. Until the last phase what is left of the
-4.x runtime still lives here: the evidence workflows in `service-workflows/`, the agents in
-`agents/` they name, the courier, `test/fast/harness/workflow-host.mjs` with the workflows' scenario
-tests, and the lint rules that guard them. An execution runs only as the `execute` program, over
-the in-process boundaries in `lib/boundaries/`; no boundary is reached through the courier. Keep
-the 4.x runtime working and never add to it. New code follows `docs/DESIGN.md` and the rules below.
-On this branch the design leads the code: where they disagree, the design is the target.
-
 ## Rules for changing this repository
 
 - **Redesign, never work around.** When a limit — a host's behaviour, a transport, a contract, a
   tool's shape — gets in the way, change the design so the limit stops mattering. Never add a
   mechanism whose only job is to squeeze past it.
-- **Code does what is deterministic; models only judge** (P2). Code moves bytes between
+- **Code does what is deterministic; models only judge** (P2,
+  `docs/DESIGN.md#p2--code-does-what-is-deterministic-models-only-judge`). Code moves bytes between
   programs: a brief goes into a prompt, a result comes back in a return, and no model carries
-  another program's output. A name a model types is resolved or refused (`resolveHandle`).
+  another program's output. A name a model types is resolved or refused (`resolveHandle`). A command
+  a skill's session runs holds only handles — paths, ids, shas, digests, enums and counts: no
+  encoded token, no stdin or heredoc body, no `printf`, no pipe into a lib CLI; data a lib CLI needs
+  is a file the session wrote with its own Write tool (`skill-handles`).
 - **No agent rules on its own work** (L3). A producer declares, a judge rules per unit, code
   combines. Never give a producer's or searcher's return schema a ruling field.
 - **Docs land with the code, in the same commit series.** A behaviour-changing change is not
@@ -47,16 +40,15 @@ On this branch the design leads the code: where they disagree, the design is the
   code. The design carries no history and no links to documents that no longer exist, and
   `test/fast/design-doc.test.mjs` fails on a pointer whose heading is gone.
 - **Data contracts are registered in `docs/DESIGN.md#data-contracts`**, each with its owner and
-  every place it is restated; a change to a field list edits every copy the entry names, in the
-  same commit series. A change to a role's `tools:` or `commands:` edits its pin test in the same
-  commit.
+  every place it is restated; a change to a field list edits every copy the entry names, in the same
+  commit series. A change to a role's `tools:` or `commands:` edits
+  `test/fast/role-allowlists.test.mjs` in the same commit.
 - **Capability is the role's tool list plus the permissions the runner computes. There are no
   hooks, and there will be none** (plugin hooks fire in every session on the machine). The
   runner confines every agent to its worktree, its paths and its commands; what it cannot
   prevent, it detects.
-- **Runtime text holds instructions and contracts; reasons live in DESIGN.md.** Every skill,
-  role and agent file has a size budget in `tools/budgets.json`, enforced by the `size-budget`
-  lint rule.
+- **Runtime text holds instructions and contracts; reasons live in DESIGN.md.** Every skill and role
+  file has a size budget in `tools/budgets.json`, enforced by the `size-budget` lint rule.
 - **A format change ships a one-shot migration script, never a permanent second reader**
   (`tools/migrate-*.mjs`).
 - `docs/superpowers/` is gitignored scratch for the vf-superpowers planning skills; nothing in
@@ -121,10 +113,11 @@ The laws themselves are in `docs/DESIGN.md#laws`.
 
 | Law | Enforced by |
 |---|---|
-| L1 — honest state | `tools/rules/coverage-block.mjs`, which requires a coverage block in every program's `resultOf` and every workflow's return; `coverageOf` in `lib/programs/common.mjs`; the coverage every searcher's return schema requires and the per-unit rulings every judge's requires (`test/fast/schemas.test.mjs`); `resolveHandle` in `lib/store.mjs`, through which `lib/run.mjs` resolves every effort, folder, run and file argument (a ref is resolved by git or refused); status derived on read |
-| L2 — states end work, counts don't | `tools/rules/no-turn-caps.mjs`, over the programs and the execute program's units (`lib/programs/execute/`), `lib/run.mjs`, skills, agents and workflows; the convergence predicates in `lib/verdict.mjs`; `askAfter` in `lib/programs/converge.mjs`; the runner's host-stop classes, waited out by `dispatch` in `lib/programs/common.mjs` |
-| L3 — separate judges | the role kinds in `lib/roles.mjs`; `judgeAllowed` and `dispatchJudge` in `lib/programs/common.mjs`; `tools/rules/no-self-verdict.mjs`; `verdictOf` in `lib/verdict.mjs` |
-| L4 — the user owns decisions and their branch | `verifyAnswer` and `confirmAct` in `lib/host.mjs`, called by `approveAct` in `lib/approval.mjs`, `landAct` in `lib/boundary.mjs` and the `rule` program; `userBound` in `lib/respec.mjs`, which the `rule` program and `respec.mjs settle` apply; `decisionProblems` in `lib/tree.mjs`; the runner's confinement and its watch on the user's checkout, and `measure`'s watch around every check in `lib/measure.mjs`; leaf-close's revert of what lies outside a leaf's locus in `lib/boundaries/leaf-close.mjs`; the `review` program's snapshot, which leaves the user's tree, index and stash untouched; `lib/verify.mjs`'s linked-worktree refusal; `land`'s refusals |
+| L1 — honest state | `tools/rules/coverage-block.mjs`, which requires a coverage block in every program's `resultOf`; `coverageOf` in `lib/programs/common.mjs`; the coverage every searcher's return schema requires (`test/fast/schemas.test.mjs`); `resolveHandle` in `lib/store.mjs`, through which `lib/run.mjs` resolves every effort, folder, run and file argument (a ref is resolved by git or refused); status derived on read |
+| L2 — states end work, counts don't | `tools/rules/no-turn-caps.mjs`, over the programs and the execute program's units (`lib/programs/execute/`), `lib/run.mjs`, skills and roles; `tools/rules/no-loop-bounds.mjs`, over the programs and `lib/run.mjs`; the convergence predicates in `lib/verdict.mjs`; `askAfter` in `lib/programs/converge.mjs`; the runner's host-stop classes, waited out by `dispatch` in `lib/programs/common.mjs` |
+| L3 — separate judges | the role kinds in `lib/roles.mjs`; `judgeAllowed` and `dispatchJudge` in `lib/programs/common.mjs`; `tools/rules/no-self-verdict.mjs`, which bars verdict-named booleans and ruling fields from producer and searcher schemas and requires a judge's per-unit rulings; `verdictOf` in `lib/verdict.mjs` |
+| L4 — the user owns decisions and their branch | `verifyAnswer` and `confirmAct` in `lib/host.mjs`, called by `approveAct` in `lib/approval.mjs`, `landAct` in `lib/boundary.mjs` and the `rule` program; `userBound` in `lib/respec.mjs`, which the `rule` program applies; `decisionProblems` in `lib/tree.mjs`; the runner's confinement and its watch on the user's checkout, and `measure`'s watch around every check in `lib/measure.mjs`; leaf-close's revert of what lies outside a leaf's locus in `lib/boundaries/leaf-close.mjs`; the `review` program's snapshot, which leaves the user's tree, index and stash untouched; `lib/verify.mjs`'s linked-worktree refusal; `land`'s refusals |
+| P2 — code does what is deterministic; models only judge | `tools/rules/skill-handles.mjs` (a skill's command carries handles only); `tools/rules/prompt-origin.mjs` (a prompt is built only by `lib/brief.mjs`, `lib/briefs/` and `renderMessage`); `tools/rules/no-skill-agents.mjs` (only the runner starts an agent); `resolveHandle` in `lib/store.mjs` |
 | P4 — everything earns its place | `test/fast/liveness.test.mjs`; `tools/rules/size-budget.mjs` |
 
 ## Build
@@ -134,9 +127,9 @@ The laws themselves are in `docs/DESIGN.md#laws`.
     node --test test/[fast/]<file>.test.mjs
     claude plugin validate .
 
-`node --test "test/**/*.test.mjs"` runs everything without the rerun; bare `node --test` also loads the harness modules. A test that spawns a process
-belongs outside `test/fast/`; the `fast-tier` lint rule fails it there, and a preload that makes
-process creation throw fails it at run time.
+`node --test "test/**/*.test.mjs"` runs everything without the rerun; bare `node --test` also loads
+the harness modules. A test that spawns a process belongs outside `test/fast/`; the `fast-tier` lint
+rule fails it there, and a preload that makes process creation throw fails it at run time.
 
 ## Architecture
 
@@ -149,16 +142,13 @@ process creation throw fails it at run time.
 - `lib/programs/` — the programs that orchestrate, started by `lib/run.mjs`; the execute
   program's units (a leaf, a planner's folder, the integration units) in `lib/programs/execute/`
 - `lib/briefs/` — the prompts the programs build, one file per program (`execute.mjs` the
-  execution's reviewers, rulers, planner and investigator; a leaf round's thread brief is
-  `lib/brief.mjs`'s, a ruling's `lib/respec.mjs`'s)
+  execution's reviewers, rulers, planner and investigator, `respec.mjs` a ruling's; a leaf round's
+  thread brief is `lib/brief.mjs`'s)
 - `roles/` — agent roles: instructions, tools and kind, read by the runner alone
 - `skills/` — user entry points: design, develop, task, investigate, next (`docs/kb/skills.md`)
 - `tools/` — lint, its rules, size budgets, one-shot migrations (`tools/INDEX.md`)
-- `test/` — the `node --test` suite; `test/fast/harness/` holds the spawn-free harness (scripted
-  runner, workflow host), `test/harness/` the fake CLI and the real-git rigs
-- 4.x, until the last phase: the evidence workflows in `service-workflows/`
-  (`service-workflows/INDEX.md`), the agents they name in `agents/` (`docs/kb/agents.md`), the
-  courier and `test/fast/harness/workflow-host.mjs`; no execution runs through them
+- `test/` — the `node --test` suite; `test/fast/harness/` holds the spawn-free harness (the scripted
+  runner and the no-spawn preload), `test/harness/` the fake CLI and the real-git rigs
 
 ## Knowledge base
 

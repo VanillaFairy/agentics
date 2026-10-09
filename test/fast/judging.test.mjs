@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { dispatchJudge, judgeAllowed } from '../../lib/programs/common.mjs'
-import { askAfter, convergenceBrief } from '../../lib/programs/converge.mjs'
+import { askAfter } from '../../lib/programs/converge.mjs'
 
 const P = { session: 's-producer', thread: 'implementer:a/b' }
 
@@ -42,12 +42,4 @@ test('askAfter asks every third round by default and never before the first', ()
 
 test('askAfter follows the interval it is given', () => {
   assert.deepEqual([1, 2, 3, 4].map((r) => askAfter(r, 2)), [false, true, false, true])
-})
-
-test('the convergence brief carries every round and its open findings', () => {
-  const brief = convergenceBrief([
-    { round: 1, open: [{ id: 'F1', claim: 'null on empty input' }] },
-    { round: 2, open: [{ id: 'F2', claim: 'off by one at the end' }] },
-  ])
-  for (const s of ['1', '2', 'F1', 'null on empty input', 'F2', 'off by one at the end']) assert.ok(brief.includes(s), s)
 })

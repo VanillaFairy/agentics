@@ -286,3 +286,17 @@ test('the convergence brief names the ruling and its schema, and carries each re
   assert.ok(text.indexOf(blocker.claim) < text.indexOf(second.claim), 'the oldest round first')
   assert.equal(convergenceBrief({ leaf: leaf(), reviews }), text, 'the same input gives the same text')
 })
+
+test('an integration brief names the work agentics did not produce, with its shas', () => {
+  const text = integrationBrief({
+    folder: { id: 'c', title: 'c' }, spec: '# c', units: ['criterion:c/a#1'], span: { base: 'b0', head: 'h0' },
+    outside: { leaves: [{ id: 'c/a', commits: ['a1a1a1a1a1', 'a2a2a2a2a2'] }], commits: ['s1s1s1s1s1'] },
+  })
+  assert.ok(text.includes('## Work agentics did not produce'))
+  for (const s of ['c/a', 'a1a1a1a1a1', 'a2a2a2a2a2', 's1s1s1s1s1']) assert.ok(text.includes(s), s)
+})
+
+test('an integration brief with no outside work has no such section', () => {
+  const text = integrationBrief({ folder: { id: 'c', title: 'c' }, spec: '# c', units: [], span: { base: 'b0', head: 'h0' } })
+  assert.equal(text.includes('Work agentics did not produce'), false)
+})

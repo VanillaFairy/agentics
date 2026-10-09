@@ -9,13 +9,13 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { id, applies, check } from '../../tools/rules/no-schema-bounds.mjs'
 
-const FILE = 'workflows/agentics-survey.workflow.js'
+const FILE = 'lib/schemas.mjs'
 
-test('it applies to workflow scripts and the return schemas, and nothing else', () => {
-  assert.ok(applies.test('workflows/agentics-survey.workflow.js'))
-  assert.ok(!applies.test('agents/scout.md'))
-  assert.ok(!applies.test('tools/lint.mjs'))
+test('it applies to the return schemas, and nothing else', () => {
   assert.ok(applies.test('lib/schemas.mjs'))
+  assert.ok(!applies.test('service-workflows/x.workflow.js'))
+  assert.ok(!applies.test('roles/scout.md'))
+  assert.ok(!applies.test('tools/lint.mjs'))
   assert.ok(!applies.test('lib/runner.mjs'))
 })
 

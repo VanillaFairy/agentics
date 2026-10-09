@@ -1,5 +1,5 @@
-// test/fast/no-self-verdict.test.mjs — pins the ban on self-reported verdict booleans in workflow
-// schemas (IRON LAW §2, extended to review).
+// test/fast/no-self-verdict.test.mjs — pins the ban on self-reported verdict booleans in the
+// return schemas (IRON LAW §2, extended to review).
 //
 // The line this rule draws is verdict names vs. fact names: `approved`/`passed`/`ok`/... are
 // judgments a schema must never let a model set for itself, while `build_ok`/`suite_pass`/...
@@ -11,13 +11,13 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { id, applies, check } from '../../tools/rules/no-self-verdict.mjs'
 
-const FILE = 'workflows/agentics-develop.workflow.js'
+const FILE = 'lib/schemas.mjs'
 
-test('it applies to workflow scripts and the return schemas, and nothing else', () => {
-  assert.ok(applies.test('workflows/agentics-develop.workflow.js'))
-  assert.ok(!applies.test('agents/reviewer.md'))
-  assert.ok(!applies.test('tools/lint.mjs'))
+test('it applies to the return schemas, and nothing else', () => {
   assert.ok(applies.test('lib/schemas.mjs'))
+  assert.ok(!applies.test('service-workflows/x.workflow.js'))
+  assert.ok(!applies.test('roles/reviewer.md'))
+  assert.ok(!applies.test('tools/lint.mjs'))
   assert.ok(!applies.test('lib/runner.mjs'))
 })
 

@@ -18,15 +18,16 @@ import { id, applies, check } from '../../tools/rules/no-turn-caps.mjs'
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 
-const WF = 'workflows/agentics-survey.workflow.js'
+const PROGRAM = 'lib/programs/survey.mjs'
 const SKILL = 'skills/investigate/SKILL.md'
 
-test('it applies to workflow scripts, SKILL.md, agent charters, the programs and lib/run.mjs — not to tools or the rest of lib', () => {
+test('it applies to SKILL.md, agent charters, the programs and lib/run.mjs — not to workflows, tools or the rest of lib', () => {
   // Agent charters were originally out of scope; the self-audit widened the rule, since
   // CLAUDE.md's clause table assigns IL1 to this rule alone and a cap written
   // into a charter reaches every dispatch of that agent. The programs and lib/run.mjs start
   // every dispatch, so they are in scope too.
-  assert.ok(applies.test(WF))
+  assert.ok(applies.test(PROGRAM))
+  assert.ok(!applies.test('service-workflows/gather-evidence-without-concluding.workflow.js'))
   assert.ok(applies.test(SKILL))
   assert.ok(applies.test('agents/scout.md'))
   assert.ok(applies.test('lib/programs/survey.mjs'))
@@ -67,7 +68,7 @@ test('the shipped programs and lib/run.mjs are judged and carry no cap', () => {
 test('flags maxTurns and reports its line', () => {
   const src = ['const opts = {', '  maxTurns: 5,', '}'].join('\n')
 
-  const found = check(src, WF)
+  const found = check(src, PROGRAM)
   assert.equal(found.length, 1)
   assert.equal(found[0].line, 2)
   assert.match(found[0].message, /IL1/)
@@ -75,7 +76,7 @@ test('flags maxTurns and reports its line', () => {
 
 test('flags every identifier spelling of a turn or tool-call cap', () => {
   for (const key of ['maxTurns', 'max_turns', 'maxToolCalls', 'max_tool_calls']) {
-    assert.equal(check(`  ${key}: 20,`, WF).length, 1, `${key} should be flagged`)
+    assert.equal(check(`  ${key}: 20,`, PROGRAM).length, 1, `${key} should be flagged`)
   }
 })
 
@@ -91,13 +92,13 @@ test('flags MAX_ROUNDS — the resume loops are progress-gated, not counted', ()
     '}',
   ].join('\n')
 
-  assert.equal(check(src, WF).length, 2, 'both mentions should be flagged')
-  assert.equal(check('  maxRounds: 3,', WF).length, 1)
+  assert.equal(check(src, PROGRAM).length, 2, 'both mentions should be flagged')
+  assert.equal(check('  maxRounds: 3,', PROGRAM).length, 1)
 })
 
 test('a bare round counter used only for labels is not a cap', () => {
-  assert.deepEqual(check('  const label = `scout round ${round}`', WF), [])
-  assert.deepEqual(check('  round += 1', WF), [])
+  assert.deepEqual(check('  const label = `scout round ${round}`', PROGRAM), [])
+  assert.deepEqual(check('  round += 1', PROGRAM), [])
 })
 
 test('does NOT flag a convergence self-check', () => {
@@ -110,11 +111,11 @@ test('does NOT flag a content bound', () => {
   assert.deepEqual(check('at most 4 topics', SKILL), [])
 })
 
-test('a clean workflow produces no violations', () => {
+test('a clean program loop produces no violations', () => {
   const src = [
-    'const found = await agent(prompt, { agentType: "agentics:scout", effort: "low" })',
-    'if (found.stop_reason !== "exhausted") continue',
+    "const found = await dispatch(ctx, { role: 'scout', schema: 'scout_hits', brief })",
+    "if (found.stop_reason !== 'exhausted') continue",
   ].join('\n')
 
-  assert.deepEqual(check(src, WF), [])
+  assert.deepEqual(check(src, PROGRAM), [])
 })

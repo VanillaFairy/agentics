@@ -1,116 +1,37 @@
-// tools/rules/coverage-block.mjs — enforces IL2.
+// tools/rules/coverage-block.mjs — enforces L1 over the programs.
 //
-// "A partial result must never be indistinguishable from a whole one." The coverage block
-// is the only thing that tells them apart, so a workflow that returns
-// nothing, or returns a result without one, hands its caller an answer that looks complete
-// no matter how much evidence was dropped on the way.
+// "A partial result must never be indistinguishable from a whole one." The coverage block is the
+// only thing that tells them apart, so a program whose result carries none hands its caller an
+// answer that looks complete no matter how much was dropped on the way.
 //
-// Most of a workflow script is prompt text, and prompt text is full of braces, the word
-// return, and ${} interpolations — all of which read as code to a naive scan. So strings and
-// comments are blanked out first, and everything below runs on what is left. Everything:
-// blanking the source and then reading any part of the ORIGINAL back out un-hides exactly
-// what the blanking was for, and inside a returned object that turns a sentence of prose
-// into a coverage block.
+// A program (lib/programs/*.mjs, less the shared common.mjs and converge.mjs) builds its result in
+// a module-local `function resultOf`, so the rule asks for that function and for a substantive
+// coverage key in an object it returns (docs/DESIGN.md#coverage-block). A helper's bare `return`
+// is not flagged: a module's helper may end bare.
 //
-// Three findings:
-//   V1 (line 0)     nothing is returned at all — undefined reaches the caller
-//   V2 (line 0)     something is returned, but no returned object carries a coverage key
-//   V3 (that line)  a bare `return` — an early exit with no result and no coverage
+// Strings and comments are blanked first, and everything below runs on what is left: reading any
+// part of the original back out un-hides what the blanking was for, and inside a returned object
+// that turns a sentence of prose into a coverage block.
 //
 // The block's field list is { complete, dropped, incomplete, failed_channels, unreached,
-// resumable }, plus `from_kb` — the provenance of anything a result recalled
-// from the project knowledge base rather than searched for today. It is deliberately NOT demanded
-// here, and this rule's behaviour is unchanged by it: absence must read as "nothing came from
-// cache", so a workflow that never touches the base is correct to omit it, and a rule insisting on
-// an empty array would turn the safe default into a lint failure. What a change to that field list
-// must cite is docs/DESIGN.md#coverage-block, and the question it must answer is: does this
-// field let a reader tell a partial result from a whole one? A field that does not is
-// decoration on the one structure IL2 rests on.
+// resumable }, plus `from_kb`, which is deliberately not demanded: its absence reads as "nothing
+// came from cache". A change to that field list cites docs/DESIGN.md#coverage-block.
 //
-// Both spellings of the key count: `coverage:` and ES shorthand `coverage`, the latter in
-// every position it can occupy — first key, last key, somewhere in the middle, with or
-// without a trailing comma, on one line or written out one key per line. The first
-// real workflow written against this rule had to rename a parameter to work around the
-// shorthand form being rejected, which is the linter being wrong rather than the workflow.
+// Both spellings of the key count: `coverage:` and ES shorthand `coverage`, in every position a
+// key can occupy, on one line or one key per line.
 //
-// Deliberately NOT flagged, because catching them needs a real parser and this repo has no
-// dependencies. All four are left to human review:
-//   - `return { ...base }`            -> a coverage key that arrives only through a spread
-//                                        lives in another object the rule cannot follow
-//   - `if (!x) return`                -> an inline bare return shares its line with code
-//   - `const r = {...}; return r`     -> no object literal at the return, so V1 fires
-//   - a helper's `return {...}`       -> telling script scope from function scope needs a
-//                                        parser, so the rule asks that AT LEAST ONE returned
-//                                        object carries coverage, not that every one does
-//
-// One known false positive, same root cause: the blanker has no notion of a regex literal,
-// so an unpaired quote inside one (`/can't/`) opens a string that swallows the rest of the
-// file and the real return with it. Telling a regex literal from division is exactly the job
-// of the parser we do not have. No workflow in this plugin uses one today; if that changes,
-// hoist the pattern into `new RegExp('...')`.
-//
-// Programs (lib/programs/*.mjs, less the shared common.mjs and converge.mjs) are modules: a
-// program builds its result in a module-local `function resultOf`, so there the rule asks for
-// that function and for a substantive coverage key in an object it returns
-// (docs/DESIGN.md#coverage-block). V3 stays with workflows: a module's helper may end bare.
+// Deliberately NOT flagged, because catching them needs a parser and this repository has no
+// dependencies: a coverage key that arrives only through a spread (`return { ...base }`), and a
+// value that is an identifier, whose fields a regex cannot see. The blanker has no notion of a
+// regex literal, so an unpaired quote inside one (`/can't/`) opens a string that swallows the rest
+// of the file; hoist such a pattern into `new RegExp('...')`.
 
 export const id = 'coverage-block'
 
-export const applies = /(?:\.workflow\.js|^lib\/programs\/(?!(?:common|converge)\.mjs$)[^/]+\.mjs)$/
+export const applies = /^lib\/programs\/(?!(?:common|converge)\.mjs$)[^/]+\.mjs$/
 
-export function check(source, filePath = '') {
-  if (filePath.startsWith('lib/programs/')) return checkProgram(source)
-  const code = blankStringsAndComments(source)
-  const violations = []
-
-  // V1 first: with no `return {` anywhere there is no object to look inside, so V2 would
-  // fire vacuously on top of it and report the same defect twice.
-  if (!/\breturn\s*\{/.test(code)) {
-    violations.push({
-      line: 0,
-      message:
-        `This workflow never returns a result object, so its caller receives undefined — ` +
-        `indistinguishable from a crash, and from a complete answer. IL2: a ` +
-        `partial result must never be indistinguishable from a whole one.`,
-    })
-  } else {
-    const verdict = coverageVerdict(code)
-
-    if (verdict === 'none') {
-      violations.push({
-        line: 0,
-        message:
-          `No returned object carries a "coverage" key. IL2: a partial result must ` +
-          `never be indistinguishable from a whole one, and the coverage block is the only ` +
-          `thing that tells them apart. Return coverage: { complete, dropped, incomplete, ` +
-          `failed_channels, unreached, resumable }.`,
-      })
-    } else if (verdict === 'vacuous') {
-      violations.push({
-        line: 0,
-        message:
-          `Every returned "coverage" is an empty object literal or null — a key with ` +
-          `nothing behind it satisfies the letter of the rule while carrying none of ` +
-          `{ complete, dropped, incomplete, failed_channels, unreached, resumable }. ` +
-          `IL2: an empty coverage block is a partial result wearing the label.`,
-      })
-    }
-  }
-
-  // Trimmed, not compared: the repo ships LF (.gitattributes), but a source string may
-  // still arrive CRLF from an unnormalized tree, and the trim keeps both spellings equal.
-  code.split('\n').forEach((text, index) => {
-    if (!/^return\s*;?$/.test(text.trim())) return
-    violations.push({
-      line: index + 1,
-      message:
-        `Bare "return": this path exits with no result and no coverage block, so the ` +
-        `caller cannot tell an early abort from a finished answer. IL2 — return a ` +
-        `result whose coverage block says what was not reached.`,
-    })
-  })
-
-  return violations
+export function check(source) {
+  return checkProgram(source)
 }
 
 /** A program's findings: no `function resultOf`, or a resultOf that returns no substantive coverage key. */
@@ -197,9 +118,9 @@ function coverageVerdict(code) {
  * True when the coverage key's value is DECIDABLY empty: a literal `{}` with nothing but
  * whitespace inside, or a literal `null`. A value that is an identifier or ES shorthand is
  * not vacuous by this test — whether that object carries the six fields is not decidable
- * by regex, and judging it belongs to the scenario harness, which executes the workflow
- * and reads the real block (self-audit: this rule checks for a key, the harness checks
- * for a block; each does the half it can actually decide).
+ * by regex, and judging it belongs to the program tests, which run the program and read the
+ * real block (this rule checks for a key, the tests check the block; each does the half it can
+ * decide).
  */
 function vacuousCoverageValue(span) {
   const colon = /[{,]\s*coverage\s*:\s*/.exec(span)

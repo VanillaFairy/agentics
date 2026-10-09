@@ -20,7 +20,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { append } from '../lib/ledger.mjs'
+import { append, seqMax } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import { checkpointOf, costOf, efforts, renderTodos, snapshotOf, todosOf } from '../lib/status.mjs'
 import { effortDir, effortStateDir, executionDir, executionRunId, posix, returnPath, runJsonPath, writeJson } from '../lib/store.mjs'
@@ -328,12 +328,13 @@ test('an execution reads checkpoint while its latest checkpoint has no later con
 
 const cli = (...args) => execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8' })
 
-test('the cost view counts a call that never returned as unmeasured, at no dollars', () => {
+test('the cost counts a call that never returned as unmeasured, at no dollars', () => {
   const repo = effortWith(TREE)
   call(repo, X1, 'a/impl', 'sonnet', null)
-  const view = cli('cost', '--repo', repo, '--effort', E)
-  assert.match(view, /by model: sonnet 1 \(\$0\.00, 0 tokens\)/)
-  assert.match(view, /spent: +\$0\.00, 0 tokens \(\+ 1 dispatch\(es\) unmeasured\)/)
+  const cost = costOf(repo, E)
+  const spent = ({ dispatches, usd, tokens, unmeasured }) => [dispatches, usd, tokens, unmeasured]
+  assert.deepEqual(spent(cost), [1, 0, 0, 1])
+  assert.deepEqual(spent(cost.by_model.sonnet), [1, 0, 0, 1])
 })
 
 test('the CLI prints an envelope with --json and a readable view without it', () => {
@@ -349,6 +350,10 @@ test('the CLI prints an envelope with --json and a readable view without it', ()
   assert.match(cli('show', '--repo', repo, '--effort', E), /impl \[trivial\] — active — do a\/impl/)
   assert.match(cli('todos', '--repo', repo, '--effort', E, '--execution', X1), /\[>\] a\/impl — do a\/impl — implementing/)
   assert.match(cli('cost', '--repo', repo, '--effort', E), /by model: sonnet 1 \(\$0\.50, 20 tokens\)/)
+  assert.ok(cli('list', '--repo', repo).includes('seq ' + seqMax(repo, E)), 'list prints the seq a watch starts from')
+  const lost = effortWith(TREE)
+  call(lost, X1, 'a/impl', 'sonnet', null)
+  assert.match(cli('cost', '--repo', lost, '--effort', E), /spent: +\$0\.00, 0 tokens \(\+ 1 dispatch\(es\) unmeasured\)/)
 
   assert.throws(() => execFileSync(process.execPath, [CLI, 'todos', '--repo', repo, '--effort', E], { stdio: 'pipe' }),
     'todos without an execution is refused')

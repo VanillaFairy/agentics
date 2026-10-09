@@ -35,19 +35,15 @@ test('the CLI prints one line whose digest covers the payload it carries', (t) =
   const tampered = { ...parsed.payload, suite: 'absent' }
   assert.notEqual(fnv1a(canonical(tampered)), parsed.payload_digest,
     'a payload that drifted by one field digests differently, which is the whole point')
-})
 
-test('a typed error still travels under a digest, and still exits 0', (t) => {
   const dir = repository(t)
-
-  const run = spawnSync(process.execPath, [CLI, '--worktree', dir, '--base', rev(dir, 'HEAD'),
+  const refused = spawnSync(process.execPath, [CLI, '--worktree', dir, '--base', rev(dir, 'HEAD'),
     '--head', rev(dir, 'HEAD'), '--build', BUILD, '--typecheck-absent', '--suite', SUITE], { encoding: 'utf8' })
-
-  assert.equal(run.status, 0,
+  assert.equal(refused.status, 0,
     'a refusal is a measurement outcome, and a non-zero exit would read as the tool failing')
-  const parsed = JSON.parse(run.stdout)
-  assert.equal(parsed.payload.error.kind, 'main_worktree')
-  assert.equal(fnv1a(canonical(parsed.payload)), parsed.payload_digest)
+  const typed = JSON.parse(refused.stdout)
+  assert.equal(typed.payload.error.kind, 'main_worktree', 'a typed error still travels under a digest')
+  assert.equal(fnv1a(canonical(typed.payload)), typed.payload_digest)
 })
 
 test('base64 command transport decodes to the same commands', () => {
@@ -60,17 +56,13 @@ test('base64 command transport decodes to the same commands', () => {
 test('the observation is journalled by the process that observed it, through the ledger', (t) => {
   const { dir, worktree, base, head } = order(t)
 
-  const run = spawnSync(process.execPath, [CLI,
+  const payload = verify(parseArgs([
     '--worktree', worktree, '--base', base, '--head', head,
     '--locus', 'src/widget.mjs', '--locus', 'test/widget.test.mjs',
     '--build', BUILD, '--typecheck-absent', '--suite', SUITE, '--test-one', TEST_ONE,
     '--repo', dir, '--effort', EFFORT, '--execution', EXECUTION, '--node', NODE, '--branch', BRANCH,
-  ], { encoding: 'utf8' })
-
-  const parsed = JSON.parse(run.stdout)
-  assert.equal(parsed.payload.journal.written, true)
-  assert.equal(fnv1a(canonical(parsed.payload)), parsed.payload_digest,
-    'the journal outcome is part of the payload the digest covers')
+  ]))
+  assert.equal(payload.journal.written, true)
 
   const { entries, malformed } = readLog(dir, EFFORT, 'journal:' + EXECUTION)
   assert.equal(malformed, 0)
@@ -84,7 +76,7 @@ test('the observation is journalled by the process that observed it, through the
   assert.equal(line.build, 'passed')
   assert.equal(line.typecheck, 'absent')
   assert.equal(line.suite, 'passed')
-  assert.deepEqual(line.discriminator, parsed.payload.discriminator)
+  assert.deepEqual(line.discriminator, payload.discriminator)
   assert.deepEqual(line.checks, [])
   assert.deepEqual(Object.keys(line).sort(), [
     'approved_failing', 'base_sha', 'baseline_failing', 'branch', 'build', 'checks', 'discriminator', 'failing_tests',

@@ -133,18 +133,11 @@ test('the CLI opens an effort, by positionals or by flags', () => {
   assert.deepEqual(listEfforts(repo).efforts.map((e) => e.effort).sort(), ['e1', 'e2'])
 })
 
-test('the CLI has no link verb any more', () => {
+test('the CLI has no link, record, standing, read or list verb: evidence is lib/evidence.mjs\'s, and reads are in-process', () => {
   const repo = fresh()
-  run('open', repo, 'e1', '--about', 'x')
-  assert.throws(() => execFileSync(process.execPath, [CLI, 'link', repo, 'e1', 'run', '--value', 'x'],
-    { encoding: 'utf8', stdio: 'pipe' }))
-})
-
-test('the CLI has no record, standing, read or list verb: evidence is lib/evidence.mjs\'s, and reads are in-process', () => {
-  const repo = fresh()
-  run('open', repo, 'e1', '--about', 'x')
-  for (const verb of ['record', 'standing', 'read', 'list']) {
-    assert.throws(() => execFileSync(process.execPath, [CLI, verb, repo, 'e1'], { encoding: 'utf8', stdio: 'pipe' }), verb)
+  assert.equal(openEffort(repo, { slug: 'e1', about: 'x', roots: repo }).ok, true)
+  for (const args of [['link', repo, 'e1', 'run', '--value', 'x'], ...['record', 'standing', 'read', 'list'].map((verb) => [verb, repo, 'e1'])]) {
+    assert.throws(() => execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8', stdio: 'pipe' }), args[0])
   }
 })
 

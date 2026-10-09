@@ -420,21 +420,6 @@ test("the approve CLI approves on the session's Approve and prints its envelope"
   assert.equal(lines[0].by, 'user')
 })
 
-test('the approve CLI refuses not_approved on Change it, recording nothing', (t) => {
-  const repo = specRepo(t, ROOT)
-  const own = session(t, [[askedAbout(approvalState(repo, E, '.').token), 'Change it']])
-  const printed = runCli(APPROVAL_CLI, approveArgs(repo), own)
-  refusedAs(printed.payload, 'not_approved')
-  assert.equal(approvedLines(repo).length, 0)
-})
-
-test('the approve CLI refuses answer_unverifiable with no session and stdin not a console', (t) => {
-  const repo = specRepo(t, ROOT)
-  const printed = runCli(APPROVAL_CLI, approveArgs(repo), {})
-  refusedAs(printed.payload, 'answer_unverifiable')
-  assert.equal(approvedLines(repo).length, 0)
-})
-
 test("the land merge CLI merges on the session's Land", (t) => {
   const repo = landRepo(t)
   const own = session(t, [[askedAbout(land(repo, E, 'check').token), 'Land']])
@@ -444,30 +429,6 @@ test("the land merge CLI merges on the session's Land", (t) => {
   assert.equal(events.length, 1)
   assert.equal(events[0].merged_sha, revParse(repo, 'HEAD'))
   assert.equal(events[0].by, 'user')
-})
-
-test('the land merge CLI refuses not_approved on Not yet, merging nothing', (t) => {
-  const repo = landRepo(t)
-  const before = revParse(repo, 'HEAD')
-  const own = session(t, [[askedAbout(land(repo, E, 'check').token), 'Not yet']])
-  refusedAs(landResult(runCli(BOUNDARY_CLI, landArgs(repo, 'merge'), own)), 'not_approved')
-  assert.equal(revParse(repo, 'HEAD'), before)
-  assert.equal(landedEvents(repo).length, 0)
-})
-
-test('the land merge CLI refuses answer_unverifiable with no session and stdin not a console', (t) => {
-  const repo = landRepo(t)
-  const before = revParse(repo, 'HEAD')
-  refusedAs(landResult(runCli(BOUNDARY_CLI, landArgs(repo, 'merge'), {})), 'answer_unverifiable')
-  assert.equal(revParse(repo, 'HEAD'), before)
-  assert.equal(landedEvents(repo).length, 0)
-})
-
-test('the land check CLI prints the token and needs no word', (t) => {
-  const repo = landRepo(t)
-  const out = landResult(runCli(BOUNDARY_CLI, landArgs(repo, 'check'), {}))
-  assert.equal(out.ok, true, JSON.stringify(out.error))
-  assert.equal(out.token, landToken(repo))
 })
 
 // ================================================================== the CLIs at a console

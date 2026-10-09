@@ -2,55 +2,53 @@
 
 ## PURPOSE
 
-Runs the plugin's own workflows offline. `workflow-host.mjs` executes a `*.workflow.js` with the
-runtime's globals replaced by scripted fakes; `develop-sim.mjs` simulates `lib/boundary.mjs` in
-memory for `execute-approved-plan-in-worktrees`; `verify-fixture.mjs` builds real git repos for
-`lib/verify.mjs`. It exists because the orchestration is the part lint cannot judge and a live run
-is too costly to repeat.
+The worlds the suite runs over, in two folders. `test/fast/harness/` holds what the spawn-free tier
+may use: the scripted runner, the in-memory log port, the no-spawn preload and the path limits.
+`test/harness/` holds the real-git rigs and worlds and `fake-claude.mjs`. They are split because
+nothing in `test/fast/` may import from `test/` outside it (`fast-tier` lint).
 
 ## KEY ABSTRACTIONS
 
-- `compileWorkflow` strips `export` from `export const meta` and passes the rest as the body of an
-  `AsyncFunction` whose parameters are the runtime globals. This is the only way to compile a
-  workflow, because the top-level `return` is illegal in a module, so `node --check` fails on
-  every workflow. A new global a workflow calls must be added to both the parameter list and
-  `runWorkflow`'s arguments, in the same order. Miss it and compilation succeeds but the call
-  throws `ReferenceError` when reached.
-- A passing scenario proves orchestration (coverage derivation, escalation routing, review-loop
-  exits) against the real workflow source. It never proves agent behaviour, because every `agent()`
-  answer is scripted. Never report a scenario run as a live run.
-- `develop-sim`'s `simulate` runs the real `schedule()`; only boundary I/O is faked. Answers
-  round-trip through `carriedEnvelope`, the same digest-wrapped shape a courier produces, and
-  `script.damage` corrupts one to prove the workflow re-checks the digest.
-- `memory-log.mjs`'s `memoryLog()` is the runner's `log` port in memory; `entries()` hands back copies, so a test cannot rewrite what it reads.
-- `fake-claude.mjs` stands in for `claude.exe` under `spawner(process.execPath, [FAKE])`; it counts calls in `<scenario>.n` beside the scenario file, so each test needs a fresh scenario file.
-- `scripted-runner.mjs` answers runner calls from a script and records as lib/runner.mjs does; programs are tested against it.
+- `scripted-runner.mjs` is the real `runAgent` over a scripted CLI keyed by `role|node|thread`. Each
+  CLI start plays the next step, so a schema retry, a `more` part, a renewal or a resume after a host
+  stop each need a step of their own; a missing one throws "the script has no start". It runs with
+  no checkout watch and no live process, so `checkout`, `watch_failed`, `checkout_changed` and
+  `orphan_ended` never occur under it.
+- A passing program test proves orchestration (records, stored returns, replays, messages), never
+  agent behaviour. Never report one as a live run; only `test/host-contract.test.mjs`, run when
+  `AGENTICS_HOST=1`, touches the real host.
+- `program-rig.mjs`'s `relaunch(script)` starts the same run again over a fresh log port and
+  context. Test a resume with it: reusing the first context hides what a relaunched program reads
+  back from disk.
+- `fake-claude.mjs` stands in for `claude.exe` and counts its calls in `<scenario>.n` beside the
+  scenario file, so each test needs a fresh scenario file.
+- `seed-tree.mjs` writes nodes `by: 'compile'` with each `defines` admitted against itself. Use it
+  only where the decision guard is not under test.
+- `dead-pid.mjs` exists because an exited child's pid is no proof of death: the OS recycles it.
 
 ## CONCURRENCY MODEL
 
-Deterministic fakes: `pipelineFake` runs items one at a time and `parallelFake` wraps `Promise.all`
-over synchronous thunks. Real concurrency (no-barrier pipelines, wall-clock overlap) is not tested here.
+The worlds are builders with nothing run at import. Test files run in parallel under
+`tools/suite.mjs`, so a world never hands two files one mutable directory.
 
 ## RESOURCE LIFECYCLE
 
-`verify-fixture.mjs` builds one template repo per shape, caches it in a module-level Map and hands
-each test a `cpSync` copy. It runs `git worktree repair` on every worktree in the copy, because an
-unrepaired copied worktree silently resolves back into the template. Copies go in `t.after`;
-templates are swept only by a `process.on('exit')` handler.
+`verify-fixture.mjs` and `seeded-repo.mjs` build one template per distinct shape per process, cache
+it in a module-level Map and hand each caller a `cpSync` copy; templates are swept only by a
+`process.on('exit')` handler. `verify-fixture.mjs` runs `git worktree repair` on every worktree of a
+copy, because an unrepaired copied worktree silently resolves back into the template; a fixture
+that grows a worktree adds it to that list. Copies are removed in `t.after`.
 
 ## INVARIANTS & GOTCHAS
 
-- `verify-fixture.mjs` deletes `process.env.NODE_TEST_CONTEXT` at load, because a grandchild
-  `node --test` that inherits it runs nothing and exits 0, which looks like a pass.
-- A workflow that dispatches a new boundary name needs a key in `develop-sim`'s `answer` map, or
-  the courier fake throws "unscripted agent".
-- `scriptedAgents` matches a label exactly, then by the longest `:`-prefix, and throws when nothing
-  matches, so a missing script entry fails at the call rather than as a wrong assertion later.
-- The `budget` fake's `remaining()` is `Infinity` unless a scenario passes `opts.budget`, so any
-  budget-gated branch goes untested unless a scenario sets one.
+- `verify-fixture.mjs` and `boundary-fixture.mjs` delete `process.env.NODE_TEST_CONTEXT` at load,
+  because a grandchild `node --test` that inherits it runs nothing and exits 0, which reads as a
+  pass. A new fixture whose repositories run a suite does the same.
+- `no-spawn.mjs` reaches `child_process` through `process.getBuiltinModule`, because importing it is
+  what `fast-tier` forbids in `test/fast/`.
 
 ## DEPENDENCIES
 
-- service-workflows — what it runs; a change to the runtime globals changes `compileWorkflow`.
-- lib — `develop-sim` relies on the real `schedule`, `tree` and `resume`; `workflow-host` builds
-  envelopes with `plan-digest` and `citations`.
+- lib — the scripted runner wraps `runner.mjs`; the rigs drive `lib/programs/`, `lib/boundaries/`,
+  `ledger.mjs` and `store.mjs` for real.
+- tools — `suite.mjs --fast` preloads `no-spawn.mjs`.

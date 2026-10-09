@@ -2,47 +2,58 @@
 
 ## PURPOSE
 
-`lint.mjs` and its rules in `tools/rules/` check the form of the plugin's declarative artifacts
-(agents, skills, workflow scripts) against the Iron Laws. `budgets.json` sizes each agent and skill
-file. `migrate-legacy.mjs` is the current one-shot migration of older state into `.agentics/`.
+`lint.mjs` and its rules in `tools/rules/` check the form of the plugin's source (programs,
+boundaries, schemas, roles, skills and the fast test tier) against the Laws and Principles.
+`suite.mjs` runs the tests and reruns failures before calling anything red. `budgets.json` sizes
+each role and skill file. `migrate-*.mjs` are the one-shot migrations of on-disk state.
 
 ## KEY ABSTRACTIONS
 
 - A rule is `id` (equal to its filename stem), `applies` (a RegExp on the POSIX-relative path) and
   `check(source, filePath)`. `loadRules` validates that shape at import, because a typo'd export
   would otherwise throw a bare `TypeError` on the first file and sink every other rule's run.
-  Dropping a file into `tools/rules/` registers it; there is no list.
-- `applies` is the real coverage boundary. `size-budget` and `agent-frontmatter` match only
-  `^agents\/[^/]+\.md$`, so an agent file nested a level deeper escapes both.
-- `coverage-block.mjs`, `no-imports.mjs` and `workflow-meta.mjs` each carry their own copy of the
-  string/comment blanker, because rules stay self-contained. A blanker fix goes into every copy.
+  Dropping a file into `tools/rules/` registers it; there is no list, but `liveness` wants its test.
+- `applies` is the real coverage boundary. `role-frontmatter` and `size-budget` match `roles/*.md`
+  one level deep, and `coverage-block` only the top level of `lib/programs/`, not `execute/`. A file
+  a level deeper escapes them.
+- Every rule that needs the string and comment blanker carries its own `blankStringsAndComments`,
+  because rules stay self-contained. Grep the name and fix every copy.
+- `suite.mjs` learns which tests failed only from the JSON lines `suite-reporter.mjs` appends to the
+  file `AGENTICS_TEST_FAILURES` names, never by parsing the human report. One reporter does both jobs
+  because two trigger node's listener-leak warning on the rerun.
 
 ## CONCURRENCY MODEL
 
-Synchronous.
+Lint is synchronous. `suite.mjs` runs `node --test` at `DEFAULT_CONCURRENCY`, then reruns only the
+files with a failed test at `RERUN_CONCURRENCY`.
 
 ## RESOURCE LIFECYCLE
 
-`migrate-legacy.mjs` writes each copy to a `.migrating` path and renames it in, so a killed run
-leaves at most an orphan temp file, never a partial target.
+`migrate-legacy.mjs` writes each copy to a `.<pid>.migrating` path and renames it in, so a killed
+run leaves at most an orphan temp file, never a partial target.
 
 ## INVARIANTS & GOTCHAS
 
-- `SKIP_DIRS` (`.git`, `node_modules`, `docs`, `test`) is matched by basename inside `collectFiles`,
-  at every depth. A runtime directory named `test` or `docs` anywhere is silently never linted.
-- A clean run proves only that the rules whose `applies` matched found nothing. When adding a new
-  artifact type, check which rules actually apply to it.
+- `SKIP_DIRS` (`.git`, `node_modules`, `docs`) is matched by basename at every depth, so a runtime
+  directory named `docs` anywhere is never linted. A directory named `test` is linted only in its
+  `fast` child (`TEST_LINTED`), because the rest holds the lint's own deliberately bad fixtures.
+- An empty rule set throws rather than report no findings. A clean run still proves only that the
+  rules whose `applies` matched found nothing; a new kind of file needs a rule that reaches it.
 - The blanker closes a string at the next identical quote with no nesting awareness. A backtick
   inside `${...}`, or a quote inside a regex literal (`/can't/`), makes the rest of the file read as
   a string and yields nonsense findings. Hoist such a pattern into `new RegExp('...')`.
 - `line: 0` in a finding means the whole file, not line 1. A renderer must not clamp it.
-- `size-budget` reports a file missing from `budgets.json` as a finding, so a new agent or skill
-  needs its budget entry in the same change.
-- `migrate-legacy.mjs` never deletes, moves or overwrites a user's file. A target with different
-  bytes refuses that effort's whole migration rather than picking a side.
+- `size-budget` reports a file missing from `budgets.json`, so a new role or skill file needs its
+  budget line in the same change.
+- `fast-tier` reads imports only. A `lib/` module that spawns when called is caught at run time by
+  `test/fast/harness/no-spawn.mjs`, which `suite.mjs --fast` preloads; a bare `node --test` over
+  `test/fast/` skips that check.
+- Migrations never delete. `migrate-legacy.mjs` refuses an effort's whole migration when a target
+  holds other bytes rather than pick a side.
 
 ## DEPENDENCIES
 
-- lib — `migrate-legacy.mjs` takes its paths and git plumbing from `lib/store.mjs`; the rules import nothing.
-- agents, skills, service-workflows — what the rules judge; a new file kind there needs a rule whose
-  `applies` reaches it.
+- lib — the migrations write through `store.mjs`, `ledger.mjs` and `integration.mjs`;
+  `role-frontmatter` takes `ROLE_NAMES`, the tier tables and `SCHEMAS` from `lib/roles.mjs` and
+  `lib/schemas.mjs` rather than keeping lists of its own.
+- roles, skills, lib/programs, lib/boundaries, test — what the rules judge.

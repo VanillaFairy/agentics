@@ -4,10 +4,10 @@ source, or `docs/kb/<module>.md` where a file in the module's folder would load 
 An index holds what the code and `docs/DESIGN.md` cannot say: couplings, fences, what a change
 breaks elsewhere. It never repeats what a signature or a header comment already states.
 
-- `docs/kb/CONVENTIONS.md` — lib file idioms, CLI exit codes, what to touch when adding an agent/skill/workflow/rule.
-- `docs/kb/GOTCHAS.md` — copies that must move together, LF, plugin cache, branch naming.
+- `docs/kb/CONVENTIONS.md` — lib file idioms, CLI exit codes, what to touch when adding a role/program/record/message/skill/rule.
+- `docs/kb/GOTCHAS.md` — copies that must move together, plugin cache, detached runs, branch naming.
 - `docs/kb/BUILD.md` — checks, manifest validation, versioning and distribution.
-- `docs/kb/TESTING.md` — running tests, the `node --test test/` trap, what each layer proves.
+- `docs/kb/TESTING.md` — running tests, the directory-argument trap, the spawn-free tier.
 
 The KB is a routing aid that bottoms out in source. For exact constants, enumerations or
 sequences, read the source. The KB carries no counts.

@@ -1,5 +1,3 @@
-# Ship LF everywhere. The Workflow permission layer rejects a script containing \r as a
-# hidden control character, so a CRLF checkout on Windows (core.autocrlf=true) bricked
-# every workflow in this plugin the moment it reached the cache. eol=lf overrides autocrlf
-# at checkout; text=auto keeps binaries untouched.
+# Ship LF everywhere. eol=lf overrides core.autocrlf at checkout; text=auto keeps binaries
+# untouched.
 * text=auto eol=lf

@@ -138,17 +138,19 @@ rule fails it there, and a preload that makes process creation throw fails it at
   (land, retry, note) (`lib/INDEX.md`)
 - `lib/boundaries/` — the boundaries an execution calls in-process: preflight, schedule and
   postflight, leaf-open, leaf-close, leaf-review, merge-batch and the suite gate, folder-review and
-  rule-close, and the autonomous review's, over one records core
+  rule-close, and the autonomous review's, over one records core (`lib/boundaries/INDEX.md`)
 - `lib/programs/` — the programs that orchestrate, started by `lib/run.mjs`; the execute
   program's units (a leaf, a planner's folder, the integration units) in `lib/programs/execute/`
+  (`lib/programs/INDEX.md`)
 - `lib/briefs/` — the prompts the programs build, one file per program (`execute.mjs` the
   execution's reviewers, rulers, planner and investigator, `respec.mjs` a ruling's; a leaf round's
-  thread brief is `lib/brief.mjs`'s)
-- `roles/` — agent roles: instructions, tools and kind, read by the runner alone
+  thread brief is `lib/brief.mjs`'s) (`lib/briefs/INDEX.md`)
+- `roles/` — agent roles: instructions, tools and kind, read by the runner alone (`docs/kb/roles.md`)
 - `skills/` — user entry points: design, develop, task, investigate, next (`docs/kb/skills.md`)
 - `tools/` — lint, its rules, size budgets, one-shot migrations (`tools/INDEX.md`)
 - `test/` — the `node --test` suite; `test/fast/harness/` holds the spawn-free harness (the scripted
   runner and the no-spawn preload), `test/harness/` the fake CLI and the real-git rigs
+  (`test/harness/INDEX.md`)
 
 ## Knowledge base
 
@@ -157,10 +159,10 @@ source, or `docs/kb/<module>.md` where a file in the module's folder would load 
 An index holds what the code and `docs/DESIGN.md` cannot say: couplings, fences, what a change
 breaks elsewhere. It never repeats what a signature or a header comment already states.
 
-- `docs/kb/CONVENTIONS.md` — lib file idioms, CLI exit codes, what to touch when adding an agent/skill/workflow/rule.
-- `docs/kb/GOTCHAS.md` — copies that must move together, LF, plugin cache, branch naming.
+- `docs/kb/CONVENTIONS.md` — lib file idioms, CLI exit codes, what to touch when adding a role/program/record/message/skill/rule.
+- `docs/kb/GOTCHAS.md` — copies that must move together, plugin cache, detached runs, branch naming.
 - `docs/kb/BUILD.md` — checks, manifest validation, versioning and distribution.
-- `docs/kb/TESTING.md` — running tests, the `node --test test/` trap, what each layer proves.
+- `docs/kb/TESTING.md` — running tests, the directory-argument trap, the spawn-free tier.
 
 The KB is a routing aid that bottoms out in source. For exact constants, enumerations or
 sequences, read the source. The KB carries no counts.

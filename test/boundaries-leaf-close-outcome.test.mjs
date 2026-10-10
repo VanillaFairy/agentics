@@ -206,6 +206,10 @@ test("an implementer's later round that moved nothing escalates fix_without_comm
   assert.equal(out.records[0].fields.said, 'd7')
 })
 
+test("an implementer's later round that moved nothing, opened over commits made by hand, is measured", () => {
+  assert.equal(po({ round: 2, head_before: 'h1', head: 'h1', opened_by_hand: true }).next, 'measure')
+})
+
 test("an implementer's first round that moved nothing is measured", () => {
   assert.equal(po({ round: 1, head_before: 'h1', head: 'h1' }).next, 'measure')
 })
@@ -368,5 +372,16 @@ describe('leaf-close before it measures', { concurrency: 4 }, () => {
     assert.equal(out.decision.next, 'stop')
     assert.deepEqual(out.stops.map((s) => [s.id, s.status, s.reason, s.said]), [['a', 'escalated', 'fix_without_commits', dispatch]])
     assert.equal(observed(w, 'a').length, 0)
+  })
+
+  test('an implementer round that moved nothing over commits made by hand since the round before closed is measured', SLOW, async (t) => {
+    const { w, o } = tdd(t)
+    const before = await run(w, { node: 'a', role: 'implementer', round: 1, ret: { status: 'blocked', text: TEXT }, base_sha: o.base_sha, head_before: o.base_sha })
+    assert.equal(before.out.decision.next, 'stop')
+    const hand = commit(o.worktree, A_FILES, 'Add a by hand')
+    const { out } = await run(w, { node: 'a', role: 'implementer', round: 2, ret: DONE, base_sha: o.base_sha, head_before: hand })
+    assert.deepEqual(out.stops.filter((s) => s.reason === 'fix_without_commits'), [])
+    assert.equal(out.decision.next, 'approve', JSON.stringify(out.decision))
+    assert.ok(observed(w, 'a').some((l) => l.head_sha === hand))
   })
 })

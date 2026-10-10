@@ -138,12 +138,17 @@ test('commits with no series-done are continued; a series-done at the tip is ver
   assert.deepEqual(rowOf(rows, 'b').commits, [{ sha: bHead, subject: 'feat(b): the whole of it' }])
 })
 
-test('commits made by hand above the head the latest round closed at are verified; a refresh from the parent is none', (t) => {
+/** Round 1 of `id`, dispatched in `execution` and closed at `head` with the decision `next`. */
+function closedRound(dir, id, head, next, execution = EXECUTION) {
+  event(dir, { kind: 'dispatched', dispatch: 'd-' + id + '-1', node: id, round: 1, thread: 'producer:' + id, role: 'implementer', execution })
+  writeJson(closePath(dir, EFFORT, execution, id, 'implementer', 1), { node: id, role: 'implementer', round: 1, head_sha: head, decision: { next } })
+}
+
+test('commits made by hand above the head a stopped round closed at are verified; a refresh from the parent is none', (t) => {
   const dir = repository(t)
   const wa = open(dir, 'a')
   const closedAt = commit(wa, 'src/a.mjs', 'feat(a): first half')
-  event(dir, { kind: 'dispatched', dispatch: 'd-a-1', node: 'a', round: 1, thread: 'producer:a', role: 'implementer' })
-  writeJson(closePath(dir, EFFORT, EXECUTION, 'a', 'implementer', 1), { node: 'a', role: 'implementer', round: 1, head_sha: closedAt })
+  closedRound(dir, 'a', closedAt, 'stop')
   assert.equal(rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a')]), 'a').next_action, 'continue-series')
 
   const parent = join(dir, '.claude', 'worktrees', 'parent')
@@ -156,6 +161,18 @@ test('commits made by hand above the head the latest round closed at are verifie
   const row = rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a')]), 'a')
   assert.equal(row.next_action, 'verify')
   assert.match(row.note, /by hand/)
+})
+
+test('commits above a close that sent a fix round, or above a round of another execution, are not read as made by hand', (t) => {
+  const dir = repository(t)
+  const wa = open(dir, 'a')
+  closedRound(dir, 'a', commit(wa, 'src/a.mjs', 'feat(a): first half'), 'fix')
+  commit(wa, 'src/a.mjs', 'feat(a): more')
+  assert.equal(rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a')]), 'a').next_action, 'continue-series')
+  const wb = open(dir, 'b')
+  closedRound(dir, 'b', commit(wb, 'src/b.mjs', 'feat(b): first half'), 'stop', '20250101-000000')
+  commit(wb, 'src/b.mjs', 'feat(b): more')
+  assert.equal(rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('b')]), 'b').next_action, 'continue-series')
 })
 
 test('a series-done recorded at an older head does not vouch for the commits after it', (t) => {

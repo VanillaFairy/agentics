@@ -4,8 +4,8 @@
 // What is pinned here:
 //
 //   heldAgainst     a leaf ordered before or after this one, at any distance, holds nothing
-//                   against it, and neither does a coupled partner; a leaf no dependency orders
-//                   holds its locus until it merged
+//                   against it; any other leaf, a coupled partner included, holds its locus until
+//                   it merged, but never an entry this leaf lists itself
 //
 // Design: docs/DESIGN.md#the-locus, docs/DESIGN.md#atomicity-when-to-stop-splitting.
 
@@ -49,11 +49,24 @@ test('an ordering reached through a chain or a group frees the shared file too',
   assert.deepEqual(ownLocusKept(byGroup, 'b'), [])
 })
 
-test('a coupled partner holds nothing against the leaf it shares the lane with', () => {
+test('a coupled partner holds what only it lists; an entry both list stays each one\'s own', () => {
   const nodes = tree(root({ shared: ['package.json'] }),
     leaf('e', { locus: ['package.json', 'src/e.js'] }), leaf('f', { locus: ['package.json', 'src/f.js'] }))
   assert.deepEqual(ownLocusKept(nodes, 'e'), [])
-  assert.ok(!heldAgainst(nodes, statusOf(nodes), 'e').includes('package.json'))
+  const held = heldAgainst(nodes, statusOf(nodes), 'e')
+  assert.ok(!held.includes('package.json'), 'the shared file is free: its lock serialises the pair through the merge')
+  assert.ok(held.includes('src/f.js'), 'the partner\'s own file stays held')
+})
+
+test('a coupled partner\'s new test or file under a directory entry is never admitted beside this leaf\'s own', () => {
+  const nodes = tree(root({ shared: ['package.json', 'tsconfig.json'] }),
+    leaf('e', { locus: ['package.json', 'src/util.js', 'src/lib/'] }),
+    leaf('f', { locus: ['tsconfig.json', 'src/util.test.js', 'src/lib/x.js'] }))
+  const e = nodes.get('e')
+  const held = heldAgainst(nodes, statusOf(nodes), 'e')
+  assert.equal(admits({ locus: e.locus, path: 'src/util.test.js', held }), false, 'a test beside src/util.js the partner lists')
+  assert.equal(admits({ locus: e.locus, path: 'src/lib/x.js', held }), false, 'a file under src/lib/ the partner lists')
+  assert.equal(admits({ locus: e.locus, path: 'src/lib/y.js', held }), true)
 })
 
 test('a leaf no dependency orders holds its locus against this one until it merged', () => {

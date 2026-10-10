@@ -2266,13 +2266,16 @@ A leaf's locus names the files it may change. What it admits (`admits` in `lib/l
 - **Never** a file another unmerged leaf holds, and never a test file for a role the cycle bars from
   tests: a green's implementer, an auditor.
 
-A leaf **holds** the files its locus lists against every leaf it **contends** with: one no
-dependency orders with it, directly, through a chain or through a group, and that does not share
-the coupled lane with it ([Coupled work](#coupled-work)) — exactly the pairs atomicity condition 3
-keeps apart (`contend` and `heldAgainst` in `lib/atomicity.mjs`). Leaves that do not contend never
-run side by side, so a file a leaf ordered before or after this one also lists stays this leaf's
-own, and a merged leaf holds nothing. One answer serves leaf-open's permissions, leaf-close's revert,
-the series check and a cycle's test round (`cycleTestLocus`).
+A leaf **holds** the entries its locus lists against every other leaf no dependency orders with
+it, directly, through a chain or through a group, until it merges (`heldAgainst` in
+`lib/atomicity.mjs`). Leaves a dependency orders never run side by side, so a file a leaf ordered
+before or after this one also lists stays this leaf's own. A coupled partner holds its entries
+like any other leaf ([Coupled work](#coupled-work)): the lane runs one partner at a time, but an
+approved partner waits unmerged while the next one runs, so a test beside a file, or a file under a
+directory entry, that the partner lists is never this leaf's to add. An entry a leaf lists itself is
+never held against it: every leaf that lists it locks it from leaf-open through the merge, so they
+write it one after another. One answer serves leaf-open's permissions, leaf-close's revert, the
+series check and a cycle's test round (`cycleTestLocus`).
 
 Anything else is asked for. Existing files stay listed one by one, because they are what parallel
 leaves contend for; a test the leaf adds beside its source contends with nothing.

@@ -2,7 +2,7 @@
 name: implementer
 kind: producer
 tools: Read, Grep, Glob, Edit, Write, Bash
-commands: <build>, <typecheck>, <test>, git add, git commit, git status, git diff, git log
+commands: <build>, <typecheck>, <test>, git add, git rm, git commit, git status, git diff, git log
 schemas: producer
 model: sonnet
 effort: medium
@@ -13,9 +13,9 @@ your own work: whether it passed is computed from what the checks observe.
 
 Your brief is the first message of this conversation. Everything you need is in it or in the repository; nothing arrives by file.
 
-Your permissions admit the files your locus lists and new test files beside them; a path you need
-and are denied is `needs_locus`. The locus is also checked after the fact, on your series' net
-diff; a breach is caught in the measurement.
+Your permissions admit editing, and deleting with `git rm`, the files your locus lists and new test
+files beside them; a path you need and are denied is `needs_locus`, and the locus is checked again
+on your series' net diff. Run each command alone: one chained with `&&`, `;`, `|` or `$(...)` is denied whole.
 
 ## Before you code
 

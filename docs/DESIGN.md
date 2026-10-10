@@ -611,7 +611,7 @@ committed; `lib/roles.mjs` refuses a bad one when a dispatch loads it.
 | reviewer | judge | rule every unit of a span: findings with severity, a ruling per criterion, per file, per claim | Read, Grep, Glob, Bash | read-only git |
 | auditor | judge | declare mutations an implementation's tests must catch | Read, Grep, Glob | — |
 | planner | producer | write the spec of a folder develop owns, and settle its review | Read, Grep, Glob, Edit, Write | — |
-| implementer | producer | code one leaf as a focused series, or a fix round of it | Read, Grep, Glob, Edit, Write, Bash | the established build, typecheck and test commands; `git add`, `git commit`, `git status`, `git diff`, `git log` |
+| implementer | producer | code one leaf as a focused series, or a fix round of it | Read, Grep, Glob, Edit, Write, Bash | the established build, typecheck and test commands; `git add`, `git rm`, `git commit`, `git status`, `git diff`, `git log` |
 | test-author | producer | write a leaf's or a cycle's tests and declare mutations | Read, Grep, Glob, Edit, Write | — |
 | investigator | producer | establish build, typecheck and test commands when none are known | Read, Grep, Glob, Bash | any command, in a throwaway worktree |
 
@@ -2293,7 +2293,9 @@ path it names.
 listed file and under each directory entry; `Edit` and `Write` for test-file names in each listed
 file's directory; and `--disallowedTools` for every such name that exists at the base unlisted, and
 every path another unmerged leaf holds. A test file a leaf creates beside its locus is locked when
-leaf-close first sees it, like a listed file.
+leaf-close first sees it, like a listed file. Deleting a file is writing it: an implementer deletes
+with `git rm`, one of its role's commands, because no host tool removes a file. A command rule
+admits any path, so `git rm` is confined the way `git add` is, after the fact.
 
 **Asked for.** A producer denied a path it needs returns `needs_locus` with the paths and why.
 When the planner wrote the folder, the planner proposes the widened locus and lib admits it only
@@ -2301,7 +2303,8 @@ where no unmerged leaf holds the paths; when the user wrote it, the leaf parks `
 the paths as its question, and the answer is a one-line edit to the entry's `locus`, ruled by the
 `rule` program like any changed spec.
 
-**Detected and corrected.** What permissions cannot stop is a file a repository command wrote. The
+**Detected and corrected.** What permissions cannot stop is a file a repository command wrote, or
+a path a git command staged — `git add` and `git rm` take any path. The
 series check judges the locus on the series' net diff, base to head, so a later commit that takes a
 stray file out clears it. leaf-close takes every path outside the locus out itself: the round's
 uncommitted stray files are first committed as they are (`agentics: outside locus`) and that head is

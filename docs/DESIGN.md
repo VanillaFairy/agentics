@@ -2722,7 +2722,8 @@ then closes that round again with no return to read (leaf-close with no `dispatc
 measured as it stands, as no producer's work, and the decision goes where the round's would —
 approved; reviewed by a fresh reviewer, handed no producer's account, whose span starts at the head
 the last review judged, or at the base; or a fix round sent the `failures` (beside the `retried`
-message after a retry). A refresh merge from the parent is no hand commit. The re-close's record
+message after a retry), routed by the close record's own role and status, which leaf-open's next
+round reads too. A refresh merge from the parent is no hand commit. The re-close's record
 replaces the round's, so a relaunch finds the head it left and goes on from its decision; a review
 loop stopped at another head than the round's close now stands at is over, so its findings wait for
 no producer, and a reviewer that judged such a head is not resumed. Where hand commits reach a

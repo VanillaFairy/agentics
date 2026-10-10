@@ -10,6 +10,7 @@
 //   a stage is adopted only where the record and git agree on the head;
 //   ancestry alone never marks a leaf merged — a witness must agree;
 //   a checkpoint tip is continued, never measured;
+//   commits made by hand after a round closed are measured, never continued;
 //   a cycle member's commits are its own, not its predecessor's.
 
 import { test } from 'node:test'
@@ -21,7 +22,7 @@ import { spawnSync } from 'node:child_process'
 
 import { resumeLeaves } from '../lib/resume.mjs'
 import { append } from '../lib/ledger.mjs'
-import { branchOf, git as runGit, worktreeOf } from '../lib/store.mjs'
+import { branchOf, closePath, git as runGit, worktreeOf, writeJson } from '../lib/store.mjs'
 import { normalizeNode } from '../lib/tree.mjs'
 
 const EFFORT = 'e1'
@@ -135,6 +136,26 @@ test('commits with no series-done are continued; a series-done at the tip is ver
   assert.equal(rowOf(rows, 'b').next_action, 'verify')
   assert.equal(rowOf(rows, 'b').head_sha, bHead)
   assert.deepEqual(rowOf(rows, 'b').commits, [{ sha: bHead, subject: 'feat(b): the whole of it' }])
+})
+
+test('commits made by hand above the head the latest round closed at are verified; a refresh from the parent is none', (t) => {
+  const dir = repository(t)
+  const wa = open(dir, 'a')
+  const closedAt = commit(wa, 'src/a.mjs', 'feat(a): first half')
+  event(dir, { kind: 'dispatched', dispatch: 'd-a-1', node: 'a', round: 1, thread: 'producer:a', role: 'implementer' })
+  writeJson(closePath(dir, EFFORT, EXECUTION, 'a', 'implementer', 1), { node: 'a', role: 'implementer', round: 1, head_sha: closedAt })
+  assert.equal(rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a')]), 'a').next_action, 'continue-series')
+
+  const parent = join(dir, '.claude', 'worktrees', 'parent')
+  git(dir, 'worktree', 'add', '-q', parent, branchOf(EFFORT, '.'))
+  commit(parent, 'src/p.mjs', 'feat(p): the parent moved')
+  git(wa, 'merge', '-q', '--no-ff', '-m', 'refresh from the parent', branchOf(EFFORT, '.'))
+  assert.equal(rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a')]), 'a').next_action, 'continue-series')
+
+  commit(wa, 'src/a.mjs', 'feat(a): the rest, by hand')
+  const row = rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a')]), 'a')
+  assert.equal(row.next_action, 'verify')
+  assert.match(row.note, /by hand/)
 })
 
 test('a series-done recorded at an older head does not vouch for the commits after it', (t) => {

@@ -52,6 +52,17 @@ test('paths another unmerged leaf holds are denied, and freed once it merged', a
   for (const rule of editWrite('src/b.mjs')) assert.ok(!freed.permissions.disallowed.includes(rule), rule)
 })
 
+test('an unordered leaf\'s locus is denied before it ever opens, and a leaf ordered after this one holds nothing', async (t) => {
+  const { xc } = setup(t, [
+    leaf('a', { locus: ['src/a.mjs'] }), leaf('b', { locus: ['src/b.mjs'] }),
+    leaf('c', { locus: ['src/a.mjs', 'src/c.mjs'], deps: ['a'] }),
+  ])
+  const { permissions } = await leafOpen(xc, { node: 'a' })
+  for (const rule of editWrite('src/b.mjs')) assert.ok(permissions.disallowed.includes(rule), 'b holds no lock and is still held: ' + rule)
+  for (const rule of [...editWrite('src/a.mjs'), ...editWrite('src/c.mjs')]) assert.ok(!permissions.disallowed.includes(rule), rule)
+  for (const rule of editWrite('src/a.mjs')) assert.ok(permissions.allowed.includes(rule), rule)
+})
+
 test('a green\'s implementer may write no test file', async (t) => {
   const { green } = await cycle(t)
   assert.equal(green.role, 'implementer')

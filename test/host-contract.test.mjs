@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto'
 
 import { permissionsFor, readOnlyPermissions } from '../lib/locus.mjs'
 import { answersIn, projectsDir, resolveCli, transcriptOf } from '../lib/host.mjs'
+import { loadRole, roleCommands } from '../lib/roles.mjs'
 import { buildArgs, classifyCall, cleanEnv, parseStream, spawner } from '../lib/runner.mjs'
 
 const ON = process.env.AGENTICS_HOST === '1'
@@ -268,6 +269,24 @@ test('git commit --amend is denied after other arguments, and a plain commit is 
   assert.ok(amend.denials.length > 0 && amend.count === 1, 'the amend: ' + amend.why + ', commits ' + amend.count)
   assert.deepEqual(plain.denials, [], 'the plain commit: ' + plain.why)
   assert.equal(plain.count, 2)
+})
+
+test("an implementer's rules let it delete a file its locus lists and commit the deletion", { skip, timeout: 240000 }, async (t) => {
+  const dir = repo(t)
+  writeFileSync(join(dir, 'gone.txt'), 'old\n')
+  execFileSync('git', ['add', 'gone.txt'], { cwd: dir })
+  execFileSync('git', ['commit', '-q', '-m', 'add gone'], { cwd: dir })
+  const loaded = loadRole('implementer')
+  assert.ok(loaded.ok, loaded.error && loaded.error.message)
+  const { allowed, disallowed } = permissionsFor({ locus: ['gone.txt'], commands: roleCommands(loaded.role, {}, null) })
+  const { parsed } = await call(dir, {
+    prompt: 'Use the Bash tool to run exactly these two commands, one call each, then return x = 1: git rm -q gone.txt   and then   git commit -q -m "Drop gone"',
+    session: randomUUID(), tools: ['Bash'], allowed, disallowed,
+  })
+  const why = 'denials: ' + JSON.stringify(parsed.denials)
+  assert.deepEqual(parsed.denials, [], why)
+  assert.equal(execFileSync('git', ['ls-files', 'gone.txt'], { cwd: dir }).toString().trim(), '', why)
+  assert.equal(execFileSync('git', ['log', '-1', '--format=%s'], { cwd: dir }).toString().trim(), 'Drop gone', why)
 })
 
 test('a detached program outlives the session that started it', { skip, timeout: 240000 }, async (t) => {

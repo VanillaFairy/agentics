@@ -611,7 +611,7 @@ committed; `lib/roles.mjs` refuses a bad one when a dispatch loads it.
 | reviewer | judge | rule every unit of a span: findings with severity, a ruling per criterion, per file, per claim | Read, Grep, Glob, Bash | read-only git |
 | auditor | judge | declare mutations an implementation's tests must catch | Read, Grep, Glob | — |
 | planner | producer | write the spec of a folder develop owns, and settle its review | Read, Grep, Glob, Edit, Write | — |
-| implementer | producer | code one leaf as a focused series, or a fix round of it | Read, Grep, Glob, Edit, Write, Bash | the established build, typecheck and test commands; `git add`, `git commit`, `git status`, `git diff`, `git log` |
+| implementer | producer | code one leaf as a focused series, or a fix round of it | Read, Grep, Glob, Edit, Write, Bash | the established build, typecheck and test commands; `git add`, `git rm`, `git commit`, `git status`, `git diff`, `git log` |
 | test-author | producer | write a leaf's or a cycle's tests and declare mutations | Read, Grep, Glob, Edit, Write | — |
 | investigator | producer | establish build, typecheck and test commands when none are known | Read, Grep, Glob, Bash | any command, in a throwaway worktree |
 
@@ -2062,7 +2062,7 @@ attached).
 | **preflight** | refuse what cannot run — an effort it cannot read (`unreadable`), a folder that is no node (`no_such_node`), an effort root that is a leaf (`root_is_leaf`), an execution whose envelope names another root (`wrong_root`), and, writing a new envelope, a `base_ref` that names no commit (`no_base`) or a `commands_file` that is not readable JSON (`commands_unreadable`) — writing nothing; adopt or write the envelope (`execution.json`: base, dial, pace, and the commands the session wrote to `commands_file`); write the session's commands as command gotchas ([Gotchas](#gotchas)) — refusing `commands_unwritable`, naming each command the gotcha store refused, once the envelope is written, so a run again writes only what is missing; read every integration branch in scope for commits no record accounts for ([Outside work](#outside-work)), refusing `unreadable_branch` when git cannot read one; traceability; stop at `outside_work` before every other checkpoint, and never confirm past it, and then at a checkpoint not confirmed past ([Resume and checkpoints](#resume-and-checkpoints)), its lists (the overlapping executions, the gaps, the branches with their unaccounted commits) on its state line, for the session to read with `lib/status.mjs checkpoint`; on a resumed execution with no checkpoint, check whether the base moved under its leaves and write the ruler's brief and its record, and, with no checkpoint, write the brief on the drift of adopted records no ruling covers yet ([Landing and drift](#landing-and-drift)); free this execution's slots, its dead worktrees and merged leaves' worktrees (clean ones only — a dirty one is reported, never forced); find the dispatches a dead run left open, to resume in their sessions |
 | **schedule** | compute what to launch from the records (`lib/schedule.mjs`, see [Scheduling](#scheduling)); park a folder the user writes that has nothing planned (`needs_design`); approve a leaf the resume ladder finds measured green, with no review loop of its own and no approval standing; what a pass records is recorded and the launch computed again, until a pass records nothing |
 | **leaf-open** | acquire a slot and the locus locks, asked once (`no_slot` and `locus_held` go back to the program, which waits); ensure the parent's integration branch (lazily, refreshed from its own parent, each branch of the chain under its own lock in turn) and cut or attach the leaf's branch and worktree, brought up to that parent's head; compute the round — the round of a dispatch this execution started and never got back, else one past the latest; only a producer's or an auditor's dispatch is a round — its role from the records, its thread (resumed, fresh, or fresh on a raise, [Conversations](#conversations)), its tier and its permissions from the locus ([The locus](#the-locus)); build its thread brief; record `retried` when the round resumes a thread after the user's `retry` cleared the leaf's stop, and `notes` when the round starts a thread this execution never dispatched ([Conversations](#conversations)); a refusal escalates `open_refused` |
-| **leaf-close** | first put right what a verify cut off in the worktree left ([Verification](#verification)); read the producer's stored return — none, or a producer's with no string `status`, holds the leaf on a `role` fault, and an auditor's, which carries no status, reads as `done`: a park, an escalation, a request for the planner (or the `needs_respec` park of a folder the user writes), a `needs_tests` or a `declined` for another session is recorded and routed without measuring, and a fix round that moved nothing escalates `fix_without_commits`; otherwise commit a shell-less author's admitted files (`authored`) (a close cut off after that commit finds it in git and journals it), take what lies outside the locus out and record it ([The locus](#the-locus)); journal the series as `series-done`, from git, when the producer declared it done; measure by rigor — build, typecheck, its own tests, discriminator, declared mutations and named checks; write and delete the gotchas it returned, never a command one; compute the close decision and record it — the approval, the escalation, the next round's message (`failures`, `surviving_mutations`, `tests_ready`), a verify leaf's finding (the `needs_respec` park of a folder the user writes beside the leaf's escalation; under a planner's folder the finding is the route and the leaf is not escalated, [Replanning](#replanning)), `verify_not_converging` when a fix repeats the close before it at a moved head; hand back `command_unknown` until an investigator of this execution has returned, and escalate it after; write the round's close record. What it reads of the rounds before spans executions, as a leaf's rounds do ([Resume and checkpoints](#resume-and-checkpoints)) |
+| **leaf-close** | first put right what a verify cut off in the worktree left ([Verification](#verification)); read the producer's stored return — a round closed again with no `dispatch`, over commits made by hand, has none to read and is measured as no producer's ([Resume and checkpoints](#resume-and-checkpoints)); none, or a producer's with no string `status`, holds the leaf on a `role` fault, and an auditor's, which carries no status, reads as `done`: a park, an escalation, a request for the planner (or the `needs_respec` park of a folder the user writes), a `needs_tests` or a `declined` for another session is recorded and routed without measuring, and a fix round that moved nothing, opened on the head the round before left, escalates `fix_without_commits`; otherwise commit a shell-less author's admitted files (`authored`) (a close cut off after that commit finds it in git and journals it), take what lies outside the locus out and record it ([The locus](#the-locus)); journal the series as `series-done`, from git, when the producer declared it done; measure by rigor — build, typecheck, its own tests, discriminator, declared mutations and named checks; write and delete the gotchas it returned, never a command one; compute the close decision and record it — the approval, the escalation, the next round's message (`failures`, `surviving_mutations`, `tests_ready`), a verify leaf's finding (the `needs_respec` park of a folder the user writes beside the leaf's escalation; under a planner's folder the finding is the route and the leaf is not escalated, [Replanning](#replanning)), `verify_not_converging` when a fix repeats the close before it at a moved head; hand back `command_unknown` until an investigator of this execution has returned, and escalate it after; write the round's close record. What it reads of the rounds before spans executions, as a leaf's rounds do ([Resume and checkpoints](#resume-and-checkpoints)) |
 | **leaf-review** | read the reviewer's stored rulings over the units its brief listed; compute the review loop's exit (`reviewExit`) against what the round before left open; record the approval or the escalation, or the open findings as `findings` messages, one per thread, for the next round; write the review record; after a review round `askAfter` picks that ended in a fix, read the ruler's stored convergence ruling (`convergenceRuling`): `not_converging` escalates `review_not_converging`, `said` the ruler's dispatch, `converging` records nothing, and a return with no ruling holds the leaf on a `role` fault; and, once the session retried a leaf its review loop stopped, record the stopping review's open findings as the next round's `findings` messages (`reviewResumed`) |
 | **merge-batch** | under the branch lock, record `batch-started` with the head it starts from; merge every approved child into one integration branch in dependency order; verify the merged head with the fast suite; bisect a red one; append the `batch` state line first, then `merged` and `merge-observed` for each child not merged before, so a batch run again never resets the merges its outcome names; release locus locks; remove each merged leaf's clean worktree, keeping its branch; send each leaf that fails alone a `failures` message (`source: integration`); record what stops — a conflict, a combination failure, a composite or a cycle failing alone, a batch that moved nothing, a batch that could not run; write the drift record and the ruler's brief. A batch that started and never recorded its outcome is reset to where it started and done again, so an unverified merge is never recorded as landed; one during which the user's checkout moved is reset and decides nothing (a `checkout` fault) |
 | **suite-gate** | on a composite whose children have all merged, under its branch lock: run the full suite on its integration head, against the head it was cut from; record the measurement and a `gate` state line; escalate `fails_full_suite` or `suite_gate_failed`. It runs nothing where the repository does not split its tests, or where the full suite already passed at that head in this execution ([The suite gate](#the-suite-gate)). A gate that passes says whether the integration review is earned, and records one that is not as `claims` with `review: not_earned`; one during which the user's checkout moved decides nothing (a `checkout` fault) |
@@ -2266,6 +2266,17 @@ A leaf's locus names the files it may change. What it admits (`admits` in `lib/l
 - **Never** a file another unmerged leaf holds, and never a test file for a role the cycle bars from
   tests: a green's implementer, an auditor.
 
+A leaf **holds** the entries its locus lists against every other leaf no dependency orders with
+it, directly, through a chain or through a group, until it merges (`heldAgainst` in
+`lib/atomicity.mjs`). Leaves a dependency orders never run side by side, so a file a leaf ordered
+before or after this one also lists stays this leaf's own. A coupled partner holds its entries
+like any other leaf ([Coupled work](#coupled-work)): the lane runs one partner at a time, but an
+approved partner waits unmerged while the next one runs, so a test beside a file, or a file under a
+directory entry, that the partner lists is never this leaf's to add. An entry a leaf lists itself is
+never held against it: every leaf that lists it locks it from leaf-open through the merge, so they
+write it one after another. One answer serves leaf-open's permissions, leaf-close's revert, the
+series check and a cycle's test round (`cycleTestLocus`).
+
 Anything else is asked for. Existing files stay listed one by one, because they are what parallel
 leaves contend for; a test the leaf adds beside its source contends with nothing.
 
@@ -2285,7 +2296,9 @@ path it names.
 listed file and under each directory entry; `Edit` and `Write` for test-file names in each listed
 file's directory; and `--disallowedTools` for every such name that exists at the base unlisted, and
 every path another unmerged leaf holds. A test file a leaf creates beside its locus is locked when
-leaf-close first sees it, like a listed file.
+leaf-close first sees it, like a listed file. Deleting a file is writing it: an implementer deletes
+with `git rm`, one of its role's commands, because no host tool removes a file. A command rule
+admits any path, so `git rm` is confined the way `git add` is, after the fact.
 
 **Asked for.** A producer denied a path it needs returns `needs_locus` with the paths and why.
 When the planner wrote the folder, the planner proposes the widened locus and lib admits it only
@@ -2293,7 +2306,8 @@ where no unmerged leaf holds the paths; when the user wrote it, the leaf parks `
 the paths as its question, and the answer is a one-line edit to the entry's `locus`, ruled by the
 `rule` program like any changed spec.
 
-**Detected and corrected.** What permissions cannot stop is a file a repository command wrote. The
+**Detected and corrected.** What permissions cannot stop is a file a repository command wrote, or
+a path a git command staged — `git add` and `git rm` take any path. The
 series check judges the locus on the series' net diff, base to head, so a later commit that takes a
 stray file out clears it. leaf-close takes every path outside the locus out itself: the round's
 uncommitted stray files are first committed as they are (`agentics: outside locus`) and that head is
@@ -2335,7 +2349,9 @@ other ([Merging](#merging)).
 - **Verification failures** send a fix round its failures as a `failures` message (`source:
   verification`), to the producer's session — on a green or an audit, to the session the records
   name ([Rigor](#rigor)). A fix round
-  that returns no commits escalates (`fix_without_commits`); two consecutive measurements failing
+  that returns no commits escalates (`fix_without_commits`), unless it opened over commits made by
+  hand since the round before closed: those are its leaf's progress, so it is measured; two
+  consecutive measurements failing
   identically escalate (`verify_not_converging`). lib/verdict.mjs escalates what no commit inside
   the locus can move — a discriminator that is the only failing fact on a `tdd` leaf
   (`discriminator_undecidable`) — and any environment error by its kind.
@@ -2373,7 +2389,9 @@ other ([Merging](#merging)).
     leaf's review records so far. `converging` lets the loop go on to the next round `askAfter`
     picks; a relaunch replays a returned ruling and resumes one cut off. A retry ends the stopped
     loop: the next round opens through leaf-open with the `retried` message, the stopping review's
-    open findings wait for it as `findings`, and the stopping review and ruling are never replayed.
+    open findings wait for it as `findings`, and the stopping review and ruling are never replayed —
+    unless the session committed by hand on the branch first: the round is closed again over those
+    commits and a fresh reviewer reviews them ([Resume and checkpoints](#resume-and-checkpoints)).
   - Otherwise a fix round, the open findings delivered to the producer's session as a `findings`
     message, re-verification, and a fresh reviewer. A producer that holds a finding wrong says so in
     its `concerns`, which the next fresh reviewer reads beside the code. No round counter ends the
@@ -2682,6 +2700,7 @@ Resume (`lib/resume.mjs`) computes, on disk, one next action per leaf — `none`
 | a `merged` event, or the leaf head is in the parent's integration branch and a witness agrees (the approved head, or a `merge-observed` line) | `none` |
 | approved, and the branch is still at the approved head | `merge` |
 | a green `verify-observed` at the branch head | `review` for a leaf with its own review loop, else `merge` |
+| commits made by hand: on the branch's own line, merges aside, above the head the close of the leaf's latest round in any execution left, when that round is this execution's and its close stopped the leaf or went to a review loop whose stop a retry cleared (`handCommits`) | `verify` |
 | the branch tip is a checkpoint commit | `continue-series` |
 | commits and a `series-done` at the tip | `verify` |
 | commits without | `continue-series` |
@@ -2689,8 +2708,30 @@ Resume (`lib/resume.mjs`) computes, on disk, one next action per leaf — `none`
 
 A salvaged series is closed and reviewed at the round that produced it, over its own fork point
 and brief; a merge merges the head the approval named, never the branch as it stands. A checkpoint
-commit (the executor's mark on an unfinished series) means continue, never measure. A
-clean execution (no records for its leaves and no leaf branches) opens for the cost of one branch
+commit (the executor's mark on an unfinished series) means continue, never measure.
+
+**Commits made by hand are measured before any producer goes on.** The session may commit on a
+stopped leaf's branch itself — the develop skill has it leave a note when it does — and then
+retry. Those commits are no round's: the latest round's close left the head below them, and the
+next round would open above them. One reader, `handCommits` in `lib/resume.mjs`, finds them for
+the ladder and the leaf unit alike: the leaf's latest round in any execution must be this
+execution's, since the unit closes again only a round of its own, and its close must have stopped
+the leaf, or gone to a review loop whose stop a retry cleared. A close that sent a fix round its
+messages is left as it is, so no second `failures` lands beside an undelivered first. The unit
+then closes that round again with no return to read (leaf-close with no `dispatch`): the branch is
+measured as it stands, as no producer's work, and the decision goes where the round's would —
+approved; reviewed by a fresh reviewer, handed no producer's account, whose span starts at the head
+the last review judged, or at the base; or a fix round sent the `failures` (beside the `retried`
+message after a retry), routed by the close record's own role and status, which leaf-open's next
+round reads too. A refresh merge from the parent is no hand commit. The re-close's record
+replaces the round's, so a relaunch finds the head it left and goes on from its decision; a review
+loop stopped at another head than the round's close now stands at is over, so its findings wait for
+no producer, and a reviewer that judged such a head is not resumed. Where hand commits reach a
+producer round all the same — after a round of another execution, or a close that sent a fix
+round — that round may add nothing to them and is measured, never escalated `fix_without_commits`
+([Executors and review](#executors-and-review)).
+
+A clean execution (no records for its leaves and no leaf branches) opens for the cost of one branch
 listing. Committed work is salvaged by right and reported as salvaged. A dispatch recorded
 `dispatched` and never `returned` is resumed in its own session, which holds its turns so far and
 finds its uncommitted edits where it left them; uncommitted work no resumable session owns is
@@ -3327,7 +3368,8 @@ live inputs to an execution: leaf-open hands the cleared stop's reason and the n
 or since the thread's latest return when that is later, to the leaf's next round as `retried` ([Conversations](#conversations)); a leaf its review loop stopped goes on at that
 next round, handed the stopping review's open findings beside it. `retry` also makes the node's next
 check measure again: `measure` hands back no `verify-observed` line of the node older than its
-latest `retry_escalated` event.
+latest `retry_escalated` event. Commits the session made on the leaf's branch before it retried are
+measured before any producer round ([Resume and checkpoints](#resume-and-checkpoints)).
 
 ### Producer returns
 

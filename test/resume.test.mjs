@@ -10,6 +10,7 @@
 //   a stage is adopted only where the record and git agree on the head;
 //   ancestry alone never marks a leaf merged — a witness must agree;
 //   a checkpoint tip is continued, never measured;
+//   commits made by hand after a round closed are measured, never continued;
 //   a cycle member's commits are its own, not its predecessor's.
 
 import { test } from 'node:test'
@@ -19,9 +20,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
-import { ACTIONS, nextActionFor, resumeLeaves } from '../lib/resume.mjs'
+import { resumeLeaves } from '../lib/resume.mjs'
 import { append } from '../lib/ledger.mjs'
-import { branchOf, git as runGit, worktreeOf } from '../lib/store.mjs'
+import { branchOf, closePath, git as runGit, worktreeOf, writeJson } from '../lib/store.mjs'
 import { normalizeNode } from '../lib/tree.mjs'
 
 const EFFORT = 'e1'
@@ -135,6 +136,43 @@ test('commits with no series-done are continued; a series-done at the tip is ver
   assert.equal(rowOf(rows, 'b').next_action, 'verify')
   assert.equal(rowOf(rows, 'b').head_sha, bHead)
   assert.deepEqual(rowOf(rows, 'b').commits, [{ sha: bHead, subject: 'feat(b): the whole of it' }])
+})
+
+/** Round 1 of `id`, dispatched in `execution` and closed at `head` with the decision `next`. */
+function closedRound(dir, id, head, next, execution = EXECUTION) {
+  event(dir, { kind: 'dispatched', dispatch: 'd-' + id + '-1', node: id, round: 1, thread: 'producer:' + id, role: 'implementer', execution })
+  writeJson(closePath(dir, EFFORT, execution, id, 'implementer', 1), { node: id, role: 'implementer', round: 1, head_sha: head, decision: { next } })
+}
+
+test('commits made by hand above the head a stopped round closed at are verified; a refresh from the parent is none', (t) => {
+  const dir = repository(t)
+  const wa = open(dir, 'a')
+  const closedAt = commit(wa, 'src/a.mjs', 'feat(a): first half')
+  closedRound(dir, 'a', closedAt, 'stop')
+  assert.equal(rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a')]), 'a').next_action, 'continue-series')
+
+  const parent = join(dir, '.claude', 'worktrees', 'parent')
+  git(dir, 'worktree', 'add', '-q', parent, branchOf(EFFORT, '.'))
+  commit(parent, 'src/p.mjs', 'feat(p): the parent moved')
+  git(wa, 'merge', '-q', '--no-ff', '-m', 'refresh from the parent', branchOf(EFFORT, '.'))
+  assert.equal(rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a')]), 'a').next_action, 'continue-series')
+
+  commit(wa, 'src/a.mjs', 'feat(a): the rest, by hand')
+  const row = rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a')]), 'a')
+  assert.equal(row.next_action, 'verify')
+  assert.match(row.note, /by hand/)
+})
+
+test('commits above a close that sent a fix round, or above a round of another execution, are not read as made by hand', (t) => {
+  const dir = repository(t)
+  const wa = open(dir, 'a')
+  closedRound(dir, 'a', commit(wa, 'src/a.mjs', 'feat(a): first half'), 'fix')
+  commit(wa, 'src/a.mjs', 'feat(a): more')
+  assert.equal(rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a')]), 'a').next_action, 'continue-series')
+  const wb = open(dir, 'b')
+  closedRound(dir, 'b', commit(wb, 'src/b.mjs', 'feat(b): first half'), 'stop', '20250101-000000')
+  commit(wb, 'src/b.mjs', 'feat(b): more')
+  assert.equal(rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('b')]), 'b').next_action, 'continue-series')
 })
 
 test('a series-done recorded at an older head does not vouch for the commits after it', (t) => {
@@ -371,30 +409,4 @@ test('journal lines of another execution of the effort are read too, and still n
   assert.equal(append(dir, EFFORT, 'journal:20260101-000000', { kind: 'series-done', node: 'a', head_sha: ha, commits: [] }).ok, true)
 
   assert.equal(rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a')]), 'a').next_action, 'verify')
-})
-
-// ---------------------------------------------------------------- the pure ladder
-
-test('nextActionFor answers from the facts it is handed, and only ever names a known action', () => {
-  const a = leaf('a')
-  const g = { branch: 'agentics/e1--a', head_sha: 'h2', base_sha: 'h0', commits: [{ sha: 'h2', subject: 's' }], checkpoint_head: false, merged_into_parent: false }
-  const cases = [
-    [{}, 'code'],
-    [{ git: { ...g, commits: [] } }, 'code'],
-    [{ git: g }, 'continue-series'],
-    [{ git: g, journal: [{ kind: 'series-done', node: 'a', head_sha: 'h2' }] }, 'verify'],
-    [{ git: g, journal: [{ kind: 'series-done', node: 'OTHER', head_sha: 'h2' }] }, 'continue-series'],
-    [{ git: { ...g, checkpoint_head: true }, journal: [{ kind: 'series-done', node: 'a', head_sha: 'h2' }] }, 'continue-series'],
-    [{ git: g, events: [{ kind: 'approved', node: 'a', head_sha: 'h2', seq: 5 }] }, 'merge'],
-    [{ git: g, events: [{ kind: 'approved', node: 'a', head_sha: 'h2', seq: 5 }, { kind: 'dispatched', node: 'a', seq: 6 }] }, 'continue-series'],
-    [{ git: { ...g, merged_into_parent: true } }, 'continue-series'],
-    [{ git: { ...g, merged_into_parent: true }, events: [{ kind: 'approved', node: 'a', head_sha: 'h2', seq: 1 }] }, 'none'],
-    [{ events: [{ kind: 'merged', node: 'a', seq: 3 }] }, 'none'],
-  ]
-  for (const [facts, want] of cases) {
-    const got = nextActionFor(a, facts)
-    assert.equal(got.next_action, want, JSON.stringify(facts))
-    assert.ok(ACTIONS.includes(got.next_action))
-    assert.ok(got.note.length > 0)
-  }
 })

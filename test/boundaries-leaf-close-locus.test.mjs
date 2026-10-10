@@ -88,6 +88,18 @@ describe('leaf-close and the locus', { concurrency: 4 }, () => {
     assert.ok(reverted[0].paths.includes('test/extra.test.mjs'))
   })
 
+  test('a file a leaf ordered after it also lists stays in the locus', SLOW, async (t) => {
+    const w = world(t, [root(), lf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] }),
+      lf('b', { rigor: 'tests-only', locus: ['test/a.test.mjs'], deps: ['a'] }),
+      lf('c', { rigor: 'trivial', locus: ['src/a.mjs'], deps: ['b'] })])
+    const o = open(w, 'a')
+    commit(o.worktree, A_FILES, 'Add a')
+    const { out } = await run(w, { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
+    assert.deepEqual(recs(w, 'breach_reverted', 'a'), [])
+    assert.notEqual(subjectOf(o.worktree), 'agentics: revert outside locus')
+    assert.equal(out.decision.next, 'approve', JSON.stringify(out.decision))
+  })
+
   test('a new test file beside a listed file nobody else holds is inside the locus', SLOW, async (t) => {
     const { w, o } = tdd(t)
     commit(o.worktree, { ...A_FILES, 'test/extra.test.mjs': A_TEST }, 'Add a')

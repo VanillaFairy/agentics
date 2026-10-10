@@ -15,8 +15,9 @@
 
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { leafOpen } from '../lib/boundaries/leaf-open.mjs'
 import {
-  SLOW, commit, write, run, recs, msgs, observed, rec, head, DONE, A_FILES, tdd, R_SRC, TABLE, TABLE_TEST,
+  SLOW, commit, write, run, close, recs, msgs, observed, rec, head, DONE, A_FILES, tdd, R_SRC, TABLE, TABLE_TEST,
   CAPACITY_BITE, R_BITES, R_SURVIVES, cycle, answered,
 } from './harness/leaf-close-world.mjs'
 
@@ -72,6 +73,22 @@ describe('leaf-close and the decision', { concurrency: 4 }, () => {
     assert.equal(sent[0].thread, 'producer:r')
     assert.equal(sent[0].round, 3)
     assert.equal(sent[0].from, 'code')
+  })
+
+  test("a green's test round closed again over commits made by hand sends its failures to the thread leaf-open opens next", SLOW, async (t) => {
+    const c = cycle(t)
+    const round = { node: 'g', role: 'test-author', round: 2, thread: 'producer:r', base_sha: c.green.base_sha, head_before: c.greenHead }
+    const first = await run(c.w, { ...round, ret: { status: 'blocked', text: 'cannot reach the file' } })
+    assert.equal(first.out.decision.next, 'stop')
+    commit(c.green.worktree, { 'src/r.mjs': R_SRC + '// by hand\n' }, 'wip: finish r')
+    const { decision } = await close(c.w, { ...round, dispatch: '' })
+    assert.equal(decision.next, 'fix', JSON.stringify(decision))
+    assert.ok(decision.failures.every((f) => String(f.check).startsWith('series-')), JSON.stringify(decision.failures))
+    const sent = msgs(c.w, 'failures', 'g')
+    assert.equal(sent.length, 1)
+    const opened = await leafOpen(c.w.xc, { node: 'g' })
+    assert.equal(opened.status, 'opened', JSON.stringify(opened))
+    assert.equal(opened.thread, sent[0].thread, 'leaf-close and leaf-open read the same close record')
   })
 
   test("an audit's surviving mutation records surviving_mutations to the cycle's test session", SLOW, async (t) => {

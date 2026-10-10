@@ -24,7 +24,9 @@ import { append } from '../lib/ledger.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
 import { producerTier, reviewerTier } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
-import { readJson, returnPath, sessionOf } from '../lib/store.mjs'
+import { resumeLeaves } from '../lib/resume.mjs'
+import { closePath, readJson, returnPath, sessionOf, worktreeOf } from '../lib/store.mjs'
+import { readTree } from '../lib/tree.mjs'
 import {
   T, E, leafEntry, YARD, bLeaf, work, world, ofKind, messages, faultsOf, callsOf, startsOf, headOf, approvals,
   stepsOf, keyOf, nodeOf, roleOf, IMPL, REV, done, said, verdict,
@@ -223,5 +225,71 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.equal(two.thread.session, one.thread.session)
     assert.equal(two.brief, renderMessage({ msg: 'retried', payload: retried[0].payload }))
     assert.deepEqual(two.carries, [retried[0].seq])
+  })
+
+  /** A leaf whose producer stopped `blocked`, then commits the session made on its branch by hand, a note and a retry. */
+  async function byHand(t, files) {
+    const w = world(t)
+    w.rig.script({ [IMPL]: [said('blocked', 'git rm was denied'), done()] })
+    assert.equal((await w.run('b')).outcome, 'stopped')
+    const hand = work(worktreeOf(w.rig.repo, E, 'b'), files, 'finish b by hand')
+    const wrote = append(w.rig.repo, E, 'events', [
+      { kind: 'noted', node: 'b', execution: w.rig.stamp, by: 'session', text: 'committed the rest by hand' },
+      { kind: 'replanned', node: 'b', execution: w.rig.stamp, reason: 'retry_escalated', by: 'session' },
+    ])
+    assert.equal(wrote.ok, true, JSON.stringify(wrote))
+    return { w, hand }
+  }
+
+  test("a retry over commits the session made on the leaf's branch measures them, and no producer round runs", T, async (t) => {
+    const { w, hand } = await byHand(t, { 'src/b.txt': 'ok\n' })
+    const second = await w.run('b')
+    assert.equal(second.outcome, 'approved', JSON.stringify(ofKind(w.rig, 'escalated', 'b')))
+    assert.equal(startsOf(w.rig, 'implementer', 'b').length, 1, 'the round that stopped is the only producer round')
+    assert.deepEqual(approvals(w.rig).map((e) => e.head_sha), [hand])
+    assert.deepEqual(ofKind(w.rig, 'escalated', 'b').map((e) => e.reason), ['blocked'])
+    assert.equal(faultsOf(w.rig).length, 0)
+  })
+
+  test('commits made by hand that fail their measurement send the next round its failures beside the retry', T, async (t) => {
+    const { w, hand } = await byHand(t, { 'src/b.txt': 'not yet\n' })
+    w.job('implementer|b#2', (cwd) => work(cwd, { 'src/b.txt': 'ok\n' }, 'fix b'))
+    const second = await w.run('b')
+    assert.equal(second.outcome, 'approved', JSON.stringify(ofKind(w.rig, 'escalated', 'b')))
+    const [, two] = startsOf(w.rig, 'implementer', 'b')
+    assert.equal(two.round, 2)
+    const carried = ofKind(w.rig, 'message', 'b').filter((m) => two.carries.includes(m.seq)).map((m) => m.msg)
+    assert.deepEqual(carried.sort(), ['failures', 'retried'])
+    assert.notEqual(headOf(w.rig), hand)
+  })
+
+  test("a later execution's round above this execution's close is no hand commit: status and the unit both go on to a producer round", T, async (t) => {
+    const w = world(t)
+    w.rig.script({ [IMPL]: [said('blocked', 'stuck'), done()] })
+    assert.equal((await w.run('b')).outcome, 'stopped')
+    const close1 = closePath(w.rig.repo, E, w.rig.stamp, 'b', 'implementer', 1)
+    const stoppedAt = readJson(close1).head_sha
+    // Another execution retried the leaf; its round 2's producer committed and stopped; then this one is retried.
+    const OTHER = '20260102-000000'
+    const theirs = keyOf('b', 'implementer', 'producer:b', 2)
+    assert.equal(append(w.rig.repo, E, 'events', [
+      { kind: 'replanned', node: 'b', execution: OTHER, reason: 'retry_escalated', by: 'session' },
+      { kind: 'dispatched', dispatch: theirs, node: 'b', round: 2, thread: 'producer:b', role: 'implementer', model: 'sonnet', effort: 'medium', carries: [], execution: OTHER },
+    ]).ok, true)
+    work(worktreeOf(w.rig.repo, E, 'b'), { 'src/b.txt': 'ok\n' }, "the other execution's producer")
+    assert.equal(append(w.rig.repo, E, 'events', [
+      { kind: 'escalated', node: 'b', reason: 'blocked', detail: '', said: theirs, execution: OTHER },
+      { kind: 'replanned', node: 'b', execution: w.rig.stamp, reason: 'retry_escalated', by: 'session' },
+    ]).ok, true)
+    const row = resumeLeaves(w.rig.repo, E, w.rig.stamp, readTree(w.rig.repo, E).nodes).find((l) => l.id === 'b')
+    assert.notEqual(row.next_action, 'verify', row.note)
+    w.job('implementer|b#3', (cwd) => work(cwd, { 'src/b2.txt': 'round 3\n' }, 'round 3'))
+    const again = w.relaunch()
+    again.rig.script({ [IMPL]: [done()] })
+    const out = await again.run('b')
+    assert.equal(out.outcome, 'approved', JSON.stringify(ofKind(again.rig, 'escalated', 'b')))
+    assert.ok(startsOf(again.rig, 'implementer', 'b').some((c) => c.round === 3), 'a producer round runs')
+    assert.equal(readJson(close1).head_sha, stoppedAt, "this execution's round 1 is not closed again")
+    assert.notEqual(readJson(close1).dispatch, '')
   })
 })

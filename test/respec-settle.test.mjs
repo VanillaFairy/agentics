@@ -1,6 +1,6 @@
-// test/respec-settle.test.mjs — settling a changed spec goes over the folder's latest ruled line at
-// the spec's hash: rulings an older line holds are ruled again as a fresh line, so the line the user
-// is shown is the line their approval is checked against.
+// test/respec-settle.test.mjs — settling a changed spec names the folder's latest ruled line at the
+// spec's hash: rulings an older line holds are recorded again as a fresh line, so the line a result
+// or an approval names is always the latest ruling of the text.
 //
 // Design: docs/DESIGN.md#a-changed-spec.
 
@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url'
 import { recordApproval } from '../lib/approval.mjs'
 import { compileEffort } from '../lib/compile.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
-import { respecBrief, respecRefusal, respecSettle } from '../lib/respec.mjs'
+import { respecBrief, respecSettle } from '../lib/respec.mjs'
 import { specPath } from '../lib/store.mjs'
 
 const FIXTURES = fileURLToPath(new URL('./fixtures/compile/', import.meta.url))
@@ -79,15 +79,6 @@ test('rulings an older ruled line holds are ruled again as a fresh line while a 
   assert.equal(lines.length, 3)
   assert.equal(lines.at(-1).seq, third.ruled)
   assert.deepEqual(lines.at(-1).rulings, lines.find((l) => l.seq === first.ruled).rulings)
-})
-
-test("the user's approval over the latest ruled line settles, though an older line holds the same rulings", (t) => {
-  const { repo, third } = rulingsComeBack(t)
-  assert.equal(respecRefusal(repo, E, 'api', third.ruled), null)
-  const approved = respecSettle(repo, E, 'api', { userApproved: true, over: third.ruled })
-  assert.deepEqual([approved.status, approved.ruled], ['approved', third.ruled], JSON.stringify(approved))
-  const approval = readLog(repo, E, 'ledger').entries.filter((l) => l.kind === 'approved').at(-1)
-  assert.equal(approval.ruled, third.ruled)
 })
 
 test('of two ruled lines at one hash with the same rulings, settle names the later and appends none', (t) => {

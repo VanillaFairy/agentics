@@ -1,6 +1,6 @@
 // test/fast/briefs-respec.test.mjs — pins the ruler's brief as a pure function of what respecBrief
-// read: every node to rule, every spec whole under its repo-relative path, no file to write, and the
-// guidance last.
+// read: every node and every choice of the user's to rule, the user's answers in their words, every
+// spec whole under its repo-relative path, no file to write, and the guidance last.
 //
 // Design: docs/DESIGN.md#a-changed-spec.
 
@@ -43,4 +43,20 @@ test("a node with no plan entry reads '(none)', and empty lists read '(none)'", 
   assert.match(text, /Work under it:\n\(none\)/)
   assert.match(text, /Stops that approving this text clears:\n\(none\)/)
   assert.match(text, /Its plan entry: \(none\)\. Each spec/)
+})
+
+test("the user's answers stand in their words, and each choice of theirs is a unit", () => {
+  const answers = [{ seq: 41, nodes: ['drop'], answers: [{ question: '1/2 answer e1#40 What should Sow do?', answer: 'Let it throw' }] }]
+  const text = rulerBrief({
+    ...PARTS, answers, choices: [{ unit: 'decision:D6', why: 'adds decision D6' }],
+  })
+  for (const line of [
+    '### Answer 41 (about drop)\n\n> 1/2 answer e1#40 What should Sow do?\n\nLet it throw',
+    '### decision:D6\n\nA choice of the user\'s: the change adds decision D6.',
+  ]) assert.ok(text.includes(line), line)
+  assert.ok(text.indexOf("## The user's answers") < text.indexOf('## Nodes to rule'))
+})
+
+test("with no answer recorded the answers section reads '(none)'", () => {
+  assert.match(rulerBrief(PARTS), /## The user's answers\n\n[^#]*\(none\)/)
 })

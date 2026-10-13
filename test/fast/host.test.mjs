@@ -11,7 +11,8 @@ import { delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
-  actorOf, answersIn, confirmAct, projectsDir, resolveCli, sessionExists, terminalAct, transcriptOf, verifyAnswer,
+  actorOf, answerOf, answerTo, answersIn, confirmAct, projectsDir, resolveCli, sessionExists, terminalAct, terminalAnswer, transcriptOf,
+  verifyAnswer,
 } from '../../lib/host.mjs'
 
 const FIXTURE = fileURLToPath(new URL('../fixtures/host/transcript.jsonl', import.meta.url))
@@ -343,4 +344,48 @@ test('confirmAct at a terminal asks for the token', async () => {
 test('neither a session nor a terminal is unverifiable', async () => {
   const result = await confirmAct({ token: LAND_TOKEN, option: 'Land', env: { CLAUDE_CONFIG_DIR: CONFIG }, stdinIsTTY: false, ask: neverAsk, list, isFile, read })
   refusal(result, 'answer_unverifiable')
+})
+
+const ASK_TOKEN = 'answer e1#41'
+const batchLine = (pairs) => JSON.stringify({
+  type: 'user',
+  toolUseResult: { questions: Object.keys(pairs).map((question) => ({ question })), answers: pairs },
+})
+const answering = (...lines) => ({ ...lookup, read: readerOf(lines.join('\n') + '\n') })
+
+test("an answer is read in the user's own words, every question of the latest batch naming the token", () => {
+  const got = answerTo({
+    token: ASK_TOKEN,
+    ...answering(
+      batchLine({ ['1/1 ' + ASK_TOKEN + ' Sow throws?']: 'Catch it' }),
+      batchLine({ ['1/2 ' + ASK_TOKEN + ' Sow throws?']: 'Let it throw', ['2/2 ' + ASK_TOKEN + ' Held how?']: 'Convention for now, revisit at endless v2', 'Unrelated?': 'no' }),
+    ),
+  })
+  assert.equal(got.ok, true)
+  assert.equal(got.by, 'user')
+  assert.deepEqual(got.answers, [
+    { question: '1/2 ' + ASK_TOKEN + ' Sow throws?', answer: 'Let it throw' },
+    { question: '2/2 ' + ASK_TOKEN + ' Held how?', answer: 'Convention for now, revisit at endless v2' },
+  ])
+})
+
+test('a question naming a longer token is no answer to the shorter one', () => {
+  refusal(answerTo({ token: ASK_TOKEN, ...answering(batchLine({ ['answer e1#412 x']: 'y' })) }), 'not_answered')
+})
+
+test('a typed answer at a terminal is the answer; nothing typed is none', async () => {
+  const prompts = []
+  const ask = async (p) => { prompts.push(p); return '  keep the check  ' }
+  assert.deepEqual(await terminalAnswer({ token: ASK_TOKEN, ask }), { ok: true, by: 'terminal', answers: [{ question: ASK_TOKEN, answer: 'keep the check' }] })
+  assert.ok(prompts[0].includes(ASK_TOKEN))
+  refusal(await terminalAnswer({ token: ASK_TOKEN, ask: async () => '   ' }), 'not_answered')
+})
+
+test('answerOf reads the session, else the console, else refuses', async () => {
+  const session = answering(batchLine({ [ASK_TOKEN + ' q']: 'a' }))
+  assert.deepEqual((await answerOf({ token: ASK_TOKEN, stdinIsTTY: true, ask: neverAsk, ...session })).answers, [{ question: ASK_TOKEN + ' q', answer: 'a' }])
+  const console = { env: { CLAUDE_CONFIG_DIR: CONFIG }, stdinIsTTY: true, ask: async () => 'b', list, isFile, read }
+  assert.equal((await answerOf({ token: ASK_TOKEN, ...console })).by, 'terminal')
+  refusal(await answerOf({ token: ASK_TOKEN, ...console, stdinIsTTY: false }), 'answer_unverifiable')
+  refusal(await answerOf({ token: '', ...session }), 'no_token')
 })

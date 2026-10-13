@@ -16,7 +16,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  auditGap, closeDecision, fixNotConverging, greenRoundRole, heldMutations, integrationPark, measurementOk, ownFailing, profileOf, reviewExit,
+  auditGap, closeDecision, fixNotConverging, fixWithoutProgress, greenRoundRole, heldMutations, integrationPark, measurementOk, ownFailing, profileOf, reviewExit,
   suiteFailed,
 } from '../../lib/verdict.mjs'
 import { normalizeNode } from '../../lib/tree.mjs'
@@ -341,6 +341,17 @@ test('a fix close that repeats the last one at a moved head does not converge; a
   assert.equal(fixNotConverging(previous, { failures: [{ check: 'suite', claim: 'test y fails' }] }, 'h2'), false)
   assert.equal(fixNotConverging({ ...previous, decision: { next: 'review', failures: [] } }, { failures }, 'h2'), false)
   assert.equal(fixNotConverging(null, { failures }, 'h2'), false)
+})
+
+test('a fix round made no progress only when it was sent the failures of the head it returned unmoved', () => {
+  const previous = { decision: { next: 'fix', failures: [{ check: 'suite', claim: 'test x fails' }] }, head_sha: 'h1' }
+  assert.equal(fixWithoutProgress(previous, 'h1', 'h1'), true)
+  assert.equal(fixWithoutProgress(previous, 'h1', 'h2'), false, 'the round committed')
+  assert.equal(fixWithoutProgress(previous, 'h2', 'h2'), false, 'it opened over commits its failures never judged')
+  for (const next of ['stop', 'review', 'approve']) {
+    assert.equal(fixWithoutProgress({ ...previous, decision: { next } }, 'h1', 'h1'), false, 'after a ' + next + ' it was sent no failures')
+  }
+  assert.equal(fixWithoutProgress(null, 'h1', 'h1'), false)
 })
 
 const critical = (id) => ({ id, severity: 'critical', claim: 'wrong', evidence: 'x:1', failure_scenario: 'y' })

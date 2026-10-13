@@ -1,5 +1,7 @@
-// test/respec.test.mjs — a change to a compiled spec: the brief a ruler rules it from, and what
-// its rulings settle.
+// test/respec.test.mjs — a change to a compiled spec: the brief a ruler rules it from, with the
+// user's answers and the choices of theirs the change makes as units of their own, and what its
+// rulings settle: approval by ruling or by answer, a park an answer settled by code, and the nodes
+// compile spares.
 //
 // Design: docs/DESIGN.md#a-changed-spec.
 
@@ -56,6 +58,14 @@ function ruled(repo, folder, rulings, opts) {
 const ledger = (repo, kind) => readLog(repo, E, 'ledger').entries.filter((l) => l.kind === kind)
 const statusOf = (repo, id) => readTree(repo, E).status.get(id).status
 const eventsOf = (repo, id) => readTree(repo, E).events.filter((e) => e.node === id).map((e) => e.kind)
+/** The user answers `words` about `nodes` after everything on the ledger so far; the seq of the `answered` line. */
+function answer(repo, nodes, words = 'Yes, as the spec now states it.') {
+  const asked = append(repo, E, 'ledger', { kind: 'asked', nodes })
+  const out = append(repo, E, 'ledger', { kind: 'answered', asked: asked.seqs[0], nodes, answers: [{ question: 'Is that what you want?', answer: words }], by: 'user' })
+  assert.equal(out.ok, true, JSON.stringify(out))
+  return out.seqs[0]
+}
+const ROOT_D2 = ROOT.replace('Unknown keys are an error.', 'Unknown keys are an error, named in the message.')
 const sizes = (repo) => ['nodes', 'events', 'ledger'].map((f) => readLog(repo, E, f).entries.length)
 
 test('compile keeps the text it built each folder from, by hash', () => {
@@ -126,11 +136,7 @@ test('a change some node is ruled affected by goes to the user, approved by nobo
   assert.equal(respecSettle(repo, E, 'api').ruled, out.ruled)
   assert.equal(ledger(repo, 'ruled').length, 1, 'the same rulings are recorded once')
 
-  const approved = respecSettle(repo, E, 'api', { userApproved: true })
-  assert.deepEqual([approved.status, approved.by], ['approved', 'user'])
-  assert.deepEqual(approved.parked, [{ node: 'cli', reason: 'contract_changed' }])
-  assert.equal(statusOf(repo, 'cli'), 'parked')
-  assert.equal(ledger(repo, 'approved').at(-1).ruled, out.ruled)
+  assert.equal(ledger(repo, 'approved').filter((l) => l.folder === 'api').length, 1, 'only the first approval stands')
 })
 
 test('rulings that change are a new ruled line, and an approval names the one it rests on', () => {
@@ -169,37 +175,75 @@ test('a consumer whose work has merged is still ruled', () => {
   assert.equal(respecSettle(repo, E, 'api').status, 'needs_user')
 })
 
-test('a changed decision reaches the nodes other specs state, and those are ruled by name', () => {
+test('a changed decision reaches the nodes other specs state, which are ruled by name, and is a unit of the user\'s own', () => {
   const repo = changed(null)
-  write(repo, '.', ROOT.replace('Unknown keys are an error.', 'Unknown keys are an error, named in the message.'))
+  write(repo, '.', ROOT_D2)
+  const first = respecBrief(repo, E, '.')
+  assert.deepEqual(first.nodes, ['.', 'api/types', 'decision:D2'], 'api and tuning are entries of the root spec itself')
+  assert.match(readFileSync(first.brief, 'utf8'), /Reached because it realises D2, whose text changed\./)
+  assert.deepEqual(first.parts.choices, [{ unit: 'decision:D2', why: 'changes decision D2' }])
+
+  const seq = answer(repo, ['api'])
   const brief = respecBrief(repo, E, '.')
-  assert.deepEqual(brief.nodes, ['.', 'api/types'], 'api and tuning are entries of the root spec itself')
-  assert.match(readFileSync(brief.brief, 'utf8'), /Reached because it realises D2, whose text changed\./)
-  rule(repo, brief)
+  rule(repo, brief, { 'decision:D2': { ruling: 'answered', answers: [seq] } })
   const out = respecSettle(repo, E, '.')
-  assert.equal(out.status, 'approved', JSON.stringify(out))
+  assert.deepEqual([out.status, out.by], ['approved', 'answer'], JSON.stringify(out))
   assert.ok(out.flagged.some((f) => f.node === 'api/types' && f.decision === 'D2'))
 })
 
-test('the stops an approval would clear are put to the ruler, and named on the ruled line', () => {
+test('a stop an approval would clear that is no choice of the user is put to the ruler and named on the ruled line', () => {
   const repo = changed(API_CHANGED, (r) => {
-    event(r, { kind: 'parked', node: 'api/parse', return: 'needs_decision', question: 'which tokenizer?' })
     event(r, { kind: 'escalated', node: 'api/types', reason: 'review_not_converging', detail: 'two rounds' })
+    event(r, { kind: 'parked', node: 'api/parse', return: 'needs_info', question: 'which tokenizer?' })
   })
   const { brief, out } = ruled(repo, 'api')
   assert.deepEqual(brief.clears, ['api/parse'])
-  assert.match(readFileSync(brief.brief, 'utf8'), /^- api\/parse — parked \(needs_decision\): which tokenizer\?$/m)
+  assert.deepEqual(brief.nodes, ['api', 'cli'], 'a park that is no decision or contract is no unit of its own')
+  assert.match(readFileSync(brief.brief, 'utf8'), /^- api\/parse — parked \(needs_info\): which tokenizer\?$/m)
   assert.deepEqual(out.answered, ['api/parse'])
-  assert.deepEqual(ledger(repo, 'ruled').at(-1).clears, [{ node: 'api/parse', status: 'parked', why: 'needs_decision' }])
+  assert.deepEqual(ledger(repo, 'ruled').at(-1).clears, [{ node: 'api/parse', status: 'parked', why: 'needs_info' }])
   assert.equal(statusOf(repo, 'api/types'), 'escalated', 'an escalation on an entry that did not change stands')
+})
+
+for (const why of ['needs_decision', 'contract_changed']) {
+  test(`a ${why} park the change clears is a unit of the user's, settled only by a ruling that cites their answer`, () => {
+    const repo = changed(API_CHANGED, (r) => event(r, { kind: 'parked', node: 'api/parse', return: why, question: 'which tokenizer?' }))
+    const unit = 'park:api/parse'
+    const open = respecBrief(repo, E, 'api')
+    assert.deepEqual(open.nodes, ['api', 'cli', unit])
+    rule(repo, open)
+    assert.match(respecSettle(repo, E, 'api').why, /park:api\/parse is a choice of the user's/, 'ruled unaffected, it goes back to the ruler')
+
+    const seq = answer(repo, ['api/parse'], 'Use the streaming tokenizer.')
+    const settled = respecBrief(repo, E, 'api')
+    assert.deepEqual(settled.nodes, ['api', 'cli', unit], 'an answer naming the node is ruled on, never taken on its word')
+    assert.deepEqual(settled.parts.answers.map((a) => [a.seq, a.nodes]), [[seq, ['api/parse']]])
+    rule(repo, settled, { [unit]: { ruling: 'answered', why: 'the user chose the streaming tokenizer', answers: [seq] } })
+    const out = respecSettle(repo, E, 'api')
+    assert.deepEqual([out.status, out.by, out.answered], ['approved', 'answer', ['api/parse']], JSON.stringify(out))
+    assert.deepEqual(ledger(repo, 'ruled').at(-1).answers, [seq])
+    assert.deepEqual(ledger(repo, 'approved').at(-1).answers, [seq])
+  })
+}
+
+test('of a question answered twice, only the later answer is in the brief and may be cited', () => {
+  const repo = changed(API_CHANGED)
+  const asked = append(repo, E, 'ledger', { kind: 'asked', nodes: [] }).seqs[0]
+  const answered = (words) => append(repo, E, 'ledger', { kind: 'answered', asked, nodes: [], answers: [{ question: 'q', answer: words }], by: 'user' }).seqs[0]
+  const first = answered('Postgres')
+  const second = answered('SQLite')
+  const brief = respecBrief(repo, E, 'api')
+  assert.deepEqual(brief.parts.answers.map((a) => a.seq), [second])
+  rule(repo, brief, { api: { ruling: 'answered', why: 'the user chose it', answers: [first] } })
+  assert.equal(respecSettle(repo, E, 'api').next, 'rule_it')
 })
 
 test('a stopped node that a changed decision revises is put to the ruler as a stop it clears, not called standing', () => {
   const repo = changed(null)
   event(repo, { kind: 'parked', node: 'api/types', return: 'needs_decision', question: 'what type?' })
-  write(repo, '.', ROOT.replace('Unknown keys are an error.', 'Unknown keys are an error, named in the message.'))
+  write(repo, '.', ROOT_D2)
   const brief = respecBrief(repo, E, '.')
-  assert.deepEqual([brief.nodes, brief.standing, brief.clears], [['.'], [], ['api/types']])
+  assert.deepEqual([brief.nodes, brief.standing, brief.clears], [['.', 'decision:D2', 'park:api/types'], [], ['api/types']])
   assert.match(readFileSync(brief.brief, 'utf8'), /^- api\/types — parked \(needs_decision\): what type\?$/m)
 })
 
@@ -290,13 +334,47 @@ test('an approval recorded on a ruling and not yet compiled is compiled by the n
   assert.equal(recordApproval(changed(), E, 'api', { by: 'ruling' }).ok, false, 'an approval by ruling names its ruling')
 })
 
-test('a changed decision goes to the user however its rulings read', () => {
+test('a changed decision no answer settles is never approved by ruling: unaffected is refused, affected goes to the user', () => {
   const repo = changed(null)
-  write(repo, '.', ROOT.replace('Unknown keys are an error.', 'Unknown keys are an error, named in the message.'))
-  rule(repo, respecBrief(repo, E, '.'))
-  const out = respecSettle(repo, E, '.', { checkUserBound: true })
+  write(repo, '.', ROOT_D2)
+  const brief = respecBrief(repo, E, '.')
+  rule(repo, brief)
+  const refused = respecSettle(repo, E, '.')
+  assert.deepEqual([refused.status, refused.next], ['refused', 'rule_it'])
+  assert.match(refused.why, /decision:D2 is a choice of the user's/)
+  assert.equal(ledger(repo, 'ruled').length, 0)
+
+  rule(repo, brief, { 'decision:D2': { ruling: 'affected', why: 'the message wording is the user\'s', question: 'Should the error name the key?' } })
+  const out = respecSettle(repo, E, '.')
   assert.equal(out.status, 'needs_user', JSON.stringify(out))
-  assert.ok(out.reasons.length > 0, JSON.stringify(out))
+  assert.deepEqual(out.affected.map((a) => [a.node, a.question]), [['decision:D2', 'Should the error name the key?']])
   assert.equal(approvalState(repo, E, '.').state, 'edited')
-  assert.equal(ledger(repo, 'approved').filter((l) => l.by === 'ruling').length, 0, 'nothing is approved by ruling')
+  assert.equal(ledger(repo, 'approved').filter((l) => l.by === 'ruling' || l.by === 'answer').length, 0, 'nothing is approved')
+})
+
+test('an answered ruling cites one or more of the answers the brief held', () => {
+  const repo = changed()
+  const seq = answer(repo, ['cli'])
+  const brief = respecBrief(repo, E, 'api')
+  for (const answers of [[], [seq + 50], [seq, seq + 50]]) {
+    rule(repo, brief, { cli: { ruling: 'answered', answers } })
+    const out = respecSettle(repo, E, 'api')
+    assert.deepEqual([out.status, out.next], ['refused', 'rule_it'], JSON.stringify(answers))
+    assert.match(out.why, /cli is ruled answered/)
+  }
+  assert.equal(ledger(repo, 'ruled').length, 0)
+})
+
+test('a node ruled answered is spared the parks a re-approval raises, as one ruled unaffected is', () => {
+  const dispatched = (r) => event(r, { kind: 'dispatched', node: 'cli', role: 'implementer', round: 1 })
+  const unaffected = ruled(changed(API_CHANGED, dispatched), 'api').out
+
+  const repo = changed(API_CHANGED, dispatched)
+  const seq = answer(repo, ['cli'])
+  const { out } = ruled(repo, 'api', { cli: { ruling: 'answered', answers: [seq] } })
+  assert.deepEqual([out.status, out.by], ['approved', 'answer'], JSON.stringify(out))
+  assert.deepEqual([out.spared, out.parked], [unaffected.spared, unaffected.parked])
+  assert.deepEqual(out.spared, [{ node: 'cli', reason: 'contract_changed' }])
+  assert.equal(statusOf(repo, 'cli'), 'active', 'its dispatch stands')
+  assert.deepEqual(ledger(repo, 'approved').at(-1).answers, [seq])
 })

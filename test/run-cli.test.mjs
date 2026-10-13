@@ -63,7 +63,7 @@ const kinds = (repo, run) => readRunLog(repo, run).entries.map((e) => e.kind)
 const entries = (repo, run) => readRunLog(repo, run).entries
 
 /** A program module named `name`: `fn` gives the result's own fields; every result carries coverage. */
-function program(fn = async () => ({}), { name = 'survey', ARGS = {}, scopeOf = () => ({}), attachedOnly } = {}) {
+function program(fn = async () => ({}), { name = 'survey', ARGS = {}, scopeOf = () => ({}) } = {}) {
   const seen = { calls: [] }
   const mod = {
     ARGS, scopeOf,
@@ -73,7 +73,6 @@ function program(fn = async () => ({}), { name = 'survey', ARGS = {}, scopeOf = 
       return { coverage: coverageOf({}), ...r }
     },
   }
-  if (attachedOnly) mod.attachedOnly = attachedOnly
   return { mod, seen }
 }
 
@@ -817,26 +816,6 @@ test('a detached child that does not start is launch_failed', async (t) => {
   assert.equal(seen.calls.length, 0)
   const [run] = runDirs(repo)
   assert.deepEqual(kinds(repo, run), ['fault', 'ended'])
-})
-
-test('a program that runs attached only refuses --detach', async (t) => {
-  const repo = makeRepo(t)
-  const d = detacher()
-  const asked = []
-  const { mod } = program(async () => ({}), {
-    ARGS: { user_approved: { kind: 'bool' } },
-    attachedOnly: (args) => { asked.push(args); return args.user_approved === true },
-  })
-  const refused = await start(repo, ['survey', '--user-approved', '--detach'], mod, { spawnChild: d.spawnChild })
-  assert.equal(refused.ok, false)
-  assert.equal(refused.error.kind, 'attached_only')
-  assert.equal(d.seen.length, 0)
-  assert.deepEqual(runDirs(repo), [])
-  const detached = await start(repo, ['survey', '--detach'], mod, { spawnChild: d.spawnChild })
-  assert.equal(detached.ok, true)
-  assert.equal(detached.pid, 4242)
-  assert.equal(d.seen.length, 1)
-  assert.ok(asked.some((a) => a.user_approved === false))
 })
 
 test('a child runs the program under its run with the arguments its claim recorded', async (t) => {

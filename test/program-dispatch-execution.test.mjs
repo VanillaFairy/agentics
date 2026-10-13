@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { actToken, recordApproval } from '../lib/approval.mjs'
+import { recordApproval } from '../lib/approval.mjs'
 import { compileEffort } from '../lib/compile.mjs'
 import { renderMessage } from '../lib/conversation.mjs'
 import { executionLog, readLog, runLog } from '../lib/ledger.mjs'
@@ -704,9 +704,7 @@ const read = (name) => readFileSync(join(FIXTURES, name), 'utf8').replace(/\r\n/
 const ROOT = read('root.md')
 const API = read('api.md')
 const WORDING = API.replace('`load(path)`, then `parse(text)`.', '`load(path)` returns a frozen object.')
-const AFFECTED = { cli: { ruling: 'affected', why: 'it mutates what load returns', question: 'Should the CLI copy the config before it edits it?' } }
 const rulerSteps = (...steps) => new Proxy({}, { get: (_, key) => (String(key).startsWith('ruler||') ? steps : undefined) })
-const APPROVE_RUN = 'approve-run'
 
 function writeSpec(repo, id, text) {
   mkdirSync(dirname(specPath(repo, E, id)), { recursive: true })
@@ -723,26 +721,15 @@ test('the rule program reads its journal through stepped', async (t) => {
   writeSpec(rig.repo, 'api', WORDING)
   const brief = respecBrief(rig.repo, E, 'api')
   assert.equal(brief.status, 'brief', JSON.stringify(brief))
-  const rulings = { rulings: brief.nodes.map((node) => ({ node, ruling: 'unaffected', why: 'nothing it uses moved', question: '', fix: '', ...AFFECTED[node] })) }
+  const rulings = { rulings: brief.nodes.map((node) => ({ node, ruling: 'unaffected', why: 'nothing it uses moved', question: '', fix: '' })) }
 
-  const args = (user_approved) => ({ effort: E, folder: 'api', user_approved })
-  const first = await rule(scoped(rig.relaunch(rulerSteps({ output: rulings })).ctx, 'nest'), args(false))
-  assert.equal(first.status, 'needs_user', JSON.stringify(first))
-  const token = actToken({ act: 'approve', folder: 'api', hash: brief.hash, seq: first.ruled })
-
-  const asks = []
-  const approving = () => scoped(programContext({
-    ...rig.ctx, run: APPROVE_RUN, log: runLog(rig.repo, APPROVE_RUN), dir: runDir(rig.repo, APPROVE_RUN), execution: APPROVE_RUN,
-    runAgent: () => { throw new Error('a user-approved rule run dispatches nothing') },
-    env: {}, stdinIsTTY: true, ask: async (prompt) => { asks.push(prompt); return token },
-  }), 'nest')
-
-  const approved = await rule(approving(), args(true))
-  assert.equal(approved.status, 'approved', JSON.stringify(approved))
-  assert.equal(asks.length, 1)
-  const again = await rule(approving(), args(true))
-  assert.equal(asks.length, 1, 'a relaunch asks nothing')
-  assert.deepEqual(again, approved)
+  const args = { effort: E, folder: 'api' }
+  const first = await rule(scoped(rig.relaunch(rulerSteps({ output: rulings })).ctx, 'nest'), args)
+  assert.equal(first.status, 'approved', JSON.stringify(first))
+  const relaunched = rig.relaunch({})
+  const again = await rule(scoped(relaunched.ctx, 'nest'), args)
+  assert.deepEqual(again, first)
+  assert.equal(relaunched.calls.length, 0, 'a settled spec dispatches nothing')
 })
 
 // --- scoped ----------------------------------------------------------------------------------

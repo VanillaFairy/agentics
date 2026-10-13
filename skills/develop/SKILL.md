@@ -66,8 +66,8 @@ landing it. Design: `docs/DESIGN.md#execution-modes`, `docs/DESIGN.md#execution`
   items. Its state is derived on read: **standing** (no anchor changed, or it was re-judged as
   holding), **suspect** (an anchor changed and nobody has judged the change), **stale** (judged as
   failing, expired, or resting on a stale item).
-- **park**: a node stops and waits for the user. The answer is a re-spec: edit the spec that owns
-  the fault, approve it again, recompile.
+- **park**: a node stops and waits for the user. The answer, recorded once, is a re-spec: edit the
+  specs it reaches, have each ruled against it, recompile.
 
 **The laws.** L1: honest state. L2: states end work, counts don't. L3: separate judges. L4: the
 user owns decisions and their branch. **The principles.** P1: fidelity at the chosen level, then
@@ -267,7 +267,8 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/spec.mjs" check --repo . --effort <e> --folder .
 Show the spec to the user in full and ask with `AskUserQuestion`, the `token` that
 `node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" state --repo . --effort <e> --folder .` prints in the
 question's own text and exactly the options `Approve` and `Change it`, nothing added to either
-label. A change is an edit and a new ask, with the token `state` prints then. On `Approve`:
+label. A change is an edit and a new ask, with the token `state` prints then. While `state` prints
+`problems` its token is empty: fix them before asking. On `Approve`:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" approve --repo . --effort <e> --folder .
@@ -406,8 +407,18 @@ and what it left undone.
 
 **c. Parked nodes** — `{id, return, said}`, the question on the node's card (step 0). Ask the
 user each question, one topic at a time,
-with your recommendation marked `(Recommended)`. Never answer for them. **Every answer is a
-re-spec**: edit the spec that owns the fault, have the change ruled (below), relaunch.
+with your recommendation marked `(Recommended)`. Never answer for them. **The user answers once.**
+Open the question first; it prints `asked` and the `token` every question of that one
+`AskUserQuestion` call carries in its own text. Record the answer right after:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/answers.mjs" ask --repo . --effort <e> --node <id> [--node <id>…]
+node "${CLAUDE_PLUGIN_ROOT}/lib/answers.mjs" record --repo . --effort <e> --asked <asked>
+```
+
+The recorded answer is the user's word on every spec it reaches: never ask them to approve what
+they answered. **Every answer is a re-spec**: carry it into every spec it reaches (the owner of the
+fault, its parent, a child or a consumer whose text it decides), have each ruled (below), relaunch.
 
 | `return` | the spec to edit |
 |---|---|
@@ -420,8 +431,8 @@ re-spec**: edit the spec that owns the fault, have the change ruled (below), rel
 | `contract_drift` | merged work touched a contract the node consumes, and the planner could not take it: no ruler could rule, work already stood on the node's plan when it was ruled affected, or its replan faulted. The consumer's entry: the user rules it unaffected (then clear it with `retry` (b) and edit nothing), re-designs it, or re-slices it |
 | `spec_changed` | a folder you wrote was re-approved while work under it was under way, and no ruling found that work untouched: the user rules whether the dispatched work still stands, and re-specs what does not. A folder develop's planner wrote never reaches you with this return: the run hands it back to the planner, which re-derives it |
 
-**Each spec you edited is ruled before anyone is asked to approve it**, a parent before its child,
-by the `rule` program: read `respec.md` beside this skill and follow it.
+**Each spec you edited is ruled against the user's answers**, a parent before its child, by the
+`rule` program: read `respec.md` beside this skill and follow it.
 
 A park no re-spec cleared (a `contract_drift` ruled unaffected) is cleared with `retry` (b). Then
 relaunch (step 3).

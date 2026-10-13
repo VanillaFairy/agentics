@@ -273,9 +273,9 @@ test('drafts: an attached run writes its result with coverage, run and cost', as
 // ------------------------------------------------------------------ rule
 
 test('rule: every flag resolves', async (t) => {
-  const { repo, out } = await attached(t, 'rule', ['--effort', 'e1', '--folder', '.', '--user-approved'], { setup: withSpec })
+  const { repo, out } = await attached(t, 'rule', ['--effort', 'e1', '--folder', '.'], { setup: withSpec })
   assert.equal(out.ok, true, JSON.stringify(out))
-  assert.deepEqual(pick(readJson(runJsonPath(repo, out.run)).args, ['effort', 'folder', 'user_approved']), { effort: 'e1', folder: '.', user_approved: true })
+  assert.deepEqual(pick(readJson(runJsonPath(repo, out.run)).args, ['effort', 'folder']), { effort: 'e1', folder: '.' })
 })
 
 test('rule: the run is claimed on its effort and folder', async (t) => {

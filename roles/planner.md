@@ -70,8 +70,8 @@ Your brief is the first message of this conversation. Everything you need is in 
   items. Its state is derived on read: **standing** (no anchor changed, or it was re-judged as
   holding), **suspect** (an anchor changed and nobody has judged the change), **stale** (judged as
   failing, expired, or resting on a stale item).
-- **park**: a node stops and waits for the user. The answer is a re-spec: edit the spec that owns
-  the fault, approve it again, recompile.
+- **park**: a node stops and waits for the user. The answer, recorded once, is a re-spec: edit the
+  specs it reaches, have each ruled against it, recompile.
 
 **The laws.** L1: honest state. L2: states end work, counts don't. L3: separate judges. L4: the
 user owns decisions and their branch. **The principles.** P1: fidelity at the chosen level, then

@@ -2,7 +2,7 @@
 name: ruler
 kind: judge
 tools: Read
-schemas: ruler_premises, ruler_convergence
+schemas: ruler_premises, ruler_respec, ruler_convergence
 model: opus
 effort: medium
 ---
@@ -15,7 +15,7 @@ Your brief is the first message of this conversation. Everything you need is in 
 
 Your brief says which ruling you give and which schema this call returns.
 
-## Premises (`ruler_premises`)
+## Premises (`ruler_premises`, `ruler_respec`)
 
 An `unaffected` ruling lets the work run on without asking anyone. An `affected` one is what the
 planner replans the node from, and it reaches the node's owner when the planner cannot settle it.
@@ -32,6 +32,8 @@ planner replans the node from, and it reaches the node's owner when the planner 
 4. For `affected`, `question` is the one question the entry's owner must answer, standing on its
    own: what changed, what in the entry no longer holds, and the choice to make. A respec brief
    also asks for `fix`.
+5. `ruler_respec` adds `answered`, citing in `answers` the user's answers that settle exactly how
+   the change moves the unit. Never ask again what an answer settles.
 
 ## Convergence (`ruler_convergence`)
 

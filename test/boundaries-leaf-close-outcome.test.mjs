@@ -6,7 +6,7 @@
 //   producerOutcome  (pure) the round's status — an auditor's return reads `done`, whatever it
 //                    carries — and the outcome of each status, in the spec's order: held, park,
 //                    escalation, route to the planner or park, needs_tests, declined,
-//                    fix_without_commits, measure
+//                    measure
 //   leafClose        before measuring: a role fault, a park, a route, needs_tests and a decline
 //                    answered with a message
 //
@@ -25,7 +25,7 @@ import { greenRoundRole } from '../lib/verdict.mjs'
 import { root } from './harness/boundary-fixture.mjs'
 import {
   SLOW, world, open, commit, stored, close, run, recs, msgs, sizes, observed, rec, DONE, A_FILES, lf, planner,
-  tdd, R_SURVIVES, cycle, answered,
+  tdd, R_SURVIVES, cycle, answered, crit, claimsOf, stopOf,
 } from './harness/leaf-close-world.mjs'
 
 // ================================================================== producerOutcome (pure)
@@ -37,6 +37,7 @@ const GREEN = node({ id: 'g', rigor: 'tdd-pair', role: 'green' })
 const AUDIT = node({ id: 'au', rigor: 'tdd-triad', role: 'audit' })
 const AUDITOR_RETURN = { mutations: [], units: [], text: 'looked at it' }
 const TEXT = 'the words the producer returned'
+const FAIL = "node -e 'process.exit(1)'"
 
 const po = (o) => producerOutcome({ leaf: PLAIN, role: 'implementer', round: 1, ret: { status: 'done', text: TEXT }, dispatch: 'd7', ...o })
 
@@ -196,38 +197,9 @@ test("declined from a green's implementer escalates", () => {
   assert.deepEqual(out.records, [escalated('g', 'declined', '', 'd7')])
 })
 
-test("an implementer's later round that moved nothing escalates fix_without_commits", () => {
-  const out = po({ round: 2, head_before: 'h1', head: 'h1' })
-  assert.equal(out.next, 'stop')
-  assert.equal(out.records.length, 1)
-  assert.equal(out.records[0].kind, 'escalated')
-  assert.equal(out.records[0].fields.node, 'a')
-  assert.equal(out.records[0].fields.reason, 'fix_without_commits')
-  assert.equal(out.records[0].fields.said, 'd7')
-})
-
-test("an implementer's later round that moved nothing, opened over commits made by hand, is measured", () => {
-  assert.equal(po({ round: 2, head_before: 'h1', head: 'h1', opened_by_hand: true }).next, 'measure')
-})
-
-test("an implementer's first round that moved nothing is measured", () => {
-  assert.equal(po({ round: 1, head_before: 'h1', head: 'h1' }).next, 'measure')
-})
-
-test("a test-author's later round is measured though the head has not moved: its files are committed for it", () => {
-  assert.equal(po({ leaf: GREEN, role: 'test-author', round: 2, red: 'r', head_before: 'h1', head: 'h1' }).next, 'measure')
-})
-
-test("an implementer's later round whose head moved, or with no head_before given, is measured", () => {
-  assert.equal(po({ round: 2, head_before: 'h1', head: 'h2' }).next, 'measure')
-  assert.equal(po({ round: 2, head_before: '', head: '' }).next, 'measure')
-})
-
-test("an earlier status in the order wins over fix_without_commits", () => {
-  const still = { round: 2, head_before: 'h1', head: 'h1' }
-  assert.deepEqual(po({ ...still, ret: { status: 'blocked', text: TEXT } }).records, [escalated('a', 'blocked', '', 'd7')])
-  assert.deepEqual(po({ ...still, ret: { status: 'needs_tests', text: TEXT } }).records, [escalated('a', 'needs_tests', '', 'd7')])
-  assert.equal(po({ ...still, author: 'planner', ret: routedReturn('decompose') }).next, 'route')
+test("an implementer's round is measured whether it moved or not: no status alone escalates a round with no commits", () => {
+  for (const round of [1, 2, 3]) assert.equal(po({ round }).next, 'measure')
+  assert.equal(po({ leaf: GREEN, role: 'test-author', round: 2, red: 'r' }).next, 'measure')
 })
 
 // ================================================================== before measuring
@@ -365,13 +337,27 @@ describe('leaf-close before it measures', { concurrency: 4 }, () => {
     assert.equal(msgs(c.w, 'declined', 'au').length, 0, 'a decline of surviving mutations is no message')
   })
 
-  test('an implementer round that moved nothing is escalated fix_without_commits, said the dispatch, nothing measured', SLOW, async (t) => {
+  test('an implementer round that moved nothing and was sent no failures of its head is measured, and approved when it passes', SLOW, async (t) => {
     const { w, o } = tdd(t)
     const first = commit(o.worktree, A_FILES, 'Add a')
+    const { out } = await run(w, { node: 'a', role: 'implementer', round: 2, ret: DONE, base_sha: o.base_sha, head_before: first })
+    assert.equal(out.decision.next, 'approve', JSON.stringify(out.decision))
+    assert.deepEqual(out.stops, [])
+    assert.ok(observed(w, 'a').some((l) => l.head_sha === first))
+  })
+
+  test('an implementer round sent the failures of the head it returned unmoved escalates fix_without_commits with the measured failures', SLOW, async (t) => {
+    const { w, o } = tdd(t, { acceptance: crit('a', FAIL) })
+    const first = commit(o.worktree, A_FILES, 'Add a')
+    const one = await run(w, { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
+    assert.equal(one.out.decision.next, 'fix', JSON.stringify(one.out.decision))
     const { out, dispatch } = await run(w, { node: 'a', role: 'implementer', round: 2, ret: DONE, base_sha: o.base_sha, head_before: first })
     assert.equal(out.decision.next, 'stop')
     assert.deepEqual(out.stops.map((s) => [s.id, s.status, s.reason, s.said]), [['a', 'escalated', 'fix_without_commits', dispatch]])
-    assert.equal(observed(w, 'a').length, 0)
+    const stop = recs(w, 'escalated', 'a').find((e) => e.reason === 'fix_without_commits')
+    for (const claim of claimsOf(out)) assert.ok(stop.detail.includes(claim), 'the escalation carries ' + claim)
+    assert.ok(claimsOf(out).length > 0)
+    assert.equal(stopOf(rec(w, 'a', 'implementer', 2)), 'completed', 'the head was measured')
   })
 
   test('an implementer round that moved nothing over commits made by hand since the round before closed is measured', SLOW, async (t) => {

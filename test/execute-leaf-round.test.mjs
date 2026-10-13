@@ -170,7 +170,7 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.equal(approvals(w.rig).length, 0)
   })
 
-  test('a fix round with no commits escalates fix_without_commits', T, async (t) => {
+  test('a fix round that returns the head it was sent failures for unmoved, still failing, escalates fix_without_commits with them', T, async (t) => {
     const w = world(t)
     w.job('implementer|b#1', (cwd) => work(cwd, { 'src/b.txt': 'no\n' }, 'first try'))
     w.rig.script({ [IMPL]: [done(), done('nothing to do')] })
@@ -178,6 +178,9 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.equal(out.outcome, 'stopped')
     const stops = ofKind(w.rig, 'escalated', 'b')
     assert.deepEqual(stops.map((e) => e.reason), ['fix_without_commits'])
+    const [sent] = messages(w.rig, 'producer:b', 'failures')
+    assert.ok(sent.payload.failures.length > 0)
+    for (const f of sent.payload.failures) assert.ok(stops[0].detail.includes(f.claim), 'the escalation carries ' + f.claim)
     const second = startsOf(w.rig, 'implementer', 'b')[1]
     assert.equal(stops[0].said, second.dispatch, "said names the fix round's dispatch")
     assert.equal(stops[0].said, keyOf('b', 'implementer', 'producer:b', 2))

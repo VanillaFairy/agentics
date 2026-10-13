@@ -128,23 +128,27 @@ of findings from a reader who looked at nothing is not a pass.
 ### L4 — The user owns decisions and their branch
 
 The user is the only author of design decisions; an unanswered recommendation is not adopted, and
-no replan may alter a decision the user made. Only the user gives a spec its first approval; a
-later change to an approved spec is approved without them only when an independent ruling finds
-that it moves nothing it reaches ([A changed spec](#a-changed-spec)), and the decisions in it stay
-the user's own words. The user's branch and working tree change only by their explicit act: an
-inline task edits only the files it was asked to edit; dispatched work happens on branches and
-worktrees the framework owns and reaches the user's branch only at landing, on their explicit go,
-with no open escalation.
+no replan may alter a decision the user made. The user answers a question once: what they chose is
+recorded in their own words, and a choice they made is never put to them again. Only the user gives
+a spec its first approval; a later change to an approved spec is approved without a further act of
+theirs only when an independent ruling finds that everything it moves either is not moved at all or
+is settled by an answer they recorded ([A changed spec](#a-changed-spec)). The user's branch and
+working tree change only by their explicit act: an inline task edits only the files it was asked to
+edit; dispatched work happens on branches and worktrees the framework owns and reaches the user's
+branch only at landing, on their explicit go, with no open escalation.
 
-*Enforced by:* `verifyAnswer` in `lib/host.mjs`, which `approve`, `rule --user-approved`,
-`land --action merge` (`landAct`) and `adopt --action act` (`adoptAct`) call, and which refuses unless the user's answer chose that act for that
-folder or effort at that hash ([The user's word](#the-users-word)); `respecSettle` in
-`lib/respec.mjs`, which approves a change without the user only when every ruling on it is
-`unaffected` and the change adds or alters no Decisions row and no contract and clears no
-`needs_decision` or `contract_changed` park; `decisionProblems` in `lib/tree.mjs`, which admits a
-decision only from compile, as the approved copy states it, and refuses a replan that changes a
-contract or drops a realised decision; the runner's confinement of every agent to its worktree,
-its paths and its commands, and its watch on the user's checkout
+*Enforced by:* `verifyAnswer` in `lib/host.mjs`, which `approve`, `land --action merge`
+(`landAct`) and `adopt --action act` (`adoptAct`) call, and which refuses unless the user's answer
+chose that act for that folder or effort at that hash ([The user's word](#the-users-word));
+`answerTo` in `lib/host.mjs`, through which `lib/answers.mjs record` keeps an answer only as the
+session's transcript records it; `respecSettle` in `lib/respec.mjs`, which approves a change
+without a further act of the user's only when no unit is ruled `affected`, and for which each of
+the user's choices the change makes — a Decisions row added, changed or removed, a contract a
+provider changed, a `needs_decision` or `contract_changed` park cleared — is a unit no ruling may
+call `unaffected`, settled only by an `answered` ruling citing an answer the brief held; `decisionProblems` in `lib/tree.mjs`,
+which admits a decision only from compile, as the approved copy states it, and refuses a replan
+that changes a contract or drops a realised decision; the runner's confinement of every agent to
+its worktree, its paths and its commands, and its watch on the user's checkout
 ([The agent runner](#the-agent-runner)); `lib/verify.mjs`, which refuses to run outside
 a linked worktree; `land`, which refuses over an open escalation, a park or a dirty tree.
 
@@ -290,8 +294,8 @@ thing in every prompt.
   items. Its state is derived on read: **standing** (no anchor changed, or it was re-judged as
   holding), **suspect** (an anchor changed and nobody has judged the change), **stale** (judged as
   failing, expired, or resting on a stale item).
-- **park**: a node stops and waits for the user. The answer is a re-spec: edit the spec that owns
-  the fault, approve it again, recompile.
+- **park**: a node stops and waits for the user. The answer, recorded once, is a re-spec: edit the
+  specs it reaches, have each ruled against it, recompile.
 
 **The laws.** L1: honest state. L2: states end work, counts don't. L3: separate judges. L4: the
 user owns decisions and their branch. **The principles.** P1: fidelity at the chosen level, then
@@ -328,9 +332,8 @@ user ⇄ session ── skills: design, develop, task, investigate, challenge-id
 A session is where the user is: it asks, it shows, it edits a spec with the user, and it calls
 lib. A program is where the work is orchestrated: it never asks the user a question; a question for
 the user becomes a park or an escalation the session's watch picks up ([Progress](#progress)), and
-`rule --user-approved` only confirms a word the user already gave, read from the starting session's
-transcript or typed back at the console ([The user's word](#the-users-word)). An
-agent is where judgment happens, and nowhere else.
+an answer the user gave reaches a program only as the `answered` ledger line the session recorded
+([The user's word](#the-users-word)). An agent is where judgment happens, and nowhere else.
 
 ### Programs
 
@@ -410,8 +413,7 @@ refuses `missing_arg`; a value its kind refuses, an unknown flag, a flag without
 stray word refuse `bad_arg`; a name that resolves to nothing refuses `unknown_<kind>`, and a ref no
 commit answers to `unknown_ref`. The CLI also refuses an unknown program (`unknown_program`), a
 host it cannot find (`host_missing`), a live run over the same scope (`run_live`), a launch that
-failed (`launch_failed`), and `--detach` on arguments that take the user's word at the console
-(`attached_only`: `rule --user-approved`). `--repo` defaults to the working directory and `--root`
+failed (`launch_failed`). `--repo` defaults to the working directory and `--root`
 to `--repo`. Every agent call goes through the production runner built on the main checkout, so
 its watch reads the user's checkout wherever the run was started.
 
@@ -748,35 +750,33 @@ show per thread what resuming cost.
 
 ### The user's word
 
-Three acts are the user's alone: approving a spec — its first approval, or a ruled change the rulings
-found affected something — landing, and adopting work done outside an execution ([Outside
-work](#outside-work)). Each is a lib call the session makes after it asked the
-user, and each checks the asking. The question must contain the act's token, which a call the
-session reads first prints: `lib/approval.mjs state` prints `approve <folder>@<hash8>` for a first
-approval, the `rule` run's `needs_user` result carries `approve <folder>@<hash8>#<seq>` for a ruled
-change (`seq` the `ruled` line the user was shown), and `lib/boundary.mjs land --action check`
-prints `land <effort>@<head8>` for landing, and `lib/boundary.mjs adopt --action check` prints
-`adopt <folder>@<digest8>` for adopting, the digest being that of the normalized mapping and the
-folder branch's head. The calls are `lib/approval.mjs approve`, `run.mjs rule
---user-approved` (which settles over the recorded `ruled` line and dispatches nothing),
-`lib/boundary.mjs land --action merge` and `lib/boundary.mjs adopt --action act`. Each confirms the
-word in its own CLI layer through `confirmAct` in `lib/host.mjs` — `approveAct` in
-`lib/approval.mjs`, `landAct` and `adoptAct` in `lib/boundary.mjs`, the `rule` program — and an act whose token is empty (a folder with no spec has
-none) refuses `no_token` before any word is read. `recordApproval` and `land`, the in-process
-functions that settling a ruled change and the tests call, take no word. Before anyone is asked,
-`approve` refuses a spec it could not record — one with problems or an open blocking question —
-and `rule --user-approved` a ruling that no longer settles ([A changed spec](#a-changed-spec));
-`land --action merge` confirms the word first and refuses an open escalation, a parked node or a
-dirty tree after it. `approve` and `land --action merge` read their token afresh and confirm the
-word for it, so a spec edited, or an effort branch moved, after the session read the token it asked
-with leaves no question naming the act's token and refuses `not_approved`: the session reads the
-token again and asks again. Each act is bound to what its token named: `approve` records the
-approval at the hash its token named and refuses (`spec_changed`) a spec edited while the word was
-being confirmed, and `land --action merge` merges the effort head its token named, never the branch
-as it stands when the merge runs, and refuses (`head_moved`) a branch that moved meanwhile;
-`landed` records `by`. `adopt --action act` writes what the digest its token named described, and
-refuses (`head_moved`) when the folder branch or a branch the mapping names moved while the word
-was being confirmed; every record of the batch carries `by`.
+Three acts are the user's alone: a spec's first approval, landing, and adopting work done outside
+an execution ([Outside work](#outside-work)). Each is a lib call the session makes after it asked
+the user, and each checks the asking. The question must contain the act's token, which a call the
+session reads first prints: `lib/approval.mjs state` prints `approve <folder>@<hash8>`,
+`lib/boundary.mjs land --action check` prints `land <effort>@<head8>` for landing, and
+`lib/boundary.mjs adopt --action check` prints `adopt <folder>@<digest8>` for adopting, the digest
+being that of the normalized mapping and the folder branch's head. The calls are
+`lib/approval.mjs approve`, `lib/boundary.mjs land --action merge` and `lib/boundary.mjs adopt
+--action act`. Each confirms the word in its own CLI layer through `confirmAct` in `lib/host.mjs` —
+`approveAct` in `lib/approval.mjs`, `landAct` and `adoptAct` in `lib/boundary.mjs` — and an act
+whose token is empty (a folder with no spec has none) refuses `no_token` before any word is read.
+`recordApproval` and `land`, the in-process functions that settling a ruled change and the tests
+call, take no word. Before anyone is asked, `approve` refuses a spec it could not record — one with
+problems or an open blocking question — or one the compile of which, previewed as approved, refuses
+(`compile_refused`); `state` prints such a spec's `problems` and an empty token, so the user is
+never asked to approve a text that has to change before it builds. `land --action merge` confirms
+the word first and refuses an open escalation, a parked node or a dirty tree after it. `approve`
+and `land --action merge` read their token afresh and confirm the word for it, so a spec edited, or
+an effort branch moved, after the session read the token it asked with leaves no question naming
+the act's token and refuses `not_approved`: the session reads the token again and asks again. Each
+act is bound to what its token named: `approve` records the approval at the hash its token named
+and refuses (`spec_changed`) a spec edited while the word was being confirmed, and `land --action
+merge` merges the effort head its token named, never the branch as it stands when the merge runs,
+and refuses (`head_moved`) a branch that moved meanwhile; `landed` records `by`. `adopt --action
+act` writes what the digest its token named described, and refuses (`head_moved`) when the folder
+branch or a branch the mapping names moved while the word was being confirmed; every record of the
+batch carries `by`.
 
 - **From a session** (`CLAUDE_CODE_SESSION_ID` set), `verifyAnswer` in `lib/host.mjs` reads that
   session's transcript and refuses unless the latest answer to a question containing the token
@@ -792,8 +792,24 @@ was being confirmed; every record of the batch carries `by`.
 - **Anything else refuses** (`answer_unverifiable`). A session's tool shells and every agent run
   with standard input redirected, so neither can take the terminal's path.
 
-**What this guards against:** a misread answer, a stale hash, the wrong folder, an affected set the
-user never saw, a session approving on its own say-so. It does not stop a session that forges its
+**Answers.** Every other question the user is asked during an effort — a park, a conflict a
+change raised, a choice at the Grill that moves a spec compiled before — is answered once, in the
+user's own words, and kept. `lib/answers.mjs ask --effort <e> [--node <id>…]` opens it: an `asked`
+ledger line naming the nodes whose stop it settles (a node not in the tree refuses `unknown_node`),
+and the token `answer <effort>#<seq>` every question of that one `AskUserQuestion` call carries in
+its text. `lib/answers.mjs record --effort <e> --asked <seq>` reads the answer back through
+`answerOf` in `lib/host.mjs`: from a session, every question of the latest result whose question
+holds the token, with what the user chose or typed (`answerTo`; none refuses `not_answered`); at
+the user's own terminal, one line typed in answer to the token's prompt (`terminalAnswer`); from
+anywhere else, `answer_unverifiable`. It is kept as `answered {asked, nodes, answers[{question,
+answer}], by}`; the same batch recorded again appends nothing, an answer to the question asked
+again replaces the earlier one, and a question never opened refuses `unknown_question`. A changed spec is ruled against every answer recorded since its latest
+approval ([A changed spec](#a-changed-spec)), so the session that asked never re-asks for approval:
+it carries the answer into every spec it reaches, and the rulings decide what, if anything, is
+still open.
+
+**What this guards against:** a misread answer, a stale hash, the wrong folder, an answer the user
+never gave, a session approving on its own say-so. It does not stop a session that forges its
 own transcript or fakes a console; the host contract test pins the transcript's shape and the
 variable ([Self-checks](#self-checks)).
 
@@ -1039,7 +1055,7 @@ approved, so the two cannot disagree about a decision.
 ### A changed spec
 
 A spec that was compiled and is then edited — an answer to a parked question written into it, a
-criterion corrected — is ruled before anyone is asked to approve it. The `rule` program has
+criterion corrected — is ruled, and the user is never asked to approve it. The `rule` program has
 `lib/respec.mjs` brief it inline, the text `rulerBrief`'s (`lib/briefs/respec.mjs`): it previews the
 compile of the text as it stands (`compileEffort` with `preview`, which reads the edited spec as
 approved, validates the batch and writes nothing) and writes one brief: the change as a diff against
@@ -1049,56 +1065,55 @@ node, ruled with the work dispatched or merged under it and with every stop its 
 revision, wherever it is stated — each with its question. Every consumer of a contract it provides,
 merged ones included, and every node realising a decision whose text changed is a node of its own
 when another spec states it. Any other node that already waits on the user is listed and not ruled.
-The `rule` program hands the brief, with the repository's guidance, to one ruler as its prompt,
-pointing it at no file; the ruler returns a ruling per node — `unaffected`, or `affected` with the
+The brief also holds, in the user's words, every answer recorded on the effort since the spec's
+latest approval ([The user's word](#the-users-word)), and puts each of the user's choices the change
+makes to the ruler as a unit of its own (`userBound`): `decision:<id>` for a Decisions row added,
+changed or removed, `contract:<entry>` for the contracts an entry provides changed, `park:<node>`
+for a `needs_decision` or `contract_changed` park it clears. Of a question answered more than once,
+only the latest answer is held. The `rule` program hands the brief, with the repository's guidance, to one ruler as its
+prompt, pointing it at no file; the ruler returns a ruling per unit (`ruler_respec`) — `unaffected`;
+`answered`, citing the answers that settle how the change moves it; or `affected`, with the
 question its owner must answer, and a `fix` when the new text itself dictates the edit — and the
-program writes the rulings to the brief's rulings file and settles. Rulings that settling refuses go
+program writes the rulings to the brief's rulings file and settles. A choice of the user's ruled
+`unaffected`, or an `answered` ruling citing no answer the brief held, is refused. Rulings that settling refuses go
 back to the ruler's session as a `refusals` message, until a refusal repeats.
 
-Rulings are bound to a **basis**: a digest of the text ruled, the nodes and their revisions, the
-other specs the brief names, the work under the spec and the stops it would clear. The brief and
+Rulings are bound to a **basis**: a digest of the text ruled, the units and the nodes' revisions,
+the other specs the brief names, the work under the spec, the stops it would clear and the answers
+it was ruled against. The brief and
 the rulings file are named by it, so when any of that moves on there are no rulings to settle
 from and the change is briefed and ruled again. Settling (`respecSettle`, as the `rule` program
 runs it) takes the rulings only whole and records them as a `ruled` ledger line, a new one
-whenever the basis or a ruling differs. When every node is `unaffected`, and the change adds or
-alters no Decisions row and no contract and clears no `needs_decision` or `contract_changed` park,
-it records the approval `by: ruling`, naming that line, and compiles. Compile reads the ruling the
-approval names and spares every node it found unaffected the `spec_changed` and `contract_changed`
-parks (`spared` in its result), so any compile of that text honours the ruling and no stop is
-written only to be cleared. Otherwise settle returns `needs_user` — the affected nodes, and the
-reasons the change is the user's whatever the rulings: a decision added, changed or removed, a
-contract a provider changed, a `needs_decision` or `contract_changed` park answered — and approves
-nothing: the session makes each `fix` in the spec that owns the node and has that spec ruled the
-same way, asks the user the questions left, and once their answer is verified `rule --user-approved`
-records it `by: user` (or `terminal`), naming the ruling it was approved over, and compile spares
-only what was ruled unaffected. That call dispatches nothing and runs attached. It approves over the
-latest `ruled` line at the spec's current hash, which the token the user's word must carry names,
-and refuses (`rule_it`) when nothing was ruled at that hash. Before it asks, it checks that the
-latest ruled line still settles — its reach, its basis, the rulings on disk (`respecRefusal`) — and
-refuses as settle would without asking anyone: the reach's own refusal, or `rule_it` when the
-rulings on disk for the spec as it stands are not that line's (settle's `over`). It refuses
-`ask_user`, with the token, when the user's word is not confirmed. An approval recorded and not yet
-compiled is compiled by the next `settle`, or by any compile.
+whenever the basis or a ruling differs. When no unit is `affected`, it records the approval —
+`by: answer`, naming the answers it rests on, when a unit was ruled `answered`; `by: ruling`
+otherwise — naming that line, and compiles. Compile reads the
+ruling the approval names and spares every node it found `unaffected` or `answered` the
+`spec_changed` and `contract_changed` parks (`spared` in its result), so any compile of that text
+honours it and no stop is written only to be cleared. Otherwise settle returns `needs_user` with
+each `affected` unit and approves nothing: the session makes each `fix` in the spec that owns the
+unit and has that spec ruled the same way, asks the user the questions left in one batch, records
+their answers, carries them into the specs they reach and rules again. An approval recorded and not
+yet compiled is compiled by the next `settle`, or by any compile.
 
-A relaunched `rule` run replays only what was recorded for the text and reach that stand: it
-briefs the spec afresh, and the ruler's thread (`ruler:<basis>`), the rulings it wrote and each
-settle are keyed by the brief's basis, so a relaunch over the same basis calls no ruler that
-returned and one over a moved basis rules the spec as it now stands. A relaunched
-`--user-approved` run takes the word recorded for the latest ruling's token, or asks for it, and
-its settle is keyed by that token, so it never reports an earlier word's settle.
+A relaunched `rule` run replays only what was recorded for the text, the answers and the reach
+that stand: it briefs the spec afresh, and the ruler's thread (`ruler:<basis>`), the rulings it
+wrote and each settle are keyed by the brief's basis, so a relaunch over the same basis calls no
+ruler that returned and one over a moved basis rules the spec as it now stands.
 
 What cannot be ruled is refused with what to do next (`next`): a spec never compiled, or whose
 compiled text was not kept or cannot be diffed, is the user's to approve; one with problems is
 edited; one whose parent spec is edited waits for the parent; a planner's spec is re-derived.
 
-**Why:** most edits to an approved spec move nothing built on it, and asking the user to approve
-each one, then to clear each park it raised, spends their attention on what a reader of the diff
-can see. A decision or a contract is the user's whatever a ruler finds, so a change to one always
-reaches them. The approval is still nobody's own verdict (L3): the session that made the edit does
-not rule on it, and code approves only when no ruling is `affected`. What was approved this
-way is on the ledger — the `ruled` line with every ruling and the stops the approval cleared, the
-`approved` line that names it, the brief and the kept text on disk — so it can be read back and
-overturned by another edit.
+**Why:** most edits to an approved spec move nothing built on it, and the ones that move a decision
+or a contract are the user's answer written into a spec. Asking the user to approve that edit asks
+them for the same choice twice. A decision or a contract is still the user's whatever a ruler
+finds, so a change to one is approved only on an answer they gave, and a ruler checks that the
+spec states what the answer chose and no more. The approval is nobody's own verdict (L3): the
+session that made the edit does not rule on it, and code approves only when no ruling is
+`affected`. What was approved this way is on the ledger — the `answered` lines in the user's words,
+the `ruled` line with every ruling and the stops the approval cleared, the `approved` line that
+names both, the brief and the kept text on disk — so it can be read back and overturned by another
+edit.
 
 ### The ledger
 
@@ -2901,8 +2916,7 @@ run of it ([Progress](#progress)) — re-armed until the run's end, and reads th
 printed `result_file`. A `run_live` refusal names a run already going over the same
 scope, which the session watches instead; starting the same command again resumes a stopped run.
 An `ended failed` or a `launch_failed` is a plugin fault: the session says so and starts the command
-once more, and the same fault again is reported as a plugin defect. `rule --user-approved` runs
-attached, because the user's word may be typed at the console.
+once more, and the same fault again is reported as a plugin defect.
 
 **A stopped node named to develop is a question, not a launch.** Words that name a parked or
 escalated node (a pasted Next line, the viewer's prompt) take develop straight to asking the user
@@ -3100,17 +3114,21 @@ problem `{file, line, problem}`.
 
 ### Ledger lines
 
-- **Owner:** `lib/approval.mjs`, and `lib/respec.mjs` for `ruled`; the file names in `EFFORT_FILES`
-  in `lib/ledger.mjs`.
+- **Owner:** `lib/approval.mjs`, `lib/respec.mjs` for `ruled`, and `lib/answers.mjs` for `asked`
+  and `answered`; the file names in `EFFORT_FILES` in `lib/ledger.mjs`.
 - **Restated in:** `lib/compile.mjs` (reads `approved`, `prepared` and `compiled`); `lib/effort.mjs`
   (`renameSubEffort` copies those lines).
 
 `ledger.jsonl` shares the effort's `seq` counter with the node and event logs:
-`approved {folder, hash, decisions[{id, text}], by: user | terminal | ruling, ruled?,
-renamed_from?}` (`ruled` is the `seq` of the ruling it rests on, or that the user approved over;
-compile reads it) · `ruled {folder, hash, from, basis, rulings[{node, ruling: unaffected | affected,
-why, question, fix}], standing[], clears[{node, status, why}], brief, by: ruler}` (`from` is the
-compiled hash the text was diffed against) · `prepared {folder, hash,
+`approved {folder, hash, decisions[{id, text}], by: user | terminal | ruling | answer, ruled?,
+answers?, renamed_from?}` (`ruled` is the `seq` of the ruling it rests on, which compile reads;
+`answers`, on an approval `by: answer`, the seqs of the `answered` lines it rests on) · `ruled
+{folder, hash, from, basis, rulings[{node, ruling: unaffected | answered | affected, why, question,
+fix, answers?}], standing[], clears[{node, status, why}], answers[], brief, by: ruler}` (`from` is the compiled hash the text was diffed against; a ruling's `node` is a
+node id or a unit of the user's, `decision:`, `contract:` or `park:`; `answers` the seqs the brief
+held) · `asked {nodes[]}` (a question opened; its token
+is `answer <effort>#<seq>`) · `answered {asked, nodes[], answers[{question, answer}], by: user |
+terminal, at?}` (`at` the transcript line the batch was read from) · `prepared {folder, hash,
 review, by: planner, renamed_from?}` · `compiled {folder, hash}` · `disposition {folder, finding,
 outcome: incorporated | discarded, by: user | planner}` · `review_skipped {folder, hash, reason}` ·
 `reviewed {folder, hash, complete, remaining[], ambiguities[], clean[], sections{}}` (one per
@@ -3123,8 +3141,12 @@ settlement id: its evidence item id, or `<hash>#<P-id>` when the review could no
 `disposition` and `reviewed.ambiguities` both use it. A folder's approval state and its review gate
 are derived, never stored, and a spec with an open `blocking` question is refused approval.
 `node lib/approval.mjs approve|dispose|skip-review|reviewed|state|gate --repo <r> --effort <e>
---folder <id>` prints each function's result; `state` prints the folder's act token, and `approve`
-verifies the user's answer to it ([The user's word](#the-users-word)). `skip-review` takes its
+--folder <id>` prints each function's result; `state` prints the folder's act token, empty with
+the `problems` that stop a spec never approved or edited from being approved and compiled
+(`askState`), and `approve` verifies the user's answer to it ([The user's word](#the-users-word)).
+`node lib/answers.mjs ask --repo <r> --effort <e> [--node <id>…]` prints `{ok, asked, token}`, and
+`record --repo <r> --effort <e> --asked <seq>` prints `{ok, answered, answers[], nodes[]}` or a
+typed refusal. `skip-review` takes its
 `reason` as `--reason <line>` or `--reason-file <path>`. A folder a planner wrote is
 prepared in-process, by the spec boundary (`recordPreparation`). `reviewed
 --from-run <run>` records a probe run's round from its result, so no list passes through a model:
@@ -3157,20 +3179,17 @@ read as approved, and writes nothing.
 - **Restated in:** `skills/develop/SKILL.md`, `skills/develop/respec.md` and
   `skills/design/SKILL.md` (they read the result); `roles/ruler.md` (the rulings it returns).
 
-`node lib/run.mjs rule --repo <r> --effort <e> --folder <id> [--user-approved]` briefs the
-change inline, dispatches one ruler with the brief as its prompt, writes its rulings and settles;
-with `--user-approved` it dispatches nothing, runs attached (`--detach` refuses `attached_only`)
-and settles over the latest `ruled` line once the user's word is confirmed. Its result is
-`{status: approved, folder, hash, ruled, by: ruling | user | terminal, written[], retired[],
-flagged[], spared[], parked[], answered[]}`, `{status: needs_user, folder, hash, ruled,
-affected[{node, ruling, why, question, fix}], reasons[], token}` (`reasons` what makes the change
-the user's whatever the rulings; `token` the act the user's answer must choose,
-[The user's word](#the-users-word)), `{status: compile_refused, folder, hash, ruled, problems[]}`
-or `{status: refused, next: user_approves | fix_spec | rule_parent_first | rule_it | planner |
-nothing | ask_user, why, problems[], token?}` (`ask_user` carries the token the unconfirmed word was
-asked for), each with its coverage block: a ruler that returned nothing, or whose rulings settling
-refused the same way twice, fails `ruler`. The ruler returns `{rulings: [{node, ruling: unaffected
-| affected, why, question, fix}]}`, one per node of the brief.
+`node lib/run.mjs rule --repo <r> --effort <e> --folder <id>` briefs the change inline, with the
+user's answers since the spec's latest approval, dispatches one ruler with the brief as its prompt,
+writes its rulings and settles. Its result is `{status: approved, folder, hash, ruled, by: ruling |
+answer, written[], retired[], flagged[], spared[], parked[], answered[]}`, `{status: needs_user,
+folder, hash, ruled, affected[{node, why, question, fix}]}` (`affected` the units no answer
+settles, a node or a `decision:`, `contract:` or `park:` unit), `{status: compile_refused, folder,
+hash, ruled, problems[]}` or `{status: refused, next: user_approves | fix_spec | rule_parent_first
+| rule_it | planner | nothing, why, problems[]}`, each with its coverage block: a ruler that
+returned nothing, or whose rulings settling refused the same way twice, fails `ruler`. The ruler
+returns `ruler_respec`, `{rulings: [{node, ruling: unaffected | answered | affected, why, question,
+fix, answers?}]}`, one per unit of the brief.
 
 ### State and journal lines
 
@@ -3508,7 +3527,7 @@ with `renamed_from`.
   blocked_by[]}]} | null, report: <text> | null, evidence{items, context, risks, history, docs},
   coverage}`: the survey's evidence is there whether or not the synthesis returned
   ([Investigations](#investigations)).
-- **`rule`** — takes `effort` and `folder` (both required) and `user_approved`; its result is in
+- **`rule`** — takes `effort` and `folder` (both required); its result is in
   [Changed-spec results](#changed-spec-results).
 - **`drafts`** — takes `question_file` and `stances[]` (both required) and `intelligence`
   (default `normal`). Returns `{drafts[{stance, return, draft}], coverage}`: `return` names the
@@ -3580,8 +3599,9 @@ edit goes through the autonomous review before the asker runs again.
   `lib/boundaries/leaf-close.mjs` (the commands).
 - **Restated in:** `roles/ruler.md`; `roles/investigator.md`.
 
-The ruler returns `{rulings[{node, ruling: unaffected | affected, why, question, fix?}]}`, or, asked
-whether a loop converges, `{ruling: converging | not_converging, why}`. The investigator returns
+The ruler returns `{rulings[{node, ruling: unaffected | affected, why, question, fix?}]}`
+(`ruler_premises`; a changed spec's ruling, `ruler_respec`, is under
+[Changed-spec results](#changed-spec-results)), or, asked whether a loop converges, `{ruling: converging | not_converging, why}`. The investigator returns
 `{commands[], unresolved[], text}`, `commands` its `command` gotchas ([Gotcha file](#gotcha-file)),
 which `recordCommands` writes as the investigator's.
 

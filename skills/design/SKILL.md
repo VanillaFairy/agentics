@@ -73,8 +73,8 @@ or agent can talk to the user.
   items. Its state is derived on read: **standing** (no anchor changed, or it was re-judged as
   holding), **suspect** (an anchor changed and nobody has judged the change), **stale** (judged as
   failing, expired, or resting on a stale item).
-- **park**: a node stops and waits for the user. The answer is a re-spec: edit the spec that owns
-  the fault, approve it again, recompile.
+- **park**: a node stops and waits for the user. The answer, recorded once, is a re-spec: edit the
+  specs it reaches, have each ruled against it, recompile.
 
 **The laws.** L1: honest state. L2: states end work, counts don't. L3: separate judges. L4: the
 user owns decisions and their branch. **The principles.** P1: fidelity at the chosen level, then
@@ -376,6 +376,9 @@ never sees, does not count, nor does a re-ask that refers to one ("given those u
   `parked (reopens at <x>)`, `lookup` (go and look), `compost` (recorded, not pursued).
 - A changed decision is rewritten in place with its reason. A new answer contradicting a decision
   other entries lean on is shown beside it, with what depends on which, for the user to rule.
+- **An answer that changes a spec compiled before** (a parent's plan, a decision another folder
+  realises) is opened and recorded with `lib/answers.mjs`, as develop's step 4c does, and carried
+  into every spec it reaches. Those specs are ruled against it at Approve; never ask again for it.
 
 A spec with an open `blocking` question does not hand off: not to Draft, not to `develop`, not to
 "we can settle that during the build".
@@ -527,7 +530,8 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" state --repo . --effort <e> --fold
 
 **A spec never compiled** (`compiled_hash` empty): ask with `AskUserQuestion`, the state's `token`
 in the question's own text, offering exactly the options `Approve` and `Change it` with nothing
-added to either label. On `Approve`:
+added to either label. While `state` prints `problems` its token is empty: fix them first, so the
+user approves a text that compiles. On `Approve`:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" approve --repo . --effort <e> --folder <id>
@@ -540,8 +544,8 @@ token was printed: read `state` again and ask with its new token. Any later edit
 spec and sends it back to Review. Compile builds the folder's entries into the execution tree; a
 refusal names file and line, and the fix is an edit, which goes back through Review.
 
-**A spec compiled before** (`compiled_hash` set) is ruled before anyone is asked: start the `rule`
-program and watch it.
+**A spec compiled before** (`compiled_hash` set) is ruled against every answer the user recorded
+since its approval, and nobody is asked to approve it: start the `rule` program and watch it.
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" rule --repo . --detach --effort <e> --folder <id>
@@ -549,22 +553,12 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" rule --repo . --detach --effort <e> --f
 
 By the result's `status`:
 
-- `approved`: nothing the change reaches is moved by it, so it is approved on that ruling and
-  compiled. Tell the user what changed in one line and move on.
-- `needs_user`: for each entry of `affected` with a `fix`, make that edit in the spec that owns
-  its node and have that spec ruled the same way, then start `rule` for this one again. Once no
-  `fix` is left, ask the user each `question` in `affected`; an answer that changes a spec is an
-  edit, ruled again. Then show the change with its `reasons` and ask for approval, the result's
-  `token` in the question's own text and exactly the options `Approve` and `Change it`. On
-  `Approve`, record it attached, since the program reads your answer:
-
-  ```bash
-  node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" rule --repo . --effort <e> --folder <id> --user-approved
-  ```
-
-  It prints its result, read as the first run's below: `approved`, `compile_refused`, or `refused`
-  by its `next`, where `ask_user` means the answer did not choose `Approve` (ask again with the
-  `token` it prints) and `rule_it` that the spec moved on since it was ruled (start `rule` again).
+- `approved`: every unit is unaffected or settled by the user's answers, so it is approved on that
+  ruling and compiled. Tell the user what changed in one line and move on.
+- `needs_user`: `affected` lists what no answer settles. Make each `fix` in the spec that owns its
+  unit and have that spec ruled the same way, then start `rule` for this one again. Ask every
+  `question` left in one `AskUserQuestion` call, opened and recorded with `lib/answers.mjs`; carry
+  the answers into the specs they reach and rule again. Never ask for approval.
 - `compile_refused`: its `problems` name file and line; the fix is an edit, ruled again.
 - `refused`, by its `next`: `user_approves`, the never-compiled path above; `fix_spec`, edit what
   `problems` name; `rule_parent_first`, rule the spec `why` names first; `rule_it`, start `rule`

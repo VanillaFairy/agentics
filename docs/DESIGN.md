@@ -2703,7 +2703,7 @@ Resume (`lib/resume.mjs`) computes, on disk, one next action per leaf — `none`
 | a `merged` event, or the leaf head is in the parent's integration branch and a witness agrees (the approved head, or a `merge-observed` line) | `none` |
 | approved, and the branch is still at the approved head | `merge` |
 | a green `verify-observed` at the branch head | `review` for a leaf with its own review loop, else `merge` |
-| commits made by hand: on the branch's own line, merges aside, above the head the close of the leaf's latest round in any execution left, when that round is this execution's and its close stopped the leaf or went to a review loop whose stop a retry cleared (`handCommits`) | `verify` |
+| work to measure first: when the leaf's latest round in any execution is this execution's, the branch's own line, merges aside, above its base when that round's close stopped the leaf, or above the head the close left when it went to a review loop whose stop a retry cleared (`measureFirst`) | `verify` |
 | the branch tip is a checkpoint commit | `continue-series` |
 | commits and a `series-done` at the tip | `verify` |
 | commits without | `continue-series` |
@@ -2711,28 +2711,34 @@ Resume (`lib/resume.mjs`) computes, on disk, one next action per leaf — `none`
 
 A salvaged series is closed and reviewed at the round that produced it, over its own fork point
 and brief; a merge merges the head the approval named, never the branch as it stands. A checkpoint
-commit (the executor's mark on an unfinished series) means continue, never measure.
+commit (the executor's mark on an unfinished series) means continue, never measure, but for the
+work of a stopped round, which a retry measures first (below).
 
-**Commits made by hand are measured before any producer goes on.** The session may commit on a
-stopped leaf's branch itself — the develop skill has it leave a note when it does — and then
-retry. Those commits are no round's: the latest round's close left the head below them, and the
-next round would open above them. One reader, `handCommits` in `lib/resume.mjs`, finds them for
-the ladder and the leaf unit alike: the leaf's latest round in any execution must be this
-execution's, since the unit closes again only a round of its own, and its close must have stopped
-the leaf, or gone to a review loop whose stop a retry cleared. A close that sent a fix round its
-messages is left as it is, so no second `failures` lands beside an undelivered first. The unit
+**A stopped leaf's work is measured before any producer goes on.** A retry clears a stop once its
+cause is dealt with: the criteria were corrected, the environment fixed, a decision made, or the
+session committed on the branch itself (the develop skill has it leave a note when it does). The
+work on the branch is then the leaf's progress as it stands, whoever made it and whether or not any
+close measured it, and a measurement taken before the retry is never reused (`measure`). So the
+next step is a measurement, never a producer asked to redo or certify work that may already pass.
+One reader, `measureFirst` in `lib/resume.mjs`, finds that work for the ladder and the leaf unit
+alike: the leaf's latest round in any execution must be this execution's, since the unit closes
+again only a round of its own. When that round's close stopped the leaf, the work is the branch's
+own line above its base; a branch with nothing on it but a refresh merge from the parent holds
+none, and its leaf goes to a producer round. When the close went to a review loop whose stop a
+retry cleared, the work is the commits made by hand above the head that close left (a loop with
+none goes on as [Executors and review](#executors-and-review) says). A close that sent a fix round
+its messages is left as it is, so no second `failures` lands beside an undelivered first. The unit
 then closes that round again with no return to read (leaf-close with no `dispatch`): the branch is
 measured as it stands, as no producer's work, and the decision goes where the round's would —
 approved; reviewed by a fresh reviewer, handed no producer's account, whose span starts at the head
 the last review judged, or at the base; or a fix round sent the `failures` (beside the `retried`
-message after a retry), routed by the close record's own role and status, which leaf-open's next
-round reads too. A refresh merge from the parent is no hand commit. The re-close's record
-replaces the round's, so a relaunch finds the head it left and goes on from its decision; a review
-loop stopped at another head than the round's close now stands at is over, so its findings wait for
-no producer, and a reviewer that judged such a head is not resumed. Where hand commits reach a
-producer round all the same — after a round of another execution, or a close that sent a fix
-round — that round may add nothing to them and is measured, never escalated `fix_without_commits`
-([Executors and review](#executors-and-review)).
+message), routed by the close record's own role and status, which leaf-open's next round reads
+too; a producer that returns those failures' head unmoved escalates `fix_without_commits`. The
+re-close's record replaces the round's, so a relaunch finds the head it left and goes on from its
+decision; a review loop stopped at another head than the round's close now stands at is over, so
+its findings wait for no producer, and a reviewer that judged such a head is not resumed. Where
+work reaches a producer round all the same — after a round of another execution, or a close that
+sent a fix round — that round may add nothing to it and is measured like any other ([Executors and review](#executors-and-review)).
 
 A clean execution (no records for its leaves and no leaf branches) opens for the cost of one branch
 listing. Committed work is salvaged by right and reported as salvaged. A dispatch recorded

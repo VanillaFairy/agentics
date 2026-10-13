@@ -144,23 +144,22 @@ function closedRound(dir, id, head, next, execution = EXECUTION) {
   writeJson(closePath(dir, EFFORT, execution, id, 'implementer', 1), { node: id, role: 'implementer', round: 1, head_sha: head, decision: { next } })
 }
 
-test('commits made by hand above the head a stopped round closed at are verified; a refresh from the parent is none', (t) => {
+test("a stopped round's work is verified as it stands, whoever made it; a refresh from the parent is no work", (t) => {
   const dir = repository(t)
   const wa = open(dir, 'a')
-  const closedAt = commit(wa, 'src/a.mjs', 'feat(a): first half')
-  closedRound(dir, 'a', closedAt, 'stop')
-  assert.equal(rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a')]), 'a').next_action, 'continue-series')
+  closedRound(dir, 'a', commit(wa, 'src/a.mjs', 'feat(a): first half'), 'stop')
+  const row = rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a')]), 'a')
+  assert.equal(row.next_action, 'verify', 'the commits its producer made before it stopped are measured first')
+  commit(wa, 'src/a.mjs', 'feat(a): the rest, by hand')
+  assert.equal(rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a')]), 'a').next_action, 'verify')
 
+  const wb = open(dir, 'b')
+  closedRound(dir, 'b', git(wb, 'rev-parse', 'HEAD'), 'stop')
   const parent = join(dir, '.claude', 'worktrees', 'parent')
   git(dir, 'worktree', 'add', '-q', parent, branchOf(EFFORT, '.'))
   commit(parent, 'src/p.mjs', 'feat(p): the parent moved')
-  git(wa, 'merge', '-q', '--no-ff', '-m', 'refresh from the parent', branchOf(EFFORT, '.'))
-  assert.equal(rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a')]), 'a').next_action, 'continue-series')
-
-  commit(wa, 'src/a.mjs', 'feat(a): the rest, by hand')
-  const row = rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a')]), 'a')
-  assert.equal(row.next_action, 'verify')
-  assert.match(row.note, /by hand/)
+  git(wb, 'merge', '-q', '--no-ff', '-m', 'refresh from the parent', branchOf(EFFORT, '.'))
+  assert.notEqual(rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('b')]), 'b').next_action, 'verify')
 })
 
 test('commits above a close that sent a fix round, or above a round of another execution, are not read as made by hand', (t) => {

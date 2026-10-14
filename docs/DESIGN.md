@@ -1807,16 +1807,19 @@ stored returns and decides what runs next:
 - `done` when the round says `exhausted`: the searcher declares it found what there is;
 - `stop` with `dead_end` when it says `artefact_unreadable`, or `stuck` without naming a remainder;
 - `stop` with `no_progress` when the round found no entry no earlier round holds (a location by
-  path and line, a candidate by name) and named the same remainder as the round before, case and
-  spacing aside;
+  path and line, a candidate by name) and named no remainder shorter than every earlier round's,
+  case and spacing aside;
 - `continue` otherwise.
 
 A round read as `continue` — `unfinished`, `stuck` naming a remainder, any other stop reason or
 none — is continued in the searcher's own session, with a fixed message (`continue_search`, naming
 what the round said it did not reach): its earlier rounds are in its session, so it covers what the
-original request asks that it has not, and reports only what it did not report before. A slip in
-filling one field costs one more turn, never the search, and a round after the first that gains
-nothing and names the same remainder ends it.
+original request asks that it has not, and reports only what it did not report before. Its
+session may be compacted and lose what it reported; code unions the entries across rounds, so a
+re-report costs nothing. A slip in filling one field costs one more turn, never the search. Both
+measures of progress only move one way — the entries grow, a gainless round's remainder shrinks —
+so a searcher that rewords what it did not reach, round after round, ends without any count of
+rounds (L2).
 
 These are declarations, and they steer: they decide whether a searcher is asked again, never
 whether anything passes (L3). A search's coverage is shown as declared, in the coverage block and

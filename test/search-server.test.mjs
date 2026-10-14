@@ -48,7 +48,7 @@ function specOf({ on = tree, asks = [{ key: 'guidance', scope: ['.'], domain: 'r
   const run = join(base, 'runs', String(++n))
   return { run, spec: { tree: on, asks, tools, calls: join(searchDir(run, 'probe:x'), 'calls.jsonl') } }
 }
-const callLog = (path) => (existsSync(path) ? readFileSync(path, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l)) : [])
+const callLog = (path) => (existsSync(path) ? readFileSync(path, 'utf8').split('\n').filter((l) => l.trim()).flatMap((l) => { try { return [JSON.parse(l)] } catch { return [] } }) : [])
 const rpc = (id, method, params) => JSON.stringify({ jsonrpc: '2.0', id, method, ...(params ? { params } : {}) })
 const toolCall = (id, name, args) => rpc(id, 'tools/call', { name, arguments: args })
 
@@ -328,6 +328,33 @@ test('a torn last line of the call log is skipped, and numbering goes on after t
   const whole = readFileSync(spec.calls, 'utf8').split('\n').filter((l) => l.trim()).flatMap((l) => { try { return [JSON.parse(l)] } catch { return [] } })
   assert.deepEqual(whole.map((c) => c.seq), [1, 2])
   assert.equal(whole[1].tool, 'files')
+})
+
+test('a call refused unknown_ask does not stand in for a later valid call', async () => {
+  const { spec } = specOf()
+  const bad = (await handle(spec, [], 'grep', { pattern: 'NEEDLE', ask: ['guidance', 'nope'] })).record
+  assert.equal(bad.refusal, 'unknown_ask')
+  const good = await handle(spec, [bad], 'grep', { pattern: 'NEEDLE', ask: 'guidance' })
+  assert.equal(good.record.repeat_of, undefined, 'it ran')
+  assert.equal(good.record.ok, true)
+})
+
+test('a call that cannot be journaled is answered with an error, never left hanging', async () => {
+  const { run, spec } = specOf()
+  const blocker = join(run, 'blocker')
+  mkdirSync(run, { recursive: true })
+  writeFileSync(blocker, 'a file where the log directory would go')
+  const input = new PassThrough()
+  const sent = []
+  const output = new Writable({ write(chunk, _enc, done) { sent.push(...String(chunk).split('\n').filter((x) => x.trim()).map((x) => JSON.parse(x))); done() } })
+  const served = serve({ ...spec, calls: join(blocker, 'calls.jsonl') }, { input, output })
+  input.write(toolCall(5, 'grep', { pattern: 'NEEDLE', ask: 'guidance' }) + '\n')
+  input.end()
+  await served
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].id, 5)
+  assert.equal(sent[0].error.code, -32603)
+  assert.equal(sent[0].result, undefined, 'no result leaves for a call that is not in the log')
 })
 
 // ------------------------------------------------------------------ the CLI

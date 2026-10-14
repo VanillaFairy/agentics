@@ -394,6 +394,17 @@ test('a tree handed in-process is searched and cited; the artefact is snapshotte
   assert.equal(result.snapshot, reviewScope(rig.repo, args.artifact, '', { root: rig.repo }).snapshot, "the snapshot is the checkout's")
 })
 
+test('without a handed tree the citations are read from ctx.root, not from the checkout ctx.repo names', async (t) => {
+  const rig = rigFor(t, { files: { [ART]: CITING_DOC, ...CITED_FILES }, script: scriptFor(CITING_DOC, STANDING, { locate: [closingTurn(asksOf(CITING_DOC))] }).script })
+  const wt = join(rig.repo, '.claude', 'worktrees', 'rooted')
+  git(rig.repo, 'worktree', 'add', '--detach', wt, 'HEAD')
+  writeFileSync(join(wt, 'src', 'limiter.js'), CITED_FILES['src/limiter.js'].replace('CITED_LINE_TOKEN', 'ROOT_LINE_TOKEN'))
+  git(wt, 'commit', '-qam', 'the root moves on')
+  await probe(withGround({ ...rig.ctx, root: wt }), argsFor(rig.repo, ART))
+  assert.ok(proberBrief(rig, 1).includes('ROOT_LINE_TOKEN'), "the citations were read from ctx.root's tree")
+  assert.ok(!proberBrief(rig, 1).includes('CITED_LINE_TOKEN'), 'not from ctx.repo')
+})
+
 // --- axes --------------------------------------------------------------------------------------
 
 const withGuidance = (axesSteps, keys = STANDING, extra = {}) =>

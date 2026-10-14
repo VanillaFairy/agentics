@@ -30,6 +30,7 @@ import { schemaOf } from '../lib/schemas.mjs'
 import { checkFolder, hashSpec } from '../lib/spec.mjs'
 import { dispatchKey, mainCheckout, posix, readConfig, readJson, sessionOf, specPath } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
+import { closingTurn } from './harness/navigator.mjs'
 import { executionRig } from './harness/program-rig.mjs'
 
 const E = 'e1'
@@ -116,15 +117,14 @@ const schemaFailed = { status: 'failed', cause: 'schema_failed' }
 
 const STANDING = STANDING_AXES.map((a) => a.key)
 const unitsFor = (text) => unitsOf(STANDING, sectionsOf(text))
-const located = () => ({ hits: [], searched: ['the repository'], no_match: '', not_reached: '', stop_reason: 'exhausted' })
 const proberOut = (units, findings = []) => ({
   findings,
   units: units.map((unit) => ({ unit, ruling: findings.some((f) => f.axis + '@' + f.section === unit) ? 'findings' : 'clean', ids: [], why: 'why ' + unit })),
   notes: '', stop_reason: 'exhausted', not_reached: '',
 })
-/** Probe round `n` over `text`: a located return with no hits, and one prober holding the standing axes. */
+/** Probe round `n` over `text`: a locate turn that ends every ask, and one prober holding the standing axes. */
 const probing = (n, text, findings = [], { units } = {}) => ({
-  ['scout||probe:p:' + n + '/locate']: [{ output: located() }],
+  ['scout||probe:p:' + n + '/locate']: [closingTurn(['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)])],
   ['analyst||probe:p:' + n + '/prober:1']: [{ output: proberOut(units || unitsFor(text), findings) }],
 })
 const lineOf = (text, needle) => text.split('\n').findIndex((l) => l.includes(needle)) + 1

@@ -19,6 +19,7 @@ import { loadRole, tierFor } from '../lib/roles.mjs'
 import { launch } from '../lib/run.mjs'
 import { ARGS as SURVEY_ARGS } from '../lib/programs/survey.mjs'
 import { posix, readJson, resultPath, revParse, runJsonPath, specPath } from '../lib/store.mjs'
+import { closingTurn } from './harness/navigator.mjs'
 import { programRig } from './harness/program-rig.mjs'
 import { scriptedRunner } from './fast/harness/scripted-runner.mjs'
 
@@ -35,7 +36,7 @@ const FILES = {
   'prior.md': 'what the earlier pass found\r\n',
 }
 const PROBE_SCRIPT = {
-  'scout||locate': [{ output: { hits: [], searched: ['.'], no_match: 'nothing guides a review here', not_reached: '', stop_reason: 'exhausted' } }],
+  'scout||locate': [closingTurn(['guidance', 'ground:design'])],
   'analyst||prober:1': [{ output: { findings: [], units: [], notes: '', stop_reason: 'exhausted', not_reached: '' } }],
 }
 

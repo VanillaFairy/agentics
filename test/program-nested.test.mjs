@@ -22,6 +22,7 @@ import { probe } from '../lib/programs/probe.mjs'
 import { review } from '../lib/programs/review.mjs'
 import { survey } from '../lib/programs/survey.mjs'
 import { evidenceItemsPath, evidenceSnapshotsDir, posix, sessionOf } from '../lib/store.mjs'
+import { closingTurn } from './harness/navigator.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', windowsHide: true })
@@ -97,7 +98,6 @@ const native = (root, path) => join(root, ...path.split('/'))
 const probeArgs = (root, over = {}) => ({
   artifact: native(root, ART), artifact_text: readFileSync(native(root, ART), 'utf8').trim(), roots: ['.'], context: '', per_axis: false, since: '', ...over,
 })
-const located = () => ({ hits: [], searched: ['the repository'], no_match: '', not_reached: '', stop_reason: 'exhausted' })
 const finding = (axis, severity, section, start, claim) => ({ axis, severity, section, claim, evidence: 'line ' + start, start, end: start })
 const proberOut = (units, findings = []) => ({
   findings,
@@ -107,7 +107,7 @@ const proberOut = (units, findings = []) => ({
 /** A full round of `text`: one prober holds the four standing axes (twelve lines buy one), `prober` its steps. */
 function probeScript(text, { findings = [], prober } = {}) {
   const units = unitsOf(STANDING, sectionsOf(text))
-  return { 'scout||locate': [{ output: located() }], 'analyst||prober:1': prober ? prober(units) : [{ output: proberOut(units, findings) }] }
+  return { 'scout||locate': [closingTurn(['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)])], 'analyst||prober:1': prober ? prober(units) : [{ output: proberOut(units, findings) }] }
 }
 const NOTE = finding('yagni', 'note', 'intent', 4, 'CARRIED-NOTE-a1 the key is never defined')
 const GAP = finding('reinvention', 'gap', 'design', 12, 'CARRIED-GAP-b2 a token bucket exists already')
@@ -259,7 +259,7 @@ test('each carried finding reaches the prober beside its own claim', async (t) =
   const carried = carriedFindings(w.scope)
   assert.equal(carried.length, 2, 'the fixture carries both findings')
   const touched = sectionsOf(EDITED).filter((s) => w.scope.changed.some((r) => r.start <= s.end && s.start <= r.end))
-  const run = w.rig.relaunch({ 'scout||locate': [{ output: located() }], 'analyst||prober:1': [{ output: proberOut(unitsOf(STANDING, touched)) }] })
+  const run = w.rig.relaunch({ 'scout||locate': [closingTurn(['guidance', ...sectionsOf(EDITED).map((s) => 'ground:' + s.slug)])], 'analyst||prober:1': [{ output: proberOut(unitsOf(STANDING, touched)) }] })
   await probe(run.ctx, probeArgs(w.rig.repo, { since: w.since }))
   const [call] = run.calls.filter((c) => c.thread.key === 'prober:1')
   const briefLines = call.brief.split('\n')

@@ -353,3 +353,23 @@ test("a survey given a root reads its excerpts and guidance there and records in
   assert.ok(item, 'the item is in the main checkout\'s pool')
   assert.equal(item.spans[0].at, wtHead)
 })
+
+test("the context file holds a reopened topic's latest risks, not its first return's", async (t) => {
+  const first = { output: {
+    items: [behaviour('store', 'CLAIM-store writes at line 9', 9)],
+    risks: [{ topic: 'loader', text: 'RISK-OLD-loader' }, { topic: 'store', text: 'RISK-KEPT-store' }],
+    units: [{ unit: 'loader', ruling: 'unanchored', ids: [], why: 'not located' }, anchoredUnit('store')],
+    wants: [{ unit: 'loader', want: 'WANT-the fallback' }],
+  } }
+  const second = { output: { items: [behaviour('loader', CLAIM, 30)], risks: [{ topic: 'loader', text: 'RISK-NEW-loader' }], units: [anchoredUnit('loader')], wants: [] } }
+  const { result } = await runSurvey(t, {
+    'analyst||plan': [{ output: plan({ topics: [TOPIC.loader, TOPIC.store] }) }],
+    'scout||scout:loader': [hitTurn('loader', [[FILE.loader, 7]]), hitTurn('want:1', [[FILE.loader, 30, 'NOTE-the fallback']])],
+    'scout||scout:store': [hitTurn('store', [[FILE.store, 9]])],
+    'analyst||judge:1': [first, second],
+  })
+  const text = readFileSync(result.context, 'utf8')
+  assert.ok(text.includes('RISK-NEW-loader'), 'the latest risk')
+  assert.ok(text.includes('RISK-KEPT-store'), "the other topic's risk stands")
+  assert.ok(!text.includes('RISK-OLD-loader'), 'the replaced risk is gone')
+})

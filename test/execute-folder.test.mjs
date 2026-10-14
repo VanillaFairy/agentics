@@ -10,8 +10,8 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, relative } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join, relative } from 'node:path'
 
 import { approvalState } from '../lib/approval.mjs'
 import { parked, recordAll } from '../lib/boundaries/records.mjs'
@@ -102,7 +102,7 @@ function world(t, { known = true, planned = null, steps = {}, writes = {}, trap 
   const specs = { '.': rootSpec({ known }) }
   if (planned) specs.p = planned
   const rig = executionRig(t, { spec: specs })
-  rig.script(steps)
+  rig.script(typeof steps === 'function' ? steps(rig) : steps)
   const ctx = playing(rig, writes, trap)
   return { rig, ctx, run: (args = {}) => planFolder(ctx, rig.xc, { folder: 'p', ...args }) }
 }
@@ -138,10 +138,10 @@ const GAP = found(S1, { section: 'design', needle: DESIGN_A, claim: 'x hides sta
 const GAP_INTENT = found(S1, { section: 'intent', needle: INTENT_NEEDLE, claim: 'who the root is stays open' })
 const AMBIGUITY = found(S1, { axis: 'ambiguity', severity: 'ambiguity', section: 'intent', needle: INTENT_NEEDLE, claim: 'plans it could mean two things' })
 
-const surveying = () => ({
-  'analyst||survey:p/plan': [{ output: { topics: [{ key: 'adder', find: 'FIND-adder', subtree: 'src' }], common_ground: '', history_question: '', docs_question: '' } }],
-  'scout||survey:p/scout:adder': [hitTurn('adder', [['src/add.mjs', 1]])],
-  'analyst||survey:p/judge:1': [{ output: {
+const surveying = (prefix) => ({
+  ['analyst||' + prefix + 'plan']: [{ output: { topics: [{ key: 'adder', find: 'FIND-adder', subtree: 'src' }], common_ground: '', history_question: '', docs_question: '' } }],
+  ['scout||' + prefix + 'scout:adder']: [hitTurn('adder', [['src/add.mjs', 1]])],
+  ['analyst||' + prefix + 'judge:1']: [{ output: {
     items: [{ topic: 'adder', kind: 'behaviour', claim: 'SURVEYED-a9 add sums its two arguments', spans: [{ path: 'src/add.mjs', start: 1, end: 1 }], queries: [], sources: [], rests_on: [] }],
     risks: [], units: [{ unit: 'adder', ruling: 'anchored', ids: [], why: 'anchored' }],
   } }],
@@ -163,6 +163,15 @@ const stepValue = (rig, key) => (rig.log.entries().find((e) => e.kind === 'step'
 const plannerCalls = (rig) => rig.calls.filter((c) => c.role.name === 'planner')
 const under = (rig, prefix) => rig.calls.filter((c) => c.thread.key.startsWith(prefix))
 const nodeOf = (rig, id) => readTree(rig.repo, E).nodes.get(id)
+/** The tree roots the search servers of the calls under `prefix` were started over. */
+const searchedUnder = (rig, prefix) => new Set(under(rig, prefix).filter((c) => c.mcpConfig).map((c) => {
+  const args = JSON.parse(readFileSync(c.mcpConfig, 'utf8')).mcpServers.search.args
+  return JSON.parse(readFileSync(args[args.indexOf('--spec') + 1], 'utf8')).tree.root
+}))
+/** The basis of p's first plan, as `planFolder` names it. */
+const basisOf = (rig) => 'write:' + (nodeOf(rig, 'p').seq || 0) + ':0'
+/** Where the tree pinned at `sha` is made for p's searches. */
+const pinOf = (rig, sha) => join(rig.repo, '.claude', 'worktrees', 'search-' + E + '-' + sha.slice(0, 8))
 const liveNode = (rig, id) => { const n = nodeOf(rig, id); return n && !n.retired ? n : null }
 const findingsIn = (file) => { const read = readJson(file); return Array.isArray(read) ? read : read.findings }
 const sessionKey = (rig) => sessionOf({ effort: E, execution: rig.stamp, node: 'p', role: 'planner', thread: 'planner:p', gen: 0 })
@@ -327,29 +336,81 @@ test('a planner dispatch that fails its schema twice is a role fault on the fold
 
 // ================================================================== the survey
 
-test('a folder whose ground is unknown is surveyed first, nested under survey:<folder>', async (t) => {
-  const w = world(t, { known: false, steps: { ...surveying(), ...clean() }, writes: { 1: S1 } })
+test('a folder whose ground is unknown is surveyed first, nested under survey:<folder>:<basis>', async (t) => {
+  const w = world(t, { known: false, steps: (rig) => ({ ...surveying('survey:p:' + basisOf(rig) + '/'), ...clean() }), writes: { 1: S1 } })
   assert.equal(nodeOf(w.rig, 'p').ground_known, false, 'the fixture: the ground is unknown')
+  const prefix = 'survey:p:' + basisOf(w.rig) + '/'
   const out = await w.run()
   assert.equal(out.outcome, 'prepared')
-  const context = stepValue(w.rig, 'survey:p/context')
+  const context = stepValue(w.rig, prefix + 'context')
   assert.ok(context && context.context, 'the survey wrote its context file')
   assert.deepEqual(out.survey, { complete: true, context: context.context })
-  const surveyed = under(w.rig, 'survey:p/')
-  assert.deepEqual([...new Set(surveyed.map((c) => c.thread.key))].sort(), ['survey:p/judge:1', 'survey:p/plan', 'survey:p/scout:adder'])
+  const surveyed = under(w.rig, prefix)
+  assert.deepEqual([...new Set(surveyed.map((c) => c.thread.key))].sort(), [prefix + 'judge:1', prefix + 'plan', prefix + 'scout:adder'])
   const first = w.rig.calls.findIndex((c) => c.role.name === 'planner')
-  const lastSurvey = w.rig.calls.map((c) => c.thread.key.startsWith('survey:p/')).lastIndexOf(true)
+  const lastSurvey = w.rig.calls.map((c) => c.thread.key.startsWith(prefix)).lastIndexOf(true)
   assert.ok(first > lastSurvey, 'the planner\'s first call follows the survey')
 })
 
 test("the planner's write brief carries the survey's context text whole", async (t) => {
-  const w = world(t, { known: false, steps: { ...surveying(), ...clean() }, writes: { 1: S1 } })
+  const w = world(t, { known: false, steps: (rig) => ({ ...surveying('survey:p:' + basisOf(rig) + '/'), ...clean() }), writes: { 1: S1 } })
   const out = await w.run()
   assert.equal(out.outcome, 'prepared')
   const text = readFileSync(out.survey.context, 'utf8')
   assert.ok(text.includes('SURVEYED-a9'), 'the fixture: the context holds the surveyed item')
   const [call] = plannerCalls(w.rig)
   assert.ok(call.brief.includes(text.trim()), 'the context file\'s text is in the first prompt')
+})
+
+// ================================================================== the pinned tree
+
+test('the survey and the probe search a tree pinned at the nearest integration head', async (t) => {
+  const w = world(t, { known: false, steps: (rig) => ({ ...surveying('survey:p:' + basisOf(rig) + '/'), ...clean() }), writes: { 1: S1 } })
+  const root = w.rig.worktreeOf('.')
+  writeFileSync(join(root, 'changed.txt'), 'a change since the base\n')
+  w.rig.git('-C', root, 'add', '-A')
+  w.rig.git('-C', root, 'commit', '-qm', 'a change since the base')
+  const head = w.rig.git('rev-parse', w.rig.branchOf('.'))
+  const basis = basisOf(w.rig)
+  assert.equal((await w.run()).outcome, 'prepared')
+  const ground = stepValue(w.rig, 'survey:p:' + basis + '/ground')
+  assert.deepEqual(ground.rows.filter((r) => r.kind === 'change').map((r) => r.key), ['changed.txt'], 'the survey was handed the change from the base to the pinned head')
+  assert.equal(stepValue(w.rig, 'tree:p:' + basis), head, "p has no branch yet, so the root's head is pinned")
+  assert.equal(w.rig.git('-C', pinOf(w.rig, head), 'rev-parse', 'HEAD'), head)
+  for (const prefix of ['survey:p:' + basis + '/', 'probe:p:1/']) {
+    assert.deepEqual([...searchedUnder(w.rig, prefix)], [posix(pinOf(w.rig, head))], prefix + ' searched the pinned tree')
+  }
+})
+
+test('a relaunch after the branch moved still searches the journaled sha', async (t) => {
+  const writes = { 1: S1 }
+  const w = world(t, { steps: clean(), writes, trap: (call) => call.thread.key === 'probe:p:1/prober:1' })
+  await assert.rejects(w.run(), /the runner was cut off at probe:p:1\/prober:1/)
+  const basis = basisOf(w.rig)
+  const pinned = stepValue(w.rig, 'tree:p:' + basis)
+  w.rig.git('-C', w.rig.worktreeOf('.'), 'commit', '--allow-empty', '-qm', 'a leaf merged meanwhile')
+  const moved = w.rig.git('rev-parse', w.rig.branchOf('.'))
+  assert.notEqual(moved, pinned, 'the fixture: the root branch moved')
+  rmSync(pinOf(w.rig, pinned), { recursive: true, force: true })
+  const again = w.rig.relaunch()
+  const out = await planFolder(playing(again, writes, null), again.xc, { folder: 'p' })
+  assert.equal(out.outcome, 'prepared')
+  assert.equal(stepValue(again, 'tree:p:' + basis), pinned)
+  assert.ok(existsSync(pinOf(again, pinned)), 'a pinned tree deleted after the step is made again at the journaled sha')
+  assert.ok(!existsSync(pinOf(again, moved)), 'nothing was pinned at the moved head')
+})
+
+test('a retried folder pins the head it is planned on now', async (t) => {
+  const w = world(t, { steps: { ...planner(written, written, written), ...probing(3, S1) }, writes: { 1: BAD, 3: S1 } })
+  assert.equal((await w.run()).outcome, 'stopped')
+  const before = stepValue(w.rig, 'tree:p:' + basisOf(w.rig))
+  w.rig.git('-C', w.rig.worktreeOf('.'), 'commit', '--allow-empty', '-qm', 'a leaf merged meanwhile')
+  append(w.rig.repo, E, 'events', [{ kind: 'replanned', node: 'p', execution: w.rig.stamp, reason: 'retry_escalated', by: 'session' }])
+  assert.equal((await w.run()).outcome, 'prepared')
+  const retried = w.rig.log.entries().filter((e) => e.kind === 'step' && e.key.startsWith('tree:p:') && e.key.includes(':retry:'))
+  assert.equal(retried.length, 1)
+  assert.equal(retried[0].value, w.rig.git('rev-parse', w.rig.branchOf('.')))
+  assert.notEqual(retried[0].value, before)
 })
 
 // ================================================================== settling the review

@@ -325,19 +325,19 @@ const mat = (text, asks = ['ask']) => ({ label: 'm', text, asks })
 
 test('a path row is what keyOf says of its mention, whatever the mention is', async () => {
   const tree = repo2()
-  const text = 'src/lib/deeper/x.ts, src\\lib\\deeper\\x.ts, `top.ts`, `.git/hooks/pre-commit.sample`, notes/ghost.md, pkg/CLAUDE.md, vendor/lib/CLAUDE.md, src/nope.ts'
+  const text = 'src/lib/deeper/x.ts, src\\lib\\deeper\\x.ts, `top.ts`, `.git/hooks/pre-commit.sample`, notes/ghost.md, pkg/NOTES.md, vendor/lib/NOTES.md, src/nope.ts'
   const t = await groundTable(tree, { material: [mat(text)] })
   assertTable(t, tree)
   const paths = rowsOf(t, 'path')
-  assert.deepEqual(sorted(paths.map((r) => r.mention)), sorted(['src/lib/deeper/x.ts', 'top.ts', '.git/hooks/pre-commit.sample', 'notes/ghost.md', 'pkg/CLAUDE.md', 'vendor/lib/CLAUDE.md', 'src/nope.ts']), 'one row per file, mention in posix')
+  assert.deepEqual(sorted(paths.map((r) => r.mention)), sorted(['src/lib/deeper/x.ts', 'top.ts', '.git/hooks/pre-commit.sample', 'notes/ghost.md', 'pkg/NOTES.md', 'vendor/lib/NOTES.md', 'src/nope.ts']), 'one row per file, mention in posix')
   for (const r of paths) {
     const k = keyOf(tree, r.mention)
     assert.deepEqual([r.key, r.exists], k.ok ? [k.key, true] : [r.mention, false], r.mention)
   }
   const byMention = (m) => paths.find((r) => r.mention === m)
-  assert.equal(byMention('pkg/CLAUDE.md').exists, true, 'an untracked file')
+  assert.equal(byMention('pkg/NOTES.md').exists, true, 'an untracked file')
   assert.equal(byMention('.git/hooks/pre-commit.sample').exists, false, 'inside .git')
-  assert.equal(byMention('vendor/lib/CLAUDE.md').exists, false, 'inside a nested repository')
+  assert.equal(byMention('vendor/lib/NOTES.md').exists, false, 'inside a nested repository')
   assert.equal(byMention('top.ts').exists, true)
 })
 

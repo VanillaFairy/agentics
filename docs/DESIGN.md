@@ -429,7 +429,8 @@ open execution of its effort whose root is its folder, else a new execution stam
 stopped one whose current run recorded nothing since its `run` line refuses `launch_failed`;
 otherwise the run starts there with the arguments it was given, whatever an earlier run of it was
 given, and `run.json` is rewritten. A run is live while the pid in its `run.json` is alive and its
-heartbeat fresh ([Detached runs](#detached-runs)). The scope is what a second start is refused
+heartbeat fresh, or while that pid, its heartbeat stale, is still a node process running a `run.mjs`
+([Detached runs](#detached-runs)). The scope is what a second start is refused
 over:
 
 | program | scope | threads (roles) |
@@ -836,8 +837,13 @@ execution's log spans every run of it, so develop's watch passes the effort's `s
 the start instead ([Progress](#progress)); a re-armed watch prints again a line that still stands. A
 run is alive while its pid lives and its heartbeat — `heartbeat_at` in `run.json`, rewritten every
 10 seconds — is fresh, written within the last 120 seconds, longer than any lock wait or git call
-stalls the loop; one without `ended` whose pid is gone or whose heartbeat went stale shows as
-stopped, and starting the same command again resumes it. A run started with `detached` outlives both
+stalls the loop. A blocked event loop stops the heartbeat and not the run, so a run whose heartbeat
+went stale is still alive while its pid is a node process running a `run.mjs` (`runProcess` in
+`lib/host.mjs`, read only then): `runState` reads it `live` with `beating: false`, a start is refused
+`run_live`, and the watch prints `unresponsive: pid <pid> still runs <run> but has not beaten since
+<heartbeat_at>; …` once, and `beating again: <run>` if it does. One without `ended` whose pid is
+gone, or whose pid the system gave another program, shows as stopped, and starting the same command
+again resumes it. A run started with `detached` outlives both
 a headless session's exit and a background session's stop, and the host's own job does not kill it
 on close; one started without `detached` dies with the process that started it. Nothing depends on
 survival all the same: resuming from the records costs one relaunch. A relaunch that finds nothing
@@ -1722,7 +1728,10 @@ folder at a time, every planner round in the folder's one planner session (`plan
 which may write that folder's spec and nothing else. For a folder whose ground is unknown the
 program first runs a survey (nested as `survey:<folder>`), and the planner's brief (`plannerBrief`
 in `lib/briefs/execute.mjs`) carries the text of its context file. Each boundary's answer is
-journaled as a `step` under the folder and the round, so a relaunch replays what was decided:
+journaled as a `step` under the folder and the round, so a relaunch replays what was decided. The
+plan's basis — the folder's revision, or the request it answers — also names the folder's latest
+`retry_escalated` event, so a plan after the user's `retry` is a new plan that runs on from the
+planner thread's latest round, never a replay back to the stop the user cleared:
 
 1. **Check.** The `spec-check` boundary closes the planner's dispatch — its write, or a settle that
    edited the spec, checked again before the next probe round (`settled` reads as `written`); a
@@ -3400,7 +3409,8 @@ live inputs to an execution: leaf-open hands the cleared stop's reason and the n
 or since the thread's latest return when that is later, to the leaf's next round as `retried` ([Conversations](#conversations)); a leaf its review loop stopped goes on at that
 next round, handed the stopping review's open findings beside it. `retry` also makes the node's next
 check measure again: `measure` hands back no `verify-observed` line of the node older than its
-latest `retry_escalated` event. Commits the session made on the leaf's branch before it retried are
+latest `retry_escalated` event. A retried planner folder plans afresh from the planner thread's
+next round ([Autonomous review](#autonomous-review)). Commits the session made on the leaf's branch before it retried are
 measured before any producer round ([Resume and checkpoints](#resume-and-checkpoints)).
 
 ### Producer returns

@@ -11,7 +11,7 @@ import { delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
-  actorOf, answerOf, answerTo, answersIn, confirmAct, projectsDir, resolveCli, sessionExists, terminalAct, terminalAnswer, transcriptOf,
+  actorOf, answerOf, answerTo, answersIn, confirmAct, projectsDir, resolveCli, runProcess, sessionExists, terminalAct, terminalAnswer, transcriptOf,
   verifyAnswer,
 } from '../../lib/host.mjs'
 
@@ -388,4 +388,14 @@ test('answerOf reads the session, else the console, else refuses', async () => {
   assert.equal((await answerOf({ token: ASK_TOKEN, ...console })).by, 'terminal')
   refusal(await answerOf({ token: ASK_TOKEN, ...console, stdinIsTTY: false }), 'answer_unverifiable')
   refusal(await answerOf({ token: '', ...session }), 'no_token')
+})
+
+test('runProcess is true only for a node process running a run.mjs', () => {
+  const as = (image, args) => ({ list: () => ({ image, args }) })
+  assert.equal(runProcess(7, as('node.exe', '"C:\\Program Files\\nodejs\\node.exe" C:\\p\\lib\\run.mjs execute --child e.1')), true)
+  assert.equal(runProcess(7, as('node', 'node /p/lib/run.mjs survey --topic x')), true)
+  assert.equal(runProcess(7, as('node', 'node --test test/run-cli.test.mjs')), false, 'a pid the system gave another node program')
+  assert.equal(runProcess(7, as('chrome.exe', 'chrome.exe /p/lib/run.mjs')), false)
+  assert.equal(runProcess(7, { list: () => null }), false, 'a pid that is gone')
+  assert.equal(runProcess(0, as('node', 'node run.mjs')), false)
 })

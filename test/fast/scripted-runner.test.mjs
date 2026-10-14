@@ -6,7 +6,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -167,4 +167,45 @@ test('calls lists every call passed in', async (t) => {
   assert.equal(r.calls.length, 2)
   assert.equal(r.calls[0], first)
   assert.equal(r.calls[1], second)
+})
+
+/** A search server's files as T10 writes them: the spec naming the call log, and the MCP config naming the spec. */
+function searchFiles(dir) {
+  mkdirSync(join(dir, 'searches', 'probe~a'), { recursive: true })
+  const calls = join(dir, 'searches', 'probe~a', 'calls.jsonl')
+  const spec = join(dir, 'searches', 'probe~a', 'server-1.json')
+  const config = join(dir, 'searches', 'probe~a', 'mcp-1.json')
+  writeFileSync(spec, JSON.stringify({ tree: { root: dir, sha: 'a'.repeat(40) }, asks: [{ key: 'guidance', scope: ['.'], domain: 'repo' }], tools: ['grep'], calls }))
+  writeFileSync(config, JSON.stringify({ mcpServers: { search: { type: 'stdio', command: 'node', args: ['server.mjs', '--spec', spec] } } }))
+  return { calls, config }
+}
+const callLog = (path) => readFileSync(path, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
+const rec = (key, line) => ({ tool: 'grep', args: { pattern: 'x' }, asks: ['guidance'], ok: true, total: 1, page: 1, pages: 1, observed: [{ key, line }], keys: [key] })
+
+test("a step's calls are appended to its search's call log, numbered after the log's last", async (t) => {
+  const dir = scratch(t)
+  const { calls, config } = searchFiles(dir)
+  appendFileSync(calls, JSON.stringify({ seq: 7, ...rec('lib/old.mjs', 1) }) + '\n')
+  const r = scriptedRunner({ [KEY]: [{ output: { items: [] }, calls: [rec('lib/a.mjs', 3), rec('lib/b.mjs', 9)] }, { output: { items: [] }, calls: [rec('lib/c.mjs', 1)] }] }, { log: memoryLog() })
+  const out = await r.runAgent(callIn(dir, { mcpConfig: config }))
+  assert.equal(out.status, 'returned')
+  assert.deepEqual(callLog(calls).map((c) => c.seq), [7, 8, 9])
+  assert.deepEqual(callLog(calls).slice(1).map(({ seq, ...c }) => c), [rec('lib/a.mjs', 3), rec('lib/b.mjs', 9)], 'each record as the step gave it, with its seq')
+  await r.runAgent(callIn(dir, { round: 2, resume: true, mcpConfig: config }))
+  assert.deepEqual(callLog(calls).map((c) => c.seq), [7, 8, 9, 10])
+})
+
+test('the calls of a step the host stopped are kept', async (t) => {
+  const dir = scratch(t)
+  const { calls, config } = searchFiles(dir)
+  const r = scriptedRunner({ [KEY]: [{ status: 'stopped', cause: 'rate_limit', calls: [rec('lib/a.mjs', 3)] }] }, { log: memoryLog() })
+  const out = await r.runAgent(callIn(dir, { mcpConfig: config }))
+  assert.equal(out.status, 'stopped')
+  assert.deepEqual(callLog(calls).map((c) => c.observed), [[{ key: 'lib/a.mjs', line: 3 }]])
+})
+
+test('a step with calls on a call with no mcpConfig rejects, naming its key', async (t) => {
+  const dir = scratch(t)
+  const r = scriptedRunner({ [KEY]: [{ output: { items: [] }, calls: [rec('lib/a.mjs', 3)] }] }, { log: memoryLog() })
+  await assert.rejects(() => r.runAgent(callIn(dir)), (err) => err.message.includes(KEY))
 })

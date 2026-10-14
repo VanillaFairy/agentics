@@ -2,8 +2,9 @@
 // CLI plays the next step scripted for its `role|node|thread` as the stream, stderr and exit code the
 // host gives, so a program test sees the records, stored returns, retries, parts and renewals
 // production does. A usage limit's `until` reaches the record as classifyCall reads the host's text:
-// up to its first '.'; the other stop classes carry none.
-import { writeFileSync, rmSync } from 'node:fs'
+// up to its first '.'; the other stop classes carry none. A step's `calls` are appended to the call log
+// its call's MCP config names, standing in for the search server.
+import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 import { runAgent as realRunAgent } from '../../../lib/runner.mjs'
@@ -22,6 +23,21 @@ const FAILURES = {
 }
 
 const valueAfter = (args, flag) => { const i = args.indexOf(flag); return i < 0 ? '' : args[i + 1] }
+
+/** The call log of a call's search server: the `calls` path of the spec its MCP config names. */
+function callLogOf(call, key) {
+  if (!call.mcpConfig) throw new Error(key + ': a step with calls needs a call with an mcpConfig')
+  const args = JSON.parse(readFileSync(call.mcpConfig, 'utf8')).mcpServers.search.args
+  return JSON.parse(readFileSync(args[args.indexOf('--spec') + 1], 'utf8')).calls
+}
+
+/** Append a step's records to the call log as the server does, each numbered after the log's last. */
+function appendCalls(path, records) {
+  const rows = existsSync(path) ? readFileSync(path, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l)) : []
+  let seq = rows.reduce((n, r) => Math.max(n, r.seq || 0), 0)
+  mkdirState(dirname(path))
+  for (const r of records) appendFileSync(path, JSON.stringify({ seq: ++seq, ...r }) + '\n')
+}
 
 /** One CLI start as the host plays a step: the stream's lines, the stderr and the exit code. */
 function play(step, session, key) {
@@ -52,20 +68,21 @@ export function scriptedRunner(script, { log, now = () => '2026-01-01T00:00:00.0
     remove(path) { rmSync(path, { force: true }) },
   }
   const proc = { alive: () => false, kill() {} }
-  const spawnFor = (key) => async (args, { onSpawn = () => {}, onLine = () => {} } = {}) => {
+  const spawnFor = (key, call) => async (args, { onSpawn = () => {}, onLine = () => {} } = {}) => {
     const steps = script[key] || []
     const i = next.get(key) || 0
     if (i >= steps.length) throw new Error('the script has no start ' + (i + 1) + ' for ' + key)
     next.set(key, i + 1)
     const out = play(steps[i], valueAfter(args, '--resume') || valueAfter(args, '--session-id'), key)
     onSpawn(++pid)
+    if (steps[i].calls) appendCalls(callLogOf(call, key), steps[i].calls)
     for (const l of out.lines) onLine(l)
     return { code: out.code, stdout: out.lines.map((l) => l + '\n').join(''), stderr: out.stderr }
   }
   async function runAgent(call) {
     calls.push(call)
     const key = call.role.name + '|' + call.node + '|' + call.thread.key
-    return realRunAgent(call, { spawnCli: spawnFor(key), log, fsx, proc, watch: null, now, env: {} })
+    return realRunAgent(call, { spawnCli: spawnFor(key, call), log, fsx, proc, watch: null, now, env: {} })
   }
   return { runAgent, calls }
 }

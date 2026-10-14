@@ -147,3 +147,15 @@ test('schemaOf and kindOf answer for every name and refuse an unknown one', () =
   assert.equal(schemaOf('nothing'), null)
   assert.equal(kindOf('nothing'), '')
 })
+
+test('the prober and items schemas take an optional wants list of unit and want', () => {
+  for (const name of ['prober', 'items']) {
+    const schema = schemaOf(name)
+    const wants = schema.properties.wants
+    assert.ok(wants, name + ' has wants')
+    assert.ok(!schema.required.includes('wants'), name + "'s wants is optional")
+    assert.equal(wants.type, 'array')
+    assert.deepEqual(Object.keys(wants.items.properties).sort(), ['unit', 'want'])
+    assert.deepEqual([wants.items.properties.unit.type, wants.items.properties.want.type], ['string', 'string'])
+  }
+})

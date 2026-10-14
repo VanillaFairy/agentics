@@ -59,9 +59,9 @@ const makeCall = (over = {}) => ({
 })
 
 const usageOf = (input, read) => ({ input_tokens: input, cache_read_input_tokens: read, cache_creation_input_tokens: 0, output_tokens: 50 })
-const endedWith = (usage) => [
+const endedWith = (usage, context = null) => [
   ['dispatched', { dispatch: PREV, node: NODE, round: 1, thread: THREAD, role: ROLE, model: 'opus', effort: 'high', session: S, brief_digest: 'earlier', carries: [], pid: 101 }],
-  ['returned', { dispatch: PREV, session: S, status: 'returned', cause: '', usage, cost_total: 0.01, cost_usd: 0.01, denials: [] }],
+  ['returned', { dispatch: PREV, session: S, status: 'returned', cause: '', usage, context, cost_total: 0.01, cost_usd: 0.01, denials: [] }],
 ]
 
 const clone = (v) => (v === undefined ? v : JSON.parse(JSON.stringify(v)))
@@ -172,7 +172,7 @@ test('without a given digest a renewal records the digest of the call as given',
   assert.deepEqual(digestsOf(missing.mine), [fnv1a(BRIEF), fnv1a(BRIEF)], 'a lost session')
   const window = 100000
   const large = await run({ resume: true, tier: { model: 'opus', effort: 'high', window } }, {
-    seed: endedWith(usageOf(10, window)), script: [{ pid: 4242, lines: streamIn(NEXT) }],
+    seed: endedWith(usageOf(10, window), window), script: [{ pid: 4242, lines: streamIn(NEXT) }],
   })
   assert.equal(large.spawns[0].stdin, FRESH, 'a session too large is renewed before its first start')
   assert.deepEqual(digestsOf(large.mine), [fnv1a(BRIEF)], 'a session too large')

@@ -2,7 +2,7 @@
 name: historian
 kind: searcher
 tools: mcp__search__log, mcp__search__show, mcp__search__grep, mcp__search__read
-schemas: search_history, historian
+schemas: search_history
 model: sonnet
 effort: medium
 ---

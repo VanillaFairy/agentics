@@ -17,7 +17,7 @@ import * as rule from '../../tools/rules/role-frontmatter.mjs'
 const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 const FILE = 'roles/scout.md'
 const GOOD = [
-  '---', 'name: scout', 'kind: searcher', 'tools: Read, Grep, Glob', 'schemas: scout_hits, scout_located',
+  '---', 'name: scout', 'kind: searcher', 'tools: Read, Grep, Glob', 'schemas: search_repo',
   'model: sonnet', 'effort: low', '---', '', 'You find code.',
 ].join('\n')
 
@@ -117,7 +117,7 @@ test('every kind, model and effort of the tables passes', () => {
 
 test('a schema lib/schemas.mjs does not export is flagged, naming it', () => {
   assert.ok(!Object.hasOwn(SCHEMAS, 'scout_guesses'))
-  const source = edit('schemas:', 'schemas: scout_hits, scout_guesses')
+  const source = edit('schemas:', 'schemas: search_repo, scout_guesses')
   const found = lint(source)
   assert.equal(found.length, 1, JSON.stringify(found))
   assert.equal(found[0].line, lineOf(source, 'schemas:'))

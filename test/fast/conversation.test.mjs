@@ -32,7 +32,6 @@ const TABLE = [
   { msg: 'findings', from: 'probe', to: 'planner' },
   { msg: 'problems', from: 'code', to: 'planner' },
   { msg: 'refusals', from: 'code', to: 'thread' },
-  { msg: 'continue_search', from: 'code', to: 'searcher' },
   { msg: 'cut_off', from: 'code', to: 'thread' },
   { msg: 'failures', from: 'code', to: 'producer' },
   { msg: 'needs_locus', from: 'implementer', to: 'planner_or_park' },
@@ -282,22 +281,6 @@ test('a changed brief carries the change and the brief', () => {
   const text = renderMessage({ msg: 'brief_changed', payload: { changed, brief } })
   assert.ok(text.includes(changed), 'carries what changed')
   assert.ok(text.includes(brief), 'carries the new brief whole')
-})
-
-test('a continue_search names what the searcher did not reach', () => {
-  const notReached = 'the wombat handlers under lib/zebra and their quokka fixtures'
-  const text = renderMessage({ msg: 'continue_search', payload: { not_reached: notReached } })
-  assert.equal(typeof text, 'string')
-  assert.ok(text.includes(notReached), 'names what was not reached')
-})
-
-test('a continue_search with nothing unreached says nothing of it', () => {
-  const none = renderMessage({ msg: 'continue_search', payload: {} })
-  assert.equal(typeof none, 'string')
-  assert.ok(none.trim().length > 0, 'still tells the searcher to go on')
-  for (const not_reached of ['', '   ', '\n\t ']) {
-    assert.equal(renderMessage({ msg: 'continue_search', payload: { not_reached } }), none, JSON.stringify(not_reached))
-  }
 })
 
 test('a cut_off message renders without a payload', () => {

@@ -2,7 +2,7 @@
 name: doc-researcher
 kind: searcher
 tools: WebSearch, mcp__search__fetch
-schemas: search_web, doc_research, candidates
+schemas: search_web
 model: sonnet
 effort: medium
 ---

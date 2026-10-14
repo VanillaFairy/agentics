@@ -34,9 +34,7 @@ test('every schema is an object schema whose required names are properties', () 
   }
 })
 
-/** The searcher schemas the old search machinery still dispatches; they go with it. */
-const OLD_SEARCHERS = ['scout_hits', 'scout_located', 'historian', 'doc_research', 'candidates']
-const navigators = () => ofKind('searcher').filter(([name]) => !OLD_SEARCHERS.includes(name))
+const navigators = () => ofKind('searcher')
 
 test('every navigator returns hits, dismissals, leads and a declaration per ask', () => {
   assert.ok(navigators().length > 0)

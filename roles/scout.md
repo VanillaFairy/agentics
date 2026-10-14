@@ -2,7 +2,7 @@
 name: scout
 kind: searcher
 tools: mcp__search__grep, mcp__search__read, mcp__search__files, mcp__search__refs
-schemas: search_repo, scout_hits, scout_located
+schemas: search_repo
 model: sonnet
 effort: low
 ---

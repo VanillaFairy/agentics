@@ -133,7 +133,7 @@ test('does NOT flag a content bound', () => {
 
 test('a clean program loop produces no violations', () => {
   const src = [
-    "const found = await dispatch(ctx, { role: 'scout', schema: 'scout_hits', brief })",
+    "const found = await dispatch(ctx, { role: 'scout', schema: 'search_repo', brief })",
     "if (found.stop_reason !== 'exhausted') continue",
   ].join('\n')
 

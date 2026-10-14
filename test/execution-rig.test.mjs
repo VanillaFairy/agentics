@@ -17,7 +17,7 @@ import { executionRig } from './harness/program-rig.mjs'
 
 const FIXTURES = fileURLToPath(new URL('./fixtures/compile/', import.meta.url))
 const fixture = (name) => readFileSync(join(FIXTURES, name), 'utf8').replace(/\r\n/g, '\n')
-const hits = { hits: [{ path: 'src/add.mjs', line: 1, note: 'there' }], searched: [], no_match: '', not_reached: '', stop_reason: 'exhausted' }
+const hits = { hits: [{ ask: ['plan'], path: 'src/add.mjs', line: 1, note: 'there' }], dismissed: [], leads: [], asks: [] }
 
 test('the rig builds a compiled effort, its effort branch and its envelope', (t) => {
   const rig = executionRig(t)
@@ -48,14 +48,14 @@ test('the execution log starts empty', (t) => {
 test('a scripted dispatch stores its return under the execution home', async (t) => {
   const rig = executionRig(t)
   rig.script({ 'scout|a|plan': [{ output: hits }] })
-  const r = await dispatch(rig.ctx, { role: 'scout', schema: 'scout_hits', node: 'a', thread: 'plan', brief: 'Find add.' })
+  const r = await dispatch(rig.ctx, { role: 'scout', schema: 'search_repo', node: 'a', thread: 'plan', brief: 'Find add.' })
   assert.equal(r.status, 'returned')
   const stored = returnPath(executionDir(rig.repo, rig.effort, rig.stamp), r.dispatch)
   assert.match(stored.replace(/\\/g, '/'), new RegExp('/executions/' + rig.stamp + '/returns/'))
   assert.deepEqual(readJson(stored), hits)
   assert.equal(rig.xc.log.entries().filter((e) => e.kind === 'returned').length, 1)
   const again = rig.relaunch()
-  const replay = await dispatch(again.ctx, { role: 'scout', schema: 'scout_hits', node: 'a', thread: 'plan', brief: 'Find add.' })
+  const replay = await dispatch(again.ctx, { role: 'scout', schema: 'search_repo', node: 'a', thread: 'plan', brief: 'Find add.' })
   assert.equal(replay.replayed, true)
   assert.equal(again.calls.length, 0)
   assert.equal(existsSync(stored), true)

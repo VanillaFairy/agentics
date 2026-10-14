@@ -37,6 +37,10 @@ const LIMIT = 'Claude AI usage limit reached; resets at 5pm (Europe/London).'
 
 const FIXTURE_SESSION = JSON.parse(fixture[0]).session_id
 const RESULT = JSON.parse(fixture.at(-1))
+const contextLines = readFileSync(join(here, '..', 'fixtures', 'runner', 'stream-context.jsonl'), 'utf8').split(/\r?\n/).filter((l) => l.trim())
+const CONTEXT_SESSION = JSON.parse(contextLines[0]).session_id
+/** The context fixture's stream in `session`. */
+const contextIn = (session) => contextLines.map((l) => l.split(CONTEXT_SESSION).join(session))
 /** A two-line stream in `session`: the fixture's init, then its result with `over` laid on it. */
 const streamIn = (session, over = {}) => [
   fixture[0].split(FIXTURE_SESSION).join(session),
@@ -154,14 +158,15 @@ test('a missing session without a next one fails as missing', async () => {
 
 // ------------------------------------------------------------------ a session grown too large
 
-test('a session past half its window goes on fresh', async () => {
+/** An ended earlier call on the session whose last model turn read `context` tokens, its whole call far more. */
+const endedAt = (context, over = {}) => [earlierDispatched(over), earlierReturned({ usage: usageOf(10, 10 * context + 1000, 0), context, ...over })]
+
+test("a session whose last turn read past half its window goes on fresh", async () => {
   const window = 100000
-  const big = usageOf(10, window / 2 - 9, 0, 1)
-  assert.equal(sizeOf(big), window / 2 + 1)
   const seed = [
-    ...endedWith(usageOf(10, 100, 0), { dispatch: 'older', pid: 100 }),
-    ...endedWith(big),
-    ...endedWith(usageOf(1, 0, 0), { dispatch: 'elsewhere', session: OTHER, pid: 102 }),
+    ...endedAt(10, { dispatch: 'older', pid: 100 }),
+    ...endedAt(window / 2 + 1),
+    ...endedAt(1, { dispatch: 'elsewhere', session: OTHER, pid: 102 }),
   ]
   const { spawns, mine, out } = await run({ resume: true, tier: { model: 'opus', effort: 'high', window } }, {
     seed, script: [{ pid: 4242, lines: streamIn(NEXT) }],
@@ -174,15 +179,14 @@ test('a session past half its window goes on fresh', async () => {
   assert.equal(out.session, NEXT)
 })
 
-test('a session within half its window is resumed', async () => {
+test('a session whose last turn read half its window is resumed, however much the whole call read', async () => {
   const window = 100000
-  const atHalf = usageOf(10, window / 2 - 1010, 1000, window)
-  assert.equal(sizeOf(atHalf), window / 2)
   const seed = [
-    ...endedWith(usageOf(10, window, 0), { dispatch: 'older', pid: 100 }),
-    ...endedWith(atHalf),
-    ...endedWith(usageOf(10, window, 0), { dispatch: 'elsewhere', session: OTHER, pid: 102 }),
+    ...endedAt(window, { dispatch: 'older', pid: 100 }),
+    ...endedAt(window / 2),
+    ...endedAt(window, { dispatch: 'elsewhere', session: OTHER, pid: 102 }),
   ]
+  assert.ok(sizeOf(seed[3][1].usage) > window, 'the whole call read more than the window')
   const { spawns, mine, out } = await run({ resume: true, tier: { model: 'opus', effort: 'high', window } }, {
     seed, script: [{ pid: 4242, lines: streamIn(S) }],
   })
@@ -194,18 +198,40 @@ test('a session within half its window is resumed', async () => {
   assert.equal(out.session, S)
 })
 
+test('a session no return measured is resumed, whatever its usage', async () => {
+  const window = 100000
+  const { spawns, mine } = await run({ resume: true, tier: { model: 'opus', effort: 'high', window } }, {
+    seed: endedWith(usageOf(10, 10 * window, 0)), script: [{ pid: 4242, lines: streamIn(S) }],
+  })
+  assert.equal(valueAfter(spawns[0].args, '--resume'), S, 'a record without a context is no measure of the session')
+  assert.equal(ofKind(mine, 'thread_renewed').length, 0)
+})
+
+test('a later return without a context leaves the last measured one deciding', async () => {
+  const window = 100000
+  const seed = [
+    ...endedAt(window / 2 + 1, { dispatch: 'measured', pid: 100 }),
+    ['returned', { dispatch: PREV, session: S, status: 'cut_off', cause: 'orphan_ended', usage: null, cost_total: null, cost_usd: null, denials: [] }],
+  ]
+  const { spawns, mine } = await run({ resume: true, tier: { model: 'opus', effort: 'high', window } }, {
+    seed, script: [{ pid: 4242, lines: streamIn(NEXT) }],
+  })
+  assertStartsFresh(spawns[0], NEXT, FRESH)
+  assertRenewed(mine, 'too_large')
+})
+
 test('without a fresh brief a large session is resumed', async (t) => {
   const window = 100000
   const tier = { model: 'opus', effort: 'high', window }
   const withoutKey = async () => {
-    const r = rig({ seed: endedWith(usageOf(10, window, 0)), script: [{ pid: 4242, lines: streamIn(S) }] })
+    const r = rig({ seed: endedAt(window), script: [{ pid: 4242, lines: streamIn(S) }] })
     const call = makeCall({ resume: true, tier })
     delete call.freshBrief
     const out = await runAgent(call, r.ports)
     return { ...r, out, mine: r.log.entries().filter((e) => e.seq > r.seeded) }
   }
   const cases = {
-    'an empty freshBrief': () => run({ resume: true, freshBrief: '', tier }, { seed: endedWith(usageOf(10, window, 0)), script: [{ pid: 4242, lines: streamIn(S) }] }),
+    'an empty freshBrief': () => run({ resume: true, freshBrief: '', tier }, { seed: endedAt(window), script: [{ pid: 4242, lines: streamIn(S) }] }),
     'an absent freshBrief': withoutKey,
   }
   for (const [name, go] of Object.entries(cases)) {
@@ -223,16 +249,26 @@ test('without a fresh brief a large session is resumed', async (t) => {
 
 test('the window defaults to 200000 tokens', async () => {
   const tier = { model: 'opus', effort: 'high' }
-  const large = await run({ resume: true, tier }, { seed: endedWith(usageOf(10, 120000 - 10, 0)), script: [{ pid: 4242, lines: streamIn(NEXT) }] })
+  const large = await run({ resume: true, tier }, { seed: endedAt(100001), script: [{ pid: 4242, lines: streamIn(NEXT) }] })
   assertStartsFresh(large.spawns[0], NEXT, FRESH)
   assertRenewed(large.mine, 'too_large')
   assert.equal(large.spawns.length, 1)
   assert.ok(!large.spawns.some((sp) => sp.args.includes('--resume')), 'no spawn resumes the large session')
 
-  const small = await run({ resume: true, tier }, { seed: endedWith(usageOf(10, 90000 - 10, 0)), script: [{ pid: 4242, lines: streamIn(S) }] })
+  const small = await run({ resume: true, tier }, { seed: endedAt(100000), script: [{ pid: 4242, lines: streamIn(S) }] })
   assert.equal(small.spawns.length, 1)
   assert.equal(valueAfter(small.spawns[0].args, '--resume'), S)
   assert.equal(ofKind(small.mine, 'thread_renewed').length, 0)
+})
+
+test("a returned record carries its last turn's context beside the whole call's usage", async () => {
+  const { mine } = await run({}, { script: [{ pid: 4242, lines: contextIn(S) }] })
+  const events = contextLines.map((l) => JSON.parse(l))
+  const last = events.filter((e) => e.type === 'assistant' && e.message.usage).at(-1).message.usage
+  const [row] = ofKind(mine, 'returned')
+  assert.equal(row.status, 'returned')
+  assert.equal(row.context, sizeOf(last))
+  assert.deepEqual(row.usage, events.find((e) => e.type === 'result').usage)
 })
 
 // ------------------------------------------------------------------ a return too large for one response

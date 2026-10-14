@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { KEPT_HOST_VARIABLES, LEAN_FLAGS, PERMISSION_FLAGS, buildArgs, classifyCall, cleanEnv, parseStream } from '../../lib/runner.mjs'
+import { KEPT_HOST_VARIABLES, LEAN_FLAGS, PERMISSION_FLAGS, buildArgs, classifyCall, cleanEnv, parseStream, returnedEntry } from '../../lib/runner.mjs'
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'runner')
 const SUCCESS = readFileSync(join(fixtures, 'stream-success.jsonl'), 'utf8')
@@ -237,6 +237,36 @@ test('a torn line is counted, not thrown on', () => {
   assert.equal(p.costTotal, SUCCESS_RESULT.total_cost_usd)
   assert.equal(p.sessionId, SESSION)
   assert.equal(p.turns, events(SUCCESS).filter((e) => e.type === 'assistant').length)
+})
+
+const CONTEXT = readFileSync(join(fixtures, 'stream-context.jsonl'), 'utf8')
+const sizeOf = (u) => (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0)
+const lastTurnUsage = (text) => events(text).filter((e) => e.type === 'assistant' && e.message && e.message.usage).at(-1).message.usage
+
+test("the context is the last model turn's, and usage stays the whole call's", () => {
+  const p = parseStream(CONTEXT)
+  const result = events(CONTEXT).find((e) => e.type === 'result')
+  assert.equal(p.context, sizeOf(lastTurnUsage(CONTEXT)))
+  assert.deepEqual(p.usage, result.usage, 'usage is the result event\'s, summed over every turn')
+  assert.notEqual(p.context, sizeOf(result.usage), 'the fixture\'s whole-call usage differs from its last turn')
+})
+
+test('an assistant event without usage leaves the context of the last one that had it', () => {
+  const lines = CONTEXT.split('\n').filter((l) => l.trim())
+  const bare = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'and one more' }] } })
+  const p = parseStream([...lines.slice(0, -1), bare, lines.at(-1)].join('\n') + '\n')
+  assert.equal(p.context, sizeOf(lastTurnUsage(CONTEXT)))
+})
+
+test('a stream whose assistant events carry no usage has no context', () => {
+  assert.equal(parseStream(SUCCESS).context, null, 'the result event\'s usage is not a context')
+  assert.equal(parseStream('').context, null)
+})
+
+test('a returned record carries its context, null when none was measured', () => {
+  const c = { dispatch: 'd' }
+  assert.equal(returnedEntry(c, { session: 's', status: 'returned' }).context, null)
+  assert.equal(returnedEntry(c, { session: 's', status: 'returned', context: 2002 }).context, 2002)
 })
 
 test('an empty stream reads as nothing', () => {

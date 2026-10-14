@@ -549,8 +549,9 @@ next session id is minted from its new generation.
 **A return too large for one response** says so (`more: true`); the runner resumes the same
 session for the rest and stores the parts as one return. Each part is recorded `returned {status:
 part}` and stored nowhere; the call that completes the return stores the merged whole and only then
-records `returned`. A part that adds no array element the merged return lacks and changes no field
-ends the call failed, `no_progress`. The parts so far are kept only in the session: the runner
+records `returned`. A part that adds no array element the merged return lacks and fills no field
+the merged return holds empty ends the call failed, `no_progress`: a reworded field is not
+progress, so a session that restates itself part after part ends. The parts so far are kept only in the session: the runner
 holds them in memory, so a host stop or a relaunch between parts drops them, and the `cut_off`
 resume asks the session for its whole return again, from the start. No return schema carries a
 bound that would make an agent drop what does not fit (the `no-schema-bounds` lint rule).
@@ -1807,16 +1808,19 @@ stored returns and decides what runs next:
 - `done` when the round says `exhausted`: the searcher declares it found what there is;
 - `stop` with `dead_end` when it says `artefact_unreadable`, or `stuck` without naming a remainder;
 - `stop` with `no_progress` when the round found no entry no earlier round holds (a location by
-  path and line, a candidate by name) and named the same remainder as the round before, case and
-  spacing aside;
+  path and line, a candidate by name) and named no remainder shorter than every earlier round's,
+  case and spacing aside;
 - `continue` otherwise.
 
 A round read as `continue` — `unfinished`, `stuck` naming a remainder, any other stop reason or
 none — is continued in the searcher's own session, with a fixed message (`continue_search`, naming
 what the round said it did not reach): its earlier rounds are in its session, so it covers what the
-original request asks that it has not, and reports only what it did not report before. A slip in
-filling one field costs one more turn, never the search, and a round after the first that gains
-nothing and names the same remainder ends it.
+original request asks that it has not, and reports only what it did not report before. Its
+session may be compacted and lose what it reported; code unions the entries across rounds, so a
+re-report costs nothing. A slip in filling one field costs one more turn, never the search. Both
+measures of progress only move one way — the entries grow, a gainless round's remainder shrinks —
+so a searcher that rewords what it did not reach, round after round, ends without any count of
+rounds (L2).
 
 These are declarations, and they steer: they decide whether a searcher is asked again, never
 whether anything passes (L3). A search's coverage is shown as declared, in the coverage block and

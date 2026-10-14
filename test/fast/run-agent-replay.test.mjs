@@ -253,13 +253,24 @@ test('a watch that fails on a part stores nothing and returns no output', async 
 
 // ------------------------------------------------------------------ progress
 
-test('a part that only changes a scalar makes progress', async () => {
+test('a part that only rewords a field makes no progress', async () => {
   const parts = [
     { status: 'blocked', text: 'one', items: ['a'], more: true },
     { status: 'blocked', text: 'two', items: ['a'], more: true },
     { status: 'done', text: 'three', items: [] },
   ]
   const { spawns, out } = await run({}, { script: parts.map((p, i) => ({ pid: 8000 + i, lines: part(p) })) })
+  assert.equal(spawns.length, 2, 'a part that only restates a field is not continued')
+  assert.deepEqual([out.status, out.cause], ['failed', 'no_progress'])
+})
+
+test('a part that fills a field the merged return holds empty makes progress', async () => {
+  const parts = [
+    { status: 'blocked', text: '', items: ['a'], more: true },
+    { status: 'blocked', text: 'two', items: ['a'], more: true },
+    { status: 'done', text: 'three', items: [] },
+  ]
+  const { spawns, out } = await run({}, { script: parts.map((p, i) => ({ pid: 8050 + i, lines: part(p) })) })
   assert.equal(spawns.length, parts.length)
   assert.equal(out.status, 'returned')
   assert.equal(out.output.text, 'three')

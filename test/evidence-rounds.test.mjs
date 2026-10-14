@@ -55,6 +55,25 @@ test('a round that narrows the remainder goes on even with nothing new found', (
   assert.equal(roundOf(report({ stop_reason: 'unfinished', not_reached: 'src/vendor/' }), [first]).next, 'continue')
 })
 
+test('a round that restates the remainder in other words, no shorter, and finds nothing new makes no progress', () => {
+  const first = report({ stop_reason: 'unfinished', not_reached: 'src/vendor/ never opened' })
+  const out = roundOf(report({ stop_reason: 'unfinished', not_reached: 'never opened: src/vendor/ tree' }), [first])
+  assert.deepEqual([out.next, out.why], ['stop', 'no_progress'])
+})
+
+test('a gainless remainder must be shorter than every earlier one, so alternating wordings end the search', () => {
+  const rounds = ['src/vendor/ never opened', 'src/vendor/ and docs/ never opened in full', 'src/vendor/ was never opened']
+    .map((not_reached) => report({ stop_reason: 'unfinished', not_reached }))
+  const out = roundOf(rounds[2], rounds.slice(0, 2))
+  assert.deepEqual([out.next, out.why], ['stop', 'no_progress'])
+})
+
+test('a later round that drops its remainder without finding anything new makes no progress', () => {
+  const first = report({ stop_reason: 'unfinished', not_reached: 'src/vendor/' })
+  const out = roundOf(report({ stop_reason: 'unfinished' }), [first])
+  assert.deepEqual([out.next, out.why], ['stop', 'no_progress'])
+})
+
 test('a stuck round that names nothing is a dead end; one that names a remainder goes on', () => {
   const dead = roundOf(report({ stop_reason: 'stuck' }))
   assert.deepEqual([dead.next, dead.why], ['stop', 'dead_end'])

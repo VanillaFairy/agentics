@@ -45,6 +45,13 @@ test('threadBrief and prompt are judged as brief is', () => {
   assert.deepEqual(lines('deliver(ctx, { prompt: `Go on.` })'), [1])
 })
 
+test('a charge is judged as a brief is', () => {
+  assert.deepEqual(lines("await dispatch(ctx, { role: 'scout', charge: 'ASKS: ' + asks })"), [1])
+  assert.deepEqual(lines('await dispatch(ctx, { charge: `Find ${x}` })'), [1])
+  assert.deepEqual(lines('await dispatch(ctx, { charge: chargeOf({ domain, asks, ground }) })'), [])
+  assert.deepEqual(lines("const charge = 'Find it.'\nawait dispatch(ctx, { charge })"), [2])
+})
+
 test('a name bound to made text is judged by its binding, on the property line', () => {
   assert.deepEqual(lines("const text = 'Find ' + topic\nawait dispatch(ctx, { brief: text })"), [2])
   assert.deepEqual(lines("let p = scoutBrief(a)\nif (b) p = 'Search again.'\nawait dispatch(ctx, { brief: p })"), [3])

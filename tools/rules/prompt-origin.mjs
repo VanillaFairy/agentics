@@ -2,7 +2,7 @@
 //
 // Design: docs/DESIGN.md#self-checks. A prompt is built only by `lib/brief.mjs`, `lib/briefs/` and
 // `renderMessage` (`lib/conversation.mjs`), so no command or path for a model to carry reaches one
-// from anywhere else. In a program or a boundary, a `brief`, `threadBrief` or `prompt` property
+// from anywhere else. In a program or a boundary, a `brief`, `threadBrief`, `prompt` or `charge` property
 // whose value is text made on the spot — a string literal, a template literal, a `+`
 // concatenation — is a finding; so is a name the file binds to such text. A call, a member and an
 // empty string are not text made on the spot. A conditional's branches and the operands of `||`,
@@ -18,7 +18,7 @@ export const id = 'prompt-origin'
 export const applies = /^lib\/(programs|boundaries)\/.+\.mjs$/
 
 /** The property names whose value is a prompt. */
-const KEYS = ['brief', 'threadBrief', 'prompt']
+const KEYS = ['brief', 'threadBrief', 'prompt', 'charge']
 
 /**
  * Replace the contents of strings and comments with spaces, preserving length and

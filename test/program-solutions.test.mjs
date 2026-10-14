@@ -13,6 +13,7 @@ import { dirname, join } from 'node:path'
 
 import { liveItems } from '../lib/evidence.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
+import { threadOf } from '../lib/programs/common.mjs'
 import { scopeOf, solutions } from '../lib/programs/solutions.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
@@ -410,16 +411,32 @@ test('an assessor that failed leaves the candidates unmeasured', async (t) => {
 
 test('one candidate a researcher reaches by two names is one candidate', async (t) => {
   const url = 'https://github.com/pmndrs/zustand'
-  const research = { npm: [found([cand('zustand', { source_url: url }), cand('pmndrs/zustand', { source_url: url })])] }
-  const { rig } = await sweep(t, scriptOf({ research, assess: [ok(assessed([row(cand('zustand', { source_url: url }))]))] }))
+  const [pageA, pageB] = ['https://example.org/pages/a', 'https://example.org/pages/b']
+  const names = [cand('zustand', { source_url: url }), cand('pmndrs/zustand', { source_url: url })]
+  // Two pages, each carrying the same project under another name: the ledger keeps both hits.
+  const twoPages = {
+    calls: [fetchCall('npm', pageA), fetchCall('npm', pageB)],
+    output: webReturn({
+      hits: [['npm', pageA, 'a page', names[0]], ['npm', pageB, 'b page', names[1]]],
+      dismissed: [{ ask: ['npm'], glob: '**', why: 'nothing else here bears on it' }],
+      declare: { npm: 'answered' },
+    }),
+  }
+  const { rig } = await sweep(t, scriptOf({ research: { npm: [twoPages] }, assess: [ok(assessed([row(names[0])]))] }))
   const unitsLines = firstBrief(rig, 'assess').split('UNITS')[1].split('\n').filter((l) => l.startsWith('- '))
   assert.equal(unitsLines.length, 1, unitsLines.join('\n'))
+  assert.equal(externals(rig.repo).length, 1)
 })
 
 test("the assessor never judges from a researcher's session", async (t) => {
-  const { rig } = await sweep(t, scriptOf({ assess: DEFAULT_ASSESS }))
-  const [assess] = callsOn(rig, 'assess')
-  for (const c of callsOn(rig, 'research:npm')) assert.notEqual(assess.thread.session, c.thread.session)
+  const rig = rigFor(t, { script: scriptOf({ assess: DEFAULT_ASSESS }) })
+  // The researcher's thread already ran in the session the assessor would take.
+  const research = threadOf(rig.ctx, { role: 'doc-researcher', thread: 'research:npm' })
+  const assess = threadOf(rig.ctx, { role: 'analyst', thread: 'assess' })
+  rig.ctx.log.append('dispatched', { dispatch: 'seeded.research', thread: research.key, session: assess.session, model: 'sonnet', effort: 'medium' })
+  const result = await solutions(rig.ctx, argsFor(rig))
+  assert.equal(callsOn(rig, 'assess').length, 0, "the assessor ran on a researcher's session")
+  assert.ok(result.coverage.failed_channels.includes('assess'))
 })
 
 test('a tree handed in-process is swept, and what it already carries is recorded on it', async (t) => {

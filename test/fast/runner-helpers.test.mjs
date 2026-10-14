@@ -61,6 +61,30 @@ test('a call names its role file and tools', () => {
   assert.ok(t > f, 'the tools follow the role file')
 })
 
+const MCP_CONFIG = 'C:/run/searches/probe~a/mcp-0a1b2c3d.json'
+
+test("an mcp tool reaches the host through its server's config, never through --tools", () => {
+  const tools = ['mcp__search__grep', 'mcp__search__read']
+  const args = buildArgs(call({ tools, allowed: tools, mcpConfig: MCP_CONFIG }))
+  assert.equal(args[at(args, '--tools') + 1], '', 'a role of mcp tools only runs with no host tools')
+  assert.equal(args[at(args, '--mcp-config') + 1], MCP_CONFIG)
+  const l = seqAt(args, LEAN_FLAGS)
+  assert.ok(at(args, '--mcp-config') >= l + LEAN_FLAGS.length, 'the config follows the lean flags, --strict-mcp-config among them')
+  assert.ok(at(args, '--mcp-config') < at(args, '--model'), 'and precedes the model')
+  assert.deepEqual(args.slice(at(args, '--allowedTools') + 1, at(args, '--allowedTools') + 1 + tools.length), tools, 'the mcp tools are allowed by name')
+})
+
+test('a role mixing host and mcp tools passes only the host ones to --tools', () => {
+  const args = buildArgs(call({ tools: ['WebSearch', 'mcp__search__fetch'], mcpConfig: MCP_CONFIG }))
+  assert.equal(args[at(args, '--tools') + 1], 'WebSearch')
+})
+
+test('no --mcp-config without a config', () => {
+  assert.equal(buildArgs(call()).indexOf('--mcp-config'), -1)
+  assert.equal(buildArgs(call({ mcpConfig: '' })).indexOf('--mcp-config'), -1)
+  assert.equal(buildArgs(call())[at(buildArgs(call()), '--tools') + 1], call().tools.join(','), 'host tools are passed as before')
+})
+
 test('allowed rules go on the command line, and only when there are some', () => {
   const allowed = ['Bash(npm test:*)', 'Bash(git status:*)', 'Edit(/C:/w/src/**)']
   const args = buildArgs(call({ allowed }))

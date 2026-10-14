@@ -15,13 +15,13 @@ const ROLES = fileURLToPath(new URL('../../roles/', import.meta.url))
 const PINNED = {
   scout: {
     kind: 'searcher', tools: ['mcp__search__files', 'mcp__search__grep', 'mcp__search__read', 'mcp__search__refs'], commands: [],
-    schemas: ['search_repo', 'scout_hits', 'scout_located'],
+    schemas: ['search_repo'],
   },
   historian: {
     kind: 'searcher', tools: ['mcp__search__grep', 'mcp__search__log', 'mcp__search__read', 'mcp__search__show'], commands: [],
-    schemas: ['search_history', 'historian'],
+    schemas: ['search_history'],
   },
-  'doc-researcher': { kind: 'searcher', tools: ['WebSearch', 'mcp__search__fetch'], commands: [], schemas: ['search_web', 'doc_research', 'candidates'] },
+  'doc-researcher': { kind: 'searcher', tools: ['WebSearch', 'mcp__search__fetch'], commands: [], schemas: ['search_web'] },
   planner: { kind: 'producer', tools: ['Edit', 'Glob', 'Grep', 'Read', 'Write'], commands: [], schemas: ['planner_write', 'planner_settle'] },
   implementer: {
     kind: 'producer', tools: ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write'],

@@ -505,10 +505,10 @@ test('a stopped run started again with the same arguments is resumed under its o
   const repo = makeRepo(t)
   const got = []
   const { mod } = program(async (ctx) => {
-    got.push(await dispatch(ctx, { role: 'scout', schema: 'scout_hits', thread: 'plan', brief: 'Find the store.' }))
+    got.push(await dispatch(ctx, { role: 'scout', schema: 'search_repo', thread: 'plan', brief: 'Find the store.' }))
     return {}
   }, { ARGS: TEXT_ARGS })
-  const output = { hits: [{ path: 'lib/store.mjs', line: 12, note: 'there' }], searched: [], no_match: '', not_reached: '', stop_reason: 'exhausted' }
+  const output = { hits: [{ ask: ['plan'], path: 'lib/store.mjs', line: 12, note: 'there' }], dismissed: [], leads: [], asks: [] }
   const first = await start(repo, ['survey', '--topic', 'x'], mod, { script: { 'scout||plan': [{ output }] } })
   assert.equal(first.ok, true)
   assert.equal(got[0].status, 'returned')

@@ -1,6 +1,6 @@
 // test/program-dispatch.test.mjs — pins the dispatch layer every program runs on: the context, what a
 // call carries to the runner, reading the stored return, replay and cut-off resume on relaunch, host
-// stops and the agent slots, steps, delivered messages, continued searches, the coverage block, the
+// stops and the agent slots, steps, delivered messages, the coverage block, the
 // wait after a host stop, and judges kept apart from every producer.
 //
 // Design: docs/DESIGN.md#programs.
@@ -11,11 +11,10 @@ import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { renderMessage } from '../lib/conversation.mjs'
-import { roundOf } from '../lib/evidence.mjs'
 import { readOnlyPermissions } from '../lib/locus.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
 import {
-  coverageOf, deliver, dispatch, dispatchJudge, programContext, searchRounds, step, waitFor,
+  coverageOf, deliver, dispatch, dispatchJudge, programContext, step, waitFor,
 } from '../lib/programs/common.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { dispatchedEntry } from '../lib/runner.mjs'
@@ -33,10 +32,9 @@ function rigFor(t, opts) {
   return rig
 }
 
-const spec = (over = {}) => ({ role: 'scout', schema: 'scout_hits', thread: 'plan', brief: BRIEF, ...over })
-const hit = (path, line, extra = {}) => ({ path, line, note: 'there', ...extra })
-const scoutOut = ({ hits = [hit('lib/store.mjs', 12)], stop_reason = 'exhausted', not_reached = '', no_match = '', searched = [] } = {}) =>
-  ({ hits, searched, no_match, not_reached, stop_reason })
+const spec = (over = {}) => ({ role: 'scout', schema: 'search_repo', thread: 'plan', brief: BRIEF, ...over })
+const hit = (path, line) => ({ ask: ['plan'], path, line, note: 'there' })
+const scoutOut = ({ hits = [hit('lib/store.mjs', 12)] } = {}) => ({ hits, dismissed: [], leads: [], asks: [] })
 
 const sessionFor = (rig, { thread = 'plan', node = '', role = 'scout', gen = 0 } = {}) =>
   sessionOf({ effort: rig.ctx.effort, execution: rig.run, node, role, thread, gen })
@@ -113,11 +111,11 @@ test("a first call's system prompt file holds the role's body", async (t) => {
 })
 
 test('a first call carries the schema it names', async (t) => {
-  const rig = rigFor(t, { script: { 'scout||a': [{ output: scoutOut() }], 'scout||b': [{ output: scoutOut({ hits: [hit('a', 1, { kind: 'ground' })] }) }] } })
-  await dispatch(rig.ctx, spec({ thread: 'a', schema: 'scout_hits' }))
-  await dispatch(rig.ctx, spec({ thread: 'b', schema: 'scout_located' }))
-  assert.deepEqual(rig.calls[0].schema, schemaOf('scout_hits'))
-  assert.deepEqual(rig.calls[1].schema, schemaOf('scout_located'))
+  const rig = rigFor(t, { script: { 'ruler||a': [{ output: { rulings: [] } }], 'ruler||b': [{ output: { units: [] } }] } })
+  await dispatch(rig.ctx, { role: 'ruler', schema: 'ruler_premises', thread: 'a', brief: BRIEF })
+  await dispatch(rig.ctx, { role: 'ruler', schema: 'ruler_search', thread: 'b', brief: BRIEF })
+  assert.deepEqual(rig.calls[0].schema, schemaOf('ruler_premises'))
+  assert.deepEqual(rig.calls[1].schema, schemaOf('ruler_search'))
 })
 
 test("a first call runs in the thread's first session", async (t) => {
@@ -170,7 +168,7 @@ test("a first call's tier is the role's at the dial", async (t) => {
     },
   })
   const cases = [
-    { role: 'scout', schema: 'scout_hits', thread: 's', intelligence: 'normal', base: 'high' },
+    { role: 'scout', schema: 'search_repo', thread: 's', intelligence: 'normal', base: 'high' },
     { role: 'analyst', schema: 'axes', thread: 'max', intelligence: 'max', base: '' },
     { role: 'analyst', schema: 'axes', thread: 'low', intelligence: 'low', base: 'medium' },
   ]
@@ -183,9 +181,9 @@ test("a first call's tier is the role's at the dial", async (t) => {
 })
 
 test("a first call's permissions are the role's read-only rules", async (t) => {
-  const rig = rigFor(t, { script: { [KEY]: [{ output: scoutOut() }], 'historian||h': [{ output: { findings: '', searched: [], no_match: '', not_reached: '', stop_reason: 'exhausted' } }] } })
+  const rig = rigFor(t, { script: { [KEY]: [{ output: scoutOut() }], 'historian||h': [{ output: { hits: [], dismissed: [], leads: [], asks: [] } }] } })
   await dispatch(rig.ctx, spec())
-  await dispatch(rig.ctx, { role: 'historian', schema: 'historian', thread: 'h', brief: BRIEF })
+  await dispatch(rig.ctx, { role: 'historian', schema: 'search_history', thread: 'h', brief: BRIEF })
   assert.deepEqual(rig.calls[0].permissions, readOnlyPermissions(loadRole('scout').role))
   assert.deepEqual(rig.calls[1].permissions, readOnlyPermissions(loadRole('historian').role))
 })
@@ -505,7 +503,7 @@ test('a step that throws records nothing', async (t) => {
 // --- messages --------------------------------------------------------------------------------
 
 const MSG = { msg: 'declined', payload: { why: 'the kiwi case is pinned already' } }
-const deliverSpec = (over = {}) => ({ role: 'scout', schema: 'scout_hits', thread: 'plan', threadBrief: BRIEF, ...MSG, round: 2, ...over })
+const deliverSpec = (over = {}) => ({ role: 'scout', schema: 'search_repo', thread: 'plan', threadBrief: BRIEF, ...MSG, round: 2, ...over })
 const twoRounds = () => ({ [KEY]: [{ output: scoutOut() }, { output: scoutOut() }] })
 
 test('a message is recorded before the dispatch that carries it', async (t) => {
@@ -558,102 +556,6 @@ test('a message recorded whose dispatch never started is delivered once on relau
   assert.deepEqual(again.calls[0].carries, [seq])
   assert.equal(again.calls[0].brief, renderMessage(MSG))
   assert.equal(again.calls[0].resume, true)
-})
-
-// --- continued searches ----------------------------------------------------------------------
-
-test('an exhausted first round is done in one call', async (t) => {
-  const output = scoutOut({ stop_reason: 'exhausted' })
-  const rig = rigFor(t, { script: { [KEY]: [{ output }] } })
-  const s = await searchRounds(rig.ctx, spec())
-  assert.equal(s.outcome, 'done')
-  assert.equal(rig.calls.length, 1)
-  assert.equal(s.rounds.length, 1)
-  assert.equal(s.last.status, 'returned')
-  assert.deepEqual(s.last.output, output)
-})
-
-test('an unfinished round goes on in the same session, told what it did not reach', async (t) => {
-  const notReached = 'the wombat handlers under lib/zebra'
-  const rig = rigFor(t, {
-    script: {
-      [KEY]: [
-        { output: scoutOut({ stop_reason: 'unfinished', not_reached: notReached }) },
-        { output: scoutOut({ hits: [hit('lib/zebra/wombat.mjs', 8)], stop_reason: 'exhausted' }) },
-      ],
-    },
-  })
-  const s = await searchRounds(rig.ctx, spec())
-  assert.equal(rig.calls.length, 2)
-  const [one, two] = rig.calls
-  assert.equal(two.round, 2)
-  assert.equal(two.resume, true)
-  assert.equal(two.thread.session, one.thread.session)
-  assert.equal(two.brief, renderMessage({ msg: 'continue_search', payload: { not_reached: notReached } }))
-  assert.equal(two.briefDigest, fnv1a(BRIEF))
-  assert.equal(s.outcome, 'done')
-  assert.equal(s.rounds.length, 2)
-})
-
-test('a round that gains nothing and names the same remainder stops no_progress', async (t) => {
-  const same = scoutOut({ hits: [hit('lib/a.mjs', 1)], stop_reason: 'unfinished', not_reached: 'the rest of lib' })
-  const rig = rigFor(t, { script: { [KEY]: [{ output: same }, { output: same }] } })
-  const s = await searchRounds(rig.ctx, spec())
-  assert.equal(s.outcome, 'stop')
-  assert.equal(s.why, 'no_progress')
-  assert.equal(rig.calls.length, 2)
-})
-
-test('an unreadable artefact, or stuck with no remainder, stops dead_end', async (t) => {
-  const rig = rigFor(t, {
-    script: {
-      'scout||unreadable': [{ output: scoutOut({ stop_reason: 'artefact_unreadable' }) }],
-      'scout||stuck': [{ output: scoutOut({ stop_reason: 'stuck', not_reached: '' }) }],
-    },
-  })
-  for (const thread of ['unreadable', 'stuck']) {
-    const s = await searchRounds(rig.ctx, spec({ thread }))
-    assert.equal(s.outcome, 'stop', thread)
-    assert.equal(s.why, 'dead_end', thread)
-  }
-  assert.equal(rig.calls.length, 2, 'one call each')
-})
-
-test('a failed round ends the search failed with its cause', async (t) => {
-  const rig = rigFor(t, {
-    script: {
-      'scout||later': [{ output: scoutOut({ stop_reason: 'unfinished', not_reached: 'more' }) }, { status: 'failed', cause: 'host_error' }],
-      'scout||first': [{ status: 'failed', cause: 'host_error' }],
-    },
-  })
-  const later = await searchRounds(rig.ctx, spec({ thread: 'later' }))
-  assert.equal(later.outcome, 'failed')
-  assert.equal(later.cause, 'host_error')
-  assert.equal(later.rounds.length, 1)
-  assert.equal(later.rounds[0].dispatch, keyFor({ thread: 'later', round: 1 }))
-  assert.equal(later.last.status, 'failed')
-  assert.equal(later.last.cause, 'host_error')
-  const first = await searchRounds(rig.ctx, spec({ thread: 'first' }))
-  assert.equal(first.outcome, 'failed')
-  assert.equal(first.cause, 'host_error')
-  assert.equal(first.rounds.length, 0)
-  assert.equal(first.last.status, 'failed')
-})
-
-test("a search's entries_n and kinds are its last round's reading", async (t) => {
-  const r1 = scoutOut({
-    hits: [hit('lib/guide.md', 1, { kind: 'guidance' }), hit('lib/b.mjs', 2, { kind: 'ground' })],
-    stop_reason: 'unfinished', not_reached: 'the tests',
-  })
-  const r2 = scoutOut({
-    hits: [hit('lib/b.mjs', 2, { kind: 'ground' }), hit('test/c.test.mjs', 3, { kind: 'ground' })],
-    stop_reason: 'exhausted',
-  })
-  const rig = rigFor(t, { script: { [KEY]: [{ output: r1 }, { output: r2 }] } })
-  const s = await searchRounds(rig.ctx, spec({ schema: 'scout_located' }))
-  const want = roundOf(r2, [r1])
-  assert.equal(s.entries_n, want.entries_n)
-  assert.deepEqual(s.kinds, want.kinds)
 })
 
 // --- coverage and waiting --------------------------------------------------------------------

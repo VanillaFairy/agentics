@@ -649,6 +649,14 @@ test('a prober that stops unfinished is not continued, and what it left is open'
   assert.deepEqual(sorted(result.units.open), sorted(left))
 })
 
+test("what a prober names in not_reached is read into the coverage's unreached", async (t) => {
+  const { script } = scriptFor(DOC, STANDING, {
+    probers: { 1: (u) => [{ output: proberOut(u, { over: { stop_reason: 'unfinished', not_reached: 'the design section' } }) }] },
+  })
+  const { result } = await probeIn(t, { script })
+  assert.ok(result.coverage.unreached.some((l) => l.includes('prober:1') && l.includes('the design section')), JSON.stringify(result.coverage))
+})
+
 // --- the record --------------------------------------------------------------------------------
 
 test('every prober returned: the round is recorded once, anchored to the snapshot', async (t) => {

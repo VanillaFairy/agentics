@@ -1,5 +1,5 @@
 // test/evidence-inprocess-survey.test.mjs — the survey's evidence called in-process: judges' returns
-// as objects, a re-judge's rulings, superseded items, the pool and the scouts' excerpts as prompt
+// as objects, a re-judge's rulings, superseded items, the pool as prompt
 // text, and the items verb, which prints handles only.
 //
 // Design: docs/DESIGN.md#survey, docs/DESIGN.md#the-drift-ladder, docs/DESIGN.md#returns-into-items.
@@ -9,7 +9,6 @@ import assert from 'node:assert/strict'
 import { readFileSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-import { excerptsText } from '../lib/citations.mjs'
 import {
   checkAnchors, itemsFor, liveItems, poolText, recordJudgement, recordRulings, recordSurvey, supersede, surveyContext,
 } from '../lib/evidence.mjs'
@@ -257,61 +256,4 @@ test('a survey\'s context result carries the text it wrote, whole', (t) => {
   const out = surveyContext(repo, { returns: [rec.return], from: [returnFile(repo, judged([], [{ topic: 'loader', text: 'the loader is untested' }]))] })
   assert.equal(out.text, readFileSync(out.context, 'utf8'))
   assert.ok(out.text.includes('the loader is untested'))
-})
-
-// ------------------------------------------------------------------ excerptsText
-
-const scoutReturn = (hits, over = {}) => ({ hits, searched: [], no_match: '', not_reached: '', stop_reason: 'exhausted', ...over })
-
-test('scout returns become one body: each location with its note, what each scout searched and declared absent, and the lines', (t) => {
-  const repo = repoOf(t, { 'src/a.js': text(lines(20)) })
-  const scout = scoutReturn([{ path: 'src/a.js', line: 10, note: 'the loader' }],
-    { searched: ['grep load'], no_match: 'no retry anywhere', not_reached: 'lib/', stop_reason: 'unfinished' })
-  const out = excerptsText(repo, [{ label: 'scout:loader', output: scout }])
-  for (const part of [
-    '=== scout:loader — the search did NOT finish (unfinished)', '  src/a.js:10 — the loader', '  grep load',
-    'SEARCHED AND NOT FOUND (evidence of absence):\n  no retry anywhere', 'NEVER SEARCHED: lib/', String(10).padStart(6) + '\tline 10',
-  ]) assert.ok(out.text.includes(part), part)
-  assert.deepEqual([out.counts.locations, out.counts.files, out.counts.excerpts, out.counts.unresolved], [1, 1, 1, 0])
-})
-
-test('locations several scouts report are read once, overlapping windows merged', (t) => {
-  const repo = repoOf(t, { 'src/a.js': text(lines(20)) })
-  const out = excerptsText(repo, [
-    { label: 'one', output: scoutReturn([{ path: 'src/a.js', line: 10, note: 'x' }]) },
-    { label: 'two', output: scoutReturn([{ path: 'src/a.js', line: 12, note: 'y' }]) },
-  ])
-  assert.deepEqual([out.counts.files, out.counts.excerpts], [1, 1])
-  assert.equal(out.text.split('\n').filter((l) => l.endsWith('\tline 11')).length, 1)
-})
-
-test('a kind keeps only the hits of that kind', (t) => {
-  const repo = repoOf(t, { 'src/a.js': text(lines(20)), 'CLAUDE.md': text(['# guide']) })
-  const located = scoutReturn([
-    { path: 'src/a.js', line: 3, note: 'the ground', kind: 'ground' }, { path: 'CLAUDE.md', line: 1, note: 'the guidance', kind: 'guidance' },
-  ])
-  const ground = excerptsText(repo, [{ label: 'locate', output: located }], { kind: 'ground' })
-  assert.equal(ground.counts.locations, 1)
-  assert.ok(ground.text.includes('the ground') && !ground.text.includes('the guidance'))
-  assert.ok(excerptsText(repo, [{ label: 'locate', output: located }], { kind: 'guidance' }).text.includes('the guidance'))
-})
-
-test('a location that cannot be read is named with why, and counted', (t) => {
-  const repo = repoOf(t, { 'src/a.js': text(lines(20)) })
-  const out = excerptsText(repo, [{
-    label: 'scout', output: scoutReturn([
-      { path: 'src/ghost.js', line: 3, note: 'gone' }, { path: 'src/a.js', line: 99, note: 'past' }, { path: '/elsewhere/x.js', line: 1, note: 'out' },
-    ]),
-  }])
-  const byPath = (a, b) => (a.path < b.path ? -1 : 1)
-  assert.deepEqual(out.unresolved.map(({ path, line, why }) => ({ path, line, why })).sort(byPath), [
-    { path: '/elsewhere/x.js', line: 1, why: 'outside' }, { path: 'src/a.js', line: 99, why: 'out_of_range' }, { path: 'src/ghost.js', line: 3, why: 'missing' },
-  ])
-  assert.equal(out.counts.unresolved, out.unresolved.length)
-  assert.ok(out.text.includes('NOT EXCERPTED'))
-})
-
-test('a return that is not an object is named as unread', (t) => {
-  const repo = repoOf(t, { 'src/a.js': text(lines(20)) })
-  assert.ok(excerptsText(repo, [{ label: 'scout:lost', output: null }]).text.includes('=== scout:lost — this report could not be read'))
 })

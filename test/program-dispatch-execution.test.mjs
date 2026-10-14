@@ -37,7 +37,7 @@ const TB1 = 'THREAD-BRIEF one: the charge as first briefed.'
 const TB2 = 'THREAD-BRIEF two: the charge as it reads now.'
 const CUT_OFF = () => renderMessage({ msg: 'cut_off' })
 
-const scoutOut = () => ({ hits: [{ path: 'lib/store.mjs', line: 12, note: 'there' }], searched: [], no_match: '', not_reached: '', stop_reason: 'exhausted' })
+const scoutOut = () => ({ hits: [{ ask: ['plan'], path: 'lib/store.mjs', line: 12, note: 'there' }], dismissed: [], leads: [], asks: [] })
 const ONE = [{ output: scoutOut() }]
 const TWO = [{ output: scoutOut() }, { output: scoutOut() }]
 const THREE = [{ output: scoutOut() }, { output: scoutOut() }, { output: scoutOut() }]
@@ -46,7 +46,7 @@ const THREE = [{ output: scoutOut() }, { output: scoutOut() }, { output: scoutOu
 const K = (node, thread) => 'scout|' + node + '|' + thread
 
 /** A call with no `brief`: the dispatch composes its prompt. */
-const target = (over = {}) => ({ role: 'scout', schema: 'scout_hits', thread: 'plan', node: 'a', threadBrief: TB, ...over })
+const target = (over = {}) => ({ role: 'scout', schema: 'search_repo', thread: 'plan', node: 'a', threadBrief: TB, ...over })
 const spec = (over = {}) => ({ ...target(), brief: BRIEF, ...over })
 
 // --- worlds ----------------------------------------------------------------------------------

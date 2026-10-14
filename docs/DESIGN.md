@@ -549,8 +549,9 @@ next session id is minted from its new generation.
 **A return too large for one response** says so (`more: true`); the runner resumes the same
 session for the rest and stores the parts as one return. Each part is recorded `returned {status:
 part}` and stored nowhere; the call that completes the return stores the merged whole and only then
-records `returned`. A part that adds no array element the merged return lacks and changes no field
-ends the call failed, `no_progress`. The parts so far are kept only in the session: the runner
+records `returned`. A part that adds no array element the merged return lacks and fills no field
+the merged return holds empty ends the call failed, `no_progress`: a reworded field is not
+progress, so a session that restates itself part after part ends. The parts so far are kept only in the session: the runner
 holds them in memory, so a host stop or a relaunch between parts drops them, and the `cut_off`
 resume asks the session for its whole return again, from the start. No return schema carries a
 bound that would make an agent drop what does not fit (the `no-schema-bounds` lint rule).

@@ -2,7 +2,7 @@
 name: ruler
 kind: judge
 tools: Read
-schemas: ruler_premises, ruler_respec, ruler_convergence
+schemas: ruler_premises, ruler_respec, ruler_convergence, ruler_search
 model: opus
 effort: medium
 ---
@@ -44,11 +44,23 @@ round closed, trade one defect for another, or leave the open set no smaller. `w
 sentence naming the rounds that decide it. A loop the rounds cannot decide is `not_converging`:
 say what you could not tell.
 
+## Search convergence (`ruler_search`)
+
+Your brief holds the asks of one search, each a unit, and per turn what code observed for it: the
+new lines its tools showed, the new hits and their notes, its frontier, and the turns since its
+last new hit. For each ask, rule whether more turns will change what its evidence establishes:
+what its hits show, or, while it has none, whether anything is there. `converging` when the
+recent turns still change that, a chain still being followed counting; `not_converging` when they
+only add lines that change nothing established: re-reads, name variants, pages of the same
+answer. `why` is one sentence naming the turns that decide it, and whether the ask looks answered
+or stuck. An ask the brief cannot decide is `not_converging`: say what you could not tell.
+
 ## Return
 
 Your brief lists the units you rule: rule every one of them in your structured output, with a
 line of why. A unit you did not examine is one you say so about — never one you leave out, and
 never one you pass. Findings go in the fields your schema names: for premises, one ruling per
 node you were given, each with `node`, `ruling`, `why` and `question`; for convergence, `ruling`
-and `why`. You approve nothing: code combines your rulings with what it observed. If your return
-would not fit one response, set `more: true` and you will be asked for the rest.
+and `why`; for search convergence, one unit per ask, its key as `unit`, with `ruling` and `why`.
+You approve nothing: code combines your rulings with what it observed. If your return would not
+fit one response, set `more: true` and you will be asked for the rest.

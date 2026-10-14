@@ -13,11 +13,15 @@ import { loadRole, ROLE_NAMES } from '../../lib/roles.mjs'
 const ROLES = fileURLToPath(new URL('../../roles/', import.meta.url))
 
 const PINNED = {
-  scout: { kind: 'searcher', tools: ['Glob', 'Grep', 'Read'], commands: [], schemas: ['scout_hits', 'scout_located'] },
-  historian: {
-    kind: 'searcher', tools: ['Bash', 'Grep', 'Read'], commands: ['git log', 'git show', 'git blame', 'git diff'], schemas: ['historian'],
+  scout: {
+    kind: 'searcher', tools: ['mcp__search__files', 'mcp__search__grep', 'mcp__search__read', 'mcp__search__refs'], commands: [],
+    schemas: ['search_repo', 'scout_hits', 'scout_located'],
   },
-  'doc-researcher': { kind: 'searcher', tools: ['Read', 'WebFetch', 'WebSearch'], commands: [], schemas: ['doc_research', 'candidates'] },
+  historian: {
+    kind: 'searcher', tools: ['mcp__search__grep', 'mcp__search__log', 'mcp__search__read', 'mcp__search__show'], commands: [],
+    schemas: ['search_history', 'historian'],
+  },
+  'doc-researcher': { kind: 'searcher', tools: ['WebSearch', 'mcp__search__fetch'], commands: [], schemas: ['search_web', 'doc_research', 'candidates'] },
   planner: { kind: 'producer', tools: ['Edit', 'Glob', 'Grep', 'Read', 'Write'], commands: [], schemas: ['planner_write', 'planner_settle'] },
   implementer: {
     kind: 'producer', tools: ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write'],
@@ -29,7 +33,7 @@ const PINNED = {
     kind: 'judge', tools: ['Read'], commands: [],
     schemas: ['survey_plan', 'items', 'rejudge', 'axes', 'prober', 'frame', 'assessment', 'approach', 'investigate_tasks', 'investigate_report'],
   },
-  ruler: { kind: 'judge', tools: ['Read'], commands: [], schemas: ['ruler_premises', 'ruler_respec', 'ruler_convergence'] },
+  ruler: { kind: 'judge', tools: ['Read'], commands: [], schemas: ['ruler_premises', 'ruler_respec', 'ruler_convergence', 'ruler_search'] },
   reviewer: { kind: 'judge', tools: ['Bash', 'Glob', 'Grep', 'Read'], commands: ['git diff', 'git log', 'git show'], schemas: ['reviewer'] },
   auditor: { kind: 'judge', tools: ['Glob', 'Grep', 'Read'], commands: [], schemas: ['auditor'] },
 }

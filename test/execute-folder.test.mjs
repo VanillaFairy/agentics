@@ -30,7 +30,7 @@ import { schemaOf } from '../lib/schemas.mjs'
 import { checkFolder, hashSpec } from '../lib/spec.mjs'
 import { dispatchKey, mainCheckout, posix, readConfig, readJson, sessionOf, specPath } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
-import { closingTurn } from './harness/navigator.mjs'
+import { closingTurn, hitTurn } from './harness/navigator.mjs'
 import { executionRig } from './harness/program-rig.mjs'
 
 const E = 'e1'
@@ -140,7 +140,7 @@ const AMBIGUITY = found(S1, { axis: 'ambiguity', severity: 'ambiguity', section:
 
 const surveying = () => ({
   'analyst||survey:p/plan': [{ output: { topics: [{ key: 'adder', find: 'FIND-adder', subtree: 'src' }], common_ground: '', history_question: '', docs_question: '' } }],
-  'scout||survey:p/scout:adder': [{ output: { hits: [{ path: 'src/add.mjs', line: 1, note: 'seen at src/add.mjs:1' }], searched: ['src'], no_match: '', not_reached: '', stop_reason: 'exhausted' } }],
+  'scout||survey:p/scout:adder': [hitTurn('adder', [['src/add.mjs', 1]])],
   'analyst||survey:p/judge:1': [{ output: {
     items: [{ topic: 'adder', kind: 'behaviour', claim: 'SURVEYED-a9 add sums its two arguments', spans: [{ path: 'src/add.mjs', start: 1, end: 1 }], queries: [], sources: [], rests_on: [] }],
     risks: [], units: [{ unit: 'adder', ruling: 'anchored', ids: [], why: 'anchored' }],

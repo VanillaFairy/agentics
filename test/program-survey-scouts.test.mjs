@@ -1,5 +1,5 @@
 // test/program-survey-scouts.test.mjs — pins the survey program without reuse: its scope, the plan,
-// the topics and their scouts, the history and docs channels, and how judges are dealt.
+// the topics and their searches, and how judges are dealt.
 //
 // The scripts, the rig and the surveys the parts share are in test/harness/survey-world.mjs.
 //
@@ -7,24 +7,30 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { groundText } from '../lib/briefs/search.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
 import { scopeOf, survey } from '../lib/programs/survey.mjs'
 import { tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
-import { posix, returnPath } from '../lib/store.mjs'
+import { treeOf } from '../lib/search/pin.mjs'
+import { groundTable } from '../lib/search/resolve.mjs'
+import { EMPTY_GROUND, withGround, openTurn, repoReturn, hitTurn } from './harness/navigator.mjs'
 import {
-  Q, FILE, TOPIC, plan, hit, scoutOut, channelOut, behaviour, anchoredUnit, judgeOut, ARGS, CLAIM,
+  Q, FILES, FILE, TOPIC, plan, channelOut, behaviour, anchoredUnit, judgeOut, ARGS, CLAIM,
   basicScript, COMMON, HQ, DQ, fullScript, rigFor, runSurvey, on, pool, roleOf, cov,
 } from './harness/survey-world.mjs'
 
-const hitsIn = (path, n, from = 1) => Array.from({ length: n }, (_, i) => hit(path, from + i))
+/** `n` consecutive locations of `path`, as a hit turn takes them. */
+const hitsIn = (path, n, from = 1) => Array.from({ length: n }, (_, i) => [path, from + i])
+const chargeOf = (call) => readFileSync(call.role.systemPromptFile, 'utf8')
 
 const emptyJudges = (n = 4) => Object.fromEntries(Array.from({ length: n }, (_, i) => ['analyst||judge:' + (i + 1), [{ output: judgeOut() }]]))
 
 const judgeCalls = (rig) => rig.calls.filter((c) => /^judge:\d+$/.test(c.thread.key))
 const judgeThreads = (rig) => [...new Set(judgeCalls(rig).map((c) => c.thread.key))].sort()
-
-const lineStarting = (result, prefix) => cov(result).declared.filter((l) => String(l).startsWith(prefix))
 
 // --- arguments and scope ----------------------------------------------------------------------
 
@@ -78,7 +84,7 @@ test('prior reaches the planner and no one else', async (t) => {
   const { rig } = await runSurvey(t, fullScript(), { prior })
   assert.ok(on(rig, 'plan')[0].brief.includes(prior))
   const others = rig.calls.filter((c) => c.thread.key !== 'plan')
-  for (const thread of ['scout:loader', 'scout:store', 'common', 'history', 'docs', 'judge:1']) {
+  for (const thread of ['scout:loader', 'scout:store', 'history', 'docs', 'judge:1']) {
     assert.ok(others.some((c) => c.thread.key === thread), 'no call on ' + thread)
   }
   for (const c of others) {
@@ -106,10 +112,10 @@ test('topic keys are slugged, and a repeated key is numbered', async (t) => {
   ]
   const { rig, result } = await runSurvey(t, {
     'analyst||plan': [{ output: plan({ topics }) }],
-    'scout||scout:loader-path': [{ output: scoutOut({ hits: [hit(FILE.loader, 2)] }) }],
-    'scout||scout:store-x': [{ output: scoutOut({ hits: [hit(FILE.store, 2)] }) }],
-    'scout||scout:loader-path-2': [{ output: scoutOut({ hits: [hit(FILE.cache, 2)] }) }],
-    'scout||scout:loader-path-3': [{ output: scoutOut({ hits: [hit(FILE.shared, 2)] }) }],
+    'scout||scout:loader-path': [hitTurn('loader-path', [[FILE.loader, 2]])],
+    'scout||scout:store-x': [hitTurn('store-x', [[FILE.store, 2]])],
+    'scout||scout:loader-path-2': [hitTurn('loader-path-2', [[FILE.cache, 2]])],
+    'scout||scout:loader-path-3': [hitTurn('loader-path-3', [[FILE.shared, 2]])],
     ...emptyJudges(),
   })
   const expected = [
@@ -125,9 +131,9 @@ test('topic keys are slugged, and a repeated key is numbered', async (t) => {
 test('every planned topic is scouted, beyond max_topics', async (t) => {
   const { rig, result } = await runSurvey(t, {
     'analyst||plan': [{ output: plan({ topics: [TOPIC.loader, TOPIC.store, TOPIC.cache] }) }],
-    'scout||scout:loader': [{ output: scoutOut({ hits: [hit(FILE.loader, 2)] }) }],
-    'scout||scout:store': [{ output: scoutOut({ hits: [hit(FILE.store, 2)] }) }],
-    'scout||scout:cache': [{ output: scoutOut({ hits: [hit(FILE.cache, 2)] }) }],
+    'scout||scout:loader': [hitTurn('loader', [[FILE.loader, 2]])],
+    'scout||scout:store': [hitTurn('store', [[FILE.store, 2]])],
+    'scout||scout:cache': [hitTurn('cache', [[FILE.cache, 2]])],
     ...emptyJudges(),
   }, { max_topics: 1 })
   for (const key of ['loader', 'store', 'cache']) assert.equal(on(rig, 'scout:' + key).length, 1, key)
@@ -144,166 +150,126 @@ test('a plan with no topics searches nothing and says so', async (t) => {
   assert.equal(cov(result).complete, false)
 })
 
-// --- scouts and channels ----------------------------------------------------------------------
+// --- topic searches ---------------------------------------------------------------------------
 
-test("a scout's brief holds the question and its topic's find and subtree", async (t) => {
-  for (const intelligence of ['low', 'max']) {
+test("a topic's search runs as the scout at the dial, its charge holding the question, its find and its subtree", async (t) => {
+  for (const intelligence of ['low', 'normal', 'max']) {
     const { rig } = await runSurvey(t, fullScript(), { intelligence })
     for (const key of ['loader', 'store']) {
       const calls = on(rig, 'scout:' + key)
       assert.equal(calls.length, 1, key)
       assert.equal(calls[0].role.name, 'scout')
-      assert.deepEqual(calls[0].schema, schemaOf('scout_hits'))
+      assert.deepEqual(calls[0].schema, schemaOf('search_repo'))
       assert.deepEqual(calls[0].tier, tierFor(roleOf('scout'), { intelligence }), intelligence)
-      for (const part of [Q, TOPIC[key].find, TOPIC[key].subtree]) assert.ok(calls[0].brief.includes(part), key + ': ' + part)
+      const charge = chargeOf(calls[0])
+      for (const part of [Q, TOPIC[key].find, TOPIC[key].subtree]) assert.ok(charge.includes(part), key + ' charge holds ' + part)
     }
   }
 })
 
-test('common ground is scouted once, and every topic scout is told to leave it alone', async (t) => {
-  const { rig } = await runSurvey(t, fullScript())
-  const common = on(rig, 'common')
-  assert.equal(common.length, 1)
-  assert.equal(common[0].role.name, 'scout')
-  assert.ok(common[0].brief.includes(COMMON))
-  for (const key of ['loader', 'store']) assert.ok(on(rig, 'scout:' + key)[0].brief.includes(COMMON), key)
-})
-
-test('no common scout runs when the plan names no common ground', async (t) => {
-  const { rig } = await runSurvey(t, fullScript({
-    'analyst||plan': [{ output: plan({ topics: [TOPIC.loader, TOPIC.store], history_question: HQ, docs_question: DQ }) }],
+test('the common ground is resolved once by code, every topic sharing it, and reaches every judge', async (t) => {
+  const named = { ...TOPIC.loader, find: TOPIC.loader.find + ' in ' + FILE.loader }
+  const rig = rigFor(t, fullScript({
+    'analyst||plan': [{ output: plan({ topics: [named, TOPIC.store], common_ground: COMMON, history_question: HQ, docs_question: DQ }) }],
   }))
-  assert.equal(on(rig, 'common').length, 0)
+  let runs = 0
+  await survey({ ...rig.ctx, groundOf: (tree, opts) => { runs++; return groundTable(tree, opts) } }, ARGS())
+  assert.equal(runs, 1, 'one resolver run')
+  assert.equal(rig.calls.filter((c) => c.thread.key === 'common').length, 0, 'no common search')
+  const steps = rig.log.entries().filter((e) => e.kind === 'step')
+  const shared = steps.filter((e) => e.key === 'ground')
+  assert.equal(shared.length, 1)
+  assert.notEqual(groundText(shared[0].value), '', 'the table holds what the finds name')
+  for (const key of ['loader', 'store']) {
+    assert.deepEqual(steps.find((e) => e.key === 'scout:' + key + '/ground').value, shared[0].value, key + ' searched over the shared table')
+  }
+  const brief = on(rig, 'judge:1')[0].brief
+  assert.ok(brief.includes(COMMON), 'the judge holds the common ground as planned')
+  assert.ok(brief.includes(groundText(shared[0].value)), 'and the ground table')
 })
 
-test('an unfinished scout is continued on its own thread', async (t) => {
-  const { rig, result } = await runSurvey(t, basicScript({
-    'scout||scout:loader': [
-      { output: scoutOut({ hits: [hit(FILE.loader, 7)], stop_reason: 'unfinished', not_reached: 'the tests folder' }) },
-      { output: scoutOut({ hits: [hit(FILE.loader, 9)], stop_reason: 'exhausted' }) },
-    ],
+test("the shared table's material is the question and common ground as context and each topic's find as its own", async (t) => {
+  const seen = []
+  const rig = rigFor(t, fullScript())
+  await survey(withGround(rig.ctx, EMPTY_GROUND, seen), ARGS())
+  assert.equal(seen.length, 1, 'one resolver run')
+  const { material } = seen[0]
+  for (const key of ['loader', 'store']) {
+    const own = material.filter((m) => (m.asks || []).includes(key))
+    assert.equal(own.length, 1, key)
+    assert.ok(own[0].text.includes(TOPIC[key].find), key + "'s material is its find")
+  }
+  for (const text of [Q, COMMON]) {
+    const m = material.find((x) => x.text.includes(text))
+    assert.ok(m && !(m.asks || []).length, 'context with no asks: ' + text)
+  }
+})
+
+test("the survey's diff reaches the resolver", async (t) => {
+  const seen = []
+  const rig = rigFor(t, fullScript())
+  const diff = { base: 'a'.repeat(40), head: 'b'.repeat(40) }
+  await survey(withGround(rig.ctx, EMPTY_GROUND, seen), ARGS({ diff }))
+  assert.deepEqual(seen[0].diff, diff)
+})
+
+test('a topic search still open after a turn resumes its own session', async (t) => {
+  const { rig } = await runSurvey(t, fullScript({
+    'scout||scout:loader': [openTurn('loader', [[FILE.loader, 7]], FILE.loader), hitTurn('loader', [[FILE.loader, 9]])],
   }))
   const calls = on(rig, 'scout:loader')
   assert.equal(calls.length, 2)
-  assert.equal(calls[1].round, 2)
   assert.equal(calls[1].resume, true)
-  assert.ok(!cov(result).incomplete.includes('loader'))
+  assert.equal(calls[1].thread.session, calls[0].thread.session)
 })
 
-test('a scout that ends short leaves its topic incomplete, declared as it stated', async (t) => {
+test('a topic search whose state stops moving leaves its topic incomplete, its end unreached', async (t) => {
   const { result } = await runSurvey(t, basicScript({
-    'scout||scout:loader': [{ output: scoutOut({ hits: [hit(FILE.loader, 7)], stop_reason: 'stuck', not_reached: '' }) }],
+    'scout||scout:loader': [openTurn('loader', [[FILE.loader, 7]], FILE.loader), { output: repoReturn({}) }],
   }))
   assert.deepEqual(cov(result).incomplete, ['loader'])
-  const declared = lineStarting(result, 'topic loader')
-  assert.equal(declared.length, 1, JSON.stringify(cov(result).declared))
-  assert.ok(declared[0].includes('stuck'))
-  assert.ok(declared[0].includes('dead_end'))
+  assert.ok(cov(result).unreached.some((l) => l.includes('loader')), JSON.stringify(cov(result)))
   assert.equal(cov(result).complete, false)
 })
 
-test('a failed scout leaves its topic incomplete, its failure named, and the topic still judged', async (t) => {
-  const { rig, result } = await runSurvey(t, basicScript({
-    'scout||scout:loader': [{ status: 'failed', cause: 'host_error' }],
-    'analyst||judge:1': [{ output: judgeOut({ risks: [{ topic: 'loader', text: 'nothing was found' }] }) }],
-  }))
+test('a topic search that never returns leaves its topic incomplete, names it, and the topic is still judged', async (t) => {
+  const FAIL = { status: 'failed', cause: 'host_error' }
+  const { rig, result } = await runSurvey(t, basicScript({ 'scout||scout:loader': [FAIL, FAIL] }))
   assert.ok(cov(result).incomplete.includes('loader'))
-  assert.ok(cov(result).unreached.some((l) => l.includes('loader') && l.includes('host_error')), JSON.stringify(cov(result).unreached))
-  const judges = judgeCalls(rig)
-  assert.equal(judges.length, 1)
-  assert.ok(judges[0].brief.includes('loader'))
+  assert.ok(cov(result).unreached.some((l) => l.includes('topic loader')), JSON.stringify(cov(result)))
+  assert.equal(on(rig, 'judge:1').length, 1)
 })
 
-test("declared names each searcher's stop as it stated it", async (t) => {
-  const { result } = await runSurvey(t, fullScript({
-    'analyst||plan': [{ output: plan({ topics: [TOPIC.loader], common_ground: COMMON, history_question: HQ, docs_question: DQ }) }],
-    'scout||scout:loader': [{ output: scoutOut({ hits: [hit(FILE.loader, 7)], not_reached: 'NR-vendor dir' }) }],
-    'scout||common': [{ output: scoutOut({ hits: [hit(FILE.shared, 3)], not_reached: 'NR-common tests' }) }],
-    'historian||history': [
-      { output: channelOut({ findings: 'h1', stop_reason: 'unfinished', not_reached: 'NR-old tags' }) },
-      { output: channelOut({ findings: 'h2', stop_reason: 'unfinished', not_reached: 'NR-old tags' }) },
-    ],
-    'doc-researcher||docs': [{ output: channelOut({ findings: 'd1', not_reached: 'NR-v1 docs' }) }],
-    'analyst||judge:1': [{ output: judgeOut({ items: [behaviour('loader', CLAIM)], units: [anchoredUnit('loader')] }) }],
+test('declared holds each topic ask that ended done on a declaration', async (t) => {
+  const { result } = await runSurvey(t, fullScript())
+  for (const key of ['loader', 'store']) assert.ok(cov(result).declared.some((l) => l.includes('scout:' + key)), key)
+})
+
+test("a tree handed in-process is searched, and the survey's items are anchored on it", async (t) => {
+  const far = 90 // past the checkout's last line of the loader, inside the tree's
+  const rig = rigFor(t, basicScript({
+    'scout||scout:loader': [hitTurn('loader', [[FILE.loader, far]])],
+    'analyst||judge:1': [{ output: judgeOut({ items: [behaviour('loader', CLAIM, far)], units: [anchoredUnit('loader')] }) }],
   }))
-  const expect = [
-    'topic loader: exhausted, not reached: NR-vendor dir',
-    'common ground: exhausted, not reached: NR-common tests',
-    'history: unfinished, not reached: NR-old tags (ended short: no_progress)',
-    'docs: exhausted, not reached: NR-v1 docs',
-  ]
-  assert.deepEqual([...cov(result).declared].sort(), [...expect].sort())
-})
-
-test('a history question runs the historian with it, and a docs question the doc-researcher', async (t) => {
-  const { rig } = await runSurvey(t, fullScript())
-  const history = on(rig, 'history')
-  assert.equal(history.length, 1)
-  assert.equal(history[0].role.name, 'historian')
-  assert.deepEqual(history[0].schema, schemaOf('historian'))
-  assert.ok(history[0].brief.includes(HQ))
-  assert.ok(history[0].brief.includes(Q))
-  const docs = on(rig, 'docs')
-  assert.equal(docs.length, 1)
-  assert.equal(docs[0].role.name, 'doc-researcher')
-  assert.deepEqual(docs[0].schema, schemaOf('doc_research'))
-  assert.ok(docs[0].brief.includes(DQ))
-  assert.ok(docs[0].brief.includes(Q))
-})
-
-test('no channel runs when the plan asks none', async (t) => {
-  const { rig, result } = await runSurvey(t, fullScript({
-    'analyst||plan': [{ output: plan({ topics: [TOPIC.loader, TOPIC.store], common_ground: COMMON }) }],
-  }))
-  assert.equal(on(rig, 'history').length, 0)
-  assert.equal(on(rig, 'docs').length, 0)
-  assert.equal(result.history, null)
-  assert.equal(result.docs, null)
-})
-
-test('a failed channel fails alone', async (t) => {
-  const { rig, result } = await runSurvey(t, fullScript({ 'historian||history': [{ status: 'failed', cause: 'host_error' }] }))
-  assert.deepEqual(cov(result).failed_channels, ['history'])
-  assert.ok(cov(result).unreached.some((l) => l.includes('history') && l.includes('host_error')), JSON.stringify(cov(result).unreached))
-  const loader = pool(rig).find((it) => it.claim === CLAIM)
-  assert.ok(loader, 'the topic item is recorded')
-  assert.ok(result.items.some((it) => it.id === loader.id))
-  assert.equal(result.history, null)
-})
-
-test('a channel that ends short is incomplete', async (t) => {
-  const { result } = await runSurvey(t, fullScript({
-    'doc-researcher||docs': [{ output: channelOut({ findings: 'd1', stop_reason: 'stuck', not_reached: '' }) }],
-  }))
-  assert.deepEqual(cov(result).incomplete, ['docs'])
-  assert.deepEqual(cov(result).failed_channels, [])
-})
-
-test("the result names each channel's last stored return", async (t) => {
-  const { rig, result } = await runSurvey(t, fullScript({
-    'historian||history': [
-      { output: channelOut({ findings: 'h1', stop_reason: 'unfinished', not_reached: 'the tags' }) },
-      { output: channelOut({ findings: 'h2', stop_reason: 'exhausted' }) },
-    ],
-  }))
-  const history = on(rig, 'history')
-  assert.equal(history.length, 2)
-  assert.equal(posix(result.history), posix(returnPath(rig.ctx.dir, history[1].dispatch)))
-  const docs = on(rig, 'docs')
-  assert.equal(posix(result.docs), posix(returnPath(rig.ctx.dir, docs[docs.length - 1].dispatch)))
+  const wt = join(rig.repo, '.claude', 'worktrees', 'other')
+  const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { windowsHide: true })
+  git(rig.repo, 'worktree', 'add', '--detach', wt, 'HEAD')
+  const more = Array.from({ length: 20 }, (_, i) => 'alpha line ' + (81 + i)).join('\n') + '\n'
+  writeFileSync(join(wt, ...FILE.loader.split('/')), FILES[FILE.loader] + more)
+  git(wt, 'commit', '-qam', 'the tree grows')
+  const result = await survey(rig.ctx, ARGS({ tree: treeOf(wt) }))
+  const item = pool(rig).find((it) => it.claim === CLAIM)
+  assert.ok(item, 'an item on a line only the tree holds is recorded: its anchor was read from the tree')
+  assert.ok(result.items.some((it) => it.id === item.id && it.state === 'standing'), 'and it stands on the tree it was judged on')
 })
 
 // --- judges -----------------------------------------------------------------------------------
 
-/** Topics and scouts with `counts` distinct locations each, over their own files. */
-function weighedScript(counts, { common = 0 } = {}) {
+/** Topics and their searches with `counts` distinct locations each, over their own files. */
+function weighedScript(counts) {
   const keys = Object.keys(counts)
-  const script = {
-    'analyst||plan': [{ output: plan({ topics: keys.map((k) => TOPIC[k]), common_ground: common ? COMMON : '' }) }],
-    ...emptyJudges(),
-  }
-  for (const k of keys) script['scout||scout:' + k] = [{ output: scoutOut({ hits: hitsIn(FILE[k], counts[k]) }) }]
-  if (common) script['scout||common'] = [{ output: scoutOut({ hits: hitsIn(FILE.shared, common) }) }]
+  const script = { 'analyst||plan': [{ output: plan({ topics: keys.map((k) => TOPIC[k]) }) }], ...emptyJudges() }
+  for (const k of keys) script['scout||scout:' + k] = [hitTurn(k, hitsIn(FILE[k], counts[k]))]
   return script
 }
 const holds = (call, key) => call.brief.includes(TOPIC[key].find)
@@ -321,11 +287,6 @@ test('sixty-one locations earn two judges', async (t) => {
   const [j1, j2] = [on(rig, 'judge:1')[0], on(rig, 'judge:2')[0]]
   assert.ok(holds(j1, 'loader') && !holds(j1, 'store'))
   assert.ok(holds(j2, 'store') && !holds(j2, 'loader'))
-})
-
-test("the common ground's locations count toward the judges' total", async (t) => {
-  const { rig } = await runSurvey(t, weighedScript({ loader: 20, store: 20 }, { common: 21 }))
-  assert.deepEqual(judgeThreads(rig), ['judge:1', 'judge:2'])
 })
 
 test('pace fast buys one judge per topic', async (t) => {

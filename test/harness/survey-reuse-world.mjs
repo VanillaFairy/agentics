@@ -7,6 +7,7 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { itemsFor, recordItems } from '../../lib/evidence.mjs'
 import { readProjectLog } from '../../lib/ledger.mjs'
+import { hitTurn } from './navigator.mjs'
 
 // --- the world --------------------------------------------------------------------------------
 
@@ -40,7 +41,6 @@ export const stateOf = (repo, id) => (itemsFor(repo, { ground: ['src'], states: 
 
 export const LOADER = { key: 'loader', find: 'FIND-loader where a module path resolves', subtree: 'src' }
 const plan = (topics = [LOADER]) => ({ topics, common_ground: '', history_question: '', docs_question: '' })
-const scoutOut = (line) => ({ hits: [{ path: A, line, note: 'seen at ' + A + ':' + line }], searched: ['src'], no_match: '', not_reached: '', stop_reason: 'exhausted' })
 export const newClaim = (key) => 'NEW-' + key + ' claim from this run'
 const newItem = (key, line) => ({ topic: key, kind: 'behaviour', claim: newClaim(key), spans: [{ path: A, start: line, end: line }], queries: [], sources: [], rests_on: [] })
 const anchoredUnit = (key) => ({ unit: key, ruling: 'anchored', ids: [], why: 'every claim is anchored' })
@@ -53,7 +53,7 @@ export const rulings = (list) => [{ output: { rulings: list } }]
  */
 export function script({ planned = [LOADER], searched = planned.map((t) => t.key), extra = {} } = {}) {
   const s = { 'analyst||plan': [{ output: plan(planned) }], ...extra }
-  searched.forEach((key, i) => { s['scout||scout:' + key] = [{ output: scoutOut(3 + i) }] })
+  searched.forEach((key, i) => { s['scout||scout:' + key] = [hitTurn(key, [[A, 3 + i]])] })
   if (searched.length > 0) {
     s['analyst||judge:1'] = [{
       output: { items: searched.map((key, i) => newItem(key, 3 + i)), risks: [], units: searched.map(anchoredUnit) },

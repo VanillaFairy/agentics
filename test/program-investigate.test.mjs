@@ -16,6 +16,7 @@ import { fnv1a } from '../lib/plan-digest.mjs'
 import { investigate, scopeOf } from '../lib/programs/investigate.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
+import { hitTurn, openTurn, repoReturn } from './harness/navigator.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 const QUESTION = 'Can the config loader drop its cache?'
@@ -25,7 +26,6 @@ const FILES = { 'CLAUDE.md': '# Guide\n\n' + GUIDE + '\n', 'src/a.js': numbered(
 
 const plan = (topics, over = {}) => ({ topics, common_ground: '', history_question: '', docs_question: '', ...over })
 const topic = (key) => ({ key, find: 'Find ' + key + '.', subtree: 'src' })
-const hits = (list, over = {}) => ({ hits: list, searched: ['src/**'], no_match: '', not_reached: '', stop_reason: 'exhausted', ...over })
 const claim = (key, path, line, text) => ({ topic: key, kind: 'behaviour', claim: text, spans: [{ path, start: line, end: line }], queries: [], sources: [], rests_on: [] })
 const judged = (items, risks = []) => ({ items, risks, units: [...new Set(items.map((i) => i.topic))].map((k) => ({ unit: k, ruling: 'anchored', ids: [], why: '' })) })
 const task = (n) => ({ ref: 't' + n, subject: 'Do step ' + n, description: 'src/a.js:' + n + ' needs step ' + n, activeForm: 'Doing step ' + n, blocked_by: n > 1 ? ['t' + (n - 1)] : [] })
@@ -34,7 +34,7 @@ const argsOf = (over = {}) => ({ question: QUESTION, roots: ['.'], notes: '', as
 /** A one-topic survey whose judge records one claim, then the synthesis step(s) given. */
 const script = (synthesis, over = {}) => ({
   'analyst||plan': [{ output: plan([topic('loader')]) }],
-  'scout||scout:loader': [{ output: hits([{ path: 'src/a.js', line: 3, note: 'the cache' }]) }],
+  'scout||scout:loader': [hitTurn('loader', [['src/a.js', 3, 'the cache']])],
   'analyst||judge:1': [{ output: judged([claim('loader', 'src/a.js', 3, 'the loader caches in a map')], [{ topic: 'loader', text: 'no tests cover eviction' }]) }],
   'analyst||synthesis': synthesis,
   ...over,
@@ -76,7 +76,7 @@ test('the survey runs inside this run, on its log', async (t) => {
 test('the survey is asked the question, with the roots, notes, intelligence and pace', async (t) => {
   const s = script(REPORT, {
     'analyst||plan': [{ output: plan([topic('loader'), topic('cache')]) }],
-    'scout||scout:cache': [{ output: hits([{ path: 'src/b.js', line: 2, note: 'x' }]) }],
+    'scout||scout:cache': [hitTurn('cache', [['src/b.js', 2, 'x']])],
     'analyst||judge:1': [{ output: judged([claim('loader', 'src/a.js', 3, 'loader claim')]) }],
     'analyst||judge:2': [{ output: judged([claim('cache', 'src/b.js', 2, 'cache claim')]) }],
   })
@@ -115,9 +115,9 @@ test('the synthesis brief holds the context text inline and no context path', as
 test("the synthesis brief names each gap in the survey's coverage", async (t) => {
   const s = {
     'analyst||plan': [{ output: plan([topic('parser'), topic('store'), topic('expiry')], { history_question: 'When?', docs_question: 'What?' }) }],
-    'scout||scout:parser': [{ output: hits([{ path: 'src/a.js', line: 3, note: 'x' }]) }],
-    'scout||scout:store': [{ output: hits([{ path: 'src/b.js', line: 2, note: 'y' }], { stop_reason: 'stuck', not_reached: '' }) }],
-    'scout||scout:expiry': [{ status: 'failed', cause: 'host_error' }],
+    'scout||scout:parser': [hitTurn('parser', [['src/a.js', 3, 'x']])],
+    'scout||scout:store': [openTurn('store', [['src/b.js', 2, 'y']], 'src/b.js'), { output: repoReturn({}) }],
+    'scout||scout:expiry': [{ status: 'failed', cause: 'host_error' }, { status: 'failed', cause: 'host_error' }],
     'historian||history': [{ status: 'failed', cause: 'host_error' }],
     'doc-researcher||docs': [{ status: 'failed', cause: 'host_error' }],
     'analyst||judge:1': [{ output: judged([claim('store', 'src/b.js', 2, 'store claim')], [{ topic: 'expiry', text: 'nothing came back' }]) }],
@@ -180,7 +180,7 @@ test("the coverage carries the survey's lists and the run's resumable", async (t
   const out = await investigate(r.ctx, argsOf())
   assert.deepEqual(out.coverage.dropped, ['loader'])
   assert.deepEqual(out.coverage.resumable, r.ctx.resumable)
-  assert.ok(out.coverage.declared.some((d) => d.startsWith('topic loader')))
+  assert.ok(out.coverage.declared.some((d) => d.includes('loader')))
   assert.equal(out.coverage.complete, false)
 })
 

@@ -218,7 +218,7 @@ test('grepArgv passes a pattern that starts with a dash as the value of -e', () 
 })
 
 test("the survey judge's brief names the tokens the dialect transpiles and refuses", () => {
-  const topic = { key: 't', subtree: 'src', find: 'every caller of load', search: { outcome: 'done' } }
+  const topic = { key: 't', subtree: 'src', find: 'every caller of load', search: { status: 'returned', end: 'done' } }
   const brief = judgeBrief({ question: 'q', topics: [topic], excerpts: '' })
   for (const token of [...Object.keys(OUTSIDE), '\\b', '(?']) assert.ok(brief.includes(token), 'the brief names ' + token)
 })

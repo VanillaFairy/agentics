@@ -22,9 +22,10 @@ import { tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
 import { runLogPath } from '../lib/store.mjs'
 import {
-  Q, GUIDE, FILES, FILE, TOPIC, plan, hit, scoutOut, behaviour, anchoredUnit, judgeOut, ARGS, CLAIM,
+  Q, GUIDE, FILES, FILE, TOPIC, plan, behaviour, anchoredUnit, judgeOut, ARGS, CLAIM,
   basicScript, COMMON, fullScript, rigFor, runSurvey, on, pool, roleOf, cov,
 } from './harness/survey-world.mjs'
+import { hitTurn, openTurn, repoReturn } from './harness/navigator.mjs'
 
 /** A line of a file as an excerpt shows it, not mistaken for a longer line number. */
 const lineRe = (word, n) => new RegExp(`${word} line ${n}(?!\\d)`)
@@ -44,25 +45,29 @@ test("a judge is the analyst's at the dial, base high", async (t) => {
   }
 })
 
-test("a judge's brief holds its scouts' excerpts and coverage inline", async (t) => {
+test("a judge's brief holds its topics' search excerpts and the shared ground inline", async (t) => {
+  const loaderTurn = hitTurn('loader', [[FILE.loader, 7, 'NOTE-a1 resolves'], [FILE.loader, 40, 'NOTE-a2 falls back']])
+  loaderTurn.output.dismissed.push({ ask: ['loader'], path: FILE.cache, why: 'DISMISSED-the cache is not the loader' })
   const { rig } = await runSurvey(t, fullScript({
     'analyst||plan': [{ output: plan({ topics: [TOPIC.loader], common_ground: COMMON }) }],
-    'scout||scout:loader': [{
-      output: scoutOut({
-        hits: [hit(FILE.loader, 7, 'NOTE-a1 resolves'), hit(FILE.loader, 40, 'NOTE-a2 falls back')],
-        searched: ['SEARCHED-src/loader/**'], no_match: 'NOMATCH-no dynamic import',
-      }),
-    }],
-    'scout||common': [{ output: scoutOut({ hits: [hit(FILE.shared, 3, 'NOTE-common helper')] }) }],
+    'scout||scout:loader': [loaderTurn],
     'analyst||judge:1': [{ output: judgeOut({ items: [behaviour('loader', CLAIM)], units: [anchoredUnit('loader')] }) }],
   }))
   const brief = on(rig, 'judge:1')[0].brief
   assert.match(brief, lineRe('alpha', 7))
   assert.match(brief, lineRe('alpha', 40))
-  assert.match(brief, lineRe('delta', 3))
-  for (const part of ['NOTE-a1 resolves', 'NOTE-a2 falls back', 'SEARCHED-src/loader/**', 'NOMATCH-no dynamic import', 'NOTE-common helper']) {
-    assert.ok(brief.includes(part), part)
-  }
+  for (const part of ['NOTE-a1 resolves', 'NOTE-a2 falls back', 'DISMISSED-the cache is not the loader', COMMON]) assert.ok(brief.includes(part), part)
+})
+
+test("a judge's brief says how each topic's search ended", async (t) => {
+  const FAIL = { status: 'failed', cause: 'host_error' }
+  const { rig } = await runSurvey(t, fullScript({
+    'scout||scout:loader': [openTurn('loader', [[FILE.loader, 7]], FILE.loader), { output: repoReturn({}) }],
+    'scout||scout:store': [FAIL, FAIL],
+  }))
+  const brief = on(rig, 'judge:1')[0].brief
+  assert.match(brief, /loader \([^\n]*\n  Its search: its search ended no_progress \(/)
+  assert.match(brief, /store \([^\n]*\n  Its search: its search failed \(host_error\)/)
 })
 
 test("a judge's brief names each kind's anchor and the units it rules", async (t) => {
@@ -74,18 +79,15 @@ test("a judge's brief names each kind's anchor and the units it rules", async (t
   assert.deepEqual(unitsLine.split(': ').at(-1).split(', '), ['loader', 'store'])
 })
 
-/** Every port and every kind of later round: a continued scout and a refusals round. */
+/** Every port and every kind of later round: a continued topic search and a refusals round. */
 const everyRoundScript = () => fullScript({
-  'scout||scout:loader': [
-    { output: scoutOut({ hits: [hit(FILE.loader, 7)], stop_reason: 'unfinished', not_reached: 'the tests folder' }) },
-    { output: scoutOut({ hits: [hit(FILE.loader, 9)] }) },
-  ],
+  'scout||scout:loader': [openTurn('loader', [[FILE.loader, 7]], FILE.loader), hitTurn('loader', [[FILE.loader, 9]])],
   'analyst||judge:1': [
     { output: judgeOut({ items: [unanchored('loader', CLAIM)], units: [anchoredUnit('loader'), anchoredUnit('store')] }) },
     { output: judgeOut({ items: [behaviour('loader', CLAIM)], units: [anchoredUnit('loader'), anchoredUnit('store')] }) },
   ],
 })
-const everyThread = ['plan', 'scout:loader', 'scout:store', 'common', 'history', 'docs', 'judge:1']
+const everyThread = ['plan', 'scout:loader', 'scout:store', 'history', 'docs', 'judge:1']
 
 test('no brief points at a file for its evidence', async (t) => {
   const { rig } = await runSurvey(t, everyRoundScript())
@@ -100,7 +102,7 @@ test("every brief carries the repository's guidance", async (t) => {
   const { rig } = await runSurvey(t, everyRoundScript())
   for (const thread of everyThread) assert.ok(on(rig, thread).length > 0, thread)
   assert.ok(on(rig, 'judge:1').some((c) => c.round === 2), 'a refusals round ran')
-  for (const c of rig.calls) {
+  for (const c of rig.calls.filter((x) => x.role.name === 'analyst')) {
     assert.ok(c.freshBrief.includes(GUIDE), c.thread.key + ' round ' + c.round + ' freshBrief')
     if (c.round === 1) assert.ok(c.brief.includes(GUIDE), c.thread.key + ' brief')
   }

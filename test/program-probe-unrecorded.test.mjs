@@ -16,6 +16,7 @@ import { sectionsOf, unitsOf } from '../lib/evidence.mjs'
 import { readLog } from '../lib/ledger.mjs'
 import { probe } from '../lib/programs/probe.mjs'
 import { hashSpec } from '../lib/spec.mjs'
+import { closingTurn } from './harness/navigator.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 const E = 'e1'
@@ -28,7 +29,6 @@ const DOC = [
 ].join('\n') + '\n'
 const KEYS = STANDING_AXES.map((a) => a.key)
 
-const located = () => ({ hits: [], searched: ['the repository'], no_match: '', not_reached: '', stop_reason: 'exhausted' })
 /** A finding as a prober writes it; an empty `claim` is one the evidence store refuses. */
 const finding = (axisKey, severity, section, start, over = {}) => ({
   axis: axisKey, severity, section, claim: severity + ' on ' + axisKey + ' in ' + section, evidence: 'line ' + start, start, end: start, ...over,
@@ -47,7 +47,7 @@ async function probeRound(t, findings) {
   const units = unitsOf(KEYS, sectionsOf(DOC))
   const rig = programRig({
     files: { [SPEC]: DOC },
-    script: { 'scout||locate': [{ output: located() }], 'analyst||prober:1': [{ output: proberOut(units, findings) }] },
+    script: { 'scout||locate': [closingTurn(['guidance', ...sectionsOf(DOC).map((s) => 'ground:' + s.slug)])], 'analyst||prober:1': [{ output: proberOut(units, findings) }] },
   })
   t.after(() => rig.cleanup())
   const artifact = join(rig.repo, ...SPEC.split('/'))

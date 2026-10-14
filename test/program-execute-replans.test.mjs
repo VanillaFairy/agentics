@@ -26,6 +26,7 @@ import { STANDING_AXES } from '../lib/briefs/probe.mjs'
 import { sectionsOf, unitsOf } from '../lib/evidence.mjs'
 import { heldBy } from '../lib/locks.mjs'
 import { specPath } from '../lib/store.mjs'
+import { closingTurn } from './harness/navigator.mjs'
 import {
   T, E, leafEntry, subEffort, specText, done, said, failed, ruling, rulings, claim, staleRuler, rootReview,
   IMPL, world, entriesOf, kinds, statusOf, callsOf, dispatchedOf, seqOfFirst, moveBase, assertComplete,
@@ -55,13 +56,12 @@ const putSpec = (rig, folder, text) => {
   writeFileSync(specPath(rig.repo, E, folder), text)
 }
 const STANDING = STANDING_AXES.map((a) => a.key)
-const located = () => ({ hits: [], searched: ['the repository'], no_match: '', not_reached: '', stop_reason: 'exhausted' })
 const cleanProber = (units) => ({
   findings: [], units: units.map((unit) => ({ unit, ruling: 'clean', ids: [], why: 'why ' + unit })), notes: '', stop_reason: 'exhausted', not_reached: '',
 })
-/** Probe round `n` over `text` for folder `p`: a located return with no hits, and one prober that rules every unit clean. */
+/** Probe round `n` over `text` for folder `p`: a locate turn that ends every ask, and one prober that rules every unit clean. */
 const probing = (n, text) => ({
-  ['scout||probe:p:' + n + '/locate']: [{ output: located() }],
+  ['scout||probe:p:' + n + '/locate']: [closingTurn(['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)])],
   ['analyst||probe:p:' + n + '/prober:1']: [{ output: cleanProber(unitsOf(STANDING, sectionsOf(text))) }],
 })
 const PLANNER = 'planner|p|planner:p'

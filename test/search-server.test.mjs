@@ -21,7 +21,7 @@ import { SERVER_NAME, TOOLS_BY_DOMAIN, handle, mcpConfigFor, searchDir, serve, t
 const SERVER = fileURLToPath(new URL('../lib/search/server.mjs', import.meta.url))
 const ENV = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' }
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', env: ENV, windowsHide: true }).trim()
-const FILES = { 'src/a.mjs': 'const NEEDLE = 1\nuse(NEEDLE)\n', 'docs/b.md': 'NEEDLE in prose\n' }
+const FILES = { 'src/a.mjs': 'const NEEDLE = 1\nuse(NEEDLE)\n', 'docs/b.md': 'NEEDLE in prose\n', 'src/c.txt': 'one\ntwo\nthree\n' }
 
 let base
 let tree
@@ -117,6 +117,8 @@ test("the tool list is the spec's tools, each taking its arguments and a require
     assert.ok(d.inputSchema.required.includes('ask'), d.name)
     const ask = JSON.stringify(d.inputSchema.properties.ask)
     for (const a of spec.asks) assert.ok(ask.includes(JSON.stringify(a.key)), d.name + ' names ask ' + a.key)
+    const keys = spec.asks.map((a) => a.key)
+    assert.deepEqual(d.inputSchema.properties.ask.anyOf, [{ type: 'string', enum: keys }, { type: 'array', items: { type: 'string', enum: keys } }], d.name + " offers only this search's asks")
   }
   assert.ok(defs.find((d) => d.name === 'grep').inputSchema.required.includes('pattern'))
   assert.ok(defs.find((d) => d.name === 'read').inputSchema.required.includes('path'))
@@ -157,6 +159,17 @@ test('a read records how far it read, of how many lines', async () => {
   assert.deepEqual(record.observed, [{ key: 'src/a.mjs', line: 1 }])
   assert.deepEqual(record.ended, { key: 'src/a.mjs', to: 1, total_lines: 2 })
   assert.ok(text.includes('1: const NEEDLE = 1'), text)
+  assert.deepEqual(record.keys, ['src/a.mjs'])
+})
+
+test('a read that stops short records where it stopped, of how many lines', async () => {
+  const { spec } = specOf()
+  const { record } = await handle(spec, [], 'read', { path: 'src/c.txt', from: 1, to: 2, ask: 'ground:a' })
+  assert.deepEqual(record.observed, [{ key: 'src/c.txt', line: 1 }, { key: 'src/c.txt', line: 2 }])
+  assert.deepEqual(record.ended, { key: 'src/c.txt', to: 2, total_lines: 3 })
+  const later = await handle(spec, [], 'read', { path: 'src/c.txt', from: 2, ask: 'ground:a' })
+  assert.deepEqual(later.record.observed, [{ key: 'src/c.txt', line: 2 }, { key: 'src/c.txt', line: 3 }])
+  assert.deepEqual(later.record.ended, { key: 'src/c.txt', to: 3, total_lines: 3 })
 })
 
 test("a call runs inside the union of its asks' scopes", async () => {
@@ -167,6 +180,8 @@ test("a call runs inside the union of its asks' scopes", async () => {
   assert.deepEqual([outside.record.ok, outside.record.refusal], [false, 'outside_scope'])
   const both = await handle(spec, [], 'read', { path: 'docs/b.md', ask: ['ground:a', 'guidance'] })
   assert.equal(both.record.ok, true)
+  const wide = specOf({ asks: [{ key: 'two', scope: ['src', 'docs'], domain: 'repo' }] }).spec
+  for (const path of ['src/a.mjs', 'docs/b.md']) assert.equal((await handle(wide, [], 'read', { path, ask: 'two' })).record.ok, true, 'one ask, two scope parts: ' + path)
 })
 
 test('a call naming no ask, or an ask this search lacks, is refused unknown_ask and recorded', async () => {
@@ -199,6 +214,29 @@ test('an exact repeat over the same scope is answered from the first call it rep
   assert.equal(twice.record.repeat_of, 1, 'a repeat of a repeat names the first call')
   const elsewhere = await handle(spec, [first], 'grep', { pattern: 'NEEDLE', ask: 'ground:a' })
   assert.equal(elsewhere.record.repeat_of, undefined, 'the same arguments over another scope union run again')
+})
+
+test("a repeat copies a refusal, a read's end, and names the call that ran even when only a repeat is left", async () => {
+  const { spec } = specOf({ asks: [{ key: 'guidance', scope: ['.'], domain: 'repo' }, { key: 'more', scope: ['.'], domain: 'repo' }] })
+  const refused = (await handle(spec, [], 'grep', { pattern: '\\bNEEDLE', ask: 'guidance' })).record
+  const again = await handle(spec, [refused], 'grep', { pattern: '\\bNEEDLE', ask: 'more' })
+  assert.deepEqual([again.record.ok, again.record.refusal, again.record.detail, again.record.repeat_of], [false, refused.refusal, refused.detail, 1])
+  assert.ok(again.text.includes('Refused (unsupported_syntax)'), again.text)
+  const read1 = (await handle(spec, [], 'read', { path: 'src/c.txt', to: 2, ask: 'guidance' })).record
+  const read2 = (await handle(spec, [read1], 'read', { path: 'src/c.txt', to: 2, ask: 'more' })).record
+  assert.deepEqual([read2.ended, read2.repeat_of], [read1.ended, 1])
+  const third = await handle(spec, [read2], 'read', { path: 'src/c.txt', to: 2, ask: 'guidance' })
+  assert.equal(third.record.repeat_of, 1, 'names the call that ran, not the repeat')
+})
+
+test('a repeat needs the same tool and the same arguments', async () => {
+  const { spec } = specOf()
+  const prior = [{ seq: 1, tool: 'grep', args: { symbol: 'NEEDLE' }, asks: ['guidance'], ok: true, observed: [], keys: [] }]
+  const otherTool = await handle(spec, prior, 'refs', { symbol: 'NEEDLE', ask: 'guidance' })
+  assert.equal(otherTool.record.repeat_of, undefined, 'the same arguments to another tool run')
+  const first = (await handle(spec, [], 'grep', { pattern: 'NEEDLE', ask: 'guidance' })).record
+  const otherArgs = await handle(spec, [first], 'grep', { pattern: 'prose', ask: 'guidance' })
+  assert.equal(otherArgs.record.repeat_of, undefined, 'other arguments over the same scope run')
 })
 
 test('a fetch records the page lines it showed under the page key', async (t) => {

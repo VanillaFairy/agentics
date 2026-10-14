@@ -7,15 +7,19 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import { liveItems } from '../lib/evidence.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
+import { threadOf } from '../lib/programs/common.mjs'
 import { scopeOf, solutions } from '../lib/programs/solutions.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
+import { treeOf } from '../lib/search/pin.mjs'
 import { dispatchKey, evidenceReturnsDir, posix } from '../lib/store.mjs'
+import { closingTurn, fetchCall, hitTurn, openTurn, webReturn } from './harness/navigator.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 // --- the world -------------------------------------------------------------------------------
@@ -32,7 +36,6 @@ const FILES = {
 }
 
 const role = (name) => loadRole(name).role
-const SEARCH_STOP_FIELDS = { searched: [], no_match: '', not_reached: '', stop_reason: 'exhausted' }
 
 const frameOut = (over = {}) => ({
   capability_line: 'a pure JavaScript TOML reader',
@@ -53,20 +56,39 @@ const cand = (name, over = {}) => ({
   does_not_cover: 'writing documents back',
   ...over,
 })
-const found = (candidates, over = {}) => ({ candidates, ...SEARCH_STOP_FIELDS, ...over })
+/** What a researcher turn finds: `candidates` as hits on their own sources; `open` leaves its ask open. */
+const found = (candidates, { open = false } = {}) => ({ found: { candidates, open } })
 const hit = (path, line, note = 'reads a configuration file') => ({ path, line, note })
-const scanned = (hits, over = {}) => ({ hits, ...SEARCH_STOP_FIELDS, ...over })
+/** What a scan turn finds: `hits` as the repo ask's hits; `open` leaves the ask open. */
+const scanned = (hits, { open = false } = {}) => ({ scan: { hits, open } })
 const row = (c, disqualifiers_hit = []) => ({ ...c, disqualifiers_hit })
 const assessed = (rows, { notes = '', units = rows.map((r) => ({ unit: r.name.toLowerCase(), ruling: 'assessed', why: 'checked' })) } = {}) =>
   ({ assessed: rows, notes, units })
 
-const ok = (output) => ({ output })
+const ok = (x) => (x.found || x.scan ? x : { output: x })
 const FAILED = { status: 'failed', cause: 'host_error' }
 
+const researchTurn = (angle, { candidates, open }) => ({
+  calls: candidates.map((c) => fetchCall(angle, c.source_url)),
+  output: webReturn(open
+    ? { hits: candidates.map((c) => [angle, c.source_url, c.name + ' reads TOML', c]), leads: [{ ask: angle, path: 'https://example.org/more', why: 'not read yet' }] }
+    : {
+      hits: candidates.map((c) => [angle, c.source_url, c.name + ' reads TOML', c]),
+      dismissed: [{ ask: [angle], glob: '**', why: 'nothing else here bears on it' }],
+      declare: { [angle]: candidates.length ? 'answered' : 'absent' },
+    }),
+})
+const scanTurn = ({ hits, open }) => {
+  const at = hits.map((h) => [h.path, h.line, h.note])
+  if (open) return openTurn('repo', at, 'src/loader.mjs')
+  return at.length ? hitTurn('repo', at) : closingTurn(['repo'])
+}
+const turnOf = (ask, step) => (step.found ? researchTurn(ask, step.found) : step.scan ? scanTurn(step.scan) : step)
+
 /** A script keyed `<role>||<thread>`: the frame, a researcher per slug, the scan and the assessor. */
-function scriptOf({ frame = [ok(frameOut())], research = { npm: [ok(found([cand('alpha')]))] }, repo = [ok(scanned([hit('src/config.mjs', 2)]))], assess } = {}) {
-  const s = { 'analyst||frame': frame, 'scout||repo': repo }
-  for (const [slug, steps] of Object.entries(research)) s['doc-researcher||research:' + slug] = steps
+function scriptOf({ frame = [ok(frameOut())], research = { npm: [found([cand('alpha')])] }, repo = [scanned([hit('src/config.mjs', 2)])], assess } = {}) {
+  const s = { 'analyst||frame': frame, 'scout||repo': repo.map((st) => turnOf('repo', st)) }
+  for (const [slug, steps] of Object.entries(research)) s['doc-researcher||research:' + slug] = steps.map((st) => turnOf(slug, st))
   if (assess !== undefined) s['analyst||assess'] = assess
   return s
 }
@@ -101,6 +123,7 @@ const firstBrief = (rig, thread) => {
   assert.ok(on.length > 0, 'no call on thread ' + thread)
   return on[0].brief
 }
+const chargeOf = (rig, thread) => readFileSync(callsOn(rig, thread)[0].role.systemPromptFile, 'utf8')
 const threads = (rig) => [...new Set(rig.calls.map((c) => c.thread.key))]
 const pool = (repo) => [...liveItems(repo).values()]
 const externals = (repo) => pool(repo).filter((i) => i.kind === 'external')
@@ -206,7 +229,7 @@ test('one researcher per angle, with the candidates schema', async (t) => {
     const on = callsOn(rig, 'research:' + slug)
     assert.equal(on.length, 1, slug)
     assert.equal(on[0].role.name, 'doc-researcher')
-    assert.deepEqual(on[0].schema, schemaOf('candidates'))
+    assert.deepEqual(on[0].schema, schemaOf('search_web'))
   }
 })
 
@@ -219,20 +242,15 @@ test("a researcher's brief holds what is wanted, the hard constraints, its angle
   const constraints = 'must stay under a kilobyte of glue'
   const research = { npm: [ok(found([]))], github: [ok(found([]))] }
   const { rig } = await sweep(t, scriptOf({ frame: [ok(frame)], research, repo: [ok(scanned([]))] }), { args: { constraints } })
-  const brief = firstBrief(rig, 'research:npm')
+  const brief = chargeOf(rig, 'research:npm')
   for (const text of [frame.capability_line, ...frame.hard_constraints, frame.angles[0].find, constraints]) {
     assert.ok(brief.includes(text), 'the researcher brief lacks ' + text)
   }
   for (const text of [...frame.disqualifiers, frame.angles[1].find]) assert.ok(!brief.includes(text), 'the researcher brief holds ' + text)
 })
 
-test("a researcher's unfinished round goes on, and every round's candidates are recorded", async (t) => {
-  const research = {
-    npm: [
-      ok(found([cand('alpha')], { stop_reason: 'unfinished', not_reached: 'the changelog pages' })),
-      ok(found([cand('beta')])),
-    ],
-  }
+test("a researcher's open search resumes, and every turn's candidates are recorded", async (t) => {
+  const research = { npm: [found([cand('alpha')], { open: true }), found([cand('beta')])] }
   const assess = [ok(assessed([row(cand('alpha')), row(cand('beta'))]))]
   const { rig } = await sweep(t, scriptOf({ research, assess }))
   assert.equal(callsOn(rig, 'research:npm').length, 2)
@@ -243,56 +261,37 @@ test("a researcher's unfinished round goes on, and every round's candidates are 
 })
 
 test('a researcher that stopped short leaves its angle incomplete', async (t) => {
-  const short = found([], { stop_reason: 'unfinished', not_reached: 'the archived mailing list' })
-  const { rig, result } = await sweep(t, scriptOf({ research: { npm: [ok(short), ok(short)] } }))
-  assert.equal(callsOn(rig, 'research:npm').length, 2)
+  const research = { npm: [found([], { open: true }), ok({ hits: [], dismissed: [], leads: [], asks: [] })] }
+  const { rig, result } = await sweep(t, scriptOf({ research }))
+  // A turn that adds only a lead moves nothing, so the ask ends no_progress after the first call.
+  assert.equal(callsOn(rig, 'research:npm').length, 1)
   assert.ok(result.coverage.incomplete.includes('find:npm'))
-  assert.equal(linesWith(result.coverage.unreached, 'find:npm', 'no_progress', 'the archived mailing list').length, 1)
+  assert.ok(result.coverage.unreached.some((l) => l.includes('npm')))
   assert.equal(result.coverage.complete, false)
 })
 
 test('a researcher that failed leaves its angle incomplete, and the others are still recorded', async (t) => {
   const frame = frameOut({ angles: [{ key: 'npm', find: 'look on npm' }, { key: 'github', find: 'look on github' }] })
-  const research = { npm: [FAILED], github: [ok(found([cand('beta')]))] }
+  const research = { npm: [FAILED, FAILED], github: [found([cand('beta')])] }
   const assess = [ok(assessed([row(cand('beta'))]))]
   const { rig, result } = await sweep(t, scriptOf({ frame: [ok(frame)], research, assess }))
   assert.ok(result.coverage.incomplete.includes('find:npm'))
-  assert.ok(linesWith(result.coverage.unreached, 'find:npm', failedCause(rig, 'doc-researcher', 'research:npm')).length > 0)
+  assert.ok(linesWith(result.coverage.unreached, 'find:npm', 'produced nothing').length > 0)
   assert.deepEqual(externals(rig.repo).map((i) => i.detail.name), ['beta'])
 })
 
-test('every search declares its stop, what it found absent and what it never reached', async (t) => {
-  const frame = frameOut({
-    angles: [{ key: 'aaa', find: 'look in aaa' }, { key: 'bbb', find: 'look in bbb' }, { key: 'ccc', find: 'look in ccc' }],
-  })
-  const research = {
-    aaa: [
-      ok(found([], { stop_reason: 'unfinished', no_match: 'no ini reader on the registry', not_reached: 'the forum threads' })),
-      ok(found([], { no_match: 'no streaming reader anywhere' })),
-    ],
-    bbb: [ok(found([], { not_reached: 'the vendor wiki behind a login' }))],
-    ccc: [FAILED],
-  }
-  const repo = [ok(scanned([], { no_match: 'no toml file in the tree' }))]
-  const { result } = await sweep(t, scriptOf({ frame: [ok(frame)], research, repo }))
+test('each search ask that ended done on a declaration is declared', async (t) => {
+  const frame = frameOut({ angles: [{ key: 'aaa', find: 'look in aaa' }, { key: 'bbb', find: 'look in bbb' }, { key: 'ccc', find: 'look in ccc' }] })
+  const research = { aaa: [found([])], bbb: [found([])], ccc: [FAILED, FAILED] }
+  const { result } = await sweep(t, scriptOf({ frame: [ok(frame)], research, repo: [scanned([])] }))
   const declared = result.coverage.declared
-  assert.equal(declared.length, 3)
-  const a = declared.filter((l) => l.startsWith('find:aaa'))
-  assert.equal(a.length, 1)
-  for (const text of ['exhausted', 'no ini reader on the registry', 'no streaming reader anywhere']) assert.ok(a[0].includes(text), 'find:aaa lacks ' + text)
-  const b = declared.filter((l) => l.startsWith('find:bbb'))
-  assert.equal(b.length, 1)
-  for (const text of ['exhausted', 'the vendor wiki behind a login']) assert.ok(b[0].includes(text), 'find:bbb lacks ' + text)
-  assert.equal(declared.filter((l) => l.startsWith('find:ccc')).length, 0)
-  const r = declared.filter((l) => l.startsWith('repo'))
-  assert.equal(r.length, 1)
-  for (const text of ['exhausted', 'no toml file in the tree']) assert.ok(r[0].includes(text), 'repo lacks ' + text)
+  for (const key of ['aaa', 'bbb', 'repo']) assert.ok(declared.some((l) => l.includes(key)), key)
+  assert.ok(!declared.some((l) => l.includes('ccc')), 'a search that produced nothing declares nothing')
 })
 
 test('a search that found nothing where it looked is declared, not lost', async (t) => {
-  const research = { npm: [ok(found([], { no_match: 'no pure reader published' }))] }
-  const { result } = await sweep(t, scriptOf({ research, repo: [ok(scanned([]))] }))
-  assert.equal(linesWith(result.coverage.declared, 'find:npm', 'no pure reader published').length, 1)
+  const { result } = await sweep(t, scriptOf({ research: { npm: [found([])] }, repo: [scanned([])] }))
+  assert.ok(result.coverage.declared.some((l) => l.includes('npm')))
   assert.equal(result.coverage.complete, true)
 })
 
@@ -304,47 +303,45 @@ test('the repository scan is one scout call on thread repo, its brief holding th
   const on = callsOn(rig, 'repo')
   assert.equal(on.length, 1)
   assert.equal(on[0].role.name, 'scout')
-  assert.deepEqual(on[0].schema, schemaOf('scout_hits'))
+  assert.deepEqual(on[0].schema, schemaOf('search_repo'))
   const f = frameOut()
-  for (const text of [f.repo_question, f.capability_line, ...roots]) assert.ok(on[0].brief.includes(text), 'the scan brief lacks ' + text)
+  const charge = chargeOf(rig, 'repo')
+  for (const text of [f.repo_question, f.capability_line, ...roots]) assert.ok(charge.includes(text), 'the scan brief lacks ' + text)
 })
 
 test('the repository scan runs whatever the researchers return', async (t) => {
-  const { rig, result } = await sweep(t, scriptOf({ research: { npm: [FAILED] } }))
+  const { rig, result } = await sweep(t, scriptOf({ research: { npm: [FAILED, FAILED] } }))
   assert.equal(callsOn(rig, 'repo').length, 1)
   assert.equal(result.counts.present, 1)
 })
 
 test("every round's hits are recorded as items the repository already carries", async (t) => {
-  const repo = [
-    ok(scanned([hit('src/config.mjs', 2)], { stop_reason: 'unfinished', not_reached: 'the loader module' })),
-    ok(scanned([hit('src/loader.mjs', 2, 'splits a key from its value')])),
-  ]
+  const repo = [scanned([hit('src/config.mjs', 2)], { open: true }), scanned([hit('src/loader.mjs', 2, 'splits a key from its value')])]
   const { rig, result } = await sweep(t, scriptOf({ repo, assess: DEFAULT_ASSESS }))
   assert.equal(result.counts.present, 2)
   assert.deepEqual(behaviours(rig.repo).map((i) => i.ground[0]).sort(), ['src/config.mjs', 'src/loader.mjs'])
 })
 
 test('a repository scan that failed is a failed channel, and the candidates are still recorded', async (t) => {
-  const { rig, result } = await sweep(t, scriptOf({ repo: [FAILED], assess: DEFAULT_ASSESS }))
+  const { rig, result } = await sweep(t, scriptOf({ repo: [FAILED, FAILED], assess: DEFAULT_ASSESS }))
   assert.ok(result.coverage.failed_channels.includes('repo'))
-  assert.ok(linesWith(result.coverage.unreached, 'repo', failedCause(rig, 'scout', 'repo')).length > 0)
+  assert.ok(linesWith(result.coverage.unreached, 'repo', 'produced nothing').length > 0)
   assert.deepEqual(externals(rig.repo).map((i) => i.detail.name), ['alpha'])
 })
 
 test('a repository scan that stopped short leaves repo incomplete', async (t) => {
-  const short = scanned([hit('src/config.mjs', 2)], { stop_reason: 'unfinished', not_reached: 'the generated sources' })
-  const { rig, result } = await sweep(t, scriptOf({ repo: [ok(short), ok(short)], assess: DEFAULT_ASSESS }))
+  const repo = [scanned([hit('src/config.mjs', 2)], { open: true }), ok({ hits: [], dismissed: [], leads: [], asks: [] })]
+  const { rig, result } = await sweep(t, scriptOf({ repo, assess: DEFAULT_ASSESS }))
   assert.equal(callsOn(rig, 'repo').length, 2)
   assert.ok(result.coverage.incomplete.includes('repo'))
   assert.ok(!result.coverage.failed_channels.includes('repo'))
-  assert.ok(linesWith(result.coverage.unreached, 'repo', 'the generated sources').length > 0)
+  assert.ok(result.coverage.unreached.some((l) => l.includes('repo')))
 })
 
 // --- the assessment --------------------------------------------------------------------------
 
 test('the assessor runs only when a researcher reported a named candidate', async (t) => {
-  const { rig, result } = await sweep(t, scriptOf({ research: { npm: [ok(found([]))] } }))
+  const { rig, result } = await sweep(t, scriptOf({ research: { npm: [found([])] } }))
   assert.equal(callsOn(rig, 'assess').length, 0)
   assert.equal(result.measured, false)
   assert.equal(result.counts.candidates, 0)
@@ -412,6 +409,67 @@ test('an assessor that failed leaves the candidates unmeasured', async (t) => {
   assert.deepEqual(externals(rig.repo).map((i) => i.detail.name.toLowerCase()).sort(), ['alpha', 'beta'])
 })
 
+test('one candidate a researcher reaches by two names is one candidate', async (t) => {
+  const url = 'https://github.com/pmndrs/zustand'
+  const [pageA, pageB] = ['https://example.org/pages/a', 'https://example.org/pages/b']
+  const names = [cand('zustand', { source_url: url }), cand('pmndrs/zustand', { source_url: url })]
+  // Two pages, each carrying the same project under another name: the ledger keeps both hits.
+  const twoPages = {
+    calls: [fetchCall('npm', pageA), fetchCall('npm', pageB)],
+    output: webReturn({
+      hits: [['npm', pageA, 'a page', names[0]], ['npm', pageB, 'b page', names[1]]],
+      dismissed: [{ ask: ['npm'], glob: '**', why: 'nothing else here bears on it' }],
+      declare: { npm: 'answered' },
+    }),
+  }
+  const { rig } = await sweep(t, scriptOf({ research: { npm: [twoPages] }, assess: [ok(assessed([row(names[0])]))] }))
+  const unitsLines = firstBrief(rig, 'assess').split('UNITS')[1].split('\n').filter((l) => l.startsWith('- '))
+  assert.equal(unitsLines.length, 1, unitsLines.join('\n'))
+  assert.equal(externals(rig.repo).length, 1)
+})
+
+test("the assessor never judges from a researcher's session", async (t) => {
+  const rig = rigFor(t, { script: scriptOf({ assess: DEFAULT_ASSESS }) })
+  // The researcher's thread already ran in the session the assessor would take.
+  const research = threadOf(rig.ctx, { role: 'doc-researcher', thread: 'research:npm' })
+  const assess = threadOf(rig.ctx, { role: 'analyst', thread: 'assess' })
+  rig.ctx.log.append('dispatched', { dispatch: 'seeded.research', thread: research.key, session: assess.session, model: 'sonnet', effort: 'medium' })
+  const result = await solutions(rig.ctx, argsFor(rig))
+  assert.equal(callsOn(rig, 'assess').length, 0, "the assessor ran on a researcher's session")
+  assert.ok(result.coverage.failed_channels.includes('assess'))
+})
+
+test('a tree handed in-process is swept, and what it already carries is recorded on it', async (t) => {
+  const rig = rigFor(t, { script: scriptOf({ repo: [scanned([hit('src/only-here.mjs', 1, 'reads TOML already')])], assess: DEFAULT_ASSESS }) })
+  const wt = join(rig.repo, '.claude', 'worktrees', 'other')
+  const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { windowsHide: true })
+  git(rig.repo, 'worktree', 'add', '--detach', wt, 'HEAD')
+  writeFileSync(join(wt, 'src', 'only-here.mjs'), 'export const toml = true\n')
+  git(wt, 'add', '-A')
+  git(wt, 'commit', '-qm', 'the tree has a reader')
+  const result = await solutions(rig.ctx, argsFor(rig, { tree: treeOf(wt) }))
+  assert.equal(result.counts.present, 1)
+  assert.deepEqual(behaviours(rig.repo).map((i) => i.ground[0]), ['src/only-here.mjs'])
+})
+
+test("each search's server serves its asks over the sweep's tree: the angle on the web, the scan on the roots", async (t) => {
+  const rig = rigFor(t, { script: scriptOf({ assess: DEFAULT_ASSESS }) })
+  const wt = join(rig.repo, '.claude', 'worktrees', 'other')
+  execFileSync('git', ['-C', rig.repo, 'worktree', 'add', '--detach', wt, 'HEAD'], { windowsHide: true })
+  const tree = treeOf(wt)
+  const roots = ['packages/parser']
+  await solutions(rig.ctx, argsFor(rig, { tree, roots }))
+  const specOf = (thread) => {
+    const args = JSON.parse(readFileSync(callsOn(rig, thread)[0].mcpConfig, 'utf8')).mcpServers.search.args
+    return JSON.parse(readFileSync(args[args.indexOf('--spec') + 1], 'utf8'))
+  }
+  const [web, repo] = [specOf('research:npm'), specOf('repo')]
+  assert.deepEqual(web.asks.map((x) => [x.key, x.domain, x.scope]), [['npm', 'web', ['.']]])
+  assert.deepEqual(repo.asks.map((x) => [x.key, x.domain, x.scope]), [['repo', 'repo', roots]])
+  assert.equal(web.tree.root, tree.root)
+  assert.equal(repo.tree.root, tree.root)
+})
+
 // --- the record ------------------------------------------------------------------------------
 
 const RECORD_SCRIPT = () => scriptOf({
@@ -464,7 +522,7 @@ test('what the assessment could not settle is named as a loss', async (t) => {
 })
 
 test('a record the store refuses costs no coverage', async (t) => {
-  const { rig, result } = await sweep(t, scriptOf({ repo: [ok(scanned([hit('src/gone.mjs', 2)]))], assess: DEFAULT_ASSESS }))
+  const { rig, result } = await sweep(t, scriptOf({ repo: [scanned([hit('src/gone.mjs', 2)])], assess: DEFAULT_ASSESS }))
   assert.equal(result.recorded, false)
   assert.deepEqual(result.items, [])
   assert.equal(liveItems(rig.repo).size, 0)
@@ -534,18 +592,13 @@ test("every thread's first brief holds the repository's guidance", async (t) => 
   const research = { npm: [ok(found([cand('alpha')]))], github: [ok(found([cand('beta')]))] }
   const assess = [ok(assessed([row(cand('alpha')), row(cand('beta'))]))]
   const { rig } = await sweep(t, scriptOf({ frame: [ok(frame)], research, assess }))
-  for (const thread of ['frame', 'research:npm', 'research:github', 'repo', 'assess']) {
+  for (const thread of ['frame', 'assess']) {
     assert.ok(firstBrief(rig, thread).includes(GUIDANCE), thread + ' lacks the guidance')
   }
 })
 
 test('no brief points at a file under the run or the store', async (t) => {
-  const research = {
-    npm: [
-      ok(found([cand('alpha')], { stop_reason: 'unfinished', not_reached: 'the changelog pages' })),
-      ok(found([cand('beta')])),
-    ],
-  }
+  const research = { npm: [found([cand('alpha')], { open: true }), found([cand('beta')])] }
   const assess = [ok(assessed([row(cand('alpha')), row(cand('beta'))]))]
   const { rig } = await sweep(t, scriptOf({ research, assess }))
   assert.ok(rig.calls.length > 0)

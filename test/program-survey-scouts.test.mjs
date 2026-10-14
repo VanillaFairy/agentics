@@ -19,7 +19,7 @@ import { treeOf } from '../lib/search/pin.mjs'
 import { groundTable } from '../lib/search/resolve.mjs'
 import { EMPTY_GROUND, withGround, openTurn, repoReturn, hitTurn } from './harness/navigator.mjs'
 import {
-  Q, FILES, FILE, TOPIC, plan, channelOut, behaviour, anchoredUnit, judgeOut, ARGS, CLAIM,
+  Q, FILES, FILE, TOPIC, plan, historyTurn, behaviour, anchoredUnit, judgeOut, ARGS, CLAIM,
   basicScript, COMMON, HQ, DQ, fullScript, rigFor, runSurvey, on, pool, roleOf, cov,
 } from './harness/survey-world.mjs'
 
@@ -143,7 +143,7 @@ test('every planned topic is scouted, beyond max_topics', async (t) => {
 test('a plan with no topics searches nothing and says so', async (t) => {
   const { rig, result } = await runSurvey(t, {
     'analyst||plan': [{ output: plan({ topics: [], history_question: HQ }) }],
-    'historian||history': [{ output: channelOut({ findings: 'unused' }) }],
+    'historian||history': [historyTurn('unused')],
   })
   assert.equal(rig.calls.length, 1)
   assert.equal(cov(result).unreached.length, 1)

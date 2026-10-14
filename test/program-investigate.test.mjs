@@ -16,7 +16,7 @@ import { fnv1a } from '../lib/plan-digest.mjs'
 import { investigate, scopeOf } from '../lib/programs/investigate.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
-import { hitTurn, openTurn, repoReturn } from './harness/navigator.mjs'
+import { hitTurn, historyReturn, openTurn, repoReturn, showCall } from './harness/navigator.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 const QUESTION = 'Can the config loader drop its cache?'
@@ -39,6 +39,7 @@ const script = (synthesis, over = {}) => ({
   'analyst||synthesis': synthesis,
   ...over,
 })
+const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 const REPORT = [{ output: { report: 'Yes: drop the map at src/a.js:3.' } }]
 
 function rig(t, s) {
@@ -118,8 +119,8 @@ test("the synthesis brief names each gap in the survey's coverage", async (t) =>
     'scout||scout:parser': [hitTurn('parser', [['src/a.js', 3, 'x']])],
     'scout||scout:store': [openTurn('store', [['src/b.js', 2, 'y']], 'src/b.js'), { output: repoReturn({}) }],
     'scout||scout:expiry': [{ status: 'failed', cause: 'host_error' }, { status: 'failed', cause: 'host_error' }],
-    'historian||history': [{ status: 'failed', cause: 'host_error' }],
-    'doc-researcher||docs': [{ status: 'failed', cause: 'host_error' }],
+    'historian||history': [{ status: 'failed', cause: 'host_error' }, { status: 'failed', cause: 'host_error' }],
+    'doc-researcher||docs': [{ status: 'failed', cause: 'host_error' }, { status: 'failed', cause: 'host_error' }],
     'analyst||judge:1': [{ output: judged([claim('store', 'src/b.js', 2, 'store claim')], [{ topic: 'expiry', text: 'nothing came back' }]) }],
     'analyst||synthesis': REPORT,
   }
@@ -165,13 +166,13 @@ test('a failed synthesis keeps the evidence and names the failure', async (t) =>
 test("the evidence is the survey's: items, context, risks, history and docs", async (t) => {
   const r = rig(t, script(REPORT, {
     'analyst||plan': [{ output: plan([topic('loader')], { history_question: 'When did the cache land?' }) }],
-    'historian||history': [{ output: { findings: 'abc123 added the cache', searched: ['git log'], no_match: '', not_reached: '', stop_reason: 'exhausted' } }],
+    'historian||history': [{ calls: [showCall('history', SHA)], output: historyReturn({ hits: [['history', SHA, 'abc123 added the cache']], declare: { history: 'answered' } }) }],
   }))
   const out = await investigate(r.ctx, argsOf())
   assert.deepEqual(out.evidence.items.map((i) => i.id), [...liveItems(r.repo).keys()])
   assert.ok(existsSync(out.evidence.context))
   assert.deepEqual(out.evidence.risks, [{ topic: 'loader', n: 1 }])
-  assert.ok(existsSync(out.evidence.history))
+  assert.deepEqual(out.evidence.history, { status: 'returned', end: 'done', hits: 1 })
   assert.equal(out.evidence.docs, null)
 })
 

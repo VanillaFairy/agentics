@@ -229,7 +229,7 @@ test('a survey\'s context holds the standing items it reused, every item it reco
   const out = surveyContext(repo, {
     ground: ['src/cache.js'], return_kind: 'survey', returns: [now.return],
     from: [returnFile(repo, judged([], [{ topic: 'loader', text: 'the loader is untested' }]))],
-    history: [returnFile(repo, { findings: 'abc123 added the loader', stop_reason: 'unfinished', not_reached: 'the 2024 branches' })],
+    history: 'HIST-TEXT abc123 added the loader',
   })
   assert.deepEqual(out.items.map((i) => [i.topic, i.state, i.return]).sort(), [['cache', 'standing', earlier.return], ['loader', 'standing', now.return]],
     'an item both reused and recorded now is listed once')
@@ -237,5 +237,5 @@ test('a survey\'s context holds the standing items it reused, every item it reco
   const said = readFileSync(out.context, 'utf8')
   assert.match(said, /\[loader\]\n- \[I[0-9a-f]{8}\] \(loader, behaviour, standing\) src\/a\.js:2-4 says what it says — src\/a\.js:2-4/)
   assert.match(said, /RISKS THE JUDGES NAMED:\n- \[loader\] the loader is untested/)
-  assert.match(said, /GIT HISTORY:\nabc123 added the loader\n\nCOVERAGE LIMIT \(unfinished\) — never reached: the 2024 branches/)
+  assert.match(said, /GIT HISTORY:\nHIST-TEXT abc123 added the loader/)
 })

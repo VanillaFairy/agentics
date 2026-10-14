@@ -20,6 +20,7 @@ import { postflight, preflight, schedule } from '../lib/boundaries/execution.mjs
 import { executionContext, fault, recordAll } from '../lib/boundaries/records.mjs'
 import { executionLog, readLog } from '../lib/ledger.mjs'
 import { acquireAsync, heldBy, maxParallel } from '../lib/locks.mjs'
+import { pinTree } from '../lib/search/pin.mjs'
 import { branchExists, branchOf, configPath, executionDir, posix, worktreeOf } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
 import { COMMANDS, STAMP, commitIn, git, leaf, root } from './harness/boundary-fixture.mjs'
@@ -122,6 +123,39 @@ test('a dirty leftover worktree is reported and left in place', async (t) => {
   assert.deepEqual(out.dirty_worktrees.map(posix), [listed])
   assert.ok(worktreeList(r).includes(listed), 'a dirty checkout is never forced')
   assert.equal(existsSync(join(stray, 'unsaved.txt')), true)
+})
+
+test("preflight removes the pinned trees this execution's plans never journaled", async (t) => {
+  const { r, cf } = await started(t)
+  const kept = pinTree(r, E, head(r))
+  const gone = pinTree(r, E, git(r, 'commit-tree', head(r, 'HEAD^{tree}'), '-p', 'HEAD', '-m', 'a later head'))
+  ctxOf(r).log.append('step', { key: 'tree:p:write:1:0', value: kept.sha })
+  const out = await preflight(ctxOf(r), { commands_file: cf })
+  assert.equal(out.ok, true)
+  assert.ok(worktreeList(r).includes(kept.root), 'a tree a plan of this execution journaled stays')
+  assert.ok(!worktreeList(r).includes(gone.root), 'a tree no plan journaled is removed')
+  assert.deepEqual(out.dirty_worktrees, [])
+})
+
+test("preflight keeps a pinned tree another open execution's plan journaled", async (t) => {
+  const { r, cf } = await started(t)
+  envelopeFor(r, STAMP2)
+  const theirs = pinTree(r, E, head(r))
+  ctxOf(r, STAMP2, { run: false }).log.append('step', { key: 'tree:q:write:1:0', value: theirs.sha })
+  const out = await preflight(ctxOf(r), { commands_file: cf })
+  assert.equal(out.ok, true, JSON.stringify(out.error))
+  assert.ok(worktreeList(r).includes(theirs.root), 'the sibling execution is still searching it')
+})
+
+test('a dirty pinned tree is reported in dirty_worktrees and left in place', async (t) => {
+  const { r, cf } = await started(t)
+  const pinned = pinTree(r, E, head(r))
+  writeFileSync(join(pinned.root, 'unsaved.txt'), 'work in progress\n')
+  const out = await preflight(ctxOf(r), { commands_file: cf })
+  assert.equal(out.ok, true)
+  assert.deepEqual(out.dirty_worktrees.map(posix), [pinned.root])
+  assert.ok(worktreeList(r).includes(pinned.root), 'a sweep never forces')
+  assert.equal(existsSync(join(pinned.root, 'unsaved.txt')), true)
 })
 
 test('a checkout of an effort branch outside .claude/worktrees is never touched', async (t) => {

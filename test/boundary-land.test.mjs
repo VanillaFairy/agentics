@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { land } from '../lib/boundary.mjs'
 import { append } from '../lib/ledger.mjs'
 import { renderLanding } from '../lib/render.mjs'
+import { pinTree } from '../lib/search/pin.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 import { git, repo, STAMP } from './harness/boundary-fixture.mjs'
 
@@ -89,4 +90,17 @@ test('landing sweeps what it merged and keeps, with why, an unmerged branch and 
   const again = land(r, 'e1', 'merge')
   assert.equal(again.already, true)
   assert.deepEqual(again.removed, ['agentics/e1--dirty'], 'landing again finishes the sweep')
+})
+
+test("landing removes the effort's pinned search trees", () => {
+  const r = repo()
+  git(r, 'checkout', '-q', '-b', 'agentics/e1')
+  writeFileSync(join(r, 'work.txt'), 'the effort\n')
+  git(r, 'add', '-A')
+  git(r, 'commit', '-q', '-m', 'the effort')
+  git(r, 'checkout', '-q', 'main')
+  const pinned = pinTree(r, 'e1', git(r, 'rev-parse', 'agentics/e1').trim())
+  const landed = land(r, 'e1', 'merge')
+  assert.equal(landed.ok, true, landed.error)
+  assert.ok(!existsSync(pinned.root), 'the pinned tree went with the effort')
 })

@@ -137,6 +137,16 @@ test("preflight removes the pinned trees this execution's plans never journaled"
   assert.deepEqual(out.dirty_worktrees, [])
 })
 
+test("preflight keeps a pinned tree another open execution's plan journaled", async (t) => {
+  const { r, cf } = await started(t)
+  envelopeFor(r, STAMP2)
+  const theirs = pinTree(r, E, head(r))
+  ctxOf(r, STAMP2, { run: false }).log.append('step', { key: 'tree:q:write:1:0', value: theirs.sha })
+  const out = await preflight(ctxOf(r), { commands_file: cf })
+  assert.equal(out.ok, true, JSON.stringify(out.error))
+  assert.ok(worktreeList(r).includes(theirs.root), 'the sibling execution is still searching it')
+})
+
 test('a dirty pinned tree is reported in dirty_worktrees and left in place', async (t) => {
   const { r, cf } = await started(t)
   const pinned = pinTree(r, E, head(r))

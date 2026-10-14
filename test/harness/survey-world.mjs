@@ -5,7 +5,7 @@
 import { liveItems } from '../../lib/evidence.mjs'
 import { survey } from '../../lib/programs/survey.mjs'
 import { loadRole } from '../../lib/roles.mjs'
-import { hitTurn } from './navigator.mjs'
+import { fetchCall, hitTurn, historyReturn, showCall, webReturn } from './navigator.mjs'
 import { programRig } from './program-rig.mjs'
 
 // --- the world --------------------------------------------------------------------------------
@@ -29,8 +29,12 @@ export const TOPIC = {
 
 export const plan = ({ topics = [TOPIC.loader], common_ground = '', history_question = '', docs_question = '' } = {}) =>
   ({ topics, common_ground, history_question, docs_question })
-export const channelOut = ({ findings = '', searched = ['git log'], no_match = '', not_reached = '', stop_reason = 'exhausted' } = {}) =>
-  ({ findings, searched, no_match, not_reached, stop_reason })
+export const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
+export const DOCS_URL = 'https://nodejs.org/api/modules.html'
+/** A history turn that showed SHA and returns it with `note`. */
+export const historyTurn = (note) => ({ calls: [showCall('history', SHA)], output: historyReturn({ hits: [['history', SHA, note]], declare: { history: 'answered' } }) })
+/** A docs turn that fetched DOCS_URL and returns it with `note`. */
+export const docsTurn = (note) => ({ calls: [fetchCall('docs', DOCS_URL)], output: webReturn({ hits: [['docs', DOCS_URL, note]], declare: { docs: 'answered' } }) })
 export const behaviour = (topic, claim, line = 7) =>
   ({ topic, kind: 'behaviour', claim, spans: [{ path: FILE[topic], start: line, end: line }], queries: [], sources: [], rests_on: [] })
 
@@ -57,8 +61,8 @@ export const fullScript = (over = {}) => ({
   'analyst||plan': [{ output: plan({ topics: [TOPIC.loader, TOPIC.store], common_ground: COMMON, history_question: HQ, docs_question: DQ }) }],
   'scout||scout:loader': [hitTurn('loader', [[FILE.loader, 7]])],
   'scout||scout:store': [hitTurn('store', [[FILE.store, 9]])],
-  'historian||history': [{ output: channelOut({ findings: 'HIST-FINDINGS-8a1b' }) }],
-  'doc-researcher||docs': [{ output: channelOut({ findings: 'DOCS-FINDINGS-9b2c', searched: ['nodejs.org'] }) }],
+  'historian||history': [historyTurn('HIST-FINDINGS-8a1b')],
+  'doc-researcher||docs': [docsTurn('DOCS-FINDINGS-9b2c')],
   'analyst||judge:1': [{
     output: judgeOut({
       items: [behaviour('loader', CLAIM), behaviour('store', 'CLAIM-store writes at line 9', 9)],

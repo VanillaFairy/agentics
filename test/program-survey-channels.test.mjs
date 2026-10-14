@@ -6,26 +6,27 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { schemaOf } from '../lib/schemas.mjs'
-import { posix, returnPath } from '../lib/store.mjs'
+import { fetchCall, webReturn } from './harness/navigator.mjs'
 import {
-  Q, TOPIC, plan, channelOut, CLAIM, COMMON, HQ, DQ, fullScript, runSurvey, on, pool, cov,
+  Q, TOPIC, plan, CLAIM, COMMON, HQ, DQ, DOCS_URL, fullScript, runSurvey, on, pool, cov,
 } from './harness/survey-world.mjs'
+
+const chargeOf = (call) => readFileSync(call.role.systemPromptFile, 'utf8')
 
 test('a history question runs the historian with it, and a docs question the doc-researcher', async (t) => {
   const { rig } = await runSurvey(t, fullScript())
-  const history = on(rig, 'history')
-  assert.equal(history.length, 1)
-  assert.equal(history[0].role.name, 'historian')
-  assert.deepEqual(history[0].schema, schemaOf('historian'))
-  assert.ok(history[0].brief.includes(HQ))
-  assert.ok(history[0].brief.includes(Q))
-  const docs = on(rig, 'docs')
-  assert.equal(docs.length, 1)
-  assert.equal(docs[0].role.name, 'doc-researcher')
-  assert.deepEqual(docs[0].schema, schemaOf('doc_research'))
-  assert.ok(docs[0].brief.includes(DQ))
-  assert.ok(docs[0].brief.includes(Q))
+  const [history] = on(rig, 'history')
+  assert.equal(on(rig, 'history').length, 1)
+  assert.equal(history.role.name, 'historian')
+  assert.deepEqual(history.schema, schemaOf('search_history'))
+  for (const part of [HQ, Q]) assert.ok(chargeOf(history).includes(part), 'history charge holds ' + part)
+  const [docs] = on(rig, 'docs')
+  assert.equal(on(rig, 'docs').length, 1)
+  assert.equal(docs.role.name, 'doc-researcher')
+  assert.deepEqual(docs.schema, schemaOf('search_web'))
+  for (const part of [DQ, Q]) assert.ok(chargeOf(docs).includes(part), 'docs charge holds ' + part)
 })
 
 test('no channel runs when the plan asks none', async (t) => {
@@ -38,48 +39,32 @@ test('no channel runs when the plan asks none', async (t) => {
   assert.equal(result.docs, null)
 })
 
-test('a failed channel fails alone', async (t) => {
-  const { rig, result } = await runSurvey(t, fullScript({ 'historian||history': [{ status: 'failed', cause: 'host_error' }] }))
+test('a channel that produced nothing fails alone', async (t) => {
+  const FAIL = { status: 'failed', cause: 'host_error' }
+  const { rig, result } = await runSurvey(t, fullScript({ 'historian||history': [FAIL, FAIL] }))
   assert.deepEqual(cov(result).failed_channels, ['history'])
-  assert.ok(cov(result).unreached.some((l) => l.includes('history') && l.includes('host_error')), JSON.stringify(cov(result).unreached))
-  const loader = pool(rig).find((it) => it.claim === CLAIM)
-  assert.ok(loader, 'the topic item is recorded')
-  assert.ok(result.items.some((it) => it.id === loader.id))
-  assert.equal(result.history, null)
+  assert.ok(cov(result).unreached.some((l) => l.includes('history')), JSON.stringify(cov(result).unreached))
+  assert.ok(pool(rig).some((it) => it.claim === CLAIM), 'the topic item is recorded')
+  assert.equal(result.history.hits, 0)
 })
 
-test('a channel that ends short is incomplete', async (t) => {
-  const { result } = await runSurvey(t, fullScript({
-    'doc-researcher||docs': [{ output: channelOut({ findings: 'd1', stop_reason: 'stuck', not_reached: '' }) }],
-  }))
+test('a channel whose state stops moving is incomplete', async (t) => {
+  const stuck = { calls: [fetchCall('docs', DOCS_URL)], output: webReturn({ leads: [{ ask: 'docs', path: DOCS_URL, why: 'read the rest' }] }) }
+  const { result } = await runSurvey(t, fullScript({ 'doc-researcher||docs': [stuck, { output: webReturn({}) }] }))
   assert.deepEqual(cov(result).incomplete, ['docs'])
+  assert.equal(result.docs.end, 'no_progress')
   assert.deepEqual(cov(result).failed_channels, [])
 })
 
-test("declared names each channel's stop as it stated it", async (t) => {
-  const { result } = await runSurvey(t, fullScript({
-    'analyst||plan': [{ output: plan({ topics: [TOPIC.loader], history_question: HQ, docs_question: DQ }) }],
-    'historian||history': [
-      { output: channelOut({ findings: 'h1', stop_reason: 'unfinished', not_reached: 'NR-old tags' }) },
-      { output: channelOut({ findings: 'h1', stop_reason: 'unfinished', not_reached: 'NR-old tags' }) },
-    ],
-    'doc-researcher||docs': [{ output: channelOut({ findings: 'd1', not_reached: 'NR-v1 docs' }) }],
-  }))
-  const declared = cov(result).declared
-  assert.ok(declared.includes('history: unfinished, not reached: NR-old tags (ended short: no_progress)'), JSON.stringify(declared))
-  assert.ok(declared.includes('docs: exhausted, not reached: NR-v1 docs'), JSON.stringify(declared))
+test('declared holds each channel ask that ended done on a declaration', async (t) => {
+  const { result } = await runSurvey(t, fullScript())
+  for (const name of ['history', 'docs']) assert.ok(cov(result).declared.some((l) => l.startsWith(name + ':')), name)
 })
 
-test("the result names each channel's last stored return", async (t) => {
-  const { rig, result } = await runSurvey(t, fullScript({
-    'historian||history': [
-      { output: channelOut({ findings: 'h1', stop_reason: 'unfinished', not_reached: 'the tags' }) },
-      { output: channelOut({ findings: 'h2', stop_reason: 'exhausted' }) },
-    ],
-  }))
-  const history = on(rig, 'history')
-  assert.equal(history.length, 2)
-  assert.equal(posix(result.history), posix(returnPath(rig.ctx.dir, history[1].dispatch)))
-  const docs = on(rig, 'docs')
-  assert.equal(posix(result.docs), posix(returnPath(rig.ctx.dir, docs[docs.length - 1].dispatch)))
+test("the result names each channel's end and its hit count, and the context holds its findings", async (t) => {
+  const { result } = await runSurvey(t, fullScript())
+  assert.deepEqual(result.history, { status: 'returned', end: 'done', hits: 1 })
+  assert.deepEqual(result.docs, { status: 'returned', end: 'done', hits: 1 })
+  const context = readFileSync(result.context, 'utf8')
+  for (const part of ['GIT HISTORY:', 'HIST-FINDINGS-8a1b', 'EXTERNAL DOCUMENTATION:', 'DOCS-FINDINGS-9b2c']) assert.ok(context.includes(part), part)
 })

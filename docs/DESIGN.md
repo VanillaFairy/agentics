@@ -1722,7 +1722,10 @@ folder at a time, every planner round in the folder's one planner session (`plan
 which may write that folder's spec and nothing else. For a folder whose ground is unknown the
 program first runs a survey (nested as `survey:<folder>`), and the planner's brief (`plannerBrief`
 in `lib/briefs/execute.mjs`) carries the text of its context file. Each boundary's answer is
-journaled as a `step` under the folder and the round, so a relaunch replays what was decided:
+journaled as a `step` under the folder and the round, so a relaunch replays what was decided. The
+plan's basis — the folder's revision, or the request it answers — also names the folder's latest
+`retry_escalated` event, so a plan after the user's `retry` is a new plan that runs on from the
+planner thread's latest round, never a replay back to the stop the user cleared:
 
 1. **Check.** The `spec-check` boundary closes the planner's dispatch — its write, or a settle that
    edited the spec, checked again before the next probe round (`settled` reads as `written`); a
@@ -3400,7 +3403,8 @@ live inputs to an execution: leaf-open hands the cleared stop's reason and the n
 or since the thread's latest return when that is later, to the leaf's next round as `retried` ([Conversations](#conversations)); a leaf its review loop stopped goes on at that
 next round, handed the stopping review's open findings beside it. `retry` also makes the node's next
 check measure again: `measure` hands back no `verify-observed` line of the node older than its
-latest `retry_escalated` event. Commits the session made on the leaf's branch before it retried are
+latest `retry_escalated` event. A retried planner folder plans afresh from the planner thread's
+next round ([Autonomous review](#autonomous-review)). Commits the session made on the leaf's branch before it retried are
 measured before any producer round ([Resume and checkpoints](#resume-and-checkpoints)).
 
 ### Producer returns

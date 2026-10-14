@@ -21,7 +21,7 @@ import { STANDING_AXES } from '../lib/briefs/probe.mjs'
 import { renderMessage } from '../lib/conversation.mjs'
 import { sectionsOf, unitsOf } from '../lib/evidence.mjs'
 import { commandsOf } from '../lib/gotchas.mjs'
-import { readLog } from '../lib/ledger.mjs'
+import { append, readLog } from '../lib/ledger.mjs'
 import { permissionsFor } from '../lib/locus.mjs'
 import { dispatch, programContext } from '../lib/programs/common.mjs'
 import { planFolder } from '../lib/programs/execute/folder.mjs'
@@ -294,6 +294,16 @@ test('the same problems again escalate spec_refused before any probe', async (t)
   assert.equal(under(w.rig, 'probe:').length, 0)
   assert.equal(ledger(w.rig, 'prepared').length, 0)
   assert.equal(ledger(w.rig, 'reviewed').length, 0)
+})
+
+test('a folder the user retried after its stop is planned again, not replayed to the same stop', async (t) => {
+  const w = world(t, { steps: { ...planner(written, written, written), ...probing(3, S1) }, writes: { 1: BAD, 3: S1 } })
+  assert.equal((await w.run()).outcome, 'stopped', 'the fixture: the same problems twice escalate spec_refused')
+  append(w.rig.repo, E, 'events', [{ kind: 'replanned', node: 'p', execution: w.rig.stamp, reason: 'retry_escalated', by: 'session' }])
+  const out = await w.run()
+  assert.equal(out.outcome, 'prepared')
+  assert.deepEqual(plannerCalls(w.rig).map((c) => c.round), [1, 2, 3], 'the retry runs on from the thread\'s latest round')
+  assert.equal(ledger(w.rig, 'prepared').length, 1)
 })
 
 test('a planner dispatch that fails host_error is a host_error fault on the folder', async (t) => {

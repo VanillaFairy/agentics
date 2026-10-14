@@ -1,10 +1,11 @@
-// test/harness/survey-world.mjs — what the program-survey-scouts and program-survey-judges tests share:
-// the scripted answers of the survey's planner, scouts, channels and judges, and the survey run over
-// them. Nothing here runs at import.
+// test/harness/survey-world.mjs — what the program-survey-scouts, -channels and -judges tests share:
+// the scripted answers of the survey's planner, the topic searches, the channels and the judges, and
+// the survey run over them. Nothing here runs at import.
 
 import { liveItems } from '../../lib/evidence.mjs'
 import { survey } from '../../lib/programs/survey.mjs'
 import { loadRole } from '../../lib/roles.mjs'
+import { hitTurn } from './navigator.mjs'
 import { programRig } from './program-rig.mjs'
 
 // --- the world --------------------------------------------------------------------------------
@@ -28,10 +29,6 @@ export const TOPIC = {
 
 export const plan = ({ topics = [TOPIC.loader], common_ground = '', history_question = '', docs_question = '' } = {}) =>
   ({ topics, common_ground, history_question, docs_question })
-export const hit = (path, line, note = 'seen at ' + path + ':' + line) => ({ path, line, note })
-
-export const scoutOut = ({ hits = [], searched = ['src'], no_match = '', not_reached = '', stop_reason = 'exhausted' } = {}) =>
-  ({ hits, searched, no_match, not_reached, stop_reason })
 export const channelOut = ({ findings = '', searched = ['git log'], no_match = '', not_reached = '', stop_reason = 'exhausted' } = {}) =>
   ({ findings, searched, no_match, not_reached, stop_reason })
 export const behaviour = (topic, claim, line = 7) =>
@@ -47,7 +44,7 @@ export const ARGS = (over = {}) => ({
 export const CLAIM = 'CLAIM-loader resolves a path at line 7'
 export const basicScript = (over = {}) => ({
   'analyst||plan': [{ output: plan() }],
-  'scout||scout:loader': [{ output: scoutOut({ hits: [hit(FILE.loader, 7, 'NOTE-loader resolves here')] }) }],
+  'scout||scout:loader': [hitTurn('loader', [[FILE.loader, 7, 'NOTE-loader resolves here']])],
   'analyst||judge:1': [{ output: judgeOut({ items: [behaviour('loader', CLAIM)], units: [anchoredUnit('loader')] }) }],
   ...over,
 })
@@ -58,9 +55,8 @@ export const HQ = 'HQ-1a2b when did the loader last change'
 export const DQ = 'DQ-3c4d what does node document about resolution'
 export const fullScript = (over = {}) => ({
   'analyst||plan': [{ output: plan({ topics: [TOPIC.loader, TOPIC.store], common_ground: COMMON, history_question: HQ, docs_question: DQ }) }],
-  'scout||scout:loader': [{ output: scoutOut({ hits: [hit(FILE.loader, 7)] }) }],
-  'scout||scout:store': [{ output: scoutOut({ hits: [hit(FILE.store, 9)] }) }],
-  'scout||common': [{ output: scoutOut({ hits: [hit(FILE.shared, 3)] }) }],
+  'scout||scout:loader': [hitTurn('loader', [[FILE.loader, 7]])],
+  'scout||scout:store': [hitTurn('store', [[FILE.store, 9]])],
   'historian||history': [{ output: channelOut({ findings: 'HIST-FINDINGS-8a1b' }) }],
   'doc-researcher||docs': [{ output: channelOut({ findings: 'DOCS-FINDINGS-9b2c', searched: ['nodejs.org'] }) }],
   'analyst||judge:1': [{

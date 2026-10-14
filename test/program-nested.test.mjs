@@ -22,7 +22,7 @@ import { probe } from '../lib/programs/probe.mjs'
 import { review } from '../lib/programs/review.mjs'
 import { survey } from '../lib/programs/survey.mjs'
 import { evidenceItemsPath, evidenceSnapshotsDir, posix, sessionOf } from '../lib/store.mjs'
-import { closingTurn } from './harness/navigator.mjs'
+import { closingTurn, hitTurn } from './harness/navigator.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', windowsHide: true })
@@ -56,13 +56,12 @@ const editLine = (repo, n, text) => writeFileSync(join(repo, 'src', 'a.js'), SUR
 
 const topic = (key) => ({ key, find: 'FIND-' + key, subtree: 'src' })
 const planOut = (topics) => ({ topics, common_ground: '', history_question: '', docs_question: '' })
-const scoutOut = (line) => ({ hits: [{ path: A, line, note: 'seen at ' + A + ':' + line }], searched: ['src'], no_match: '', not_reached: '', stop_reason: 'exhausted' })
 const claimOf = (key) => 'NEW-' + key + ' claim from this run'
 const itemOut = (key, line) => ({ topic: key, kind: 'behaviour', claim: claimOf(key), spans: [{ path: A, start: line, end: line }], queries: [], sources: [], rests_on: [] })
 /** A survey planning `planned` and scouting and judging `searched`, each topic at its own line. */
 function surveyScript({ planned, searched = planned.map((t) => t.key) }) {
   const s = { 'analyst||plan': [{ output: planOut(planned) }] }
-  searched.forEach((key, i) => { s['scout||scout:' + key] = [{ output: scoutOut(3 + i) }] })
+  searched.forEach((key, i) => { s['scout||scout:' + key] = [hitTurn(key, [[A, 3 + i]])] })
   if (searched.length > 0) {
     s['analyst||judge:1'] = [{ output: {
       items: searched.map((key, i) => itemOut(key, 3 + i)), risks: [],
@@ -218,7 +217,9 @@ test('the plan and judge briefs carry the standing items with no empty suspect o
   assert.equal(briefs.length, 2)
   for (const brief of briefs) {
     assert.ok(brief.includes(KNOWN), 'the standing item')
-    for (const empty of EMPTY_SECTIONS) assert.ok(!brief.includes(empty), 'no ' + empty + ' in ' + brief)
+    // the judge's search excerpts follow its pool text and render their own empty lists as (none)
+    const pooled = brief.split('EVIDENCE —')[0]
+    for (const empty of EMPTY_SECTIONS) assert.ok(!pooled.includes(empty), 'no ' + empty + ' in ' + pooled)
   }
 })
 

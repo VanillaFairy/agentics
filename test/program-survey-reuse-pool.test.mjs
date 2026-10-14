@@ -17,6 +17,7 @@ import { itemsFor, liveItems, recordCites, recordJudgement } from '../lib/eviden
 import { appendProject, readProjectLog } from '../lib/ledger.mjs'
 import { programContext } from '../lib/programs/common.mjs'
 import { survey } from '../lib/programs/survey.mjs'
+import { treeOf } from '../lib/search/pin.mjs'
 import { runLogPath } from '../lib/store.mjs'
 import { programRig } from './harness/program-rig.mjs'
 import {
@@ -105,7 +106,7 @@ test('an item off the ground is not reused', async (t) => {
 
 // --- stale topics -----------------------------------------------------------------------------
 
-test('a stale topic is searched again, its scout told what it used to claim', async (t) => {
+test('a stale topic is searched again, its search told what it used to claim', async (t) => {
   const { rig, result } = await surveyOver(t, (repo) => {
     const [id] = seed(repo, [seedItem({ topic: 'cache', claim: STALE, ground: ['src/cache'] })])
     makeStale(repo, id)
@@ -114,8 +115,9 @@ test('a stale topic is searched again, its scout told what it used to claim', as
   assert.deepEqual(topicTriples(result)[0], { key: 'cache', subtree: 'src/cache', forced: true })
   const scout = on(rig, 'scout:cache')
   assert.equal(scout.length, 1)
-  assert.ok(scout[0].brief.includes(STALE), 'the claim')
-  assert.ok(scout[0].brief.includes(A + ':10-12'), 'the span')
+  const charge = readFileSync(scout[0].role.systemPromptFile, 'utf8')
+  assert.ok(charge.includes(STALE), 'the claim')
+  assert.ok(charge.includes(A + ':10-12'), 'the span')
   const judges = judgeCalls(rig).filter((c) => c.round === 1)
   assert.ok(judges.length > 0)
   assert.ok(judges.some((c) => c.brief.includes(STALE)), 'a judge holds the claim')
@@ -279,7 +281,8 @@ test('a relaunch cut off before its rulings were journaled rules again and reach
   assert.deepEqual(again.topics, result.topics)
 })
 
-test('the pool is read in the checkout the survey runs in', async (t) => {
+/** A pool item standing in the main checkout, and a worktree whose line 11 the survey must see; `survey` runs over them. */
+async function poolInWorktree(t, run) {
   const base = programRig({ files: FILES })
   t.after(() => base.cleanup())
   const [id] = seed(base.repo, [seedItem({ topic: 'held', claim: HELD })])
@@ -292,9 +295,18 @@ test('the pool is read in the checkout the survey runs in', async (t) => {
   editLine(wt, 11, WT_LINE)
   assert.equal(stateOf(base.repo, id), 'standing', 'the main checkout is untouched')
   const rig = base.relaunch({ 'analyst||rejudge:1': rulings([rule(id, 'holds')]), ...script({ planned: [] }) })
-  const result = await survey(programContext({ ...rig.ctx, root: wt }), ARGS())
+  const result = await run(rig, wt)
   const calls = on(rig, 'rejudge:1')
   assert.equal(calls.length, 1)
   assert.ok(calls[0].brief.includes(WT_LINE), "the worktree's line")
   assert.deepEqual(result.reused, [id])
+  assert.deepEqual(result.items.map((it) => [it.id, it.state]), [[id, 'standing']], 'and it stands there')
+}
+
+test('the pool is read in the checkout the survey runs in', async (t) => {
+  await poolInWorktree(t, (rig, wt) => survey(programContext({ ...rig.ctx, root: wt }), ARGS()))
+})
+
+test('the pool is read in the tree the survey is handed', async (t) => {
+  await poolInWorktree(t, (rig, wt) => survey(rig.ctx, ARGS({ tree: treeOf(wt) })))
 })

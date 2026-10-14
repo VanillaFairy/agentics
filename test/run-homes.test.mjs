@@ -218,6 +218,18 @@ test('runState reads ended only when an ended record follows the latest run', (t
   assert.equal(runState(repo, RUN, { now: T0, alive: () => true }).state, 'ended')
 })
 
+test('runState keeps a run live while its pid still runs it, its heartbeat stale', (t) => {
+  const repo = scratch(t)
+  writeJson(runJsonPath(repo, RUN), { run: RUN, pid: 4242, heartbeat_at: new Date(T0 - 121_000).toISOString() })
+  appendRun(repo, RUN, { kind: 'run' })
+  const blocked = runState(repo, RUN, { now: T0, alive: () => true, runs: (pid) => pid === 4242 })
+  assert.deepEqual([blocked.state, blocked.beating], ['live', false])
+  assert.equal(runState(repo, RUN, { now: T0, alive: () => true, runs: () => false }).state, 'stopped', 'a pid reused by another program')
+  assert.equal(runState(repo, RUN, { now: T0, alive: () => false, runs: () => true }).state, 'stopped')
+  writeJson(runJsonPath(repo, RUN), { run: RUN, pid: 4242, heartbeat_at: NOW().toISOString() })
+  assert.equal(runState(repo, RUN, { now: T0, alive: () => true, runs: () => false }).beating, true)
+})
+
 test("runState of an execution home reads its run.json and its execution's records", (t) => {
   const repo = scratch(t)
   assert.equal(runState(repo, HOME).state, 'absent')

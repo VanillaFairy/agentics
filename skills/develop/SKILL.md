@@ -342,6 +342,7 @@ stands: act on each once.
   `ended failed` or `ended launch_failed` is a plugin fault: say so and start the same command once
   more; the same fault again is reported to the user as a plugin defect.
 - `stopped: …`: the run's process is gone. Start the same command again: it resumes.
+- `unresponsive: …`: the process lives but stopped beating, a plugin defect: report it, start nothing.
 
 **Resuming** is starting again. After a stop, a fault, an answer or a kill, from this session or
 another, the same start on the same folder resumes the open execution, and each task picks up at

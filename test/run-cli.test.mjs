@@ -599,6 +599,19 @@ test('a run whose heartbeat went stale is resumed even while its pid lives', asy
   assert.equal(entries(repo, first.run).filter((e) => e.kind === 'run').length, 2)
 })
 
+test('a run whose heartbeat went stale while its process still runs it is refused run_live', async (t) => {
+  const repo = makeRepo(t)
+  const { mod } = stepping({ ARGS: TEXT_ARGS })
+  const first = await start(repo, ['survey', '--topic', 'x'], mod)
+  stop(repo, first.run, { pid: process.pid, heartbeat_at: new Date(T0 - 121_000).toISOString() })
+  const before = entries(repo, first.run)
+  const second = await start(repo, ['survey', '--topic', 'x'], mod, { runs: (pid) => pid === process.pid })
+  assert.equal(second.ok, false)
+  assert.equal(second.error.kind, 'run_live')
+  assert.equal(second.error.run, first.run)
+  assert.deepEqual(entries(repo, first.run), before)
+})
+
 test('a run whose run.json cannot be read is not claimed', async (t) => {
   const repo = makeRepo(t)
   const { mod } = stepping({ ARGS: TEXT_ARGS })

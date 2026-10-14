@@ -7,7 +7,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -76,6 +76,36 @@ test('watch on a run whose process is gone prints how to resume it', (t) => {
   writeJson(runJsonPath(r, RUN), { run: RUN, pid: gone, heartbeat_at: new Date().toISOString() })
   appendRun(r, RUN, [{ kind: 'run', program: 'survey' }, { kind: 'fault', node: '', channel: 'program', detail: 'before' }])
   assert.equal(watch(r, RUN), 'stopped: start the same command again to resume run ' + RUN + '\n')
+})
+
+test('watch on a live run whose heartbeat went stale says it is unresponsive, not stopped', { timeout: 30000 }, async (t) => {
+  const r = repo(t)
+  // A process the watch takes for a run's: node running a file named run.mjs.
+  const script = join(r, 'run.mjs')
+  writeFileSync(script, 'setInterval(() => {}, 1000)\n')
+  const blocked = spawn(process.execPath, [script])
+  const gone = new Promise((resolve) => blocked.on('close', resolve))
+  t.after(async () => {
+    if (blocked.exitCode === null && blocked.signalCode === null) blocked.kill()
+    await gone
+  })
+  const stale = new Date(Date.now() - 600000).toISOString()
+  writeJson(runJsonPath(r, RUN), { run: RUN, pid: blocked.pid, heartbeat_at: stale })
+  appendRun(r, RUN, [{ kind: 'run', program: 'survey' }])
+  const child = spawn(process.execPath, [CLI, 'watch', '--repo', r, '--run', RUN], { env: { ...process.env, NODE_TEST_CONTEXT: '' } })
+  const exited = new Promise((resolve) => child.on('close', resolve))
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill()
+    await exited
+  })
+  let out = ''
+  const printed = new Promise((resolve) => child.stdout.on('data', (d) => { out += d; if (out.includes('unresponsive')) resolve() }))
+  await printed
+  blocked.kill()
+  await gone
+  assert.equal(await exited, 0)
+  assert.equal(out, 'unresponsive: pid ' + blocked.pid + ' still runs ' + RUN + ' but has not beaten since ' + stale +
+    '; it is not stopped, so do not start it again while it lives\nstopped: start the same command again to resume run ' + RUN + '\n')
 })
 
 test('--since prints records appended before the watch started (a run)', (t) => {

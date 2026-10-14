@@ -15,6 +15,7 @@ import { permissionsFor, readOnlyPermissions } from '../lib/locus.mjs'
 import { answersIn, projectsDir, resolveCli, transcriptOf } from '../lib/host.mjs'
 import { loadRole, roleCommands } from '../lib/roles.mjs'
 import { buildArgs, classifyCall, cleanEnv, parseStream, spawner } from '../lib/runner.mjs'
+import { SERVER_NAME, TOOLS_BY_DOMAIN, mcpConfigFor, searchDir } from '../lib/search/server.mjs'
 
 const ON = process.env.AGENTICS_HOST === '1'
 const skip = ON ? false : 'set AGENTICS_HOST=1 to run against the real claude CLI'
@@ -29,8 +30,8 @@ function scratch(t) {
   return dir
 }
 const cli = () => { const r = resolveCli(); assert.ok(r.ok, r.error && r.error.message); return spawner(r.path) }
-const call = async (dir, { prompt, session, resume = false, model = 'haiku', effort = '', tools = [], allowed = [], disallowed = [], schema = SCHEMA, cwd = dir }) => {
-  const args = buildArgs({ systemPromptFile: join(dir, 'role.md'), tools, allowed, disallowed, model, effort, schema, session, resume })
+const call = async (dir, { prompt, session, resume = false, model = 'haiku', effort = '', tools = [], allowed = [], disallowed = [], schema = SCHEMA, cwd = dir, mcpConfig = '' }) => {
+  const args = buildArgs({ systemPromptFile: join(dir, 'role.md'), tools, allowed, disallowed, model, effort, schema, session, resume, mcpConfig })
   const out = await cli()(args, { stdin: prompt, env: cleanEnv(process.env), cwd })
   const parsed = parseStream(out.stdout)
   return { out, parsed, cls: classifyCall({ code: out.code, stderr: out.stderr, parsed }) }
@@ -304,4 +305,63 @@ test('a detached program outlives the session that started it', { skip, timeout:
   for (let i = 0; i < 20 && !existsSync(join(dir, 'done.txt')); i++) await sleep(500)
   await sleep(500)
   assert.ok(after > before, 'the heartbeat stopped when the session ended')
+})
+
+// The search tool server (V0): a stdio MCP server the runner names with --mcp-config is the only
+// way a searcher reaches the tree. Its tools are the only ones the host offers under `--tools ""`,
+// the server comes back for a resumed session, and every call it served is in the search's call log.
+
+/** The tools the host offered a call, from its stream's init event; null without one. */
+function offered(stdout) {
+  for (const line of stdout.split(/\r?\n/)) {
+    try {
+      const e = JSON.parse(line)
+      if (e.type === 'system' && e.subtype === 'init') return e.tools || []
+    } catch {
+      continue
+    }
+  }
+  return null
+}
+
+test('a search tool server reaches a session only through --mcp-config, across a resume, and journals every call', { skip, timeout: 300000 }, async (t) => {
+  const dir = repo(t)
+  writeFileSync(join(dir, 'a.txt'), 'NEEDLE_ONE 41\n')
+  writeFileSync(join(dir, 'b.txt'), '7\nsecond\n')
+  const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir }).toString().trim()
+  const run = join(dir, '.agentics', 'runs', 'v0')
+  const spec = {
+    tree: { root: dir.split('\\').join('/'), sha }, asks: [{ key: 'guidance', scope: ['.'], domain: 'repo' }],
+    tools: TOOLS_BY_DOMAIN.repo, calls: join(searchDir(run, 'probe:v0'), 'calls.jsonl'),
+  }
+  const mcpConfig = mcpConfigFor(run, 'probe:v0', spec)
+  const prefix = 'mcp__' + SERVER_NAME + '__'
+  const tools = TOOLS_BY_DOMAIN.repo.map((name) => prefix + name)
+  const { allowed, disallowed } = readOnlyPermissions({ tools })
+  const session = randomUUID()
+  const ask = 'Pass ask: "guidance" on every tool call.'
+  const why = (r) => 'denials: ' + JSON.stringify(r.parsed.denials) + ', tools used: ' + JSON.stringify(toolsUsed(r.out.stdout)) +
+    ', offered: ' + JSON.stringify(offered(r.out.stdout)) + ', stderr: ' + r.out.stderr.slice(-400)
+  const ours = (name) => name.startsWith(prefix) || name === 'StructuredOutput'
+
+  const first = await call(dir, { prompt: ask + ' Use the grep tool to find the line holding NEEDLE_ONE and return x = the number on that line.', session, tools, allowed, disallowed, mcpConfig })
+  assert.equal(first.cls.status, 'returned', why(first))
+  assert.equal(first.parsed.structured.x, 41, why(first))
+  const host = offered(first.out.stdout)
+  assert.ok(host, 'the stream has an init event: ' + why(first))
+  for (const name of tools) assert.ok(host.includes(name), name + ' is offered: ' + why(first))
+  assert.ok(host.every(ours), 'no host tool is offered: ' + why(first))
+  assert.deepEqual(first.parsed.denials, [], why(first))
+
+  const again = await call(dir, { prompt: ask + ' Use the read tool to read b.txt and return x = the number on its first line.', session, resume: true, tools, allowed, disallowed, mcpConfig })
+  assert.equal(again.cls.status, 'returned', why(again))
+  assert.equal(again.parsed.structured.x, 7, why(again))
+  for (const r of [first, again]) assert.ok(toolsUsed(r.out.stdout).every(ours), 'only the server\'s tools were used: ' + why(r))
+
+  const log = readFileSync(spec.calls, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
+  assert.ok(log.some((c) => c.tool === 'grep' && c.ok && c.observed.some((o) => o.key === 'a.txt')), JSON.stringify(log))
+  assert.ok(log.some((c) => c.tool === 'read' && c.ok && c.ended && c.ended.key === 'b.txt'), JSON.stringify(log))
+  assert.deepEqual(log.map((c) => c.seq), log.map((_, i) => i + 1), 'one numbering across both sessions\' servers')
+  const used = [first, again].flatMap((r) => toolsUsed(r.out.stdout)).filter((n) => n !== 'StructuredOutput')
+  assert.equal(log.length, used.length, 'every call the sessions made is in the log, and nothing else')
 })

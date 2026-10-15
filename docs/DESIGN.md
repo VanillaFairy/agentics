@@ -1932,7 +1932,9 @@ files `.agentics/config.json` lists under `guidance`, every `docs/**/*.md`, and 
 module `.md` beside each resolved path; with a diff the table adds the change itself. Every row is
 observed, and carries the asks whose own material named it: a row named only by shared context opens
 no frontier. The table is resolved once per search, and a survey's topics share one run. The
-navigator gets it in its charge, and the probers and judges get it as ground.
+navigator gets it in its charge, an identifier's definitions grouped by file and the seeds less
+those an ask holds as its own (an open seed is on its ask's frontier in every turn brief), and the
+probers and judges get it as ground.
 
 **The navigator.** One long-lived session per search, on the searcher role for its domain (`scout`,
 `historian`, `doc-researcher`). A turn is one dispatch on the search's thread with `round` the

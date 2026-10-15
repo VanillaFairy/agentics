@@ -47,6 +47,12 @@ test('groundText renders each path and document, each identifier with its defini
   ]) assert.ok(t.includes(line), line)
 })
 
+test("groundText names each definition file once, with every line of the identifier's definitions in it", () => {
+  const defs = [['src/a.ts', 4], ['src/b.ts', 7], ['src/a.ts', 9], ['src/a.ts', 12]].map(([key, line]) => ({ key, line }))
+  const t = groundText({ rows: [{ kind: 'symbol', mention: 'world', key: 'world', exists: true, asks: ['a'], defs, refs: [], files: 3 }], seeds: [] })
+  assert.ok(t.includes('- `world` — defined at src/a.ts:4, 9, 12; src/b.ts:7; referenced in 3 files'))
+})
+
 test('groundText keeps the rows in the order the resolver ranked them', () => {
   const sym = (mention, files) => ({ kind: 'symbol', mention, key: mention, exists: true, asks: ['a'], defs: [], refs: [], files })
   const t = groundText({ rows: [sym('StallOffer', 1), sym('config', 40)], seeds: [] })
@@ -79,6 +85,13 @@ test('the charge holds the protocol, every ask with its scope, the material fenc
   ]) assert.ok(c.includes(line), line)
   assert.ok(c.indexOf('## Asks') < c.indexOf('## Material'))
   assert.ok(c.indexOf('## Material') < c.indexOf('## Ground table'))
+})
+
+test('the charge lists only the guidance files no ask holds as a seed: an open seed is on its frontier every turn', () => {
+  const held = { ...CHARGE, asks: [ask('guidance', { seeds: [{ key: 'CLAUDE.md', as: 'open' }] }), ask('ground:intro')] }
+  assert.ok(chargeOf(held).includes('Guidance files: docs/kb/MODULE_MAP.md'))
+  const all = { ...CHARGE, asks: [ask('guidance', { seeds: GROUND.seeds.map((key) => ({ key, as: 'open' })) })] }
+  assert.equal(chargeOf(all).includes('Guidance files'), false)
 })
 
 test('the charge is the same text for the same search', () => {

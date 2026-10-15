@@ -8,7 +8,7 @@
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
 import { createServer } from 'node:http'
@@ -251,6 +251,19 @@ test('a fetch records the page lines it showed under the page key', async (t) =>
   assert.deepEqual(record.observed, [{ key: canonicalUrl(url), line: 1 }, { key: canonicalUrl(url), line: 2 }])
   assert.deepEqual([record.page, record.pages, record.args.page], [1, 1, 1])
   assert.ok(text.includes('2: two'), text)
+})
+
+test("a fetch pins its body under the search directory's pages/", async (t) => {
+  const server = createServer((req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('one\ntwo\n') })
+  await new Promise((r) => server.listen(0, '127.0.0.1', r))
+  t.after(() => server.close())
+  const { spec } = specOf({ asks: [{ key: 'research:a', scope: ['.'], domain: 'web' }], tools: TOOLS_BY_DOMAIN.web })
+  const url = 'http://127.0.0.1:' + server.address().port + '/pin'
+  const { record } = await handle(spec, [], 'fetch', { url, ask: 'research:a' })
+  assert.equal(record.ok, true)
+  const pages = join(dirname(spec.calls), 'pages')
+  assert.equal(existsSync(pages), true, 'no pages/ under the search directory')
+  assert.equal(readdirSync(pages).filter((f) => f.endsWith('.json')).length, 1)
 })
 
 test('a tool this search does not serve is answered and not recorded; nothing throws', async () => {

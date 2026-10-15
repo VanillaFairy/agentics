@@ -135,9 +135,10 @@ test("a repeat call adds the original call's lines to the asks it names, and mov
   const again = { ...first, seq: 2, asks: ['a', 'b'], repeat_of: 1 }   // the server copies the first call's observations
   const l = fold({ asks: [ask('a'), ask('b')], calls: [first, again], turns: [ret(1, 1), ret(2, 2)] })
   assert.ok(l.asks.b.observed.includes('src/a.js:4'), "the repeat shows b the original's lines")
-  assert.equal(l.asks.b.end, null, 'b moved at turn 2')
-  assert.equal(l.asks.a.end.state, 'no_progress', 'a already had them')
-  assert.equal(l.asks.a.end.turn, 2)
+  const [b1, b2] = l.asks.b.history.slice(-2).map((h) => h.stamp)
+  const [a1, a2] = l.asks.a.history.slice(-2).map((h) => h.stamp)
+  assert.notEqual(b2, b1, 'b moved at turn 2')
+  assert.equal(a2, a1, 'a already had them')
 })
 
 test("a missing turn's calls are folded and the missing turn ends nothing; the next return counts them", () => {
@@ -229,17 +230,6 @@ test('an item naming an ask the search does not have, or none, is refused unknow
   assert.deepEqual(hitsOf(l, 'a'), [])
 })
 
-test('an item naming only ended asks is refused names_only_ended_asks; naming an ended and an open ask, it applies to the open one', () => {
-  const l = fold({
-    asks: [ask('a'), ask('b')],
-    turns: [ret(1, 0, { asks: [declare('a', 'answered')] }), ret(2, 0, { dismissed: [dismiss('a', { path: 'x.js' }), dismiss(['a', 'b'], { path: 'y.js' })] })],
-  })
-  assert.equal(l.asks.a.end.turn, 1)
-  assert.deepEqual(classes(l), ['names_only_ended_asks'])
-  assert.deepEqual(l.asks.b.dismissed.map((d) => d.key), ['y.js'])
-  assert.deepEqual(l.asks.a.dismissed, [])
-})
-
 test('a history hit is accepted only on a full sha a call under its ask returned', () => {
   const logCall = { seq: 1, tool: 'log', args: { mode: 'G', pattern: 'seatDay', paths: [], page: 1 }, asks: ['h'], ok: true, total: 1, page: 1, pages: 1, observed: [], keys: [SHA] }
   const l = fold({
@@ -275,13 +265,14 @@ test('a hit path written with backslashes or a leading ./ is the same key', () =
   assert.deepEqual(l.refusals, [])
 })
 
-test('a re-reported hit in new words adds nothing: the first note stands and the ask ends no_progress', () => {
+test('a re-reported hit in new words adds nothing: the first note stands and the stamp does not move', () => {
   const l = fold({
     calls: [grep(1, ['a'], [['src/a.js', 7]])],
     turns: [ret(1, 1, { hits: [hit('a', 'src/a.js', 7, 'first')] }), ret(2, 1, { hits: [hit('a', 'src/a.js', 7, 'the same, reworded')] })],
   })
   assert.deepEqual(l.asks.a.hits.map((h) => h.note), ['first'])
-  assert.deepEqual([l.asks.a.end.state, l.asks.a.end.turn], ['no_progress', 2])
+  const [one, two] = l.asks.a.history.slice(-2).map((h) => h.stamp)
+  assert.equal(two, one)
 })
 
 test('a malformed item is refused, and a turn with neither output nor missing counts as missing', () => {
@@ -511,7 +502,8 @@ test('a dismissal that repeats an earlier one in new words adds nothing', () => 
     turns: [ret(1, 0, { dismissed: [dismiss('a', { path: 'src/a.js' }, 'one reason')] }), ret(2, 0, { dismissed: [dismiss('a', { path: 'src/a.js' }, 'another reason')] })],
   })
   assert.deepEqual(l.asks.a.dismissed.map((d) => d.why), ['one reason'])
-  assert.deepEqual([l.asks.a.end.state, l.asks.a.end.turn], ['no_progress', 2])
+  const [one, two] = l.asks.a.history.slice(-2).map((h) => h.stamp)
+  assert.equal(two, one, 'the same dismissal again moves nothing')
 })
 
 // ------------------------------------------------------------------ declarations
@@ -525,95 +517,18 @@ test('a declaration stands until the navigator changes it, and open withdraws it
   assert.equal(fold({ ground: g, calls, turns }).asks.a.declared, 'open')
 })
 
-test('absent is checked when a grep under the ask over its whole scope matched nothing, and declared otherwise', () => {
-  const asks = [ask('a', { scope: ['src'] }), ask('b', { scope: ['src'] }), ask('c', { scope: ['src'] })]
-  const calls = [grep(1, ['a'], [], { paths: [] }), grep(2, ['b'], [], { paths: ['src'] })]
-  const l = fold({ asks, calls, turns: [ret(1, 2, { asks: [declare('a', 'absent'), declare('b', 'absent'), declare('c', 'absent')] })] })
-  assert.deepEqual(['a', 'b', 'c'].map((k) => l.asks[k].absence), ['checked', 'checked', 'declared'])
-  assert.deepEqual(['a', 'b', 'c'].map((k) => l.asks[k].end.state), ['done', 'done', 'done'])
-})
-
-test('a grep over part of the scope, or one that matched, does not check an absence', () => {
-  const asks = [ask('a', { scope: ['src'] }), ask('b', { scope: ['src'] })]
-  const calls = [grep(1, ['a'], [], { paths: ['src/core'] }), grep(2, ['b'], [['src/x.js', 4]], { paths: [] })]
-  const l = fold({ asks, calls, turns: [ret(1, 2, { asks: [declare('a', 'absent'), declare('b', 'absent')] })] })
-  assert.deepEqual([l.asks.a.absence, l.asks.b.absence], ['declared', 'declared'])
-})
-
-test('a hit accepted after a standing absent withdraws the absence', () => {
+test('a hit accepted after a standing absent withdraws the declaration', () => {
   const x = {
     ground: ground(pathRow('src/a.ts')), calls: [grep(1, ['a'], []), grep(2, ['a'], [['src/b.ts', 4]])],
     turns: [ret(1, 1, { asks: [declare('a', 'absent')] }), ret(2, 2, { hits: [hit('a', 'src/b.ts', 4)] })],
   }
   const first = fold({ ...x, turns: x.turns.slice(0, 1) })
-  assert.deepEqual([first.asks.a.declared, first.asks.a.absence, first.asks.a.end], ['absent', 'checked', null])
+  assert.deepEqual([first.asks.a.declared, first.asks.a.end], ['absent', null])
   const l = fold(x)
-  assert.deepEqual([l.asks.a.declared, l.asks.a.absence, l.asks.a.end], ['', '', null])
+  assert.deepEqual([l.asks.a.declared, l.asks.a.end], ['', null])
 })
 
-// ------------------------------------------------------------------ ending
-
-test('done: answered or absent with an empty agenda ends the ask done at that turn', () => {
-  const l = fold({ asks: [ask('a'), ask('b')], calls: [grep(1, ['b'], [])], turns: [ret(1, 1, { asks: [declare('a', 'answered'), declare('b', 'absent')] })] })
-  assert.deepEqual(stateOf(l, { turn: 1, checkin: false }).ending.map(({ ask: a, state, label }) => [a, state, label]),
-    [['a', 'done', 'declared'], ['b', 'done', 'observed']])
-  assert.equal(typeof l.asks.a.end.why, 'string')
-})
-
-test('done waits while the agenda holds anything', () => {
-  const x = { ground: ground(pathRow('src/a.ts')), turns: [ret(1, 0, { asks: [declare('a', 'answered')] }), ret(2, 0, { dismissed: [dismiss('a', { path: 'src/a.ts' })] })] }
-  assert.equal(fold({ ...x, turns: x.turns.slice(0, 1) }).asks.a.end, null)
-  assert.deepEqual([fold(x).asks.a.end.state, fold(x).asks.a.end.turn], ['done', 2])
-})
-
-test('a turn whose only act is answered, on an ask with an empty agenda, ends it done and not no_progress', () => {
-  const l = fold({ calls: [move(1, 'a')], turns: [ret(1, 1), ret(2, 1, { asks: [declare('a', 'answered')] })] })
-  assert.deepEqual([l.asks.a.end.state, l.asks.a.end.turn], ['done', 2])
-})
-
-test('no_progress: a worked ask whose state equals its state after an earlier return ends no_progress, observed', () => {
-  const first = grep(1, ['a'], [['src/a.js', 1]])
-  const l = fold({
-    calls: [first, { ...first, seq: 2, repeat_of: 1 }],
-    turns: [ret(1, 1, { hits: [hit('a', 'src/a.js', 1, 'first')] }), ret(2, 2, { hits: [hit('a', 'src/a.js', 1, 'again, in other words')] })],
-  })
-  assert.deepEqual([l.asks.a.end.state, l.asks.a.end.turn, l.asks.a.end.label], ['no_progress', 2, 'observed'])
-})
-
-test('no_progress catches a declaration that returns to an earlier state', () => {
-  const l = fold({
-    ground: ground(pathRow('src/a.ts')), calls: [move(1, 'a')],
-    turns: [ret(1, 1, { asks: [declare('a', 'answered')] }), ret(2, 1, { asks: [declare('a', 'open')] }), ret(3, 1, { asks: [declare('a', 'answered')] })],
-  })
-  assert.deepEqual([l.asks.a.end.state, l.asks.a.end.turn], ['no_progress', 3])
-})
-
-test('an ask the turn did not work stays open while another ask moves', () => {
-  const l = fold({ asks: [ask('a'), ask('b')], calls: [move(1, 'a'), move(2, 'a'), move(3, 'a')], turns: [ret(1, 1), ret(2, 2), ret(3, 3)] })
-  assert.deepEqual([l.asks.a.end, l.asks.b.end], [null, null])
-})
-
-test('a quiet turn, with no call and no item, ends every open ask no_progress', () => {
-  const l = fold({ asks: [ask('a'), ask('b')], calls: [move(1, 'a')], turns: [ret(1, 1), ret(2, 1)] })
-  assert.deepEqual([l.asks.a.end.state, l.asks.a.end.turn, l.asks.b.end.state, l.asks.b.end.turn], ['no_progress', 2, 'no_progress', 2])
-})
-
-test('a turn whose items name only ended asks named no open ask: it answers for every open ask', () => {
-  const l = fold({
-    asks: [ask('a'), ask('want:1', { from: 2 })], calls: [move(1, 'a')],
-    turns: [ret(1, 1, { asks: [declare('a', 'answered')] }), ret(2, 1, { dismissed: [dismiss('a', { path: 'x.js' })] })],
-  })
-  assert.deepEqual(classes(l), ['names_only_ended_asks'])
-  assert.deepEqual([l.asks['want:1'].end.state, l.asks['want:1'].end.turn], ['no_progress', 2])
-})
-
-test('a turn whose only items are refused unobserved, and refused again, ends the asks they name no_progress', () => {
-  const l = fold({ asks: [ask('a'), ask('b')], calls: [move(1, ['a', 'b'])], turns: [ret(1, 1), ret(2, 1, { hits: [hit('a', 'src/nowhere.js', 3)] }), ret(3, 1, { hits: [hit('a', 'src/nowhere.js', 3)] })] })
-  assert.deepEqual(classes(l), ['unobserved', 'unobserved'])
-  assert.deepEqual([l.asks.a.end.state, l.asks.a.end.turn, l.asks.b.end], ['no_progress', 3, null])
-})
-
-// ------------------------------------------------------------------ a refusal the navigator has not yet seen
+// ------------------------------------------------------------------ refusals carry their asks
 
 test('a refusal carries the open asks its item named', () => {
   const l = fold({ asks: [ask('a'), ask('b')], calls: [move(1, ['a', 'b'])], turns: [ret(1, 1), ret(2, 1, { hits: [hit(['a', 'b'], 'src/nowhere.js', 3)] })] })
@@ -623,79 +538,6 @@ test('a refusal carries the open asks its item named', () => {
     turns: [ret(1, 1, { hits: [hit('a', 'src/a.js', 3)] }), ret(2, 1, { asks: [declare('a', 'absent')] })],
   })
   assert.deepEqual(contradicted.refusals.map((r) => [r.class, r.asks]), [['contradicts_hit', ['a']]])
-})
-
-test('an ask declared done in the return that cites an unobserved line stays open one more turn, then ends done', () => {
-  const calls = [grep(1, ['a'], [['src/a.js', 3]])]
-  const first = ret(1, 1, { hits: [hit('a', 'src/b.js', 9)], asks: [declare('a', 'answered')] })
-  const one = fold({ calls, turns: [first] })
-  assert.deepEqual(classes(one), ['unobserved'])
-  assert.equal(one.asks.a.end, null, 'the navigator has not seen the refusal')
-  assert.equal(hitsOf(one, 'a').length, 0, 'the hit is not counted')
-  const two = fold({ calls, turns: [first, ret(2, 1)] })
-  assert.deepEqual([two.asks.a.end.state, two.asks.a.end.turn, two.asks.a.end.label], ['done', 2, 'declared'])
-})
-
-test('an ask whose return cites its unread lead without a call stays open one more turn, then ends no_progress', () => {
-  const calls = [move(1, 'a')]
-  const turns = [ret(1, 1, { leads: [{ ask: 'a', path: 'src/lead.js', why: 'next' }], asks: [declare('a', 'open')] }), ret(2, 1, { hits: [hit('a', 'src/lead.js', 4)] })]
-  const two = fold({ calls, turns })
-  assert.deepEqual(classes(two), ['unobserved'])
-  assert.equal(two.asks.a.end, null)
-  const three = fold({ calls, turns: [...turns, ret(3, 1)] })
-  assert.deepEqual([three.asks.a.end.state, three.asks.a.end.turn], ['no_progress', 3])
-})
-
-test('every kind of item refused unobserved holds its ask open one more turn: a hit, a dismissal, a lead, a declaration', () => {
-  const items = {
-    'a hit on a line no call showed': { hits: [hit('a', 'src/b.js', 9)] },
-    'a dismissal naming no path, glob or call': { dismissed: [{ ask: ['a'], why: 'w' }] },
-    'a lead naming no path': { leads: [{ ask: 'a', why: 'w' }] },
-    'a declaration that is none of the three': { asks: [{ ask: 'a', declared: 'bogus' }] },
-  }
-  for (const [what, o] of Object.entries(items)) {
-    const l = fold({ calls: [move(1, 'a')], turns: [ret(1, 1), ret(2, 1, o)] })
-    assert.deepEqual(classes(l), ['unobserved'], what)
-    assert.equal(l.asks.a.end, null, what)
-  }
-})
-
-test('a refusal of another class does not hold an ask open', () => {
-  const calls = [grep(1, ['a'], [['src/a.js', 3]])]
-  const l = fold({ calls, turns: [ret(1, 1, { hits: [hit('a', 'src/a.js', 3)] }), ret(2, 1, { asks: [declare('a', 'absent')] })] })
-  assert.deepEqual(classes(l), ['contradicts_hit'])
-  assert.deepEqual([l.asks.a.end.state, l.asks.a.end.turn], ['no_progress', 2])
-})
-
-test('the same refusal again does not hold an ask open: the navigator was shown it', () => {
-  const calls = [move(1, 'a')]
-  const l = fold({
-    calls,
-    turns: [ret(1, 1), ret(2, 1, { hits: [hit('a', 'src/lead.js', 4, 'one wording')] }), ret(3, 1, { hits: [hit('a', 'src/lead.js', 4, 'another wording')] })],
-  })
-  assert.deepEqual([l.asks.a.end.state, l.asks.a.end.turn], ['no_progress', 3])
-})
-
-test('a different refusal holds the ask open once more', () => {
-  const calls = [move(1, 'a')]
-  const l = fold({ calls, turns: [ret(1, 1), ret(2, 1, { hits: [hit('a', 'src/x.js', 4)] }), ret(3, 1, { hits: [hit('a', 'src/y.js', 4)] })] })
-  assert.equal(l.asks.a.end, null)
-})
-
-test('an ask the refusal does not name still ends on the return that refused another', () => {
-  const calls = [move(1, ['a', 'b'])]
-  const l = fold({ asks: [ask('a'), ask('b')], calls, turns: [ret(1, 1, { asks: [declare('b', 'open')] }), ret(2, 1, { hits: [hit('a', 'src/nowhere.js', 3)], asks: [declare('b', 'open')] })] })
-  assert.equal(l.asks.a.end, null)
-  assert.equal(l.asks.b.end.state, 'no_progress')
-})
-
-test("the ruler's not_converging and a stop still end an ask the refusal holds open", () => {
-  const calls = [move(1, 'a')]
-  const turns = [ret(1, 1), ret(2, 1, { hits: [hit('a', 'src/nowhere.js', 3)] })]
-  const ruled = fold({ calls, turns, rulings: [{ turn: 2, asks: ['a'], units: [unit('a', 'not_converging')] }] })
-  assert.equal(ruled.asks.a.end.state, 'not_converging')
-  const stopped = fold({ calls, turns: [...turns, { turn: 3, calls_through: 1, stop: 'brief_over_budget' }] })
-  assert.equal(stopped.asks.a.end.state, 'stopped')
 })
 
 // ------------------------------------------------------------------ the refusals still standing
@@ -757,36 +599,6 @@ test('leads and notes do not move the stamp; observed lines, hits, a dismissal o
   assert.notEqual(after([], { asks: [declare('a', 'open')] }), before, 'a declaration')
 })
 
-test("an ended ask takes no new facts: later calls and items naming it change nothing", () => {
-  const x = { asks: [ask('a'), ask('b')], calls: [move(1, 'b'), grep(2, ['a', 'b'], [['src/late.js', 5]])], turns: [ret(1, 1, { asks: [declare('a', 'answered')] }), ret(2, 2)] }
-  const one = fold({ ...x, turns: x.turns.slice(0, 1) })
-  const two = fold(x)
-  assert.equal(two.asks.a.end.turn, 1)
-  assert.deepEqual(two.asks.a.observed, one.asks.a.observed)
-  assert.equal(two.asks.a.stamp, one.asks.a.stamp)
-  assert.ok(two.asks.b.observed.includes('src/late.js:5'))
-})
-
-test('an ask whose from is k is neither evaluated nor ended before turn k, and is open', () => {
-  const asks = [ask('a'), ask('want:1', { from: 3 })]
-  const calls = [move(1, 'a'), move(2, 'want:1')]
-  const l = fold({ asks, calls, turns: [ret(1, 1), ret(2, 1)] })
-  assert.equal(l.asks.a.end.state, 'no_progress')
-  assert.equal(l.asks['want:1'].end, null)
-  assert.deepEqual(stateOf(l, { turn: 2, checkin: false }).open, ['want:1'])
-  assert.equal(fold({ asks, calls, turns: [ret(1, 1), ret(2, 1), ret(3, 2)] }).asks['want:1'].end, null, 'it moved at turn 3')
-  assert.equal(fold({ asks, calls, turns: [ret(1, 1), ret(2, 1), ret(3, 1)] }).asks['want:1'].end.state, 'no_progress', 'a quiet turn 3 ends it')
-})
-
-test('stateOf reports the endings of the turn it is asked about, and open lists every ask with no end', () => {
-  const l = fold({ asks: [ask('a'), ask('b'), ask('c')], calls: [move(1, 'b')], turns: [ret(1, 1, { asks: [declare('a', 'answered')] })] })
-  const s = stateOf(l, { turn: 1, checkin: false })
-  assert.deepEqual(s.ending.map((e) => [e.ask, e.state]), [['a', 'done']])
-  assert.deepEqual(s.toRuler, [])
-  assert.deepEqual(s.open, ['b', 'c'])
-  assert.deepEqual(stateOf(l, { turn: 2, checkin: false }).ending, [])
-})
-
 // ------------------------------------------------------------------ check-ins and rulings
 
 test('at a check-in, toRuler lists the open asks whose stamp moved since their previous check-in', () => {
@@ -799,40 +611,16 @@ test('toRuler is empty when the turn is not a check-in', () => {
   assert.deepEqual(stateOf(l, { turn: 1, checkin: false }).toRuler, [])
 })
 
-test('toRuler leaves out an ask that ended at this turn', () => {
-  const l = fold({
-    asks: [ask('a'), ask('b')], calls: [move(1, ['a', 'b']), move(2, 'a'), move(3, 'a')],
-    turns: [ret(1, 1), ret(2, 2), ret(3, 3, { asks: [declare('b', 'answered')] })],
-  })
-  assert.deepEqual(stateOf(l, { turn: 3, checkin: true }).toRuler, ['a'])
-})
-
 test("an ask's previous check-in is the latest ruling that named it", () => {
   const calls = [move(1, ['a', 'b']), move(2, 'a'), move(3, 'a'), move(4, 'a'), move(5, 'a'), move(6, 'a')]
   const l = fold({
     asks: [ask('a'), ask('b')], calls, turns: [1, 2, 3, 4, 5, 6].map((n) => ret(n, n)),
-    rulings: [{ turn: 3, asks: ['a', 'b'], units: [unit('a', 'converging'), unit('b', 'converging')] }],
+    rulings: [{ turn: 3, asks: ['a', 'b'], units: [unit('a', 'open'), unit('b', 'open')] }],
   })
   assert.deepEqual(stateOf(l, { turn: 6, checkin: true }).toRuler, ['a'], 'b has not moved since it was ruled at turn 3')
 })
 
 const RULED = { asks: [ask('a'), ask('b')], calls: [move(1, ['a', 'b']), move(2, ['a', 'b']), move(3, ['a', 'b'])], turns: [ret(1, 1), ret(2, 2), ret(3, 3)] }
-
-test("not_converging ends the ask at the ruling's turn, labelled ruled, with the ruler's why; converging leaves it open", () => {
-  const l = fold({ ...RULED, rulings: [{ turn: 3, asks: ['a', 'b'], units: [unit('a', 'not_converging', 'every new line is another fixture'), unit('b', 'converging', 'the chain is still opening')] }] })
-  assert.deepEqual(l.asks.a.end, { state: 'not_converging', turn: 3, label: 'ruled', why: 'every new line is another fixture' })
-  assert.equal(l.asks.b.end, null)
-})
-
-test('a ruling that misses an ask ends nothing; a second miss in a row stops it, from the ruler', () => {
-  const once = fold({ ...RULED, rulings: [{ turn: 3, asks: ['a', 'b'], missing: 'schema_failed' }] })
-  assert.deepEqual([once.asks.a.end, once.asks.b.end], [null, null])
-  const twice = fold({ ...RULED, rulings: [{ turn: 3, asks: ['a', 'b'], missing: 'schema_failed' }, { turn: 3, asks: ['a', 'b'], units: [unit('a', 'converging')] }] })
-  assert.equal(twice.asks.a.end, null)
-  assert.deepEqual([twice.asks.b.end.state, twice.asks.b.end.by, twice.asks.b.end.label], ['stopped', 'ruler', 'observed'])
-  const back = fold({ ...RULED, rulings: [{ turn: 3, asks: ['b'], missing: 'x' }, { turn: 3, asks: ['b'], missing: 'y' }, { turn: 3, asks: ['b'], units: [unit('b', 'converging')] }] })
-  assert.equal(back.asks.b.end, null, 'a later ruling of it reopens it')
-})
 
 test('two navigator turns missing in a row stop every open ask; one miss between returns stops nothing', () => {
   const l = fold({ asks: [ask('a'), ask('b')], calls: [move(1, ['a', 'b'])], turns: [ret(1, 1), lost(2, 1, 'host_error'), lost(3, 1, 'schema_failed')] })
@@ -843,20 +631,6 @@ test('two navigator turns missing in a row stop every open ask; one miss between
   }
   const apart = fold({ calls: [move(1, 'a'), move(2, 'a')], turns: [ret(1, 1), lost(2, 1), ret(3, 2), lost(4, 2)] })
   assert.equal(apart.asks.a.end, null)
-})
-
-test('a turn that stopped for an over-budget brief stops every open ask at once, by the navigator', () => {
-  const l = fold({ asks: [ask('a'), ask('b')], calls: [move(1, ['a', 'b'])], turns: [ret(1, 1, { asks: [declare('b', 'answered')] }), { turn: 2, calls_through: 1, stop: 'brief_over_budget' }] })
-  assert.equal(l.asks.b.end.state, 'done', 'an ask that already ended keeps its end')
-  assert.deepEqual(l.asks.a.end, { state: 'stopped', turn: 2, label: 'observed', why: 'brief_over_budget', by: 'navigator' })
-  assert.deepEqual(stateOf(l, { turn: 2, checkin: false }).open, [])
-  const later = fold({ calls: [move(1, 'a'), move(2, 'a')], turns: [ret(1, 1), { turn: 2, calls_through: 1, stop: 'brief_over_budget' }, ret(3, 2)] })
-  assert.equal(later.asks.a.end, null, 'a later returned turn reopens it')
-})
-
-test('a returned turn after a navigator stop reopens the stopped asks', () => {
-  const l = fold({ calls: [move(1, 'a'), move(2, 'a')], turns: [ret(1, 1), lost(2, 1), lost(3, 1), ret(4, 2)] })
-  assert.equal(l.asks.a.end, null)
 })
 
 // ------------------------------------------------------------------ history, matching, order, joining
@@ -946,45 +720,6 @@ test('a call or an item naming an ask before its from is refused unknown_ask and
 
 // ------------------------------------------------------------------ labels and coverage
 
-test('labels: done on answered is declared, a checked absence observed, no_progress observed, not_converging ruled, stopped observed', () => {
-  assert.equal(fold({ turns: [ret(1, 0, { asks: [declare('a', 'answered')] })] }).asks.a.end.label, 'declared')
-  assert.equal(fold({ calls: [grep(1, ['a'], [])], turns: [ret(1, 1, { asks: [declare('a', 'absent')] })] }).asks.a.end.label, 'observed')
-  assert.equal(fold({ calls: [move(1, 'a')], turns: [ret(1, 1), ret(2, 1)] }).asks.a.end.label, 'observed')
-  assert.equal(fold({ calls: [move(1, 'a')], turns: [ret(1, 1)], rulings: [{ turn: 1, asks: ['a'], units: [unit('a', 'not_converging')] }] }).asks.a.end.label, 'ruled')
-  assert.equal(fold({ calls: [move(1, 'a')], turns: [ret(1, 1), lost(2, 1), lost(3, 1)] }).asks.a.end.label, 'observed')
-})
-
-test('a checked absence resting on a dismissal of a file not read to its end is declared', () => {
-  const g = ground(pathRow('src/a.ts'))
-  const o = { dismissed: [dismiss('a', { path: 'src/a.ts' })], asks: [declare('a', 'absent')] }
-  const unread = fold({ ground: g, calls: [grep(1, ['a'], [])], turns: [ret(1, 1, o)] })
-  assert.deepEqual([unread.asks.a.end.state, unread.asks.a.absence, unread.asks.a.end.label], ['done', 'checked', 'declared'])
-  const whole = fold({ ground: g, calls: [grep(1, ['a'], []), read(2, ['a'], 'src/a.ts', 1, 8, 8)], turns: [ret(1, 2, o)] })
-  assert.equal(whole.asks.a.end.label, 'observed')
-})
-
-test('coverageLines: declared names each ask done on a declaration, and not a checked absence', () => {
-  const l = fold({ asks: [ask('guidance'), ask('ground:intro')], calls: [grep(1, ['ground:intro'], [])], turns: [ret(1, 1, { asks: [declare('guidance', 'answered'), declare('ground:intro', 'absent')] })] })
-  const c = coverageLines(l, NAME)
-  assert.equal(c.declared.length, 1)
-  assert.ok(c.declared[0].startsWith(NAME + ':guidance'), c.declared[0])
-  assert.match(c.declared[0], /answered/)
-  assert.deepEqual([c.incomplete, c.unreached, c.failed_channels], [[], [], []])
-})
-
-test('coverageLines: incomplete names every ask that ended no_progress, not_converging or stopped, or has no end', () => {
-  const l = fold({
-    asks: [ask('np'), ask('nc'), ask('op')], calls: [move(1, ['np', 'nc']), move(2, 'nc')],
-    turns: [ret(1, 1), ret(2, 2, { hits: [hit('np', 'src/none.js', 1)] })],
-    rulings: [{ turn: 2, asks: ['nc'], units: [unit('nc', 'not_converging', 'stuck')] }],
-  })
-  const c = coverageLines(l, NAME)
-  for (const k of ['np', 'nc', 'op']) assert.ok(c.incomplete.some((line) => line.startsWith(NAME + ':' + k)), k)
-  assert.equal(c.incomplete.length, 3)
-  const stopped = coverageLines(fold({ calls: [move(1, 'a')], turns: [ret(1, 1), lost(2, 1), lost(3, 1)] }), NAME)
-  assert.ok(stopped.incomplete.some((line) => line.startsWith(NAME + ':a')))
-})
-
 test("coverageLines: unreached holds one line per item of an ask's agenda at its end", () => {
   const l = fold({ ground: ground(pathRow('src/a.ts'), pathRow('src/b.ts')), calls: [move(1, 'a')], turns: [ret(1, 1), ret(2, 1)] })
   const c = coverageLines(l, NAME)
@@ -999,48 +734,7 @@ test('coverageLines: failed_channels names a navigator stop by its ask and a rul
   assert.deepEqual(ruler.failed_channels, ['converge:' + NAME])
 })
 
-test('an ask done on a checked absence with an empty agenda adds no coverage line', () => {
-  const c = coverageLines(fold({ calls: [grep(1, ['a'], [])], turns: [ret(1, 1, { asks: [declare('a', 'absent')] })] }), NAME)
-  assert.deepEqual(c, { declared: [], incomplete: [], unreached: [], failed_channels: [] })
-})
-
 // ------------------------------------------------------------------ added by the test author
-
-test("a missing turn's calls count as work at the next return: the ask they named stays open, and an ask they did not name is not taken for worked", () => {
-  const l = fold({ asks: [ask('a'), ask('b')], calls: [move(1, 'a')], turns: [lost(1, 1), ret(2, 1)] })
-  assert.deepEqual([l.asks.a.end, l.asks.b.end], [null, null], 'a was worked by call 1 since the last return, and moved; b is open while the turn worked a')
-})
-
-test('a hit is accepted only on a line observed under one of its open asks: a line only an ended ask observed does not verify it', () => {
-  const l = fold({
-    asks: [ask('a'), ask('b')], calls: [grep(1, ['a'], [['src/x.js', 2]])],
-    turns: [ret(1, 1, { asks: [declare('a', 'answered')] }), ret(2, 1, { hits: [hit(['a', 'b'], 'src/x.js', 2)] })],
-  })
-  assert.equal(l.asks.a.end.turn, 1)
-  assert.deepEqual(hitsOf(l, 'b'), [])
-  assert.deepEqual(classes(l), ['unobserved'])
-})
-
-test('every kind of item naming only ended asks is refused names_only_ended_asks, and the ended ask keeps its declaration', () => {
-  const l = fold({
-    calls: [move(1, 'a')],
-    turns: [ret(1, 1, { asks: [declare('a', 'answered')] }), ret(2, 1, {
-      hits: [hit('a', 'moved/1.js', 1)], leads: [{ ask: 'a', path: 'src/l.js', why: 'w' }], asks: [declare('a', 'open')],
-    })],
-  })
-  assert.equal(l.asks.a.end.state, 'done')
-  assert.equal(l.asks.a.declared, 'answered')
-  assert.deepEqual(classes(l), ['names_only_ended_asks', 'names_only_ended_asks', 'names_only_ended_asks'])
-  assert.deepEqual([l.asks.a.hits, l.asks.a.leads], [[], []])
-})
-
-test('an absence that is only declared, with an empty agenda, ends done labelled declared and is a declared coverage line', () => {
-  const l = fold({ turns: [ret(1, 0, { asks: [declare('a', 'absent')] })] })
-  assert.deepEqual([l.asks.a.absence, l.asks.a.end.state, l.asks.a.end.label], ['declared', 'done', 'declared'])
-  const c = coverageLines(l, NAME)
-  assert.equal(c.declared.length, 1)
-  assert.ok(c.declared[0].startsWith(NAME + ':a'), c.declared[0])
-})
 
 test('a partial read does not close an open seed, and a hit on it does', () => {
   const g = ask('g', { seeds: [{ key: 'CLAUDE.md', as: 'open', reason: 'guidance' }] })
@@ -1073,7 +767,7 @@ test('only a path dismissal of a key read to its end records read_to_end', () =>
 })
 
 test('stateOf reports only done and no_progress endings; a ruled or stopped end is not an ending of its turn, and a stopped ask is not sent to the ruler', () => {
-  const ruled = fold({ ...RULED, rulings: [{ turn: 3, asks: ['a', 'b'], units: [unit('a', 'not_converging'), unit('b', 'converging')] }] })
+  const ruled = fold({ ...RULED, rulings: [{ turn: 3, asks: ['a', 'b'], units: [unit('a', 'not_converging'), unit('b', 'open')] }] })
   const s = stateOf(ruled, { turn: 3, checkin: true })
   assert.deepEqual(s.ending, [])
   assert.deepEqual(s.open, ['b'])
@@ -1082,16 +776,9 @@ test('stateOf reports only done and no_progress endings; a ruled or stopped end 
   assert.deepEqual(stateOf(stopped, { turn: 3, checkin: true }).toRuler, [])
 })
 
-test('stateOf reports a no_progress ending with its state and label', () => {
-  const l = fold({ calls: [move(1, 'a')], turns: [ret(1, 1), ret(2, 1)] })
-  const e = stateOf(l, { turn: 2, checkin: false }).ending
-  assert.deepEqual(e.map(({ ask: a, state, label }) => [a, state, label]), [['a', 'no_progress', 'observed']])
-  assert.equal(typeof e[0].why, 'string')
-})
-
 test('the same ruling stream folds the same ledger whatever the order of rulings at different turns', () => {
   const rulings = [
-    { turn: 2, asks: ['a'], units: [unit('a', 'converging')] },
+    { turn: 2, asks: ['a'], units: [unit('a', 'open')] },
     { turn: 3, asks: ['a'], units: [unit('a', 'not_converging', 'late')] },
   ]
   const l = fold({ ...RULED, rulings })
@@ -1102,68 +789,26 @@ test('the same ruling stream folds the same ledger whatever the order of rulings
 
 // ------------------------------------------------------------------ added by the T03 audit
 
-const STOP = (turn, calls_through) => ({ turn, calls_through, stop: 'brief_over_budget' })
-
-test('an ask that is both done and unmoved since an earlier return ends done, not no_progress', () => {
-  const page = (seq, n) => grep(seq, ['a'], [['src/b.js', 1]], { pattern: 'big', page: n, pages: 2, total: 300 })
-  const l = fold({
-    calls: [page(1, 1), page(2, 2)],
-    turns: [ret(1, 1, { asks: [declare('a', 'answered')] }), ret(2, 2)],
-  })
-  assert.equal(l.asks.a.history.at(-1).stamp, l.asks.a.history.at(-2).stamp, 'page 2 of the same query showed no line the ask had not seen')
-  assert.deepEqual([l.asks.a.end.state, l.asks.a.end.turn], ['done', 2])
-})
-
-test('a stop turn stops every open ask, by the navigator, at that turn', () => {
-  const l = fold({ asks: [ask('a'), ask('b'), ask('c')], calls: [move(1, ['a', 'b', 'c'])], turns: [ret(1, 1), STOP(2, 1)] })
-  for (const k of ['a', 'b', 'c']) assert.deepEqual([l.asks[k].end.state, l.asks[k].end.by, l.asks[k].end.turn], ['stopped', 'navigator', 2], k)
-})
-
-test('an item refused unknown_ask still works the known asks it names: they are accountable, an unnamed ask is not', () => {
-  const calls = [move(1, ['a', 'b']), move(2, 'b')]
-  for (const [other, extra] of [['zzz', []], ['want:1', [ask('want:1', { from: 5 })]]]) {
-    const l = fold({
-      asks: [ask('a'), ask('b'), ...extra], calls,
-      turns: [ret(1, 1), ret(2, 2, { hits: [hit(['a', other], 'src/nowhere.js', 1)] })],
-    })
-    assert.deepEqual(classes(l), ['unknown_ask'], other)
-    assert.deepEqual([l.asks.a.end?.state, l.asks.a.end?.turn], ['no_progress', 2], other + ': a was named, and nothing moved it')
-    assert.equal(l.asks.b.end, null, other + ': b moved')
-  }
-})
-
 test("an ask's previous check-in is the latest of the rulings that named it", () => {
   const l = fold({
     asks: [ask('a'), ask('b')],
     calls: [move(1, ['a', 'b']), move(2, ['a', 'b']), move(3, 'a'), move(4, ['a', 'b']), move(5, 'b')],
     turns: [1, 2, 3, 4, 5].map((n) => ret(n, n)),
     rulings: [
-      { turn: 2, asks: ['a'], units: [unit('a', 'converging')] },
-      { turn: 4, asks: ['a'], units: [unit('a', 'converging')] },
+      { turn: 2, asks: ['a'], units: [unit('a', 'open')] },
+      { turn: 4, asks: ['a'], units: [unit('a', 'open')] },
     ],
   })
-  assert.equal(l.asks.a.end, null, 'turn 5 did not work a')
+  assert.equal(l.asks.a.end, null)
   assert.deepEqual(stateOf(l, { turn: 5, checkin: true }).toRuler, ['b'], 'a has not moved since it was ruled at turn 4, though it moved after turn 2')
 })
 
 test("a ruling at the queried turn is not its ask's previous check-in: a refold that holds it reports the same toRuler", () => {
   const x = { calls: [move(1, 'a'), move(2, 'a')], turns: [ret(1, 1), ret(2, 2)] }
   const without = stateOf(fold(x), { turn: 2, checkin: true }).toRuler
-  const ruled = fold({ ...x, rulings: [{ turn: 2, asks: ['a'], units: [unit('a', 'converging')] }] })
+  const ruled = fold({ ...x, rulings: [{ turn: 2, asks: ['a'], units: [unit('a', 'open')] }] })
   assert.deepEqual(without, ['a'])
   assert.deepEqual(stateOf(ruled, { turn: 2, checkin: true }).toRuler, without)
-})
-
-test('a ruling of the ask between two ruler misses resets the count: the ask is not stopped', () => {
-  const l = fold({
-    ...RULED,
-    rulings: [
-      { turn: 3, asks: ['a'], missing: 'x' },
-      { turn: 3, asks: ['a'], units: [unit('a', 'converging')] },
-      { turn: 3, asks: ['a'], missing: 'y' },
-    ],
-  })
-  assert.equal(l.asks.a.end, null)
 })
 
 test('a ruling folds once however many turn records carry its turn: one miss stops nothing', () => {
@@ -1174,7 +819,7 @@ test('a ruling folds once however many turn records carry its turn: one miss sto
 test('a ruling folds once however many turn records carry its turn: it ends the ask once and is listed once', () => {
   const ruling = { turn: 1, asks: ['a'], units: [unit('a', 'not_converging', 'stuck')] }
   const l = fold({ calls: [move(1, 'a'), move(2, 'a')], turns: [ret(1, 1), ret(1, 2)], rulings: [ruling] })
-  assert.deepEqual(l.asks.a.end, { state: 'not_converging', turn: 1, label: 'ruled', why: 'stuck' })
+  assert.deepEqual([l.asks.a.end.state, l.asks.a.end.turn, l.asks.a.end.label, l.asks.a.end.why], ['not_converging', 1, 'ruled', 'stuck'])
   assert.deepEqual(l.rulings, [{ turn: 1, asks: ['a'] }])
 })
 
@@ -1207,27 +852,6 @@ test("a fold's cost grows linearly in the journal: folding 200 turns costs at mo
   const half = best(100)
   const whole = best(200)
   assert.ok(whole <= 3 * half, 'folding 200 turns took ' + whole.toFixed(0) + ' ms, the first 100 took ' + half.toFixed(0) + ' ms')
-})
-
-test('a navigator stop stops an ask whose from is ahead too, and nothing is left open', () => {
-  const asks = [ask('a'), ask('w', { from: 5 })]
-  const stop = fold({ asks, calls: [move(1, 'a')], turns: [ret(1, 1), STOP(2, 1)] })
-  assert.deepEqual([stop.asks.w.end.state, stop.asks.w.end.by, stop.asks.w.end.turn], ['stopped', 'navigator', 2])
-  assert.deepEqual(stateOf(stop, { turn: 2, checkin: false }).open, [])
-  const missed = fold({ asks, calls: [move(1, 'a')], turns: [ret(1, 1), lost(2, 1), lost(3, 1)] })
-  assert.deepEqual([missed.asks.w.end.state, missed.asks.w.end.by, missed.asks.w.end.turn], ['stopped', 'navigator', 3])
-  assert.deepEqual(stateOf(missed, { turn: 3, checkin: false }).open, [])
-})
-
-test('a returned turn reopens a stopped ask that has not joined yet, and it is evaluated only from its from on', () => {
-  const asks = [ask('a'), ask('w', { from: 4 })]
-  const calls = [move(1, 'a'), move(2, 'a')]
-  const reopened = fold({ asks, calls, turns: [ret(1, 1), STOP(2, 1), ret(3, 2)] })
-  assert.equal(reopened.asks.w.end, null)
-  assert.deepEqual(reopened.asks.w.history.map((h) => h.turn), [3], 'turn 3 is before its from')
-  const joined = fold({ asks, calls, turns: [ret(1, 1), STOP(2, 1), ret(3, 2), ret(4, 2)] })
-  assert.deepEqual([joined.asks.w.end.state, joined.asks.w.end.turn], ['no_progress', 4])
-  assert.deepEqual(joined.asks.w.history.map((h) => h.turn), [3, 4])
 })
 
 test('in the web domain a path dismissal names exactly its URL: a lead under it stays', () => {

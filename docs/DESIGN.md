@@ -686,7 +686,8 @@ depends on nothing a turn changes, so the host reads it back from cache on every
 standard input is `turnBrief`: the asks that joined since the last turn with what they ask, per open
 ask its declaration and frontier (a call always named by its seq), the last turn's refusals with
 their reasons, and each ended ask on one line. A renewed session starts from the charge and
-`digestOf`: every call code ran, every refusal, and per ask its hits, dismissals and frontier,
+`digestOf`: every call code ran, every refusal, and per ask its hits, dismissals and frontier
+(and, for an ask that joined after the charge was written, what it asks),
 folded only to fit its budget (`BRIEF_BUDGET_CHARS`, half the searcher's window in characters) —
 keys closed by a hit or a dismissal first, then frontier keys, deepest directory first, each fold
 one line per directory with its count; calls, refusals, and glob or call dismissals are never

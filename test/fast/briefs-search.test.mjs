@@ -252,6 +252,17 @@ test('a frontier key folds only after every closed key has, and a glob or call d
   assert.ok(root.includes('- folded: ./ — 1 hits') && root.includes('- folded: ./ — 1 ground items'))
 })
 
+test('the digest says what a joined ask asks, which the charge never held, and repeats no ask the charge held', () => {
+  const l = foldLedger({
+    asks: [ask('a'), ask('want:1', { from: 2, find: 'WANT-where the buckets are stored' })], ground: { rows: [], seeds: [] },
+    calls: [grep(1, ['a'], [['src/a.ts', 1]])], turns: [ret(1, 1, {})],
+  })
+  const d = digestOf(l, { budget: 1e9 })
+  assert.ok(d.includes('WANT-where the buckets are stored'), 'a renewed session learns what want:1 asks')
+  assert.equal(d.includes('what a asks'), false, 'the charge holds the asks that were open from turn 1')
+  assert.ok(digestOf(l, { budget: 0 }).includes('WANT-where the buckets are stored'), 'a folded digest still says it')
+})
+
 test('the digest is the same text for the same ledger and budget', () => {
   assert.equal(digestOf(big(), { budget: 3000 }), digestOf(big(), { budget: 3000 }))
 })

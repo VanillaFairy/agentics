@@ -1,0 +1,268 @@
+{
+  "name": "rewording-loop",
+  "asks": [
+    {
+      "key": "a",
+      "find": "where the config parser is defined",
+      "scope": [
+        "src"
+      ],
+      "domain": "repo",
+      "from": 1,
+      "seeds": [
+        {
+          "key": "MATERIAL.md",
+          "as": "closed",
+          "reason": "the material"
+        }
+      ]
+    }
+  ],
+  "ground": {
+    "rows": [],
+    "seeds": []
+  },
+  "calls": [
+    {
+      "seq": 1,
+      "tool": "grep",
+      "args": {
+        "pattern": "parseConfig",
+        "fixed": false,
+        "ignore_case": false,
+        "paths": [],
+        "page": 1
+      },
+      "asks": [
+        "a"
+      ],
+      "ok": true,
+      "total": 0,
+      "page": 1,
+      "pages": 1,
+      "observed": [],
+      "keys": []
+    },
+    {
+      "seq": 2,
+      "tool": "grep",
+      "args": {
+        "pattern": "parse_config",
+        "fixed": false,
+        "ignore_case": false,
+        "paths": [],
+        "page": 1
+      },
+      "asks": [
+        "a"
+      ],
+      "ok": true,
+      "total": 0,
+      "page": 1,
+      "pages": 1,
+      "observed": [],
+      "keys": []
+    },
+    {
+      "seq": 3,
+      "tool": "grep",
+      "args": {
+        "pattern": "ParseConfig",
+        "fixed": false,
+        "ignore_case": false,
+        "paths": [],
+        "page": 1
+      },
+      "asks": [
+        "a"
+      ],
+      "ok": true,
+      "total": 0,
+      "page": 1,
+      "pages": 1,
+      "observed": [],
+      "keys": []
+    },
+    {
+      "seq": 4,
+      "tool": "grep",
+      "args": {
+        "pattern": "parseCfg",
+        "fixed": false,
+        "ignore_case": false,
+        "paths": [],
+        "page": 1
+      },
+      "asks": [
+        "a"
+      ],
+      "ok": true,
+      "total": 0,
+      "page": 1,
+      "pages": 1,
+      "observed": [],
+      "keys": []
+    },
+    {
+      "seq": 5,
+      "tool": "grep",
+      "args": {
+        "pattern": "parse-config",
+        "fixed": false,
+        "ignore_case": false,
+        "paths": [],
+        "page": 1
+      },
+      "asks": [
+        "a"
+      ],
+      "ok": true,
+      "total": 0,
+      "page": 1,
+      "pages": 1,
+      "observed": [],
+      "keys": []
+    },
+    {
+      "seq": 6,
+      "tool": "grep",
+      "args": {
+        "pattern": "configParse",
+        "fixed": false,
+        "ignore_case": false,
+        "paths": [],
+        "page": 1
+      },
+      "asks": [
+        "a"
+      ],
+      "ok": true,
+      "total": 0,
+      "page": 1,
+      "pages": 1,
+      "observed": [],
+      "keys": []
+    }
+  ],
+  "turns": [
+    {
+      "turn": 1,
+      "calls_through": 1,
+      "output": {
+        "hits": [],
+        "dismissed": [],
+        "leads": [],
+        "asks": [
+          {
+            "ask": "a",
+            "declared": "open"
+          }
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "calls_through": 2,
+      "output": {
+        "hits": [],
+        "dismissed": [],
+        "leads": [],
+        "asks": []
+      }
+    },
+    {
+      "turn": 3,
+      "calls_through": 3,
+      "output": {
+        "hits": [],
+        "dismissed": [],
+        "leads": [],
+        "asks": []
+      }
+    },
+    {
+      "turn": 4,
+      "calls_through": 4,
+      "output": {
+        "hits": [],
+        "dismissed": [],
+        "leads": [],
+        "asks": []
+      }
+    },
+    {
+      "turn": 5,
+      "calls_through": 5,
+      "output": {
+        "hits": [],
+        "dismissed": [],
+        "leads": [],
+        "asks": []
+      }
+    },
+    {
+      "turn": 6,
+      "calls_through": 6,
+      "output": {
+        "hits": [],
+        "dismissed": [],
+        "leads": [],
+        "asks": []
+      }
+    }
+  ],
+  "rulings": [
+    {
+      "turn": 3,
+      "asks": [
+        "a"
+      ],
+      "units": [
+        {
+          "unit": "a",
+          "ruling": "open",
+          "why": "each turn rewords one symbol, look for its definition file"
+        }
+      ]
+    },
+    {
+      "turn": 6,
+      "asks": [
+        "a"
+      ],
+      "units": [
+        {
+          "unit": "a",
+          "ruling": "not_converging",
+          "why": "six rewordings of one symbol, no hit; missing: where the parser is defined"
+        }
+      ]
+    }
+  ],
+  "checkins": [
+    3,
+    6
+  ],
+  "oracle": {
+    "ends": {
+      "a": {
+        "state": "not_converging",
+        "label": "ruled"
+      }
+    },
+    "unreached": [],
+    "declared": [],
+    "toRulerAt": {
+      "1": [],
+      "2": [],
+      "3": [
+        "a"
+      ],
+      "4": [],
+      "5": [],
+      "6": [
+        "a"
+      ]
+    }
+  }
+}

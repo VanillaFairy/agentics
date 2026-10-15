@@ -752,3 +752,64 @@ test('a navigator stop stops an ask whose from is ahead too, and a returned turn
   assert.equal(joined.asks.w.end, null, 'its first turn is idle and no stall')
   assert.deepEqual(joined.asks.w.history.map((h) => h.turn), [3, 4])
 })
+
+// ------------------------------------------------------------------ audit gaps
+
+const unopenedLines = (l) => coverageLines(l, NAME).declared.filter((line) => line.includes('dismissed unopened'))
+
+test('a file read after its dismissal is not unopened', () => {
+  const rows = ground(pathRow('src/x/a.ts'), pathRow('src/x/b.ts'))
+  const x = script([
+    { calls: [move('a')], dismissed: [dismiss('a', { path: 'src/x/a.ts' }, 'read later'), dismiss('a', { path: 'src/x/b.ts' }, 'never read')] },
+    { calls: [{ ...read('a', 'src/x/a.ts', 4), args: { path: 'src/x/a.ts', from: 2, to: 3 }, observed: [{ key: 'src/x/a.ts', line: 2 }], ended: { key: 'src/x/a.ts', to: 3, total_lines: 4 } }] },
+  ], { ground: rows })
+  const l = through(x, 2, [ruled(2, unit('a', 'absent', 'nothing there'))])
+  assert.equal(l.asks.a.end?.state, 'done')
+  assert.deepEqual(unopenedLines(l), [NAME + ':a: dismissed unopened: 1 under src/x/ (never read)'])
+})
+
+test('an owed file read after its dismissal is not unopened', () => {
+  const owes = ['src/a.ts', 'docs/x.md', 'docs/y.md']
+  const x = script([
+    { calls: [read('t', 'src/a.ts', 5)], dismissed: [dismiss('t', { glob: 'docs/**' }, 'prose')] },
+    { calls: [read('t', 'docs/x.md', 3)] },
+  ], { asks: [owing('t', owes)] })
+  const l = through(x, 2, [ruled(2, unit('t', 'absent', 'nothing in src'))])
+  assert.deepEqual(unopenedLines(l), [NAME + ':t: dismissed unopened: 1 under docs/ (prose)'])
+})
+
+test('a partly read file is opened', () => {
+  const part = { tool: 'read', args: { path: 'src/x/a.ts', from: 1, to: 2 }, asks: ['a'], ok: true, observed: [{ key: 'src/x/a.ts', line: 1 }, { key: 'src/x/a.ts', line: 2 }], keys: ['src/x/a.ts'], ended: { key: 'src/x/a.ts', to: 2, total_lines: 10 } }
+  const x = script([{ calls: [part] }, { dismissed: [dismiss('a', { path: 'src/x/a.ts' }, 'skimmed')] }], { ground: ground(pathRow('src/x/a.ts')) })
+  assert.deepEqual(through(x, 1).asks.a.agenda.map((i) => i.key), ['src/x/a.ts'], 'a partial read leaves it on the agenda')
+  const l = through(x, 2, [ruled(2, unit('a', 'absent', 'nothing'))])
+  assert.equal(l.asks.a.dismissed[0].closes, 1)
+  assert.deepEqual(unopenedLines(l), [])
+})
+
+test('a read to the end moves the stamp', () => {
+  // the read pages through the file: page 1 shows line 1, page 2 line 2; a grep already observed both, so only the read to the end is new
+  const page = (n) => ({ tool: 'read', args: { path: 'f.ts', from: 1, to: 2, page: n }, asks: ['a'], ok: true, observed: [{ key: 'f.ts', line: n }], keys: ['f.ts'], ended: { key: 'f.ts', to: 2, total_lines: 2 } })
+  const x = script([{ calls: [grep('a', [['f.ts', 1], ['f.ts', 2]]), page(1)] }, { calls: [page(2)] }])
+  const l = through(x, 2)
+  const [, one, two] = l.asks.a.history
+  assert.deepEqual([one.turn, two.turn, one.observed_n, two.observed_n], [1, 2, 3, 3], 'no new observed line or key at turn 2')
+  assert.notEqual(two.stamp, one.stamp)
+  assert.equal(l.stalled, null)
+})
+
+test('a missed ruling is no check-in', () => {
+  const x = script([{ calls: [move(['a', 'b'])] }, { calls: [move('b')] }], { asks: [ask('a'), ask('b')] })
+  const missed = through(x, 2, [{ turn: 1, asks: ['a'], missing: 'schema_failed' }])
+  assert.ok(sent(missed, 2, true).includes('a'), 'a moved since joining; the missed ruling did not rule it')
+  const other = through(x, 2, [{ turn: 1, asks: ['a', 'b'], units: [unit('b', 'open')] }])
+  assert.ok(sent(other, 2, true).includes('a'), 'a record without a unit for a is no ruling of a')
+})
+
+test('a missed ruling falls back to the ruling before it', () => {
+  const x = script([{ calls: [move(['a', 'b'])] }, { calls: [move(['a', 'b'])] }, { calls: [move('b')] }], { asks: [ask('a'), ask('b')] })
+  const l = through(x, 3, [ruled(1, unit('a', 'open')), { turn: 2, asks: ['a'], missing: 'schema_failed' }])
+  assert.equal(l.stalled, null)
+  assert.equal(l.asks.a.end, null)
+  assert.ok(sent(l, 3, true).includes('a'), 'a moved since its turn-1 ruling')
+})

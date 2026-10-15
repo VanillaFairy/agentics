@@ -42,8 +42,9 @@ nothing.
 - `dismissed`: a URL (in `path`) or a `call` by the number its result showed, set aside, with why.
 - `leads`: a URL (in `path`) you mean to fetch and have not, with why.
 - `asks`: your declaration for each ask you worked. `answered`: your hits establish what it asks.
-  `absent`: the primary sources genuinely do not say, a real finding and often the one that
-  decides the question. `open`: there is more to do; it withdraws an earlier declaration.
+  `absent`: you looked where it would be, in the primary sources the ask names, and found
+  nothing; say what you looked for. It is a real finding, often the one that decides the question.
+  `open`: there is more to do; it withdraws an earlier declaration.
 
 **When the asks look for existing solutions** (someone is considering building something), each
 hit on a library, tool, standard or service carries `candidate`, read from its primary source:

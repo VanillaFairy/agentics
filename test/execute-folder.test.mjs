@@ -256,6 +256,16 @@ test("the planner writes on planner:<folder> in the session the folder mints, at
   assert.equal(tiers.size, 3, 'the three dials give three tiers')
 })
 
+test("a folder's probe gets its dial", async (t) => {
+  for (const intelligence of ['low', 'max']) {
+    const w = world(t, { steps: clean(), writes: { 1: S1 } })
+    assert.equal((await w.run({ intelligence })).outcome, 'prepared')
+    const gated = w.rig.calls.filter((c) => c.thread.key.includes('probe:p:1/')).filter((c) => ['analyst', 'ruler'].includes(c.role.name))
+    assert.ok(gated.some((c) => c.role.name === 'analyst') && gated.some((c) => c.role.name === 'ruler'), 'the probe dispatched its prober and its locate ruler')
+    for (const c of gated) assert.deepEqual(c.tier, tierFor(loadRole(c.role.name).role, { intelligence }), c.thread.key + ' under the dial ' + intelligence)
+  }
+})
+
 test("the first round of a fresh plan is the planner's write brief", async (t) => {
   const w = world(t, { steps: clean(), writes: { 1: S1 } })
   // The first round's brief carries the folder as it stood before the run: compile rewrites its title and intent from the spec.

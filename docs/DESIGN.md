@@ -528,14 +528,14 @@ the dispatch (its first, a schema retry, each continuation part and a renewal), 
 the digest of each section of that brief by its heading, which only an execution's leaf rounds
 give (`{}` on every other call).
 When it ends, the runner appends `returned {dispatch, session, status, cause, usage, context,
-cost_total, cost_usd, denials}` — a host stop records `host_stop` instead ([Host stops](#host-stops)) —
+opened, cost_total, cost_usd, denials}` — a host stop records `host_stop` instead ([Host stops](#host-stops)) —
 `status` `returned`, `part`, `failed` or `cut_off`, and `cause` naming why a call that did not
 return failed or was cut off. A call that returned has its output written whole to
 `returns/<dispatch>.json` first, so a `returned` line with status `returned` always has its whole
 return on disk. `usage` is the host's own figure summed over every model turn of the call, which
 cost reads; `context` is what the call's last model turn read — the input, cache-read and
 cache-written tokens of the stream's last `assistant` event that carries `message.usage` — and
-`null` when no event carried one. The host's cost figure (`cost_total`) accumulates over every
+`opened` the same of its first; each is `null` when no event carried one. The host's cost figure (`cost_total`) accumulates over every
 call of a session, so the runner records each call's cost as the difference from the session's
 previous call. Cost is measured per call (P4). No agent writes a file that code reads, except the
 work it was dispatched to do — a producer's edits in its worktree.
@@ -555,11 +555,15 @@ its last turn, `cleanupPeriodDays`; every resume renews it), or the thread began
 refuses to resume (`No conversation found`). That is an observation, not a fault: the thread
 goes on in a fresh session, briefed with the thread's brief and every message recorded on it.
 
-**A session that grew too large is not resumed.** When the session's latest returned call that
-measured a `context` read more than half of a 200 000-token window in its last model turn (`WINDOW`
-in `lib/runner.mjs`), the thread goes on in a fresh session, briefed with the call's fresh brief: the
+**A session that grew too large is not resumed.** A session's floor is what its first model turn
+read (`opened` on the session's first measured call): the system prompt and the first brief, which a
+fresh session carries again. When the session's latest returned call that measured a `context` read
+past the midpoint between that floor and a 200 000-token window in its last model turn (`WINDOW` in
+`lib/runner.mjs`), the thread goes on in a fresh session, briefed with the call's fresh brief: the
 thread's brief and every message recorded on it, the open findings among them, in a program and an
-execution alike. A session no call measured is resumed; the cumulative `usage` never decides it.
+execution alike. So a renewal always sheds turns: a charge that alone fills more than half the window is no reason
+to renew. A session whose first measured call recorded no `opened` has floor 0, and a session no
+call measured is resumed; the cumulative `usage` never decides it.
 Either way the runner records `thread_renewed {thread, gen, why}`, `why` being `too_large` or
 `session_missing`, and the thread's next session id is minted from its new generation.
 
@@ -3501,9 +3505,9 @@ An execution's records go through its log port: its node events (`dispatched`, `
 rest, [Node record and events](#node-record-and-events)) to the effort's event log, its
 observations to `journal.jsonl` and everything else to `state.jsonl`, under the effort's `seq`.
 `state.jsonl` (what the execution decided and what its calls cost): `run {program, scope, pid}`,
-one per run of the execution; `returned {dispatch, session, status, cause, usage, context,
+one per run of the execution; `returned {dispatch, session, status, cause, usage, context, opened,
 cost_total, cost_usd, denials[]}` (`usage` the host's own figure for the call, `context` its last
-model turn's, `null` when unmeasured), one per call the runner made,
+model turn's and `opened` its first's, `null` when unmeasured), one per call the runner made,
 written when the call ends; `host_stop {dispatch, cause, until}`; `checkout_changed {dispatch,
 paths[]}`; `thread_renewed {thread, gen, why: too_large | session_missing | raised}`; `step {key,
 value}`; `batch {target, merged[], head_sha, verified, failed_alone[], combination[], conflict}`,
@@ -3542,7 +3546,7 @@ A program run outside an execution keeps the same kind of log, `runs/<run>/state
 own `seq` ([Programs](#programs)): `run {program, scope, pid}`, one per start or resume;
 `dispatched {dispatch, node, round, thread, role, model, effort, session, brief_digest, carries[],
 pid}`; `returned {dispatch, session, status: returned | part | failed | cut_off, cause, usage,
-context, cost_total, cost_usd, denials[]}`; `host_stop {dispatch, cause, until}`; `checkout_changed
+context, opened, cost_total, cost_usd, denials[]}`; `host_stop {dispatch, cause, until}`; `checkout_changed
 {dispatch, paths[]}`; `thread_renewed {thread, gen, why}`; `message {thread, from, msg, payload,
 round}`; `step {key, value}`, a side effect the program journaled — a search's `<name>/ground`
 (its ground table), `<name>/asks:<n>` (the ask keys that joined after `n` turns), `<name>/turn:<k>`

@@ -179,6 +179,26 @@ test("a session whose last turn read past half its window goes on fresh", async 
   assert.equal(out.session, NEXT)
 })
 
+test("a session's floor is its first call's first model turn: it is renewed past the midpoint between floor and window, not before", async () => {
+  const window = 100000
+  const floor = 70000
+  const seed = (last) => [
+    ...endedAt(floor + 5000, { dispatch: 'first', pid: 100, opened: floor }),
+    ...endedAt(last, { opened: last - 1000 }),
+  ]
+  const at = await run({ resume: true, tier: { model: 'opus', effort: 'high', window } }, {
+    seed: seed((window + floor) / 2), script: [{ pid: 4242, lines: streamIn(S) }],
+  })
+  assert.equal(valueAfter(at.spawns[0].args, '--resume'), S, 'a charge past half the window is no reason to renew')
+  assert.equal(ofKind(at.mine, 'thread_renewed').length, 0)
+
+  const past = await run({ resume: true, tier: { model: 'opus', effort: 'high', window } }, {
+    seed: seed((window + floor) / 2 + 1), script: [{ pid: 4242, lines: streamIn(NEXT) }],
+  })
+  assertStartsFresh(past.spawns[0], NEXT, FRESH)
+  assertRenewed(past.mine, 'too_large')
+})
+
 test('a session whose last turn read half its window is resumed, however much the whole call read', async () => {
   const window = 100000
   const seed = [
@@ -264,8 +284,11 @@ test('the window defaults to 200000 tokens', async () => {
 test("a returned record carries its last turn's context beside the whole call's usage", async () => {
   const { mine } = await run({}, { script: [{ pid: 4242, lines: contextIn(S) }] })
   const events = contextLines.map((l) => JSON.parse(l))
-  const last = events.filter((e) => e.type === 'assistant' && e.message.usage).at(-1).message.usage
+  const turns = events.filter((e) => e.type === 'assistant' && e.message.usage)
+  const last = turns.at(-1).message.usage
   const [row] = ofKind(mine, 'returned')
+  assert.equal(row.opened, sizeOf(turns[0].message.usage), "opened is what the call's first model turn read")
+  assert.notEqual(row.opened, row.context)
   assert.equal(row.status, 'returned')
   assert.equal(row.context, sizeOf(last))
   assert.deepEqual(row.usage, events.find((e) => e.type === 'result').usage)

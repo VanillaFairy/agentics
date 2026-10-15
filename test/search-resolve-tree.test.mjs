@@ -508,6 +508,12 @@ test('scopeFiles keys submodule files under their path', async () => {
   assert.ok((await scopeFiles(tree, ['.'])).includes('vendor/m/lib/s.mjs'))
 })
 
+test('scopeFiles throws on a refusal and gives nothing for a fenced part', async () => {
+  const tree = scopedRepo()
+  await assert.rejects(() => scopeFiles(tree, ['src x']), /not_canonical/)
+  assert.deepEqual(await scopeFiles(tree, ['.agentics']), [])
+})
+
 test('definitions under a bracket directory', async () => {
   const tree = scopedRepo()
   const t = await groundTable(tree, { material: [{ label: 'm', text: 'where is `RoutePage`?', asks: ['ask'] }], scope: ['app/[id]'] })

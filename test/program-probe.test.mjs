@@ -363,7 +363,7 @@ test("a path a section cites is on that section's ground ask alone", async (t) =
   assert.deepEqual(result.coverage.incomplete, ['locate'])
   assert.ok(result.coverage.unreached.some((l) => l.includes('ground:design') && l.includes('src/limiter.js')), JSON.stringify(result.coverage))
   assert.ok(!result.coverage.unreached.some((l) => l.includes('ground:intent') && l.includes('src/limiter.js')), JSON.stringify(result.coverage))
-  assert.ok(result.coverage.unreached.some((l) => l.includes('ground:intent') && l.includes('scope .')), 'a section that names nothing holds its scope: ' + JSON.stringify(result.coverage))
+  assert.ok(result.coverage.unreached.some((l) => l.startsWith('locate:ground:intent: files ')), 'a section that names nothing owes its scope: ' + JSON.stringify(result.coverage))
 })
 
 test('the artefact is never a seed of its own guidance ask', async (t) => {

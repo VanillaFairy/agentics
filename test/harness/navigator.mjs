@@ -87,3 +87,9 @@ export function endSearch({ name, turn, asks, ruling = 'absent' }) {
     ruler: { key: 'ruler||ruler:search:' + name + ':' + (turn + 1), steps: [{ output: { units } }] },
   }
 }
+
+/** The script of a search that `closingTurn` ends on its first turn: that turn, the stall, and the ruling of `asks` absent. */
+export function closedSearch({ role = 'scout', name, asks }) {
+  const end = endSearch({ name, turn: 1, asks })
+  return { [role + '||' + name]: [closingTurn(asks), ...end.navigator], [end.ruler.key]: end.ruler.steps }
+}

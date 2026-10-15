@@ -22,7 +22,7 @@ import { probe } from '../lib/programs/probe.mjs'
 import { review } from '../lib/programs/review.mjs'
 import { survey } from '../lib/programs/survey.mjs'
 import { evidenceItemsPath, evidenceSnapshotsDir, posix, sessionOf } from '../lib/store.mjs'
-import { closingTurn, endSearch, hitTurn } from './harness/navigator.mjs'
+import { closedSearch, endSearch, hitTurn } from './harness/navigator.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', windowsHide: true })
@@ -112,9 +112,7 @@ const proberOut = (units, findings = []) => ({
 })
 /** The locate script that ends every ask of the search over `text`: a closing turn, the stall, and the ruling. */
 function locateScript(text) {
-  const asks = ['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)]
-  const end = endSearch({ name: 'locate', turn: 1, asks })
-  return { 'scout||locate': [closingTurn(asks), ...end.navigator], [end.ruler.key]: end.ruler.steps }
+  return closedSearch({ name: 'locate', asks: ['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)] })
 }
 /** A full round of `text`: one prober holds the four standing axes (twelve lines buy one), `prober` its steps. */
 function probeScript(text, { findings = [], prober } = {}) {

@@ -17,7 +17,7 @@ import { carriedFindings, liveItems, recordProbe, reviewScope, sectionsOf, units
 import { readLog } from '../lib/ledger.mjs'
 import { probe } from '../lib/programs/probe.mjs'
 import { evidenceReturnsDir, evidenceSnapshotsDir } from '../lib/store.mjs'
-import { closingTurn, endSearch } from './harness/navigator.mjs'
+import { closedSearch } from './harness/navigator.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 const STANDING = ['ambiguity', 'invariants', 'yagni', 'reinvention']
@@ -57,9 +57,7 @@ const linesOf = (text) => text.trim().split('\n')
 
 /** The locate script that ends every ask of the search over `text`: a closing turn, the stall, and the ruling. */
 const LOCATE = (text) => {
-  const asks = ['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)]
-  const end = endSearch({ name: 'locate', turn: 1, asks })
-  return { 'scout||locate': [closingTurn(asks), ...end.navigator], [end.ruler.key]: end.ruler.steps }
+  return closedSearch({ name: 'locate', asks: ['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)] })
 }
 const finding = (axisKey, severity, section, start, claim) => ({
   axis: axisKey, severity, section, claim, evidence: 'line ' + start, start, end: start,

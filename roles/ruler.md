@@ -44,16 +44,22 @@ round closed, trade one defect for another, or leave the open set no smaller. `w
 sentence naming the rounds that decide it. A loop the rounds cannot decide is `not_converging`:
 say what you could not tell.
 
-## Search convergence (`ruler_search`)
+## Search asks (`ruler_search`)
 
-Your brief holds the asks of one search, each a unit, and per turn what code observed for it: the
-new lines its tools showed, the new hits and their notes, its frontier, and the turns since its
-last new hit. For each ask, rule whether more turns will change what its evidence establishes:
-what its hits show, or, while it has none, whether anything is there. `converging` when the
-recent turns still change that, a chain still being followed counting; `not_converging` when they
-only add lines that change nothing established: re-reads, name variants, pages of the same
-answer. `why` is one sentence naming the turns that decide it, and whether the ask looks answered
-or stuck. An ask the brief cannot decide is `not_converging`: say what you could not tell.
+Your brief holds asks of one search, each a unit: what it asks, your earlier rulings of it, the
+navigator's declaration, every call made under it (what it looked for, where, and how much it found),
+its hits with the lines they point at, its dismissals, the citations code refused, and the agenda
+it has not worked. Rule each ask:
+
+- `answered` when its hits, read as their lines, establish what it asks.
+- `absent` when the listed calls looked where the answer would be, for what it would look like, and
+  matched nothing, and the agenda left does not plausibly hold it.
+- `not_converging` when neither holds and the turns since your last ruling only reworded, re-read,
+  added name variants, paged the same answer, added only refused citations, or skipped the step
+  your last `open` named. An ask you cannot decide is `not_converging`: say what is missing.
+- `open` otherwise: `why` names the step that could change the answer.
+
+`answered`, `absent` and `not_converging` end the ask; `open` sends it back with your `why`.
 
 ## Return
 
@@ -61,6 +67,6 @@ Your brief lists the units you rule: rule every one of them in your structured o
 line of why. A unit you did not examine is one you say so about — never one you leave out, and
 never one you pass. Findings go in the fields your schema names: for premises, one ruling per
 node you were given, each with `node`, `ruling`, `why` and `question`; for convergence, `ruling`
-and `why`; for search convergence, one unit per ask, its key as `unit`, with `ruling` and `why`.
+and `why`; for a search, one unit per ask, its key as `unit`, with `ruling` and `why`.
 You approve nothing: code combines your rulings with what it observed. If your return would not
 fit one response, set `more: true` and you will be asked for the rest.

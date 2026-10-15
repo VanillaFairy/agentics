@@ -8,7 +8,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { candidateKey, canonicalUrl, coverageLines, foldLedger, stateOf, verifyReturn } from '../../lib/search/ledger.mjs'
+import { candidateKey, canonicalUrl, coverageLines, foldLedger, standingRefusals, stateOf, verifyReturn } from '../../lib/search/ledger.mjs'
 
 // ------------------------------------------------------------------ builders
 
@@ -532,10 +532,140 @@ test('a quiet turn, with no call and no item, ends every open ask no_progress', 
   assert.deepEqual([l.asks.a.end.state, l.asks.a.end.turn, l.asks.b.end.state, l.asks.b.end.turn], ['no_progress', 2, 'no_progress', 2])
 })
 
-test('a turn whose only items are refused ends the asks they name no_progress', () => {
-  const l = fold({ asks: [ask('a'), ask('b')], calls: [move(1, ['a', 'b'])], turns: [ret(1, 1), ret(2, 1, { hits: [hit('a', 'src/nowhere.js', 3)] })] })
-  assert.deepEqual(classes(l), ['unobserved'])
-  assert.deepEqual([l.asks.a.end.state, l.asks.b.end], ['no_progress', null])
+test('a turn whose only items are refused unobserved, and refused again, ends the asks they name no_progress', () => {
+  const l = fold({ asks: [ask('a'), ask('b')], calls: [move(1, ['a', 'b'])], turns: [ret(1, 1), ret(2, 1, { hits: [hit('a', 'src/nowhere.js', 3)] }), ret(3, 1, { hits: [hit('a', 'src/nowhere.js', 3)] })] })
+  assert.deepEqual(classes(l), ['unobserved', 'unobserved'])
+  assert.deepEqual([l.asks.a.end.state, l.asks.a.end.turn, l.asks.b.end], ['no_progress', 3, null])
+})
+
+// ------------------------------------------------------------------ a refusal the navigator has not yet seen
+
+test('a refusal carries the open asks its item named', () => {
+  const l = fold({ asks: [ask('a'), ask('b')], calls: [move(1, ['a', 'b'])], turns: [ret(1, 1), ret(2, 1, { hits: [hit(['a', 'b'], 'src/nowhere.js', 3)] })] })
+  assert.deepEqual(l.refusals.map((r) => r.asks), [['a', 'b']])
+  const contradicted = fold({
+    calls: [grep(1, ['a'], [['src/a.js', 3]])],
+    turns: [ret(1, 1, { hits: [hit('a', 'src/a.js', 3)] }), ret(2, 1, { asks: [declare('a', 'absent')] })],
+  })
+  assert.deepEqual(contradicted.refusals.map((r) => [r.class, r.asks]), [['contradicts_hit', ['a']]])
+})
+
+test('an ask declared done in the return that cites an unobserved line stays open one more turn, then ends done', () => {
+  const calls = [grep(1, ['a'], [['src/a.js', 3]])]
+  const first = ret(1, 1, { hits: [hit('a', 'src/b.js', 9)], asks: [declare('a', 'answered')] })
+  const one = fold({ calls, turns: [first] })
+  assert.deepEqual(classes(one), ['unobserved'])
+  assert.equal(one.asks.a.end, null, 'the navigator has not seen the refusal')
+  assert.equal(hitsOf(one, 'a').length, 0, 'the hit is not counted')
+  const two = fold({ calls, turns: [first, ret(2, 1)] })
+  assert.deepEqual([two.asks.a.end.state, two.asks.a.end.turn, two.asks.a.end.label], ['done', 2, 'declared'])
+})
+
+test('an ask whose return cites its unread lead without a call stays open one more turn, then ends no_progress', () => {
+  const calls = [move(1, 'a')]
+  const turns = [ret(1, 1, { leads: [{ ask: 'a', path: 'src/lead.js', why: 'next' }], asks: [declare('a', 'open')] }), ret(2, 1, { hits: [hit('a', 'src/lead.js', 4)] })]
+  const two = fold({ calls, turns })
+  assert.deepEqual(classes(two), ['unobserved'])
+  assert.equal(two.asks.a.end, null)
+  const three = fold({ calls, turns: [...turns, ret(3, 1)] })
+  assert.deepEqual([three.asks.a.end.state, three.asks.a.end.turn], ['no_progress', 3])
+})
+
+test('every kind of item refused unobserved holds its ask open one more turn: a hit, a dismissal, a lead, a declaration', () => {
+  const items = {
+    'a hit on a line no call showed': { hits: [hit('a', 'src/b.js', 9)] },
+    'a dismissal naming no path, glob or call': { dismissed: [{ ask: ['a'], why: 'w' }] },
+    'a lead naming no path': { leads: [{ ask: 'a', why: 'w' }] },
+    'a declaration that is none of the three': { asks: [{ ask: 'a', declared: 'bogus' }] },
+  }
+  for (const [what, o] of Object.entries(items)) {
+    const l = fold({ calls: [move(1, 'a')], turns: [ret(1, 1), ret(2, 1, o)] })
+    assert.deepEqual(classes(l), ['unobserved'], what)
+    assert.equal(l.asks.a.end, null, what)
+  }
+})
+
+test('a refusal of another class does not hold an ask open', () => {
+  const calls = [grep(1, ['a'], [['src/a.js', 3]])]
+  const l = fold({ calls, turns: [ret(1, 1, { hits: [hit('a', 'src/a.js', 3)] }), ret(2, 1, { asks: [declare('a', 'absent')] })] })
+  assert.deepEqual(classes(l), ['contradicts_hit'])
+  assert.deepEqual([l.asks.a.end.state, l.asks.a.end.turn], ['no_progress', 2])
+})
+
+test('the same refusal again does not hold an ask open: the navigator was shown it', () => {
+  const calls = [move(1, 'a')]
+  const l = fold({
+    calls,
+    turns: [ret(1, 1), ret(2, 1, { hits: [hit('a', 'src/lead.js', 4, 'one wording')] }), ret(3, 1, { hits: [hit('a', 'src/lead.js', 4, 'another wording')] })],
+  })
+  assert.deepEqual([l.asks.a.end.state, l.asks.a.end.turn], ['no_progress', 3])
+})
+
+test('a different refusal holds the ask open once more', () => {
+  const calls = [move(1, 'a')]
+  const l = fold({ calls, turns: [ret(1, 1), ret(2, 1, { hits: [hit('a', 'src/x.js', 4)] }), ret(3, 1, { hits: [hit('a', 'src/y.js', 4)] })] })
+  assert.equal(l.asks.a.end, null)
+})
+
+test('an ask the refusal does not name still ends on the return that refused another', () => {
+  const calls = [move(1, ['a', 'b'])]
+  const l = fold({ asks: [ask('a'), ask('b')], calls, turns: [ret(1, 1, { asks: [declare('b', 'open')] }), ret(2, 1, { hits: [hit('a', 'src/nowhere.js', 3)], asks: [declare('b', 'open')] })] })
+  assert.equal(l.asks.a.end, null)
+  assert.equal(l.asks.b.end.state, 'no_progress')
+})
+
+test("the ruler's not_converging and a stop still end an ask the refusal holds open", () => {
+  const calls = [move(1, 'a')]
+  const turns = [ret(1, 1), ret(2, 1, { hits: [hit('a', 'src/nowhere.js', 3)] })]
+  const ruled = fold({ calls, turns, rulings: [{ turn: 2, asks: ['a'], units: [unit('a', 'not_converging')] }] })
+  assert.equal(ruled.asks.a.end.state, 'not_converging')
+  const stopped = fold({ calls, turns: [...turns, { turn: 3, calls_through: 1, stop: 'brief_over_budget' }] })
+  assert.equal(stopped.asks.a.end.state, 'stopped')
+})
+
+// ------------------------------------------------------------------ the refusals still standing
+
+const standing = (l) => standingRefusals(l).map((r) => [r.turn, r.class, r.item.kind, r.asks])
+
+test('a refusal stands at the end of the search unless the ask holds the hit it refused', () => {
+  const calls = [grep(1, ['a'], [['src/a.js', 3]]), read(2, ['a'], 'src/b.js', 9, 9, 20)]
+  const refused = ret(1, 1, { hits: [hit('a', 'src/b.js', 9), hit('a', 'src/c.js', 2)] })
+  assert.deepEqual(standing(fold({ calls: calls.slice(0, 1), turns: [refused] })), [[1, 'unobserved', 'hit', ['a']], [1, 'unobserved', 'hit', ['a']]])
+  const cured = fold({ calls, turns: [refused, ret(2, 2, { hits: [hit('a', 'src/b.js', 9)] })] })
+  assert.deepEqual(standing(cured), [[1, 'unobserved', 'hit', ['a']]], 'only the line nothing showed stays')
+  assert.equal(standingRefusals(cured)[0].item.path, 'src/c.js')
+})
+
+test('a refusal stands while any ask it named lacks the hit', () => {
+  const calls = [grep(1, ['a'], [['src/a.js', 3]]), read(2, ['a'], 'src/b.js', 9, 9, 20)]
+  const l = fold({
+    asks: [ask('a'), ask('b')], calls,
+    turns: [ret(1, 1, { hits: [hit(['a', 'b'], 'src/b.js', 9)] }), ret(2, 2, { hits: [hit('a', 'src/b.js', 9)] })],
+  })
+  assert.deepEqual(hitsOf(l, 'a'), ['src/b.js:9'])
+  assert.deepEqual(standing(l), [[1, 'unobserved', 'hit', ['a', 'b']]])
+})
+
+test('a refusal of any class stands: an unknown ask, a contradicted declaration, a dismissal naming nothing', () => {
+  const calls = [grep(1, ['a'], [['src/a.js', 3]])]
+  const l = fold({
+    calls, turns: [ret(1, 1, { hits: [hit('a', 'src/a.js', 3), hit('zzz', 'src/z.js', 1)], asks: [declare('a', 'absent')], dismissed: [{ ask: ['a'], why: 'w' }, dismiss('zzz', { path: 'x.js' })] })],
+  })
+  assert.deepEqual(standing(l).map((r) => r[1]).sort(), ['contradicts_hit', 'unknown_ask', 'unknown_ask', 'unobserved'])
+  assert.deepEqual(coverageLines(l, NAME).unreached.filter((x) => x.includes('refused')).length, 1, 'only the unobserved one is a line')
+})
+
+test('coverageLines: unreached names each ask a refusal for an unobserved item stands against', () => {
+  const l = fold({ asks: [ask('a'), ask('b')], calls: [move(1, ['a', 'b'])], turns: [ret(1, 1), ret(2, 1, { hits: [hit(['a', 'b'], 'src/nowhere.js', 3)] })] })
+  const lines = coverageLines(l, NAME).unreached
+  assert.ok(lines.some((x) => x.startsWith(NAME + ':a: ') && x.includes('src/nowhere.js:3') && x.includes('unobserved')), JSON.stringify(lines))
+  assert.ok(lines.some((x) => x.startsWith(NAME + ':b: ') && x.includes('src/nowhere.js:3')), JSON.stringify(lines))
+})
+
+test('coverageLines: a hit the navigator re-cited after reading is not unreached', () => {
+  const calls = [grep(1, ['a'], [['src/a.js', 3]]), read(2, ['a'], 'src/b.js', 9, 9, 20)]
+  const l = fold({ calls, turns: [ret(1, 1, { hits: [hit('a', 'src/b.js', 9)] }), ret(2, 2, { hits: [hit('a', 'src/b.js', 9)] })] })
+  assert.deepEqual(coverageLines(l, NAME).unreached.filter((x) => x.includes('unobserved')), [])
 })
 
 test('leads and notes do not move the stamp; observed lines, hits, dismissals and declarations do', () => {

@@ -21,7 +21,7 @@ import { askAfter } from '../../lib/programs/converge.mjs'
 import { groundFor, search } from '../../lib/programs/search/loop.mjs'
 import { loadRole, tierFor } from '../../lib/roles.mjs'
 import { schemaOf } from '../../lib/schemas.mjs'
-import { coverageLines, foldLedger, stateOf } from '../../lib/search/ledger.mjs'
+import { coverageLines, foldLedger, standingRefusals, stateOf } from '../../lib/search/ledger.mjs'
 import { TOOLS_BY_DOMAIN, searchDir } from '../../lib/search/server.mjs'
 import { memoryLog } from './harness/memory-log.mjs'
 import { scriptedRunner } from './harness/scripted-runner.mjs'
@@ -542,6 +542,35 @@ test('a search returns its ends, hits, sessions, counts and coverage in the shap
   assert.equal(result.entries_n, keysIn(() => true))
   assert.deepEqual(result.kinds, { guidance: keysIn((a) => a.key === 'guidance'), ground: keysIn((a) => a.key.startsWith('ground:')) })
   assert.deepEqual(result.coverage, coverageLines(end, NAME))
+})
+
+test('an ask declared done in a return that cites an unobserved line gets one more turn with the refusal in its brief', async (t) => {
+  const w = world(t)
+  const asks = [ask('A')]
+  const turns = [
+    turnOf([grep(['A'], ['src/a.mjs:3'])], back({ hits: [hit(['A'], 'src/b.mjs:9')], asks: [declared('A', 'answered')] })),
+    quiet(),
+  ]
+  const { ctx, calls } = w.start({ [NAV]: stepsOf(turns) })
+  const result = await search(ctx, specOf(asks))
+  assert.equal(calls.length, 2, 'the navigator is shown the refusal before the ask ends')
+  assert.ok(calls[1].brief.includes('## Refused last turn\n\n- unobserved: hit src/b.mjs:9'), calls[1].brief)
+  assert.deepEqual([result.asks.A.end, result.asks.A.hits.length], ['done', 0])
+})
+
+test('a search hands its program every refusal still standing, and its coverage names the unobserved ones', async (t) => {
+  const w = world(t)
+  const asks = [ask('A')]
+  const turns = [
+    turnOf([grep(['A'], ['src/a.mjs:3'])], back({ hits: [hit(['A'], 'src/b.mjs:9')], asks: [declared('A', 'answered')] })),
+    turnOf([grep(['A'], ['src/c.mjs:1'])], back({ hits: [hit(['A'], 'src/c.mjs:1')], asks: [declared('A', 'answered')] })),
+  ]
+  const { ctx } = w.start({ [NAV]: stepsOf(turns) })
+  const result = await search(ctx, specOf(asks))
+  const end = ledgerOf({ asks, turns })
+  assert.deepEqual(result.refusals, standingRefusals(end))
+  assert.deepEqual(result.refusals.map((r) => [r.turn, r.class, r.item.path, r.asks]), [[1, 'unobserved', 'src/b.mjs', ['A']]])
+  assert.ok(result.coverage.unreached.some((l) => l.startsWith(NAME + ':A: ') && l.includes('src/b.mjs:9')), JSON.stringify(result.coverage.unreached))
 })
 
 test('the ground table is built once per search, over its tree, material, diff, config and the union of its scopes', async (t) => {

@@ -1997,7 +1997,10 @@ arrive in.
   (`verifyReturn`). Anything else is refused `unobserved`, shown in the next turn's brief and counted
   nowhere. The other refusals are `unknown_ask` (an ask the search lacks, or one whose first turn is
   ahead), `names_only_ended_asks`, and `contradicts_hit` for `absent` on an ask that has a hit. A
-  refusal never moves an ask's state.
+  refusal never moves an ask's state. A refusal names the open asks its item named, and stands until
+  the asks hold the hit it refused (`standingRefusals`); the search carries every refusal still
+  standing in its result, and `coverageLines` reports each `unobserved` one as an `unreached` line
+  per ask: a citation that no call showed.
 - **Frontier.** An ask's frontier is its open seeds, its leads not yet read or dismissed, the pages
   of its queries not fetched, and its own ground-table rows — the mentions of that ask's own
   material: a path that exists, a symbol's definition files — that it has neither hit, read to their
@@ -2020,7 +2023,11 @@ arrive in.
 when it is declared `answered` or `absent` and its frontier is empty; `no_progress` when the turn
 answers for the ask (it worked the ask, or named no ask at all) and the ask's stamp equals any
 earlier stamp in its history, which also ends an answered → open → answered flip-flop; an ask the
-turn did not work stays open. At a check-in (`askAfter(turn)`), each open ask whose state moved
+turn did not work stays open. Neither ends an ask in the return that is first to cite, unobserved, an
+item the ask has not been refused before (the same citation, wording aside): the ask gets one more
+turn, with the refusal in its brief, so the navigator sees it before the ask ends. The same
+citation again does not hold it open, and the ruler's `not_converging` and the stops end it as
+ever. At a check-in (`askAfter(turn)`), each open ask whose state moved
 since its previous check-in goes to the ruler, `ruler_search`, on `ruler:search:<name>:<turn>`: one
 unit per ask, through `dispatchJudge` with every navigator session of the search as producer, and
 `not_converging` ends the ask, labelled ruled, with the ruler's why; otherwise the session is
@@ -2034,7 +2041,7 @@ stopped, and a ruling that rules an ask the ruler stopped reopens it, so a stopp
 only on a re-entry with more asks, a new run or a retry scope. The search returns when no ask is
 open, with each ask's end, label, why, declaration, hits, dismissals and `unreached` frontier, the
 navigator's sessions, `entries_n` and `kinds` (distinct keys with a hit, overall and per ask kind)
-and its coverage lines; a `done` on a declaration is in the coverage block's `declared`, a checked
+its refusals still standing and its coverage lines; a `done` on a declaration is in the coverage block's `declared`, a checked
 absence is not. A relaunch replays every journaled turn and ruling and the ground with no new call; a turn cut off mid-way resumes in its session with
 `cut_off`, and the calls it made before the stop stay in the call log, each once. No count ends a
 search: the turn number only schedules check-ins (L2), and only the navigator's declarations, the
@@ -2058,8 +2065,9 @@ the re-dispatched judge; the program leaves the search's `<name>:want:` lines ou
 unreached and failed lists, because the judge's ruling of the unit is what counts.
 
 **Readers.** `searchExcerpts` (`lib/citations.mjs`) renders a search for the agents that read it: per
-ask its end and label, its hits with notes, its dismissals and its `unreached`, then the lines the
-hits point at, read once from the tree.
+ask its end and label, its hits with notes, its dismissals, its `unreached` and the refusals standing
+against it (those that name no ask once, after the asks), then the lines the hits point at, read once
+from the tree.
 
 **The laws.** L1: reads, matches and absences are observed, overflow is frontier and the frontier at
 the end is `unreached`, a hit with no observed line is refused, every end carries its label, and
@@ -3791,7 +3799,7 @@ dispatch.
 ### Search ledger
 
 - **Owner:** `foldLedger` in `lib/search/ledger.mjs`.
-- **Restated in:** `verifyReturn`, `stateOf` and `coverageLines` in the same file (readers);
+- **Restated in:** `verifyReturn`, `stateOf`, `standingRefusals` and `coverageLines` in the same file (readers);
   `lib/briefs/search.mjs` (`turnBrief`, `digestOf`, `rulerBrief`); `search` in
   `lib/programs/search/loop.mjs` (journals the turn and ruling records it folds).
 
@@ -3801,8 +3809,8 @@ why, turn, read_to_end}], leads[{key, why, turn}], declared: '' | answered | abs
 '' | checked | declared, frontier[{kind: seed | lead | ground | overflow, key, detail}], end: null |
 {state: done | no_progress | not_converging | stopped, turn, label: observed | declared | ruled,
 why, by?}, stamp, history[{turn, stamp, observed_n, hits_n}]}}, refusals[{turn, item, class:
-unobserved | unknown_ask | names_only_ended_asks | contradicts_hit}], calls[], calls_n, turns_n,
-rulings[{turn, asks[]}]}`. The turn records it folds are `{turn, calls_through, output?, missing?,
+unobserved | unknown_ask | names_only_ended_asks | contradicts_hit, asks[]}], calls[], calls_n,
+turns_n, rulings[{turn, asks[]}]}`; a refusal's `asks` are the open asks its item named. The turn records it folds are `{turn, calls_through, output?, missing?,
 stop?}` and the ruling records `{turn, asks[], units?[{unit, ruling, why}], missing?}`; `rulings`
 lists the rulings applied, which `stateOf` reads for the check-in rule.
 
@@ -3814,7 +3822,8 @@ lists the rulings applied, which `stateOf` reads for the check-in rule.
 
 `{name, status: returned | failed, cause, tree{root, sha}, ground, asks{<key>: {end, label, why,
 declared, absence, hits[], dismissed[], unreached[]}}, sessions[{session, thread}], entries_n, kinds,
-coverage{declared[], incomplete[], unreached[], failed_channels[]}}`. `status` is `failed` when turns
+refusals[{turn, item, class, asks[]}], coverage{declared[], incomplete[], unreached[],
+failed_channels[]}}`; `refusals` are those of the ledger still standing. `status` is `failed` when turns
 ran and none returned, `cause` the last turn's missing cause or stop; `unreached` is the ask's
 frontier at its end; `entries_n` and `kinds` count the distinct keys with a hit, overall and per ask
 kind (the key's text before its first `:`).

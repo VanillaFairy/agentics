@@ -211,6 +211,15 @@ test('a want that ends short in a survey is declared and leaves its topic comple
   assert.ok(!result.coverage.incomplete.includes('loader'))
 })
 
+test('a judge whose wants round does not return leaves an unreached line and the survey incomplete', async (t) => {
+  const { rig, result } = await surveyIn(t, surveyScript([firstJudge, { status: 'failed', cause: 'host_error' }]))
+  assert.equal(on(rig, 'scout:loader').length, 2, 'the want was searched')
+  const line = result.coverage.unreached.find((l) => l.startsWith('judge 1 did not return for its wants'))
+  assert.ok(line, JSON.stringify(result.coverage.unreached))
+  assert.ok(line.includes('loader'), 'the line names the topic whose second look never happened')
+  assert.equal(result.coverage.complete, false)
+})
+
 test("a survey judge's want reopens its topic's search, its navigator session resumed", async (t) => {
   const { rig } = await surveyIn(t, surveyScript([firstJudge, secondJudge()]))
   const calls = on(rig, 'scout:loader')

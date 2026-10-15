@@ -2214,7 +2214,8 @@ search produced nothing (it failed, or its ask paused `stopped` with no hit) or 
 last as anything but `anchored`; `history` or `docs` is incomplete when that search ended short. A
 search that produced nothing is an unreached line, and a history or docs search that produced
 nothing fails that channel too. Every other search's short ends and unreached keys are `unreached` lines, its declared
-ends `declared` lines, and a judge that failed is an unreached line naming its topics. A navigator
+ends `declared` lines, and a judge that failed is an unreached line naming its topics, as is a
+judge that did not return for its wants (its earlier items on those topics stand). A navigator
 stop in a search is also named in `failed_channels` by ask (`scout:<topic>:<topic>`). The survey's
 evidence calls — the pool read, the re-judge's record, `recordSurvey` and `surveyContext` — read the
 tree it searched, so its anchors and absence queries are about that tree.

@@ -1902,7 +1902,7 @@ A consumer's wants add asks `want:<n>` to the program's own search (**Wants**, b
 | principle | what it says |
 |---|---|
 | State | The search ledger is the only memory that decides anything, and it only grows: one call-log line per tool call, written by the tool server before it answers, and one journaled step per navigator return, folded by a pure function (`foldLedger`). |
-| Identity | Every key is canonical by construction: git's own output for the pinned tree (a repo-relative posix path, a full commit sha), or `canonicalUrl` and `candidateKey` on the web. One query dialect, `queryOf`, serves search and the evidence pool ([Items and anchors](#items-and-anchors)): it transpiles `\d \s \w` and their negations into POSIX classes and refuses what `git grep -E` would read otherwise. A refusal is a persisted fact, shown in the next turn's brief. |
+| Identity | Every key is canonical by construction: git's own output for the pinned tree (a repo-relative posix path, a full commit sha), or `canonicalUrl` and `candidateKey` on the web. One query dialect, `queryOf`, serves search and the evidence pool ([Items and anchors](#items-and-anchors)): it transpiles `\d \s \w` and their negations into POSIX classes and refuses what `git grep -E` would read otherwise. Paths, globs and the fence join that dialect: one glob reading and one fence for every path a tool takes. A refusal is a persisted fact, shown in the next turn's brief. |
 | Labels | Every fact and every end carries the weakest source it rests on: *observed* only when every fact under it is code's, *ruled* when it rests on a ruling, otherwise *declared*. |
 | Progress | A return progresses for an ask when it moves the ask's stamp (its observed set, hits, dismissal targets, reads to the end, closed seeds, followed symbols, covered roots, declaration and absence) to a value the ask never had before. A turn answers only for the open asks it worked — a call or a return item named them — and a turn that named no open ask answers for every open ask, so an ask the turn left alone is not ended by it. For a pinned tree the observable `(key, line)` pairs are finite, a closure closes once and an exact repeat adds nothing, so a search ends without any count. |
 | Ending | Each ask ends on its state — `done`, `no_progress` (only an ask the turn answers for), `not_converging` — or pauses `stopped`, resumable; a missing outcome pauses an ask and never ends one. |
@@ -1960,7 +1960,7 @@ sha it was pinned at.
 |---|---|---|
 | `grep` | repo, history | `git grep` in the shared query dialect, `--untracked`, binaries skipped |
 | `read` | repo, history | a line range of one file from disk, saying where it stopped and how long the file is |
-| `files` | repo | a glob over tracked and untracked files |
+| `files` | repo | a glob in the search dialect (`GLOB_RULES`: `*` within a segment, `**` across segments, `?` one character, everything else literal) over tracked and untracked files |
 | `refs` | repo | word-bounded references to a symbol by file, tests marked, `total` their sum |
 | `log` | history | `-G`, `-S` or `--grep` over the tree's history, each commit with the keys it touched |
 | `show` | history | a commit, or one path in it |
@@ -1969,7 +1969,8 @@ sha it was pinned at.
 Each tool keys every path as git prints it for that tree, so spellings, worktree copies and
 Windows case never split one file. A scope part git reports ignored is searched with the standard
 excludes off; `node_modules` only through a part that names it; each initialised submodule on its
-own, keyed under its path; a nested repository or another worktree never. Output comes in pages of
+own, keyed under its path; a nested repository or another worktree never, and no tool reaches a key
+under `.agentics/` or `.claude/worktrees/` (`not_canonical`). Output comes in pages of
 `PAGE_LINES` (200); a page not fetched stays on the ask's frontier, so nothing is truncated
 silently. Every failure is a named refusal (`not_canonical`, `past_eof`, `unsupported_syntax`,
 `does_not_compile`, `expander_error`, `unknown_ask`, `outside_scope`), never an exception.
@@ -2021,7 +2022,7 @@ arrive in.
   A row only shared context named sits on no frontier. Each is per ask: a call or an item counts for
   the asks it names. At an ask's end, its frontier is its `unreached`.
 - **Dismissals** name a path (a literal pathspec: a directory holds what is under it; in the web
-  domain, a path names one URL), a glob (git's `:(glob)` rules) or a call (every key it returned and
+  domain, a path names one URL), a glob in the search dialect or a call (every key it returned and
   its unfetched pages), and record whether the file was read to its end.
 - **Declarations** stand until the navigator changes them; `open` withdraws one, and a hit accepted
   later withdraws an `absent`. An `absent` is **checked** when a grep under the ask over its whole
@@ -2112,8 +2113,8 @@ otherwise a snapshot of the text it was read from; a query's result is `git grep
 shared query dialect (`queryOf` in `lib/search/query.mjs`): `\d \D \s \S \w \W` are transpiled to
 their POSIX classes, outside brackets and (`\d \s \w`) inside them; `\D \S \W` inside brackets, `\b`
 and every other backslash-letter escape, `(?` and lazy quantifiers are refused, and a NUL byte
-anywhere; a scope path is a literal pathspec unless it holds `**`, which makes it a glob;
-`.agentics/` is never searched. A refused query refuses its item at record and makes a stored item
+anywhere; a scope path is a literal pathspec unless it holds `*` or `?`, which makes it a glob in the
+search dialect, enumerated from its literal base and filtered in-process; `.agentics/` is never searched. A refused query refuses its item at record and makes a stored item
 stale. The pool keeps a match in a file git calls binary. A source's retrieval date is the
 recorder's own. A batch with one refused item is refused whole, so
 nothing unanchored enters the pool: a survey judge's refused items go back to that judge
@@ -2128,10 +2129,13 @@ wherever it runs: what has a POSIX form is transpiled, what has none is refused 
 `unsupported_syntax`, never passed through. A query's identity is its pattern as given, `fixed`,
 `ignore_case` and its sorted paths.
 
-A scope path is literal unless it holds `**`, so a single `*` is a literal character: a pool item
-whose scope uses `*` as a wildcard searches the literal path, and may stop matching. An enumeration
-item on such a scope goes suspect when its result changes, and an absence item on one stays
-standing over the literal path.
+**One glob dialect and one fence.** `lib/search/query.mjs` also owns `pathKey`, `fenced`, `globOf`
+and `GLOB_RULES`, and every path a tool takes goes through them. A glob is read in one dialect: `*`
+within a segment, `**` across segments, `?` one character, everything else literal, brackets
+included. A scope path is literal unless it holds `*` or `?`. Git is never handed a glob: a glob part
+is read from its literal base with a `:(literal)` pathspec, and its matches are kept in-process by
+the glob's own matcher. `.agentics/` and `.claude/worktrees/` are fenced: no tool lists, reads or
+searches a key under them.
 
 ### The drift ladder
 

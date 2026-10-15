@@ -1964,7 +1964,7 @@ sha it was pinned at.
 | `refs` | repo | word-bounded references to a symbol by file, tests marked, `total` their sum |
 | `log` | history | `-G`, `-S` or `--grep` over the tree's history, each commit with the keys it touched |
 | `show` | history | a commit, or one path in it |
-| `fetch` | web | one web page, its lines paged, its body pinned for the search under `pages/` (so every page and every relaunch reads the same body; a body past `FETCH_BYTES` is refused `too_large`); the web domain keeps the host's `WebSearch` |
+| `fetch` | web | one web page, its lines paged; the web domain keeps the host's `WebSearch` |
 
 Each tool keys every path as git prints it for that tree, so spellings, worktree copies and
 Windows case never split one file. A scope part git reports ignored is searched with the standard
@@ -1972,7 +1972,7 @@ excludes off; `node_modules` only through a part that names it; each initialised
 own, keyed under its path; a nested repository or another worktree never. Output comes in pages of
 `PAGE_LINES` (200); a page not fetched stays on the ask's frontier, so nothing is truncated
 silently. Every failure is a named refusal (`not_canonical`, `past_eof`, `unsupported_syntax`,
-`does_not_compile`, `expander_error`, `unknown_ask`, `outside_scope`, `too_large`), never an exception.
+`does_not_compile`, `expander_error`, `unknown_ask`, `outside_scope`), never an exception.
 
 **The tool server.** The tools come from one stdio MCP server per dispatch, `lib/search/server.mjs`,
 named `search`, so the host calls them `mcp__search__<tool>`, and no searcher holds the host's

@@ -10,11 +10,12 @@
 // a new run. A folder of an open execution holding one under `probe:<folder>:<n>` or
 // `survey:<folder>` gets `replanned {reason: retry_escalated, by: migration}`, which plans it
 // afresh under a new basis, only where that record, dry-applied, leaves every node's derived
-// status, every ruling's answer and every review's standing as they were; every other folder is
-// listed with the user's options. A live home is refused. Each part is read from disk again as it
-// is written, so a second run, or the run after one cut short, appends nothing twice. It never
-// deletes. The default is a dry run; `--yes` applies; the exit is 1 while a folder is excluded, a
-// home is refused, or the ledger refused a record.
+// status, every affected ruling's answer and every review's standing as they were (an unaffected
+// ruling stands outright, so no replan moves it); every other folder is listed with the user's
+// options. A live home is refused. Each part is read from disk again as it is written, so a
+// second run, or the run after one cut short, appends nothing twice. It never deletes. The default
+// is a dry run; `--yes` applies; the exit is 1 while a folder is excluded, a home is refused, or
+// the ledger refused a record.
 
 import { readdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -140,7 +141,7 @@ function effortParts(root, effort, out) {
   const tree = readTree(root, effort)
   const open = openExecutions({ repo: root, effort, execution: '' })
   const rulings = open.flatMap(({ stamp }) => readLog(root, effort, 'state:' + stamp).entries)
-    .filter((e) => typeof e.node === 'string' && typeof e.ruling === 'string')
+    .filter((e) => typeof e.node === 'string' && e.ruling === 'affected')
   for (const { stamp } of open) {
     const run = executionRunId(effort, stamp)
     const found = roundSearches(readRunLog(root, run).entries)

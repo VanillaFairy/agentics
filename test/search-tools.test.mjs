@@ -41,6 +41,13 @@ const FILES = {
   'gen/out.txt': { text: 'NEEDLE_ID gen 1\n', reach: false },
   'node_modules/p/i.js': { text: 'NEEDLE_ID nm 2\n', reach: false },
   '.agentics/runs/r/calls.jsonl': { text: '{"pattern":"NEEDLE_ID"}\n', reach: false, when: 'untracked' },
+  // a plain directory under .claude/worktrees (no .git of its own), and names that only look fenced
+  '.claude/worktrees/loose/a.ts': { text: 'a loose copy of a file\n', reach: false, when: 'untracked' },
+  '.claude/settings.json': { text: '{}\n', reach: true },
+  '.agenticsx/a.txt': { text: 'not the store\n', reach: true },
+  // the decoys: what reading [id] as a class, or * as crossing a directory, would add
+  'app/i/page view.tsx': { text: 'NEEDLE_ID decoy\n', reach: true },
+  'src/x/a.mjs': { text: 'NEEDLE_ID one directory down\n', reach: true },
   'nested/x.txt': { text: 'NEEDLE_ID nested 3\n', reach: false, when: 'nested' },
   'vendor/s/lib/s.mjs': { text: 'export const NEEDLE_ID = 1\n', reach: true, when: 'submodule' },
 }
@@ -203,13 +210,74 @@ test('grep takes ** glob paths inside its scope, narrowed to it', async () => {
   refusedAs(await grep(tree, { pattern: 'NEEDLE_ID', paths: ['app/**'] }, { scope: ['src'] }), 'outside_scope')
 })
 
-test('a scope part that is a ** glob is matched as git matches it', async () => {
+test('grep paths read brackets literally', async () => {
+  const route = [{ key: 'app/[id]/page view.tsx', line: 2, text: 'NEEDLE_ID 7' }]
+  assert.ok(matchesOf(/NEEDLE_ID/, (k) => k === 'app/i/page view.tsx').length > 0, 'the decoy app/i/ holds the needle too')
+  for (const paths of [['app/[id]/*'], ['app/[id]/**'], ['app/[id]'], ['app/[id]/page view.tsx']]) {
+    const out = await grep(tree, { pattern: 'NEEDLE_ID', paths }, { scope: ['.'] })
+    assert.deepEqual(out.lines, route, JSON.stringify(paths) + ': a class reading would add app/i/')
+  }
+})
+
+test('grep path globs keep star in its segment', async () => {
+  const flat = matchesOf(/NEEDLE_ID/, (k) => /^src\/[^/]+\.mjs$/.test(k))
+  assert.ok(flat.length > 0)
+  const out = await grep(tree, { pattern: 'NEEDLE_ID', paths: ['src/*.mjs'] }, { scope: ['.'] })
+  assert.deepEqual(out.lines, flat)
+  assert.ok(!out.lines.some((l) => l.key === 'src/x/a.mjs'), 'a * does not cross into src/x/')
+  assert.equal(out.total, flat.length)
+})
+
+test('a grep path with ? is one character of the name', async () => {
+  const out = await grep(tree, { pattern: 'NEEDLE_ID', paths: ['src/?.mjs'] }, { scope: ['.'] })
+  assert.deepEqual(out.lines, matchesOf(/NEEDLE_ID/, (k) => k === 'src/a.mjs'))
+  assert.ok(out.lines.length > 0)
+})
+
+test('grep reads literal and glob paths together: a literal part is read whole, a glob part is filtered', async () => {
+  const out = await grep(tree, { pattern: 'NEEDLE_ID', paths: ['test', 'src/*.mjs'] }, { scope: ['.'] })
+  const want = matchesOf(/NEEDLE_ID/, (k) => k.startsWith('test/') || /^src\/[^/]+\.mjs$/.test(k))
+  assert.ok(want.some((l) => l.key.startsWith('test/')) && want.some((l) => l.key.startsWith('src/')))
+  assert.deepEqual(out.lines, want)
+})
+
+test('a grep path glob reaches into a submodule, and a files glob lists there', async () => {
+  const out = await grep(tree, { pattern: 'NEEDLE_ID', paths: ['vendor/s/lib/*.mjs'] }, { scope: ['.'] })
+  assert.deepEqual(out.lines, [{ key: 'vendor/s/lib/s.mjs', line: 1, text: 'export const NEEDLE_ID = 1' }])
+  assert.deepEqual((await files(tree, { glob: 'vendor/s/lib/*.mjs' }, { scope: ['.'] })).keys, ['vendor/s/lib/s.mjs'])
+})
+
+test('a grep path glob is judged by its literal base against the scope', async () => {
+  assert.equal((await grep(tree, { pattern: 'NEEDLE_ID', paths: ['src/*.mjs'] }, { scope: ['src'] })).ok, true)
+  refusedAs(await grep(tree, { pattern: 'NEEDLE_ID', paths: ['app/[id]/*'] }, { scope: ['src'] }), 'outside_scope')
+  refusedAs(await grep(tree, { pattern: 'NEEDLE_ID', paths: ['src/*.mjs'] }, { scope: ['app'] }), 'outside_scope')
+})
+
+test('a scope part that is a glob is matched in the search dialect', async () => {
   const tests = await grep(tree, { pattern: 'NEEDLE_ID' }, { scope: ['**/*.test.mjs'] })
   assert.deepEqual(tests.lines, matchesOf(/NEEDLE_ID/, (k) => k.endsWith('.test.mjs')))
   const listed = await files(tree, { glob: '**' }, { scope: ['src/**/*.mjs'] })
   assert.deepEqual(listed.keys, reached.map(([k]) => k).filter((k) => k.startsWith('src/') && k.endsWith('.mjs')).sort())
   const route = await files(tree, { glob: '**' }, { scope: ['app/[id]/**'] })
-  assert.deepEqual(route.keys, [], 'under :(glob) [id] is a class, as git reads it (app/i/… or app/d/…), never the literal name')
+  assert.deepEqual(route.keys, ['app/[id]/page view.tsx'], '[id] is the literal name, so the decoy app/i/ a class would add is not in scope')
+  const decoy = await files(tree, { glob: '**' }, { scope: ['app/i/**'] })
+  assert.deepEqual(decoy.keys, ['app/i/page view.tsx'])
+})
+
+test('a scope part with a single * or a ? is a glob too', async () => {
+  const flat = reached.map(([k]) => k).filter((k) => /^src\/[^/]+\.mjs$/.test(k)).sort()
+  assert.ok(flat.length >= 2 && reached.some(([k]) => k === 'src/x/a.mjs'), 'the fixture has src/*.mjs files and one a directory down')
+  assert.deepEqual((await files(tree, { glob: '**' }, { scope: ['src/*.mjs'] })).keys, flat)
+  assert.deepEqual((await files(tree, { glob: '**' }, { scope: ['src/?.mjs'] })).keys, ['src/a.mjs'])
+  assert.deepEqual((await grep(tree, { pattern: 'NEEDLE_ID' }, { scope: ['src/*.mjs'] })).lines, matchesOf(/NEEDLE_ID/, (k) => flat.includes(k)))
+  assert.equal((await read(tree, { path: 'src/a.mjs' }, { scope: ['src/*.mjs'] })).ok, true)
+  refusedAs(await read(tree, { path: 'src/x/a.mjs' }, { scope: ['src/*.mjs'] }), 'outside_scope')
+})
+
+test('a scope part that holds brackets and no wildcard is a directory or a file of that name', async () => {
+  assert.deepEqual((await grep(tree, { pattern: 'NEEDLE_ID' }, { scope: ['app/[id]'] })).lines.map((l) => l.key), ['app/[id]/page view.tsx'])
+  assert.equal((await read(tree, { path: 'app/[id]/page view.tsx' }, { scope: ['app/[id]/page view.tsx'] })).ok, true)
+  refusedAs(await read(tree, { path: 'app/i/page view.tsx' }, { scope: ['app/[id]'] }), 'outside_scope')
 })
 
 test('a scope inside a submodule greps the submodule', async () => {
@@ -263,6 +331,33 @@ test('read refuses a line past the end, a path that is no key, and a key outside
   refusedAs(await read(tree, { path: 'src/a.mjs' }, { scope: ['app'] }), 'outside_scope')
 })
 
+test('read refuses the store', async () => {
+  const key = '.agentics/runs/r/calls.jsonl'
+  assert.equal(readFileSync(join(tree.root, key), 'utf8').length > 0, true, 'the file is there to be read')
+  const spellings = [key, './' + key, join(tree.root, key)]
+  if (process.platform === 'win32') spellings.push(key.split('/').join('\\'), '.AGENTICS/runs/r/calls.jsonl')
+  for (const path of spellings) {
+    refusedAs(await read(tree, { path }, { scope: ['.'] }), 'not_canonical')
+    refusedAs(keyOf(tree, path), 'not_canonical')
+  }
+})
+
+test('read refuses a worktree copy', async () => {
+  for (const path of ['.claude/worktrees/loose/a.ts', '.claude/worktrees/w/src/a.mjs', './.claude/worktrees/loose/a.ts', join(tree.root, '.claude/worktrees/loose/a.ts')]) {
+    refusedAs(await read(tree, { path }, { scope: ['.'] }), 'not_canonical')
+    refusedAs(keyOf(tree, path), 'not_canonical')
+  }
+})
+
+test('read still reads a key that only looks fenced', async () => {
+  for (const [path, text] of [['.agenticsx/a.txt', 'not the store'], ['.claude/settings.json', '{}']]) {
+    const out = await read(tree, { path }, { scope: ['.'] })
+    assert.equal(out.ok, true, path + ' ' + JSON.stringify(out))
+    assert.deepEqual([out.key, out.lines.map((l) => l.text)], [path, [text]])
+    assert.deepEqual(keyOf(tree, path), { ok: true, key: path })
+  }
+})
+
 // ------------------------------------------------------------------ files
 
 test('files lists the keys a glob matches over the tree the tools reach', async () => {
@@ -281,6 +376,44 @@ test("files' **/CLAUDE.md matches the root's CLAUDE.md as well as deeper ones", 
 test('files stays inside its scope', async () => {
   const out = await files(tree, { glob: '**' }, { scope: ['src'] })
   assert.deepEqual(out.keys, reached.map(([k]) => k).filter((k) => k.startsWith('src/')).sort())
+})
+
+test('files reads brackets literally', async () => {
+  const out = await files(tree, { glob: 'app/[id]/*' }, { scope: ['.'] })
+  assert.equal(out.ok, true, JSON.stringify(out))
+  assert.deepEqual(out.keys, ['app/[id]/page view.tsx'], 'a class reading would add the decoy app/i/page view.tsx')
+  assert.deepEqual([out.total, out.page, out.pages], [1, 1, 1])
+  assert.deepEqual((await files(tree, { glob: 'app/[id]/page view.tsx' }, { scope: ['.'] })).keys, ['app/[id]/page view.tsx'], 'a glob with no wildcard is the name it spells')
+  assert.deepEqual((await files(tree, { glob: 'app/[id]/**' }, { scope: ['.'] })).keys, ['app/[id]/page view.tsx'])
+})
+
+test('files keeps * within a segment and reads ? as one character', async () => {
+  const flat = reached.map(([k]) => k).filter((k) => /^src\/[^/]+\.mjs$/.test(k)).sort()
+  assert.ok(flat.length >= 2)
+  assert.deepEqual((await files(tree, { glob: 'src/*.mjs' }, { scope: ['.'] })).keys, flat)
+  assert.deepEqual((await files(tree, { glob: 'src/?.mjs' }, { scope: ['.'] })).keys, ['src/a.mjs'])
+  assert.deepEqual((await files(tree, { glob: 'src/*/a.mjs' }, { scope: ['.'] })).keys, ['src/x/a.mjs'])
+})
+
+test('files never lists a fenced key', async () => {
+  const fencedKey = (k) => /^(\.agentics|\.claude\/worktrees)(\/|$)/.test(k)
+  const reachable = reached.map(([k]) => k)
+  assert.ok(!reachable.some(fencedKey), 'the fixture reaches no fenced key')
+  for (const [glob, scope] of [['**', ['.']], ['**/*', ['.']], ['**/*.jsonl', ['.']], ['**/a.ts', ['.']], ['.agentics/**', ['.']], ['.claude/worktrees/**', ['.']],
+    ['.claude/**', ['.']], ['**', ['.claude/worktrees']], ['**', ['.agentics']], ['**', ['.claude']]]) {
+    const out = await files(tree, { glob }, { scope })
+    const keys = out.ok ? out.keys : []
+    assert.deepEqual(keys.filter(fencedKey), [], glob + ' in ' + scope + ' lists a fenced key')
+  }
+  const all = (await files(tree, { glob: '**' }, { scope: ['.'] })).keys
+  for (const k of reachable) assert.ok(all.includes(k), 'the fence takes no other key with it: ' + k)
+})
+
+test('files lists a key that only looks fenced', async () => {
+  const out = await files(tree, { glob: '**' }, { scope: ['.'] })
+  assert.ok(out.keys.includes('.agenticsx/a.txt'), '.agenticsx is not .agentics')
+  assert.ok(out.keys.includes('.claude/settings.json'), '.claude is fenced only below worktrees')
+  assert.deepEqual((await files(tree, { glob: '.claude/**' }, { scope: ['.'] })).keys, ['.claude/settings.json'])
 })
 
 // ------------------------------------------------------------------ refs
@@ -403,4 +536,18 @@ test('a test file is one under a test, tests or __tests__ segment, or named .tes
 test('a page is 200 lines and every refusal class is named', () => {
   assert.equal(PAGE_LINES, 200)
   assert.deepEqual(REFUSALS, ['not_canonical', 'past_eof', 'unsupported_syntax', 'does_not_compile', 'expander_error', 'unknown_ask', 'outside_scope'])
+})
+
+// ------------------------------------------------------------------ what the navigator is told
+
+test('tool descriptions state the glob dialect', async () => {
+  const { GLOB_RULES } = await import('../lib/search/query.mjs')
+  const { toolDefs } = await import('../lib/search/server.mjs')
+  assert.equal(typeof GLOB_RULES, 'string', 'the dialect has one statement')
+  assert.ok(GLOB_RULES.length > 0)
+  const defs = toolDefs({ asks: [{ key: 'a' }], tools: ['grep', 'read', 'files'] })
+  const tool = (name) => defs.find((d) => d.name === name)
+  assert.ok(tool('files').description.includes(GLOB_RULES), 'the files description carries GLOB_RULES')
+  assert.equal(typeof tool('grep').inputSchema.properties.paths.description, 'string', 'the grep paths argument is described')
+  assert.ok(tool('grep').inputSchema.properties.paths.description.includes(GLOB_RULES), 'the grep paths description carries GLOB_RULES')
 })

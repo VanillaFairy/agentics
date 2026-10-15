@@ -1,6 +1,7 @@
 // test/fast/search-query.test.mjs — pins the one query dialect: what queryOf transpiles, what it
 // refuses and why, the pathspecs and identity it gives a query, the argument lists grepArgv builds,
-// and that the survey judge's brief names the dialect it is held to.
+// that the survey judge's brief names the dialect it is held to, and the one identity every path
+// a search tool takes goes through: pathKey, fenced and globOf.
 //
 // Design: docs/DESIGN.md#searches and docs/DESIGN.md#items-and-anchors.
 
@@ -8,7 +9,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { judgeBrief } from '../../lib/briefs/survey.mjs'
-import { grepArgv, queryOf } from '../../lib/search/query.mjs'
+import { GLOB_RULES, fenced, globOf, grepArgv, pathKey, queryOf } from '../../lib/search/query.mjs'
 
 const OUTSIDE = { '\\d': '[[:digit:]]', '\\D': '[^[:digit:]]', '\\s': '[[:space:]]', '\\S': '[^[:space:]]', '\\w': '[[:alnum:]_]', '\\W': '[^[:alnum:]_]' }
 const INSIDE = { '\\d': '[:digit:]', '\\s': '[:space:]', '\\w': '[:alnum:]_' }
@@ -123,23 +124,63 @@ test('flags: -E for a regex, -F for a fixed string, -i when ignoring case', () =
   assert.deepEqual(queryOf({ pattern: 'x', fixed: true, ignore_case: true }).flags, ['-F', '-i'])
 })
 
-test('pathspecs: the whole tree when none, literal paths, ** globs, and never .agentics', () => {
+test('pathspecs: the whole tree when none, a plain path stays literal, and never .agentics', () => {
   assert.deepEqual(queryOf({ pattern: 'x' }).pathspecs, ['.', EXCLUDE])
   assert.deepEqual(queryOf({ pattern: 'x', paths: ['src'] }).pathspecs, [':(literal)src', EXCLUDE])
-  assert.deepEqual(queryOf({ pattern: 'x', paths: ['src/**/*.ts'] }).pathspecs, [':(glob)src/**/*.ts', EXCLUDE])
-  assert.deepEqual(queryOf({ pattern: 'x', paths: ['lib/*.mjs'] }).pathspecs, [':(literal)lib/*.mjs', EXCLUDE],
-    'only ** makes a glob; a lone * is a literal character')
-  assert.deepEqual(queryOf({ pattern: 'x', paths: ['app/[id]/page.tsx'] }).pathspecs, [':(literal)app/[id]/page.tsx', EXCLUDE])
+  assert.deepEqual(queryOf({ pattern: 'x', paths: ['src/a.ts'] }).pathspecs, [':(literal)src/a.ts', EXCLUDE])
+  assert.deepEqual(queryOf({ pattern: 'x', paths: ['app/[id]/page.tsx'] }).pathspecs, [':(literal)app/[id]/page.tsx', EXCLUDE],
+    'brackets are literal characters, not a wildcard')
   assert.deepEqual(queryOf({ pattern: 'x', paths: ['my dir/a b.ts'] }).pathspecs, [':(literal)my dir/a b.ts', EXCLUDE])
+})
+
+test('a glob path enumerates from its literal base', () => {
+  const q = queryOf({ pattern: 'x', paths: ['app/[id]/*.tsx'] })
+  assert.equal(q.ok, true)
+  assert.ok(q.pathspecs.includes(':(literal)app/[id]'), JSON.stringify(q.pathspecs))
+  assert.ok(q.pathspecs.includes(EXCLUDE), 'the store stays excluded')
+  assert.ok(!q.pathspecs.some((s) => s.startsWith(':(glob)')), 'git is never asked to read a glob: ' + JSON.stringify(q.pathspecs))
+  assert.ok(!q.pathspecs.some((s) => /[*?]/.test(s)), 'no wildcard reaches git: ' + JSON.stringify(q.pathspecs))
+})
+
+test('a glob path is enumerated through its own literal base, whichever wildcard it holds', () => {
+  for (const [glob, base] of [['src/**/*.ts', 'src'], ['lib/*.mjs', 'lib'], ['src/a?c/x.ts', 'src'], ['a/b/**', 'a/b'], ['a/b/*/c.ts', 'a/b']]) {
+    const specs = queryOf({ pattern: 'x', paths: [glob] }).pathspecs
+    assert.ok(specs.includes(':(literal)' + base), glob + ' is enumerated from ' + base + ': ' + JSON.stringify(specs))
+    assert.ok(!specs.some((s) => s.startsWith(':(glob)') || /[*?]/.test(s)), glob + ': ' + JSON.stringify(specs))
+  }
+})
+
+test('a glob with no literal base is enumerated from the whole tree', () => {
+  for (const glob of ['**/*.ts', '**', '*.md']) {
+    const specs = queryOf({ pattern: 'x', paths: [glob] }).pathspecs
+    assert.ok(specs.some((s) => s === '.' || s === ':(literal).'), glob + ' reads the whole tree: ' + JSON.stringify(specs))
+    assert.ok(!specs.some((s) => s.startsWith(':(glob)') || /[*?]/.test(s)), glob + ': ' + JSON.stringify(specs))
+    assert.ok(specs.includes(EXCLUDE), glob)
+  }
 })
 
 test('pathspecs: every path is converted by its own form, and the exclusion comes last', () => {
   const paths = ['src', 'app/[id]/page.tsx', 'lib/*.mjs', 'src/**/*.ts', 'my dir/a b.ts']
   const specs = queryOf({ pattern: 'x', paths }).pathspecs
-  assert.equal(specs.length, paths.length + 1)
   assert.equal(specs.at(-1), EXCLUDE)
-  const want = paths.map((p) => (p.includes('**') ? ':(glob)' : ':(literal)') + p)
-  assert.deepEqual([...specs.slice(0, -1)].sort(), want.sort())
+  for (const want of [':(literal)src', ':(literal)app/[id]/page.tsx', ':(literal)lib', ':(literal)my dir/a b.ts']) {
+    assert.ok(specs.includes(want), want + ' in ' + JSON.stringify(specs))
+  }
+  assert.ok(!specs.some((s) => s.startsWith(':(glob)') || /[*?]/.test(s)), JSON.stringify(specs))
+})
+
+test('filters: one per glob part, null when no part is a glob', () => {
+  assert.equal(queryOf({ pattern: 'x' }).filters, null)
+  assert.equal(queryOf({ pattern: 'x', paths: ['src', 'app/[id]/page.tsx', 'my dir/a b.ts'] }).filters, null, 'brackets and spaces are not wildcards')
+  const globs = ['lib/*.mjs', 'app/[id]/*', 'src/**/index.ts']
+  const q = queryOf({ pattern: 'x', paths: ['src/a.ts', ...globs] })
+  assert.ok(Array.isArray(q.filters), 'a glob part yields a filter list')
+  assert.equal(q.filters.length, globs.length, 'only the glob parts have a filter, the literal one is read by its pathspec')
+  assert.ok(q.filters.every((f) => f instanceof RegExp))
+  const keys = ['lib/a.mjs', 'lib/d/a.mjs', 'app/[id]/page.tsx', 'app/i/page.tsx', 'src/index.ts', 'src/a/index.ts', 'src/a.ts', 'src/b/c.ts']
+  const behaviour = (res) => res.map((re) => keys.filter((k) => re.test(k)).join('|')).sort()
+  assert.deepEqual(behaviour(q.filters), behaviour(globs.map((g) => globOf(g).re)), 'each filter is the glob part\'s own matcher')
+  assert.ok(!q.filters.some((f) => f.test('src/a.ts')), 'a literal part adds no filter')
 })
 
 test('queryOf leaves the caller\'s paths as they were', () => {
@@ -228,4 +269,202 @@ test("the survey judge's brief reads a topic's search as its status and end", ()
   assert.ok(brief({ status: 'returned', end: 'done' }).includes('Its search: its search ended done.\n'), 'a done search is told as done')
   assert.ok(brief({ status: 'returned', end: 'stopped', why: 'WHY-x' }).includes('its search ended stopped (WHY-x)'), 'a short search names its end and why')
   assert.ok(brief({ status: 'failed', cause: 'CAUSE-x' }).includes('its search failed (CAUSE-x)'), 'a failed search names its cause')
+})
+
+// ------------------------------------------------------------------ identity: pathKey, fenced, globOf
+
+const matches = (glob, key) => globOf(glob).re.test(key)
+const GLOBS = ['src/*.ts', 'src/**', 'src/**/index.ts', '**/*.ts', '**', 'app/[id]/*', 'a?c', '*.md', 'a/*/b', 'lib/{a,b}/*.mjs', 'x/y/**/z/*.ts', 'src/a?c/x']
+const KEYS = ['src/a.ts', 'src/x/a.ts', 'src/index.ts', 'src/a/b/index.ts', 'a.ts', 'README.md', 'abc', 'a/c', 'a/q/b', 'a/b/b', 'app/[id]/page.tsx',
+  'app/i/page.tsx', 'lib/{a,b}/x.mjs', 'lib/a/x.mjs', 'x/y/z/q.ts', 'x/y/m/n/z/q.ts', 'x/y/z/q/r.ts', 'my dir/ü.ts', 'srcx/a.ts', 'src/a?c/x']
+
+test('pathKey turns backslashes into slashes', () => {
+  assert.equal(pathKey('a\\b\\c.ts'), 'a/b/c.ts')
+  assert.equal(pathKey('.\\src\\x.ts'), 'src/x.ts', 'a backslashed leading ./ is dropped too')
+  assert.equal(pathKey('a b\\ü.ts'), 'a b/ü.ts', 'spaces and non-ASCII are kept')
+})
+
+test('pathKey drops leading ./ segments', () => {
+  assert.equal(pathKey('./././src/x.ts'), 'src/x.ts')
+  assert.equal(pathKey('./src/x.ts'), 'src/x.ts')
+  assert.equal(pathKey('src/x.ts'), 'src/x.ts', 'a key is its own key')
+  assert.equal(pathKey('.hidden/x'), '.hidden/x', 'a dot-name is a name, not a ./ segment')
+  assert.equal(pathKey('./.agentics/x'), '.agentics/x')
+  assert.ok(pathKey('../x').includes('..'), 'a path that leaves the tree is not turned into one inside it')
+})
+
+test('pathKey drops trailing slashes', () => {
+  assert.equal(pathKey('src/dir///'), 'src/dir')
+  assert.equal(pathKey('src/'), 'src')
+  assert.equal(pathKey('src\\dir\\'), 'src/dir')
+})
+
+test('pathKey of nothing is the root', () => {
+  for (const p of ['', './', '.', '.\\', '././']) assert.equal(pathKey(p), '.', JSON.stringify(p))
+})
+
+test('pathKey is idempotent and always gives a non-empty slash-only key without a trailing slash', () => {
+  for (const p of ['a\\b\\c.ts', './././src/x.ts', 'src/dir///', '', './', '.', '.\\', 'a/b', '.hidden/x', '../x', 'a b/ü.ts', '.\\src\\', '././', 'src\\dir\\\\', '.agentics/x']) {
+    const k = pathKey(p)
+    assert.equal(pathKey(k), k, JSON.stringify(p) + ' is a key once keyed')
+    assert.ok(k.length > 0 && !k.includes('\\'), JSON.stringify(p) + ' -> ' + JSON.stringify(k))
+    assert.ok(k === '.' || !k.endsWith('/'), JSON.stringify(p) + ' -> ' + JSON.stringify(k))
+  }
+})
+
+test('fenced covers the store and worktrees', () => {
+  for (const k of ['.agentics', '.agentics/x/y.json', '.claude/worktrees', '.claude/worktrees/a/b.ts', '.agentics/runs/r/calls.jsonl']) {
+    assert.equal(fenced(k), true, k)
+  }
+})
+
+test('fenced is by whole segments', () => {
+  for (const k of ['.agenticsx/a', 'src/.agentics.md', '.claude/settings.json', 'docs/.claude/worktrees.md', '.agentics.md', '.agentics-old/x',
+    '.claude', '.claude/worktreesx/a', '.claude/worktrees-old/a', '.claude/other/worktrees/x', 'src/a.ts', '.', 'worktrees/a']) {
+    assert.equal(fenced(k), false, k)
+  }
+})
+
+test('brackets are literal', () => {
+  assert.equal(matches('app/[id]/*', 'app/[id]/page.tsx'), true)
+  assert.equal(matches('app/[id]/*', 'app/i/page.tsx'), false, '[id] is not a class that reads i')
+  assert.equal(matches('app/[id]/*', 'app/d/page.tsx'), false, '[id] is not a class that reads d')
+  assert.equal(matches('app/[id]/*', 'app/[id]/x/page.tsx'), false, 'and the * stays in its segment')
+  assert.equal(matches('[ab]', '[ab]'), true)
+  for (const k of ['a', 'b', 'ab']) assert.equal(matches('[ab]', k), false, 'a [ab] glob is not a class: ' + k)
+  assert.equal(matches('[!a]', 'b'), false, '[!a] is not a negated class')
+  assert.equal(matches('[!a]', '[!a]'), true)
+  assert.equal(matches('[a-c]', 'b'), false, '[a-c] is not a range')
+  assert.equal(matches('[a-c]', '[a-c]'), true)
+})
+
+test('star stays in its segment', () => {
+  assert.equal(matches('src/*.ts', 'src/a.ts'), true)
+  assert.equal(matches('src/*.ts', 'src/x/a.ts'), false)
+  assert.equal(matches('src/*.ts', 'src/a.tsx'), false, 'a glob matches whole keys')
+  assert.equal(matches('src/*.ts', 'lib/src/a.ts'), false, 'a glob matches whole keys, from the start')
+  assert.equal(matches('*.ts', 'a.ts'), true)
+  assert.equal(matches('*.ts', 'x/a.ts'), false)
+  assert.equal(matches('src/*/x.ts', 'src/a/x.ts'), true)
+  assert.equal(matches('src/*/x.ts', 'src/a/b/x.ts'), false)
+  assert.equal(matches('src/*/x.ts', 'src/x.ts'), false, 'a lone * is a segment, not zero directories')
+})
+
+test('double star crosses zero or more directories', () => {
+  for (const k of ['src/index.ts', 'src/a/index.ts', 'src/a/b/index.ts']) assert.equal(matches('src/**/index.ts', k), true, k)
+  for (const k of ['src/index.tsx', 'src/aindex.ts', 'src/a/xindex.ts', 'lib/src/index.ts', 'src/a/index.ts/b']) {
+    assert.equal(matches('src/**/index.ts', k), false, k)
+  }
+  for (const k of ['index.ts', 'a/index.ts', 'a/b/index.ts']) assert.equal(matches('**/index.ts', k), true, k)
+  for (const k of ['aindex.ts', 'index.tsx', 'a/xindex.ts']) assert.equal(matches('**/index.ts', k), false, k)
+  for (const k of ['src/a', 'src/a/b/c.ts']) assert.equal(matches('src/**', k), true, k)
+  for (const k of ['srcx/a', 'lib/src/a']) assert.equal(matches('src/**', k), false, k)
+  assert.equal(matches('x/y/**/z/*.ts', 'x/y/m/n/z/q.ts'), true)
+  assert.equal(matches('x/y/**/z/*.ts', 'x/y/z/q.ts'), true)
+  assert.equal(matches('x/y/**/z/*.ts', 'x/y/z/q/r.ts'), false)
+})
+
+test('a lone double star is total', () => {
+  const g = globOf('**')
+  for (const k of ['a', 'a/b/c', '.hidden/x', 'my dir/ü.ts', ...KEYS]) assert.equal(g.re.test(k), true, k)
+  assert.equal(g.total, true)
+  assert.equal(g.base, '.')
+})
+
+test('base and total', () => {
+  const table = [
+    ['src/**', 'src', true],
+    ['src/**/index.ts', 'src', false],
+    ['**', '.', true],
+    ['**/*.ts', '.', false],
+    ['src/*.ts', 'src', false],
+    ['src/*', 'src', false],
+    ['*.ts', '.', false],
+    ['a/b/c/**', 'a/b/c', true],
+    ['a/b/*/c.ts', 'a/b', false],
+    ['app/[id]/*', 'app/[id]', false],
+    ['{a,b}/*', '{a,b}', false],
+    ['src/a?c/x', 'src', false],
+  ]
+  for (const [glob, base, total] of table) {
+    const g = globOf(glob)
+    assert.deepEqual([g.base, g.total], [base, total], glob)
+  }
+})
+
+test('question mark is one non-slash character', () => {
+  assert.equal(matches('a?c', 'abc'), true)
+  assert.equal(matches('a?c', 'a-c'), true)
+  assert.equal(matches('a?c', 'aéc'), true)
+  assert.equal(matches('a?c', 'a/c'), false)
+  assert.equal(matches('a?c', 'abbc'), false)
+  assert.equal(matches('a?c', 'ac'), false, 'one character, not zero')
+  assert.equal(matches('src/?', 'src/a'), true)
+  assert.equal(matches('src/?', 'src/ab'), false)
+})
+
+test('braces are literal', () => {
+  assert.equal(matches('{a,b}.ts', '{a,b}.ts'), true)
+  for (const k of ['a.ts', 'b.ts', 'a,b.ts', '{a,b}x.ts', 'x{a,b}.ts']) assert.equal(matches('{a,b}.ts', k), false, k)
+})
+
+test('regex metacharacters are literal', () => {
+  const re = globOf('a.b+c(d)').re
+  assert.equal(re.test('a.b+c(d)'), true)
+  for (const k of ['axb+c(d)', 'a.bbc(d)', 'a.b+cd', 'a.b+c(d', 'a.bc(d)', 'a.b+c(d)x', 'xa.b+c(d)']) assert.equal(re.test(k), false, k)
+  for (const ch of ['.', '+', '^', '$', '(', ')', '|', '{', '}', '[', ']', '\\', '-', ',', '!', '#', '(?:', '\\d']) {
+    const glob = 'x' + ch + 'y'
+    for (const k of ['xy', 'xzy', 'x', 'y', 'x/y']) assert.equal(matches(glob, k), false, JSON.stringify(glob) + ' is not ' + JSON.stringify(k))
+    assert.equal(matches(glob, glob), true, JSON.stringify(glob) + ' is itself')
+  }
+})
+
+test('no glob text throws, and a glob without a wildcard matches exactly itself', () => {
+  for (const glob of ['[', ']', '[a', '(', ')', '{', '}', '\\', 'a\\', '+', '^', '$', '|', '(?:a)', 'a{', '.', '..', '-', 'a b', '*[', '[*', '**[', '[**]']) {
+    const g = globOf(glob)
+    assert.ok(g.re instanceof RegExp, glob)
+    assert.equal(typeof g.base, 'string', glob)
+    assert.equal(typeof g.total, 'boolean', glob)
+    if (!/[*?]/.test(glob)) {
+      assert.equal(g.re.test(glob), true, JSON.stringify(glob) + ' matches itself')
+      assert.equal(g.re.test(glob + 'x'), false, JSON.stringify(glob) + ' matches whole keys')
+    }
+  }
+})
+
+test('a glob answers the same each time it is asked', () => {
+  for (const glob of GLOBS) {
+    const { re } = globOf(glob)
+    for (const k of KEYS) assert.equal(re.test(k), re.test(k), glob + ' on ' + k)
+  }
+})
+
+test('every key a glob matches lies under its base, so enumerating from the base misses none', () => {
+  for (const glob of GLOBS) {
+    const { re, base } = globOf(glob)
+    assert.ok(!/[*?]/.test(base), glob + ': the base holds no wildcard, got ' + base)
+    if (base !== '.') assert.ok(glob.startsWith(base + '/'), glob + ' begins with its base ' + base)
+    for (const k of KEYS.filter((key) => re.test(key))) {
+      assert.ok(base === '.' || k === base || k.startsWith(base + '/'), glob + ' matches ' + k + ' outside its base ' + base)
+    }
+  }
+})
+
+test('a total glob is exactly its base and ** and matches every key under it', () => {
+  let seen = 0
+  for (const glob of GLOBS) {
+    const { re, base, total } = globOf(glob)
+    assert.equal(total, glob === (base === '.' ? '**' : base + '/**'), glob + ' is total only when it is <base>/**')
+    if (!total) continue
+    seen++
+    for (const k of KEYS.filter((key) => base === '.' || key.startsWith(base + '/'))) assert.equal(re.test(k), true, glob + ' on ' + k)
+  }
+  assert.ok(seen >= 2, 'the corpus holds a total glob at the root and one below it')
+})
+
+test('the dialect is stated', () => {
+  assert.equal(typeof GLOB_RULES, 'string')
+  assert.ok(GLOB_RULES.length > 0)
+  for (const token of ['*', '**', '?']) assert.ok(GLOB_RULES.includes(token), 'GLOB_RULES names ' + token)
+  assert.ok(/bracket/i.test(GLOB_RULES), 'GLOB_RULES says brackets are literal, the point a model reading git globs gets wrong')
 })

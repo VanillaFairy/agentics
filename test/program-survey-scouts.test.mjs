@@ -17,10 +17,10 @@ import { tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
 import { treeOf } from '../lib/search/pin.mjs'
 import { groundTable } from '../lib/search/resolve.mjs'
-import { EMPTY_GROUND, withGround, openTurn, repoReturn, hitTurn } from './harness/navigator.mjs'
+import { EMPTY_GROUND, withGround, openTurn, hitTurn } from './harness/navigator.mjs'
 import {
   Q, FILES, FILE, TOPIC, plan, historyTurn, behaviour, anchoredUnit, judgeOut, ARGS, CLAIM,
-  basicScript, COMMON, HQ, DQ, fullScript, rigFor, runSurvey, on, pool, roleOf, cov,
+  basicScript, COMMON, HQ, DQ, fullScript, rigFor, runSurvey, on, pool, roleOf, cov, scouted,
 } from './harness/survey-world.mjs'
 
 /** `n` consecutive locations of `path`, as a hit turn takes them. */
@@ -112,10 +112,10 @@ test('topic keys are slugged, and a repeated key is numbered', async (t) => {
   ]
   const { rig, result } = await runSurvey(t, {
     'analyst||plan': [{ output: plan({ topics }) }],
-    'scout||scout:loader-path': [hitTurn('loader-path', [[FILE.loader, 2]])],
-    'scout||scout:store-x': [hitTurn('store-x', [[FILE.store, 2]])],
-    'scout||scout:loader-path-2': [hitTurn('loader-path-2', [[FILE.cache, 2]])],
-    'scout||scout:loader-path-3': [hitTurn('loader-path-3', [[FILE.shared, 2]])],
+    ...scouted('loader-path', [hitTurn('loader-path', [[FILE.loader, 2]])]),
+    ...scouted('store-x', [hitTurn('store-x', [[FILE.store, 2]])]),
+    ...scouted('loader-path-2', [hitTurn('loader-path-2', [[FILE.cache, 2]])]),
+    ...scouted('loader-path-3', [hitTurn('loader-path-3', [[FILE.shared, 2]])]),
     ...emptyJudges(),
   })
   const expected = [
@@ -125,18 +125,18 @@ test('topic keys are slugged, and a repeated key is numbered', async (t) => {
     { key: 'loader-path-3', subtree: 'src/shared', forced: false },
   ]
   assert.deepEqual(result.topics.map(({ key, subtree, forced }) => ({ key, subtree, forced })), expected)
-  for (const { key } of expected) assert.equal(on(rig, 'scout:' + key).length, 1, key)
+  for (const { key } of expected) assert.equal(on(rig, 'scout:' + key).length, 2, key)
 })
 
 test('every planned topic is scouted, beyond max_topics', async (t) => {
   const { rig, result } = await runSurvey(t, {
     'analyst||plan': [{ output: plan({ topics: [TOPIC.loader, TOPIC.store, TOPIC.cache] }) }],
-    'scout||scout:loader': [hitTurn('loader', [[FILE.loader, 2]])],
-    'scout||scout:store': [hitTurn('store', [[FILE.store, 2]])],
-    'scout||scout:cache': [hitTurn('cache', [[FILE.cache, 2]])],
+    ...scouted('loader', [hitTurn('loader', [[FILE.loader, 2]])]),
+    ...scouted('store', [hitTurn('store', [[FILE.store, 2]])]),
+    ...scouted('cache', [hitTurn('cache', [[FILE.cache, 2]])]),
     ...emptyJudges(),
   }, { max_topics: 1 })
-  for (const key of ['loader', 'store', 'cache']) assert.equal(on(rig, 'scout:' + key).length, 1, key)
+  for (const key of ['loader', 'store', 'cache']) assert.equal(on(rig, 'scout:' + key).length, 2, key)
   assert.deepEqual(result.topics.map((x) => x.key), ['loader', 'store', 'cache'])
 })
 
@@ -157,7 +157,7 @@ test("a topic's search runs as the scout at the dial, its charge holding the que
     const { rig } = await runSurvey(t, fullScript(), { intelligence })
     for (const key of ['loader', 'store']) {
       const calls = on(rig, 'scout:' + key)
-      assert.equal(calls.length, 1, key)
+      assert.equal(calls.length, 2, key + ': its turn and the stall the ruler ends it on')
       assert.equal(calls[0].role.name, 'scout')
       assert.deepEqual(calls[0].schema, schemaOf('search_repo'))
       assert.deepEqual(calls[0].tier, tierFor(roleOf('scout'), { intelligence }), intelligence)
@@ -215,17 +215,17 @@ test("the survey's diff reaches the resolver", async (t) => {
 
 test('a topic search still open after a turn resumes its own session', async (t) => {
   const { rig } = await runSurvey(t, fullScript({
-    'scout||scout:loader': [openTurn('loader', [[FILE.loader, 7]], FILE.loader), hitTurn('loader', [[FILE.loader, 9]])],
+    ...scouted('loader', [openTurn('loader', [[FILE.loader, 7]], FILE.loader), hitTurn('loader', [[FILE.loader, 9]])]),
   }))
   const calls = on(rig, 'scout:loader')
-  assert.equal(calls.length, 2)
+  assert.equal(calls.length, 3, 'two turns and the stall the ruler ends it on')
   assert.equal(calls[1].resume, true)
   assert.equal(calls[1].thread.session, calls[0].thread.session)
 })
 
 test('a topic search whose state stops moving leaves its topic incomplete, its end unreached', async (t) => {
   const { result } = await runSurvey(t, basicScript({
-    'scout||scout:loader': [openTurn('loader', [[FILE.loader, 7]], FILE.loader), { output: repoReturn({}) }],
+    ...scouted('loader', [openTurn('loader', [[FILE.loader, 7]], FILE.loader)], 'not_converging'),
   }))
   assert.deepEqual(cov(result).incomplete, ['loader'])
   assert.ok(cov(result).unreached.some((l) => l.includes('loader')), JSON.stringify(cov(result)))
@@ -240,15 +240,15 @@ test('a topic search that never returns leaves its topic incomplete, names it, a
   assert.equal(on(rig, 'judge:1').length, 1)
 })
 
-test('declared holds each topic ask that ended done on a declaration', async (t) => {
+test('declared holds each topic ask that the ruler ruled done, in its ruled form', async (t) => {
   const { result } = await runSurvey(t, fullScript())
-  for (const key of ['loader', 'store']) assert.ok(cov(result).declared.some((l) => l.includes('scout:' + key)), key)
+  for (const key of ['loader', 'store']) assert.ok(cov(result).declared.some((l) => l.includes('scout:' + key) && l.includes(': ruled answered: ')), key + ': ' + JSON.stringify(cov(result).declared))
 })
 
 test("a tree handed in-process is searched, and the survey's items are anchored on it", async (t) => {
   const far = 90 // past the checkout's last line of the loader, inside the tree's
   const rig = rigFor(t, basicScript({
-    'scout||scout:loader': [hitTurn('loader', [[FILE.loader, far]])],
+    ...scouted('loader', [hitTurn('loader', [[FILE.loader, far]])]),
     'analyst||judge:1': [{ output: judgeOut({ items: [behaviour('loader', CLAIM, far)], units: [anchoredUnit('loader')] }) }],
   }))
   const wt = join(rig.repo, '.claude', 'worktrees', 'other')
@@ -269,7 +269,7 @@ test("a tree handed in-process is searched, and the survey's items are anchored 
 function weighedScript(counts) {
   const keys = Object.keys(counts)
   const script = { 'analyst||plan': [{ output: plan({ topics: keys.map((k) => TOPIC[k]) }) }], ...emptyJudges() }
-  for (const k of keys) script['scout||scout:' + k] = [hitTurn(k, hitsIn(FILE[k], counts[k]))]
+  for (const k of keys) Object.assign(script, scouted(k, [hitTurn(k, hitsIn(FILE[k], counts[k]))]))
   return script
 }
 const holds = (call, key) => call.brief.includes(TOPIC[key].find)

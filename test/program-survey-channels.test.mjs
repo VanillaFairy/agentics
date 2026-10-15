@@ -8,7 +8,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { schemaOf } from '../lib/schemas.mjs'
-import { fetchCall, webReturn } from './harness/navigator.mjs'
+import { endSearch, fetchCall, webReturn } from './harness/navigator.mjs'
 import {
   Q, TOPIC, plan, CLAIM, COMMON, HQ, DQ, DOCS_URL, fullScript, runSurvey, on, pool, cov,
 } from './harness/survey-world.mjs'
@@ -18,12 +18,12 @@ const chargeOf = (call) => readFileSync(call.role.systemPromptFile, 'utf8')
 test('a history question runs the historian with it, and a docs question the doc-researcher', async (t) => {
   const { rig } = await runSurvey(t, fullScript())
   const [history] = on(rig, 'history')
-  assert.equal(on(rig, 'history').length, 1)
+  assert.equal(on(rig, 'history').length, 2, 'its turn and the stall the ruler ends it on')
   assert.equal(history.role.name, 'historian')
   assert.deepEqual(history.schema, schemaOf('search_history'))
   for (const part of [HQ, Q]) assert.ok(chargeOf(history).includes(part), 'history charge holds ' + part)
   const [docs] = on(rig, 'docs')
-  assert.equal(on(rig, 'docs').length, 1)
+  assert.equal(on(rig, 'docs').length, 2, 'its turn and the stall the ruler ends it on')
   assert.equal(docs.role.name, 'doc-researcher')
   assert.deepEqual(docs.schema, schemaOf('search_web'))
   for (const part of [DQ, Q]) assert.ok(chargeOf(docs).includes(part), 'docs charge holds ' + part)
@@ -50,15 +50,16 @@ test('a channel that produced nothing fails alone', async (t) => {
 
 test('a channel whose state stops moving is incomplete', async (t) => {
   const stuck = { calls: [fetchCall('docs', DOCS_URL)], output: webReturn({ leads: [{ ask: 'docs', path: DOCS_URL, why: 'read the rest' }] }) }
-  const { result } = await runSurvey(t, fullScript({ 'doc-researcher||docs': [stuck, { output: webReturn({}) }] }))
+  const end = endSearch({ name: 'docs', turn: 1, asks: 'docs', ruling: 'not_converging' })
+  const { result } = await runSurvey(t, fullScript({ 'doc-researcher||docs': [stuck, { output: webReturn({}) }], [end.ruler.key]: end.ruler.steps }))
   assert.deepEqual(cov(result).incomplete, ['docs'])
-  assert.equal(result.docs.end, 'no_progress')
+  assert.equal(result.docs.end, 'not_converging')
   assert.deepEqual(cov(result).failed_channels, [])
 })
 
-test('declared holds each channel ask that ended done on a declaration', async (t) => {
+test('declared holds each channel ask that the ruler ruled done, in its ruled form', async (t) => {
   const { result } = await runSurvey(t, fullScript())
-  for (const name of ['history', 'docs']) assert.ok(cov(result).declared.some((l) => l.startsWith(name + ':')), name)
+  for (const name of ['history', 'docs']) assert.ok(cov(result).declared.some((l) => l.startsWith(name + ':') && l.includes(': ruled answered: ')), name + ': ' + JSON.stringify(cov(result).declared))
 })
 
 test("the result names each channel's end and its hit count, and the context holds its findings", async (t) => {

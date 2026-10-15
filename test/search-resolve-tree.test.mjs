@@ -8,7 +8,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-import { groundTable } from '../lib/search/resolve.mjs'
+import { groundTable, scopeFiles } from '../lib/search/resolve.mjs'
 import { isTestKey, keyOf, refs } from '../lib/search/tools.mjs'
 import { commit, git, gitRepo, write } from './harness/evidence-fixture.mjs'
 
@@ -119,7 +119,7 @@ test('definitions and references stay inside the scope', async () => {
   assert.equal(row(t, 'symbol', 'ITEM_STAND').refs.some((r) => r.key.startsWith('test/')), false)
 })
 
-test("an effort's diff adds a change row per file it names and a symbol row per identifier its lines add or remove", async () => {
+test('changed files stay rows', async () => {
   const dir = gitRepo(FILES)
   const base = git(dir, 'rev-parse', 'HEAD')
   write(dir, 'src/data/items.ts', FILES['src/data/items.ts'] + 'export const NEW_THING = 1\n')
@@ -127,9 +127,19 @@ test("an effort's diff adds a change row per file it names and a symbol row per 
   const head = commit(dir)
   const t = await groundTable({ root: dir.split('\\').join('/'), sha: head }, { material: [], diff: { base, head } })
   assert.deepEqual(rowsOf(t, 'change').map((r) => [r.key, r.exists, r.asks]).sort(), [['src/data/items.ts', true, []], ['tools/seat.py', false, []]])
-  assert.deepEqual(row(t, 'symbol', 'NEW_THING').defs, [{ key: 'src/data/items.ts', line: 3 }])
-  assert.deepEqual(row(t, 'symbol', 'NEW_THING').asks, [], 'an identifier the diff names is context: it opens no frontier')
-  assert.equal(row(t, 'symbol', 'seat_day').exists, false, 'the removed function is named, and gone')
+})
+
+test('diff identifiers are not rows', async () => {
+  const dir = gitRepo(FILES)
+  const base = git(dir, 'rev-parse', 'HEAD')
+  write(dir, 'src/data/items.ts', FILES['src/data/items.ts'] + 'export function fooBar() {}\n')
+  git(dir, 'rm', '-q', 'tools/seat.py')
+  const head = commit(dir)
+  const tree = { root: dir.split('\\').join('/'), sha: head }
+  const t = await groundTable(tree, { material: [], diff: { base, head } })
+  assert.deepEqual(rowsOf(t, 'symbol'), [], 'neither the added fooBar nor the removed seat_day is a row')
+  const named = await groundTable(tree, { material: [{ label: 'm', text: 'what `fooBar` does', asks: ['ask'] }], diff: { base, head } })
+  assert.deepEqual(row(named, 'symbol', 'fooBar').defs, [{ key: 'src/data/items.ts', line: 3 }], 'the material naming it makes it a row')
 })
 
 // ---- added by the test author: invariants the cases above leave to chance ----
@@ -419,7 +429,7 @@ test('a use is not a definition, and a reference is the whole word: showOffers, 
 
 // ---- a diff over a repository whose head differs from its base ----
 
-test("a diff names only what its added and removed lines hold: not its context, not a path's own words", async () => {
+test("a diff names its changed files and no identifier of its lines", async () => {
   const dir = gitRepo({
     'src/long_file_name.ts': 'const x = 1\nconst y = 3\nexport const KEEP_ME = 2\nexport const GONE_SYMBOL = 1\n',
     'src/other.ts': 'export const OTHER = 1\n',
@@ -432,11 +442,7 @@ test("a diff names only what its added and removed lines hold: not its context, 
   const t = await groundTable(tree, { material: [], diff: { base, head } })
   assertTable(t, tree)
   assert.deepEqual(rowsOf(t, 'change').map((r) => [r.key, r.exists, r.asks]).sort(), [['src/added.ts', true, []], ['src/long_file_name.ts', true, []]])
-  assert.deepEqual(row(t, 'symbol', 'ADDED_THING').defs, [{ key: 'src/added.ts', line: 1 }])
-  assert.deepEqual([row(t, 'symbol', 'GONE_SYMBOL').exists, row(t, 'symbol', 'GONE_SYMBOL').asks], [false, []])
-  const named = rowsOf(t, 'symbol').map((r) => r.mention)
-  for (const m of ['KEEP_ME', 'OTHER', 'long_file_name', 'file_name']) assert.equal(named.includes(m), false, m + ' is in no added or removed line')
-  assert.ok(t.rows.findIndex((r) => r.mention === 'GONE_SYMBOL') > t.rows.findIndex((r) => r.mention === 'ADDED_THING'), 'what is gone ranks after what is there')
+  assert.deepEqual(rowsOf(t, 'symbol'), [])
 })
 
 test('what material names and the diff names too is one row carrying the material\'s asks', async () => {
@@ -450,4 +456,66 @@ test('what material names and the diff names too is one row carrying the materia
   assert.deepEqual(rowsOf(t, 'symbol').filter((r) => r.mention === 'NEW_THING').map((r) => r.asks), [['ground:one']])
   assert.ok(t.rows.filter((r) => r.key === 'src/data/items.ts').some((r) => r.asks.includes('ground:one')), 'the file the material named carries its ask')
   assert.ok(t.rows.filter((r) => r.kind === 'change').every((r) => r.asks.every((a) => a === 'ground:one')), 'a change row holds only asks that named it')
+})
+
+// ---- a scope's files, and the definitions of a symbol under a bracket directory ----
+
+const SCOPED = {
+  'src/a.ts': 'export const a = 1\n',
+  'src/deep/b.ts': 'export const b = 1\n',
+  'other/c.ts': 'export const c = 1\n',
+  'app/[id]/page.tsx': 'export default function RoutePage() {}\n',
+  'app/i/page.tsx': 'export default function RoutePage() {}\n',
+  '.gitignore': 'node_modules/\n',
+}
+const treeOf = (dir) => ({ root: posix(dir), sha: git(dir, 'rev-parse', 'HEAD') })
+function scopedRepo() {
+  const dir = gitRepo(SCOPED)
+  write(dir, 'src/new.ts', 'export const n = 1\n')                      // untracked
+  write(dir, '.agentics/runs/r/calls.jsonl', '{}\n')                    // fenced
+  write(dir, 'node_modules/x/i.js', 'x\n')                              // ignored
+  return treeOf(dir)
+}
+
+test('scopeFiles lists the scope', async () => {
+  const tree = scopedRepo()
+  assert.deepEqual(await scopeFiles(tree, ['src']), ['src/a.ts', 'src/deep/b.ts', 'src/new.ts'])
+  assert.deepEqual(await scopeFiles(tree, ['src', 'other']), ['other/c.ts', 'src/a.ts', 'src/deep/b.ts', 'src/new.ts'])
+  assert.equal((await scopeFiles(tree, ['.'])).some((k) => k.startsWith('.agentics/')), false)
+})
+
+test('scopeFiles and node_modules', async () => {
+  const dir = gitRepo({ ...SCOPED, '.gitignore': '' })
+  write(dir, 'node_modules/x/i.js', 'x\n')
+  const tree = treeOf(dir)
+  assert.equal((await scopeFiles(tree, ['.'])).some((k) => k.includes('node_modules')), false)
+  assert.deepEqual(await scopeFiles(tree, ['node_modules/x']), ['node_modules/x/i.js'])
+})
+
+test('scopeFiles reads brackets literally', async () => {
+  const tree = scopedRepo()
+  assert.deepEqual(await scopeFiles(tree, ['app/[id]']), ['app/[id]/page.tsx'])
+  assert.deepEqual(await scopeFiles(tree, ['app']), ['app/[id]/page.tsx', 'app/i/page.tsx'])
+})
+
+test('scopeFiles keys submodule files under their path', async () => {
+  const sub = gitRepo({ 'lib/s.mjs': 'export const s = 1\n' })
+  const dir = gitRepo({ 'main.mjs': 'export const m = 1\n' })
+  git(dir, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', posix(sub), 'vendor/m')
+  git(dir, 'commit', '-qm', 'vendor')
+  const tree = treeOf(dir)
+  assert.deepEqual(await scopeFiles(tree, ['vendor/m']), ['vendor/m/lib/s.mjs'])
+  assert.ok((await scopeFiles(tree, ['.'])).includes('vendor/m/lib/s.mjs'))
+})
+
+test('scopeFiles throws on a refusal and gives nothing for a fenced part', async () => {
+  const tree = scopedRepo()
+  await assert.rejects(() => scopeFiles(tree, ['src x']), /not_canonical/)
+  assert.deepEqual(await scopeFiles(tree, ['.agentics']), [])
+})
+
+test('definitions under a bracket directory', async () => {
+  const tree = scopedRepo()
+  const t = await groundTable(tree, { material: [{ label: 'm', text: 'where is `RoutePage`?', asks: ['ask'] }], scope: ['app/[id]'] })
+  assert.deepEqual(row(t, 'symbol', 'RoutePage').defs, [{ key: 'app/[id]/page.tsx', line: 1 }], 'the sibling app/i is not a [id] match')
 })

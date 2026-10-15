@@ -57,6 +57,22 @@ test("searchExcerpts renders each ask's end and label, its hits with notes, its 
   assert.ok(text.indexOf('=== locate:ground:intro') < text.indexOf('=== locate:ground:api'))
 })
 
+test('the refusals standing against an ask are rendered under it, and those naming no ask once, unless asks or kind narrow', () => {
+  const refusals = [
+    { turn: 2, class: 'unobserved', item: { kind: 'hit', path: 'src/b.ts', line: 9, note: 'n' }, asks: ['ground:intro'] },
+    { turn: 3, class: 'unknown_ask', item: { kind: 'hit', path: 'src/z.ts', line: 1, note: 'n' }, asks: [] },
+  ]
+  const r = { ...result(tree({}), { 'ground:intro': done(), 'ground:api': done() }), refusals }
+  const { text } = searchExcerpts(r)
+  assert.ok(text.includes('REFUSED:\n  turn 2 hit src/b.ts:9 — unobserved: no call of this search showed it under its asks'), text)
+  assert.ok(text.indexOf('REFUSED:') > text.indexOf('=== locate:ground:intro') && text.indexOf('REFUSED:') < text.indexOf('=== locate:ground:api'), 'under its own ask')
+  assert.ok(text.includes('turn 3 hit src/z.ts:1 — unknown_ask: it names an ask this search does not have'), 'an item naming no ask')
+  const narrowed = searchExcerpts(r, { asks: ['ground:api'] }).text
+  assert.equal(narrowed.includes('src/b.ts'), false, 'a refusal against another ask')
+  assert.equal(narrowed.includes('src/z.ts'), false, 'narrowed to some asks')
+  assert.equal(searchExcerpts(result(tree({}), { 'ground:api': done() })).text.includes('REFUSED'), false, 'a search with no standing refusal says nothing')
+})
+
 test('an ask with no end reads as still open', () => {
   const r = result(tree({}), { guidance: { ...done(), end: null, label: '', why: '' } })
   assert.ok(searchExcerpts(r).text.includes('=== locate:guidance — still open'))

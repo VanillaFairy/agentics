@@ -20,6 +20,7 @@ const FAILURES = {
   schema_failed: (result) => ({ code: 1, lines: [result({ subtype: 'error_max_structured_output_retries', is_error: true })], stderr: '' }),
   session_missing: (result, session) => ({ code: 1, lines: [], stderr: 'No conversation found with session ID: ' + session }),
   host_error: () => ({ code: 1, lines: [], stderr: '' }),
+  context_exceeded: () => ({ code: 1, lines: [], stderr: 'Prompt is too long' }),
 }
 
 const valueAfter = (args, flag) => { const i = args.indexOf(flag); return i < 0 ? '' : args[i + 1] }
@@ -44,7 +45,11 @@ function play(step, session, key) {
   const line = (event) => JSON.stringify({ ...event, session_id: session })
   const result = (over) => line({ type: 'result', usage: step.usage ?? null, total_cost_usd: step.cost_total, permission_denials: step.denials || [], ...over })
   const init = line({ type: 'system', subtype: 'init' })
-  const turn = line({ type: 'assistant', message: { content: [{ type: 'text', text: 'Working on it.' }] } })
+  // `context` is what the model turn read; `compacted` plays the host's compact_boundary; `webSearches` its WebSearch tool_uses
+  const usage = typeof step.context === 'number' ? { usage: { input_tokens: step.context } } : {}
+  const turn = line({ type: 'assistant', message: { content: [{ type: 'text', text: 'Working on it.' }], ...usage } })
+  const searched = (step.webSearches || []).map((input) => line({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'WebSearch', input }] } }))
+  const compact = step.compacted ? [line({ type: 'system', subtype: 'compact_boundary' })] : []
   if (step.status === 'stopped') {
     if (!STOPS[step.cause]) throw new Error(key + ': no host stop is named ' + JSON.stringify(step.cause))
     return { code: 1, lines: [init], stderr: STOPS[step.cause](step.until || '') }
@@ -56,7 +61,7 @@ function play(step, session, key) {
   }
   if (!step.output || typeof step.output !== 'object') throw new Error(key + ': a step needs an output or a status')
   const output = step.more ? { ...step.output, more: true } : step.output
-  return { code: 0, lines: [init, turn, result({ subtype: 'success', is_error: false, structured_output: output })], stderr: '' }
+  return { code: 0, lines: [init, ...searched, ...compact, turn, result({ subtype: 'success', is_error: false, structured_output: output })], stderr: '' }
 }
 
 export function scriptedRunner(script, { log, now = () => '2026-01-01T00:00:00.000Z' }) {
@@ -68,12 +73,15 @@ export function scriptedRunner(script, { log, now = () => '2026-01-01T00:00:00.0
     remove(path) { rmSync(path, { force: true }) },
   }
   const proc = { alive: () => false, kill() {} }
-  const spawnFor = (key, call) => async (args, { onSpawn = () => {}, onLine = () => {} } = {}) => {
+  const starts = []
+  const spawnFor = (key, call) => async (args, { stdin = '', onSpawn = () => {}, onLine = () => {} } = {}) => {
     const steps = script[key] || []
     const i = next.get(key) || 0
     if (i >= steps.length) throw new Error('the script has no start ' + (i + 1) + ' for ' + key)
     next.set(key, i + 1)
-    const out = play(steps[i], valueAfter(args, '--resume') || valueAfter(args, '--session-id'), key)
+    const session = valueAfter(args, '--resume') || valueAfter(args, '--session-id')
+    starts.push({ key, round: call.round, session, resume: args.includes('--resume'), stdin })
+    const out = play(steps[i], session, key)
     onSpawn(++pid)
     if (steps[i].calls) appendCalls(callLogOf(call, key), steps[i].calls)
     for (const l of out.lines) onLine(l)
@@ -84,5 +92,5 @@ export function scriptedRunner(script, { log, now = () => '2026-01-01T00:00:00.0
     const key = call.role.name + '|' + call.node + '|' + call.thread.key
     return realRunAgent(call, { spawnCli: spawnFor(key, call), log, fsx, proc, watch: null, now, env: {} })
   }
-  return { runAgent, calls }
+  return { runAgent, calls, starts }
 }

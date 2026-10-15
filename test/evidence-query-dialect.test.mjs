@@ -1,6 +1,6 @@
 // test/evidence-query-dialect.test.mjs — the evidence pool's queries run in the shared dialect: a
 // shorthand class finds what it says, an unsupported token is refused at record and leaves a stored
-// item stale, and a scope path is the path it names.
+// item stale, and a scope path is the path it names or a glob in the one search dialect, read in-process.
 //
 // Design: docs/DESIGN.md#items-and-anchors.
 
@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 
 import { itemId, liveItems, recordItems, recordJudgement } from '../lib/evidence.mjs'
 import { appendProject } from '../lib/ledger.mjs'
-import { RETURN, gitRepo, itemOf, record, stateOf, text } from './harness/evidence-fixture.mjs'
+import { RETURN, gitRepo, itemOf, record, stateOf, text, write } from './harness/evidence-fixture.mjs'
 
 const CODE = ['const RETRY_LIMIT = 3', 'const name = "x"', 'wait(250)', 'done']
 const matching = (re, lines = CODE, path = 'src/a.js') => lines.filter((l) => re.test(l)).map((l) => ({ path, text: l }))
@@ -97,16 +97,66 @@ test('a scope path with brackets names that path, not a glob', () => {
     'a plain pathspec reads [id] as a character class and also matches app/i/page.tsx and app/d/page.tsx')
 })
 
-test('a lone * in a scope path is a character of the name, not a wildcard', () => {
-  const repo = gitRepo({ 'lib/a.mjs': text(['the needle']), 'lib/b.mjs': text(['no match here']) })
-  const out = recordItems(repo, RETURN, [itemOf({ kind: 'absence', claim: 'no needle in the literal lib/*.mjs', ground: ['lib'], queries: [{ pattern: 'needle', scope: ['lib/*.mjs'] }] })])
-  assert.equal(out.ok, true, 'no file is named lib/*.mjs, so nothing is found in it: ' + JSON.stringify(out))
+/** The paths a recorded enumeration of `needle` over `scope` found, sorted. */
+function foundIn(repo, scope, ground = ['.']) {
+  const id = record(repo, { kind: 'enumeration', claim: 'needles in ' + scope.join(' '), ground, queries: [{ pattern: 'needle', scope }] })
+  return [...new Set(liveItems(repo).get(id).queries[0].result.map((r) => r.path))].sort()
+}
+
+test('a lone * in a scope path matches within one segment', () => {
+  const repo = gitRepo({ 'lib/a.mjs': text(['the needle']), 'lib/b.mjs': text(['no match here']), 'lib/deep/c.mjs': text(['the needle']), 'lib/d.txt': text(['the needle']) })
+  assert.deepEqual(foundIn(repo, ['lib/*.mjs'], ['lib']), ['lib/a.mjs'], 'not lib/deep/c.mjs, which a * does not reach, and not lib/d.txt')
+})
+
+test('a ? in a scope path is one character of the name', () => {
+  const repo = gitRepo({ 'src/a.js': text(['needle']), 'src/ab.js': text(['needle']), 'src/x/c.js': text(['needle']) })
+  assert.deepEqual(foundIn(repo, ['src/?.js'], ['src']), ['src/a.js'])
 })
 
 test('a scope with ** reaches every depth under it', () => {
   const repo = gitRepo({ 'src/a.js': text(['needle']), 'src/deep/er/b.js': text(['needle']), 'lib/c.js': text(['needle']) })
   const id = record(repo, { kind: 'enumeration', claim: 'needles in src', queries: [{ pattern: 'needle', scope: ['src/**/*.js'] }] })
   assert.deepEqual(liveItems(repo).get(id).queries[0].result.map((r) => r.path).sort(), ['src/a.js', 'src/deep/er/b.js'])
+})
+
+test('a stored glob scope is filtered in-process', () => {
+  const repo = gitRepo({
+    'src/a/b.ts': text(['x needle']), 'src/a/b.js': text(['x needle']), 'src/top.ts': text(['x needle']), 'lib/c.ts': text(['x needle']),
+    'app/[id]/page.tsx': text(['needle']), 'app/[id]/page.ts': text(['needle']), 'app/[id]/deep/x.tsx': text(['needle']), 'app/i/page.tsx': text(['needle']),
+  })
+  assert.deepEqual(foundIn(repo, ['src/**/*.ts'], ['src']), ['src/a/b.ts', 'src/top.ts'], 'no src/a/b.js, no lib/c.ts')
+  assert.deepEqual(foundIn(repo, ['app/[id]/*.tsx'], ['app']), ['app/[id]/page.tsx'], '[id] is the literal name, * stays in its segment, .ts is not .tsx')
+})
+
+test('a stored literal scope is a directory', () => {
+  const repo = gitRepo({
+    'src/a.js': text(['needle']), 'src/deep/b.js': text(['needle']), 'src/deep/er/c.js': text(['needle']), 'srcx/d.js': text(['needle']),
+    'app/[id]/page.tsx': text(['needle']), 'app/i/page.tsx': text(['needle']),
+  })
+  assert.deepEqual(foundIn(repo, ['src'], ['src']), ['src/a.js', 'src/deep/b.js', 'src/deep/er/c.js'], 'every file under it, and not the srcx beside it')
+  assert.deepEqual(foundIn(repo, ['app/[id]'], ['app']), ['app/[id]/page.tsx'], 'a directory whose name holds brackets')
+})
+
+test('a literal part of a scope is read whole beside a glob part that is filtered', () => {
+  const repo = gitRepo({ 'src/a.js': text(['needle']), 'src/deep/b.js': text(['needle']), 'lib/a.mjs': text(['needle']), 'lib/deep/c.mjs': text(['needle']), 'lib/d.txt': text(['needle']) })
+  assert.deepEqual(foundIn(repo, ['src', 'lib/*.mjs']), ['lib/a.mjs', 'src/a.js', 'src/deep/b.js'])
+})
+
+test('a glob scope never reads .agentics', () => {
+  const repo = gitRepo({ 'src/a.md': text(['the needle']), '.agentics/note.md': text(['the needle']) })
+  assert.deepEqual(foundIn(repo, ['**/*.md']), ['src/a.md'])
+})
+
+test('a stored glob scope is re-run in the same dialect', () => {
+  const repo = gitRepo({ 'app/[id]/page.tsx': text(['the needle']), 'app/[id]/other.ts': text(['no match']) })
+  const id = record(repo, { kind: 'enumeration', claim: 'needles in the route', ground: ['app'], queries: [{ pattern: 'needle', scope: ['app/[id]/*.tsx'] }] })
+  assert.deepEqual(liveItems(repo).get(id).queries[0].result.map((r) => r.path), ['app/[id]/page.tsx'], 'the glob read at record')
+  assert.equal(stateOf(repo, id).state, 'standing')
+  write(repo, 'app/i/page.tsx', text(['the needle']))
+  write(repo, 'app/[id]/deep/x.tsx', text(['the needle']))
+  assert.equal(stateOf(repo, id).state, 'standing', 'a file outside the glob, beside it or a directory down, changes nothing the query reads')
+  write(repo, 'app/[id]/second.tsx', text(['the needle']))
+  assert.equal(stateOf(repo, id).state, 'suspect', 'a file the glob matches does')
 })
 
 test('a scope of a plain directory and one of a file are each that path', () => {

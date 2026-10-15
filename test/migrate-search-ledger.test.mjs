@@ -1243,3 +1243,46 @@ test('the CLI on a repository with no store prints an empty plan, with and witho
   }
   assert.equal(existsSync(join(dir, '.agentics')), false)
 })
+
+// ---- a group is no folder
+
+test('a group holds no folder: a round search that names one is left, not planned', (t) => {
+  const dir = store(t)
+  assert.equal(seedTree(dir, E, [{ id: 'f/g', kind: 'group', title: 'gather f/g' }, leaf('f/g/a')]).ok, true)
+  assert.equal(readTree(dir, E).nodes.get('f/g').kind, 'group')
+  execution(dir)
+  searched(dir, 'probe:f/g:1/locate')
+  const p = plan(dir)
+  assert.ok(!p.folders.some((f) => f.folder === 'f/g'), JSON.stringify(p.folders))
+  assert.deepEqual(byFolder(p, 'left'), { 'f/g': ['probe:f/g:1/locate'] })
+  assert.ok(p.left[0].why.length > 0)
+  assert.deepEqual(apply(p), { applied: 0, error: '' })
+  assert.deepEqual(events(dir).filter((e) => e.kind === 'replanned' && e.node === 'f/g'), [])
+})
+
+// ---- an unaffected ruling is no reason to exclude a folder
+
+const unaffected = (node) => ({ ...ruling(node), ruling: 'unaffected', why: 'the api moved nothing this node holds' })
+
+test('an unaffected ruling does not exclude its folder', (t) => {
+  const dir = store(t)
+  execution(dir)
+  retried(dir, 'q')
+  stateLine(dir, unaffected('q'))
+  searched(dir, 'survey:q/common')
+  const p = plan(dir)
+  assert.deepEqual(folderIds(p), ['q'])
+  assert.deepEqual(p.excluded, [])
+})
+
+test('an excluded folder lists no change for an unaffected ruling', (t) => {
+  const dir = store(t)
+  execution(dir)
+  event(dir, 'escalated', 'p', { reason: 'blocked', detail: 'p is blocked', said: '' })
+  const quiet = stateLine(dir, unaffected('p'))
+  searched(dir, 'probe:p:2/locate')
+  const [x] = plan(dir).excluded
+  assert.ok(x, 'p is excluded')
+  assert.ok(x.changes.some((c) => c.derivation === 'status' && c.node === 'p'), JSON.stringify(x.changes))
+  assert.ok(!x.changes.some((c) => c.derivation === 'ruling' && c.seq === quiet), JSON.stringify(x.changes))
+})

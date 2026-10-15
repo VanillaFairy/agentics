@@ -185,6 +185,21 @@ test('a want naming a unit its prober was not handed opens no ask', async (t) =>
   assert.equal(on(rig, 'prober:3').length, 1)
 })
 
+test("a probe's lost wants round is reported", async (t) => {
+  const lostRound = [
+    { output: proberOut(unitsOfAxis('yagni'), { wants: [{ unit: UNIT, want: WANT }] }) },
+    { status: 'failed', cause: 'host_error' },
+  ]
+  const { rig, result } = await probeIn(t, probeScript({ locate: [located, wanted()], probers: { 3: lostRound } }))
+  assert.equal(on(rig, 'locate').length, 3, 'the want was searched')
+  assert.equal(on(rig, 'prober:3').length, 2, 'the prober was dispatched for its want')
+  const lines = result.coverage.unreached.filter((l) => l.includes('did not return for its wants'))
+  assert.equal(lines.length, 1, JSON.stringify(result.coverage.unreached))
+  assert.match(lines[0], /3 did not return for its wants \(host_error\): its earlier items on .*yagni@design.* stand$/, 'the judgeLines line')
+  assert.ok(lines[0].startsWith('prober'), 'labelled as a prober: ' + lines[0])
+  assert.equal(result.coverage.complete, false)
+})
+
 // --- the survey --------------------------------------------------------------------------------
 
 const WANT_L = 'WANT-where a module path falls back'

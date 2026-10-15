@@ -26,8 +26,9 @@ import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
 import { treeOf } from '../lib/search/pin.mjs'
 import { evidenceReturnsDir, posix } from '../lib/store.mjs'
-import { EMPTY_GROUND, closingTurn, endSearch, grepCall, openTurn, quietTurn, repoReturn, withGround } from './harness/navigator.mjs'
+import { EMPTY_GROUND, closingTurn, endSearch, grepCall, hitTurn, openTurn, quietTurn, repoReturn, withGround } from './harness/navigator.mjs'
 import { programRig } from './harness/program-rig.mjs'
+import { endedRounds } from './harness/survey-world.mjs'
 import { scriptedRunner } from './fast/harness/scripted-runner.mjs'
 
 const STANDING = ['ambiguity', 'invariants', 'yagni', 'reinvention']
@@ -438,6 +439,52 @@ test('without a handed tree the citations are read from ctx.root, not from the c
   await probe(withGround({ ...rig.ctx, root: wt }), argsFor(rig.repo, ART))
   assert.ok(proberBrief(rig, 1).includes('ROOT_LINE_TOKEN'), "the citations were read from ctx.root's tree")
   assert.ok(!proberBrief(rig, 1).includes('CITED_LINE_TOKEN'), 'not from ctx.repo')
+})
+
+test('ground is what the probers were handed', async (t) => {
+  const UNIT_W = 'yagni@design'
+  const WANT_W = 'WANT-where the bucket is kept'
+  const files = { [ART]: DOC, ...GROUND_FILES, 'src/want.js': ['// want', 'export const WANT_LINE_TOKEN = 1', ''].join('\n') }
+  const script = {
+    ...endedRounds('scout', 'locate', [
+      { turns: [locateTurn(DOC, [GUIDE_HIT, GROUND_HIT])], asks: asksOf(DOC), ruling: 'answered' },
+      // the want's turn hits a file, and the ruler rules it not converging: coverage moves, ground does not
+      { turns: [hitTurn('want:1', [['src/want.js', 2, 'NOTE-the bucket']])], asks: 'want:1', ruling: 'not_converging' },
+    ]),
+    'analyst||axes': [{ output: axesOut([]) }],
+  }
+  STANDING.forEach((a, i) => {
+    const units = unitsOf([a], sectionsOf(DOC))
+    script['analyst||prober:' + (i + 1)] = a === 'yagni'
+      ? [{ output: { ...proberOut(units), wants: [{ unit: UNIT_W, want: WANT_W }] } }, { output: proberOut([UNIT_W]) }]
+      : [{ output: proberOut(units) }]
+  })
+  const { rig, result } = await probeIn(t, { files, script, over: { per_axis: true } })
+  assert.equal(callsOf(rig, 'prober:3').length, 2, 'the want was answered to its prober')
+  assert.equal(callsOf(rig, 'axes').length, 1)
+  const axesBrief = callsOf(rig, 'axes')[0].brief
+  assert.ok(axesBrief.includes('GUIDANCE_LINE_TOKEN'), 'the axes brief holds the guidance the first view located')
+  assert.ok(!axesBrief.includes('WANT_LINE_TOKEN'), 'and nothing a want found later')
+  for (const n of [1, 2, 3, 4]) {
+    const first = callsOf(rig, 'prober:' + n)[0].brief
+    assert.ok(first.includes('GROUND_LINE_TOKEN'), 'prober:' + n + ' was handed the located ground')
+    assert.ok(!first.includes('WANT_LINE_TOKEN'))
+  }
+  assert.deepEqual(result.repo_ground, { located: 1, unresolved: 0 }, 'the recorded ground is the view handed out: ' + JSON.stringify(result.repo_ground))
+  assert.ok(result.coverage.declared.some((l) => l.startsWith('want 1: ended not_converging')), 'coverage reads the final view: ' + JSON.stringify(result.coverage.declared))
+})
+
+test('guidance is read from the pinned tree', async (t) => {
+  const files = { [ART]: DOC, 'CLAUDE.md': 'ROOT_GUIDE_TOKEN the checkout\'s rules\n' }
+  const rig = rigFor(t, { files, script: scriptFor(DOC, STANDING).script })
+  const wt = join(rig.repo, '.claude', 'worktrees', 'pinned')
+  git(rig.repo, 'worktree', 'add', '--detach', wt, 'HEAD')
+  writeFileSync(join(wt, 'CLAUDE.md'), 'TREE_GUIDE_TOKEN the pinned tree\'s rules\n')
+  git(wt, 'commit', '-qam', 'the tree moves on')
+  await probe(withGround(rig.ctx), { ...argsFor(rig.repo, ART), tree: treeOf(wt) })
+  const brief = proberBrief(rig, 1)
+  assert.ok(brief.includes('TREE_GUIDE_TOKEN'), "the guidance is the pinned tree's")
+  assert.ok(!brief.includes('ROOT_GUIDE_TOKEN'), 'not the guidance at ctx.root')
 })
 
 // --- axes --------------------------------------------------------------------------------------

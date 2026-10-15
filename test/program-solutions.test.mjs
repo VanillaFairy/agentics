@@ -19,7 +19,7 @@ import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
 import { treeOf } from '../lib/search/pin.mjs'
 import { dispatchKey, evidenceReturnsDir, posix } from '../lib/store.mjs'
-import { closingTurn, fetchCall, hitTurn, openTurn, webReturn } from './harness/navigator.mjs'
+import { closingTurn, endSearch, fetchCall, hitTurn, openTurn, webReturn } from './harness/navigator.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 // --- the world -------------------------------------------------------------------------------
@@ -69,7 +69,7 @@ const ok = (x) => (x.found || x.scan ? x : { output: x })
 const FAILED = { status: 'failed', cause: 'host_error' }
 
 const researchTurn = (angle, { candidates, open }) => ({
-  calls: candidates.map((c) => fetchCall(angle, c.source_url)),
+  calls: candidates.length ? candidates.map((c) => fetchCall(angle, c.source_url)) : [fetchCall(angle, 'https://example.org/search/' + angle)],
   output: webReturn(open
     ? { hits: candidates.map((c) => [angle, c.source_url, c.name + ' reads TOML', c]), leads: [{ ask: angle, path: 'https://example.org/more', why: 'not read yet' }] }
     : {
@@ -84,11 +84,23 @@ const scanTurn = ({ hits, open }) => {
   return at.length ? hitTurn('repo', at) : closingTurn(['repo'])
 }
 const turnOf = (ask, step) => (step.found ? researchTurn(ask, step.found) : step.scan ? scanTurn(step.scan) : step)
+/**
+ * The script of search thread `name` with ask `ask` over `steps`: when its last turn declares, the
+ * stall and the ruler's ruling that end it (answered on a hit, else absent).
+ */
+function searchScript(role, name, ask, steps) {
+  const turns = steps.map((st) => turnOf(ask, st))
+  const last = turns.at(-1)?.output
+  if (!last?.asks?.length) return { [role + '||' + name]: turns }
+  const ruling = last.hits.length ? 'answered' : 'absent'
+  const end = endSearch({ name, turn: turns.length, asks: [ask], ruling })
+  return { [role + '||' + name]: [...turns, ...end.navigator], [end.ruler.key]: end.ruler.steps }
+}
 
 /** A script keyed `<role>||<thread>`: the frame, a researcher per slug, the scan and the assessor. */
 function scriptOf({ frame = [ok(frameOut())], research = { npm: [found([cand('alpha')])] }, repo = [scanned([hit('src/config.mjs', 2)])], assess } = {}) {
-  const s = { 'analyst||frame': frame, 'scout||repo': repo.map((st) => turnOf('repo', st)) }
-  for (const [slug, steps] of Object.entries(research)) s['doc-researcher||research:' + slug] = steps.map((st) => turnOf(slug, st))
+  const s = { 'analyst||frame': frame, ...searchScript('scout', 'repo', 'repo', repo) }
+  for (const [slug, steps] of Object.entries(research)) Object.assign(s, searchScript('doc-researcher', 'research:' + slug, slug, steps))
   if (assess !== undefined) s['analyst||assess'] = assess
   return s
 }
@@ -227,7 +239,7 @@ test('one researcher per angle, with the candidates schema', async (t) => {
   const { rig } = await sweep(t, scriptOf({ frame: [ok(frame)], research, repo: [ok(scanned([]))] }))
   for (const slug of ['npm', 'github']) {
     const on = callsOn(rig, 'research:' + slug)
-    assert.equal(on.length, 1, slug)
+    assert.equal(on.length, 2, slug + ': the closing turn and the idle turn after it')
     assert.equal(on[0].role.name, 'doc-researcher')
     assert.deepEqual(on[0].schema, schemaOf('search_web'))
   }
@@ -253,7 +265,7 @@ test("a researcher's open search resumes, and every turn's candidates are record
   const research = { npm: [found([cand('alpha')], { open: true }), found([cand('beta')])] }
   const assess = [ok(assessed([row(cand('alpha')), row(cand('beta'))]))]
   const { rig } = await sweep(t, scriptOf({ research, assess }))
-  assert.equal(callsOn(rig, 'research:npm').length, 2)
+  assert.equal(callsOn(rig, 'research:npm').length, 3, 'the open turn, the closing turn and the idle turn after it')
   const brief = firstBrief(rig, 'assess')
   assert.ok(brief.includes('alpha') && brief.includes('beta'))
   const names = externals(rig.repo).map((i) => i.detail.name).sort()
@@ -262,9 +274,12 @@ test("a researcher's open search resumes, and every turn's candidates are record
 
 test('a researcher that stopped short leaves its angle incomplete', async (t) => {
   const research = { npm: [found([], { open: true }), ok({ hits: [], dismissed: [], leads: [], asks: [] })] }
-  const { rig, result } = await sweep(t, scriptOf({ research }))
-  // A turn that adds only a lead moves nothing, so the ask ends no_progress after the first call.
-  assert.equal(callsOn(rig, 'research:npm').length, 1)
+  const script = scriptOf({ research })
+  // The second turn moves nothing: the search stalls, and the ruler rules the ask not converging.
+  const end = endSearch({ name: 'research:npm', turn: 1, asks: ['npm'], ruling: 'not_converging' })
+  script[end.ruler.key] = end.ruler.steps
+  const { rig, result } = await sweep(t, script)
+  assert.equal(callsOn(rig, 'research:npm').length, 2)
   assert.ok(result.coverage.incomplete.includes('find:npm'))
   assert.ok(result.coverage.unreached.some((l) => l.includes('npm')))
   assert.equal(result.coverage.complete, false)
@@ -301,7 +316,7 @@ test('the repository scan is one scout call on thread repo, its brief holding th
   const roots = ['packages/parser', 'tools/cfg']
   const { rig } = await sweep(t, scriptOf({ assess: DEFAULT_ASSESS }), { args: { roots } })
   const on = callsOn(rig, 'repo')
-  assert.equal(on.length, 1)
+  assert.equal(on.length, 2, 'the closing turn and the idle turn after it')
   assert.equal(on[0].role.name, 'scout')
   assert.deepEqual(on[0].schema, schemaOf('search_repo'))
   const f = frameOut()
@@ -311,7 +326,7 @@ test('the repository scan is one scout call on thread repo, its brief holding th
 
 test('the repository scan runs whatever the researchers return', async (t) => {
   const { rig, result } = await sweep(t, scriptOf({ research: { npm: [FAILED, FAILED] } }))
-  assert.equal(callsOn(rig, 'repo').length, 1)
+  assert.equal(callsOn(rig, 'repo').length, 2, 'the closing turn and the idle turn after it')
   assert.equal(result.counts.present, 1)
 })
 
@@ -331,7 +346,11 @@ test('a repository scan that failed is a failed channel, and the candidates are 
 
 test('a repository scan that stopped short leaves repo incomplete', async (t) => {
   const repo = [scanned([hit('src/config.mjs', 2)], { open: true }), ok({ hits: [], dismissed: [], leads: [], asks: [] })]
-  const { rig, result } = await sweep(t, scriptOf({ repo, assess: DEFAULT_ASSESS }))
+  const script = scriptOf({ repo, assess: DEFAULT_ASSESS })
+  // The second turn moves nothing: the search stalls, and the ruler rules the ask not converging.
+  const end = endSearch({ name: 'repo', turn: 1, asks: ['repo'], ruling: 'not_converging' })
+  script[end.ruler.key] = end.ruler.steps
+  const { rig, result } = await sweep(t, script)
   assert.equal(callsOn(rig, 'repo').length, 2)
   assert.ok(result.coverage.incomplete.includes('repo'))
   assert.ok(!result.coverage.failed_channels.includes('repo'))

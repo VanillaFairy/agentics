@@ -26,6 +26,7 @@ import { readTree } from '../lib/tree.mjs'
 import { apply, plan } from '../tools/migrate-search-ledger.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 import { DEAD_PID } from './harness/dead-pid.mjs'
+import { endSearch } from './harness/navigator.mjs'
 import { scriptedRunner } from './fast/harness/scripted-runner.mjs'
 
 const TOOL = join(dirname(fileURLToPath(import.meta.url)), '..', 'tools', 'migrate-search-ledger.mjs')
@@ -214,7 +215,7 @@ test('a searcher thread under any other name is no round search', (t) => {
 /**
  * A stopped probe run whose `locate` search the search loop itself ran, on disk: the real `search`
  * through the real runner over a scripted CLI, its log the run's own. One turn greps the line and
- * settles the ask on it. `prefix` scopes the search as a nested program's is. Its thread.
+ * declares the ask answered; an idle turn stalls the search and the ruler rules it answered. `prefix` scopes the search as a nested program's is. Its thread.
  */
 async function loopRun(dir, run, prefix = '') {
   mkdirSync(runDir(dir, run), { recursive: true })
@@ -233,14 +234,15 @@ async function loopRun(dir, run, prefix = '') {
       asks: [{ ask: 'A', declared: 'answered' }],
     },
   }
-  const runner = scriptedRunner({ ['scout||' + thread]: [turn] }, { log, now: () => OLD })
+  const end = endSearch({ name: thread, turn: 1, asks: ['A'], ruling: 'answered' })
+  const runner = scriptedRunner({ ['scout||' + thread]: [turn, ...end.navigator], [end.ruler.key]: end.ruler.steps }, { log, now: () => OLD })
   const base = {
     ...programContext({ repo: dir, root: dir, run, log, runAgent: runner.runAgent, now: () => OLD, sleep: () => Promise.resolve(), dir: runDir(dir, run) }),
     groundOf: async () => ({ rows: [], seeds: [] }),
   }
   const result = await search(prefix ? scoped(base, prefix) : base, {
     name: 'locate', role: 'scout', schema: 'search_repo', tree: { root: posix(dir), sha: 'a'.repeat(40) },
-    asks: [{ key: 'A', find: 'where parseWidget is defined', scope: ['.'], domain: 'repo' }],
+    asks: [{ key: 'A', find: 'where parseWidget is defined', scope: ['.'], domain: 'repo', seeds: [{ key: at.key, as: 'open', reason: 'the artefact names it' }] }],
     material: [{ label: 'The artefact', text: 'It names `parseWidget`.' }], intelligence: 'normal',
   })
   assert.equal(result.status, 'returned', JSON.stringify(result.cause))

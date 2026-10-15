@@ -23,7 +23,7 @@ import { schemaOf } from '../lib/schemas.mjs'
 import { runLogPath } from '../lib/store.mjs'
 import {
   Q, GUIDE, FILES, FILE, TOPIC, plan, behaviour, anchoredUnit, judgeOut, ARGS, CLAIM,
-  basicScript, COMMON, fullScript, rigFor, runSurvey, on, pool, roleOf, cov,
+  basicScript, COMMON, fullScript, rigFor, runSurvey, on, pool, roleOf, cov, scouted, rescouted,
 } from './harness/survey-world.mjs'
 import { hitTurn, openTurn, repoReturn } from './harness/navigator.mjs'
 
@@ -50,7 +50,7 @@ test("a judge's brief holds its topics' search excerpts and the shared ground in
   loaderTurn.output.dismissed.push({ ask: ['loader'], path: FILE.cache, why: 'DISMISSED-the cache is not the loader' })
   const { rig } = await runSurvey(t, fullScript({
     'analyst||plan': [{ output: plan({ topics: [TOPIC.loader], common_ground: COMMON }) }],
-    'scout||scout:loader': [loaderTurn],
+    ...scouted('loader', [loaderTurn]),
     'analyst||judge:1': [{ output: judgeOut({ items: [behaviour('loader', CLAIM)], units: [anchoredUnit('loader')] }) }],
   }))
   const brief = on(rig, 'judge:1')[0].brief
@@ -62,11 +62,11 @@ test("a judge's brief holds its topics' search excerpts and the shared ground in
 test("a judge's brief says how each topic's search ended", async (t) => {
   const FAIL = { status: 'failed', cause: 'host_error' }
   const { rig } = await runSurvey(t, fullScript({
-    'scout||scout:loader': [openTurn('loader', [[FILE.loader, 7]], FILE.loader), { output: repoReturn({}) }],
+    ...scouted('loader', [openTurn('loader', [[FILE.loader, 7]], FILE.loader)], 'not_converging'),
     'scout||scout:store': [FAIL, FAIL],
   }))
   const brief = on(rig, 'judge:1')[0].brief
-  assert.match(brief, /loader \([^\n]*\n  Its search: its search ended no_progress \(/)
+  assert.match(brief, /loader \([^\n]*\n  Its search: its search ended not_converging \(/)
   assert.match(brief, /store \([^\n]*\n  Its search: its search failed \(host_error\)/)
 })
 
@@ -81,7 +81,7 @@ test("a judge's brief names each kind's anchor and the units it rules", async (t
 
 /** Every port and every kind of later round: a continued topic search and a refusals round. */
 const everyRoundScript = () => fullScript({
-  'scout||scout:loader': [openTurn('loader', [[FILE.loader, 7]], FILE.loader), hitTurn('loader', [[FILE.loader, 9]])],
+  ...scouted('loader', [openTurn('loader', [[FILE.loader, 7]], FILE.loader), hitTurn('loader', [[FILE.loader, 9]])]),
   'analyst||judge:1': [
     { output: judgeOut({ items: [unanchored('loader', CLAIM)], units: [anchoredUnit('loader'), anchoredUnit('store')] }) },
     { output: judgeOut({ items: [behaviour('loader', CLAIM)], units: [anchoredUnit('loader'), anchoredUnit('store')] }) },
@@ -364,8 +364,8 @@ test("the context file holds a reopened topic's latest risks, not its first retu
   const second = { output: { items: [behaviour('loader', CLAIM, 30)], risks: [{ topic: 'loader', text: 'RISK-NEW-loader' }], units: [anchoredUnit('loader')], wants: [] } }
   const { result } = await runSurvey(t, {
     'analyst||plan': [{ output: plan({ topics: [TOPIC.loader, TOPIC.store] }) }],
-    'scout||scout:loader': [hitTurn('loader', [[FILE.loader, 7]]), hitTurn('want:1', [[FILE.loader, 30, 'NOTE-the fallback']])],
-    'scout||scout:store': [hitTurn('store', [[FILE.store, 9]])],
+    ...rescouted('loader', [hitTurn('loader', [[FILE.loader, 7]])], [hitTurn('want:1', [[FILE.loader, 30, 'NOTE-the fallback']])]),
+    ...scouted('store', [hitTurn('store', [[FILE.store, 9]])]),
     'analyst||judge:1': [first, second],
   })
   const text = readFileSync(result.context, 'utf8')

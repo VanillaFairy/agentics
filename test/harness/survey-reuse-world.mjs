@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { itemsFor, recordItems } from '../../lib/evidence.mjs'
 import { readProjectLog } from '../../lib/ledger.mjs'
 import { hitTurn } from './navigator.mjs'
+import { scouted } from './survey-world.mjs'
 
 // --- the world --------------------------------------------------------------------------------
 
@@ -53,7 +54,7 @@ export const rulings = (list) => [{ output: { rulings: list } }]
  */
 export function script({ planned = [LOADER], searched = planned.map((t) => t.key), extra = {} } = {}) {
   const s = { 'analyst||plan': [{ output: plan(planned) }], ...extra }
-  searched.forEach((key, i) => { s['scout||scout:' + key] = [hitTurn(key, [[A, 3 + i]])] })
+  searched.forEach((key, i) => { Object.assign(s, scouted(key, [hitTurn(key, [[A, 3 + i]])])) })
   if (searched.length > 0) {
     s['analyst||judge:1'] = [{
       output: { items: searched.map((key, i) => newItem(key, 3 + i)), risks: [], units: searched.map(anchoredUnit) },

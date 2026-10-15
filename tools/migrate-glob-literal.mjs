@@ -175,12 +175,23 @@ function membersOf(cls) {
   return [...chars].some((c) => UNSPELLABLE.test(c)) ? null : [...chars]
 }
 
+/**
+ * Pure. How a non-class token reads in the new dialect: `?` and `*` stay wildcards, an escaped character
+ * is that character alone (the new dialect has no escapes, and reads a backslash as `/`), except an
+ * escaped `[`, kept as written; null when the character it stands for cannot be spelled as a literal.
+ */
+function spelled(t) {
+  if (t.lit === undefined || t.raw === t.lit) return [t.raw]
+  if (t.lit === '[') return [t.raw]
+  return UNSPELLABLE.test(t.lit) || t.lit === '\\' ? null : [t.lit]
+}
+
 /** Pure. The strings a segment without a negated or POSIX class stands for; null when it needs a character the new dialect cannot spell. */
 function spellings(seg) {
   if (seg.globstar) return ['**']
   let out = ['']
   for (const t of seg.tokens) {
-    const options = t.cls ? membersOf(t.cls) : [t.raw]
+    const options = t.cls ? membersOf(t.cls) : spelled(t)
     if (!options) return null
     out = out.flatMap((head) => options.map((o) => head + o))
   }
@@ -193,7 +204,7 @@ const combos = (options) => options.reduce((heads, opts) => heads.flatMap((h) =>
 /** Pure. Whether a part holds a class the old reading would expand: a rerun would rewrite it again. */
 const holdsClass = (part) => part.split('/').some((s) => segmentOf(s)?.classed)
 
-const CANNOT_SPELL = 'a class holds * or ?, which the new dialect cannot spell as a literal'
+const CANNOT_SPELL = 'the part holds * or ? (in a class or escaped) or an escaped backslash, which the new dialect cannot spell as a literal'
 
 /**
  * One old-dialect part as `{same}` (nothing to rewrite), `{parts}` (the literal parts of the same

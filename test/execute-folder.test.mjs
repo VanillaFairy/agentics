@@ -30,7 +30,7 @@ import { schemaOf } from '../lib/schemas.mjs'
 import { checkFolder, hashSpec } from '../lib/spec.mjs'
 import { dispatchKey, mainCheckout, posix, readConfig, readJson, sessionOf, specPath } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
-import { closingTurn, hitTurn } from './harness/navigator.mjs'
+import { closedSearch, endSearch, hitTurn } from './harness/navigator.mjs'
 import { executionRig } from './harness/program-rig.mjs'
 
 const E = 'e1'
@@ -124,7 +124,7 @@ const proberOut = (units, findings = []) => ({
 })
 /** Probe round `n` over `text`: a locate turn that ends every ask, and one prober holding the standing axes. */
 const probing = (n, text, findings = [], { units } = {}) => ({
-  ['scout||probe:p:' + n + '/locate']: [closingTurn(['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)])],
+  ...closedSearch({ name: 'probe:p:' + n + '/locate', asks: ['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)] }),
   ['analyst||probe:p:' + n + '/prober:1']: [{ output: proberOut(units || unitsFor(text), findings) }],
 })
 const lineOf = (text, needle) => text.split('\n').findIndex((l) => l.includes(needle)) + 1
@@ -138,14 +138,18 @@ const GAP = found(S1, { section: 'design', needle: DESIGN_A, claim: 'x hides sta
 const GAP_INTENT = found(S1, { section: 'intent', needle: INTENT_NEEDLE, claim: 'who the root is stays open' })
 const AMBIGUITY = found(S1, { axis: 'ambiguity', severity: 'ambiguity', section: 'intent', needle: INTENT_NEEDLE, claim: 'plans it could mean two things' })
 
-const surveying = (prefix) => ({
+const surveying = (prefix) => {
+  const end = endSearch({ name: prefix + 'scout:adder', turn: 1, asks: ['adder'], ruling: 'answered' })
+  return {
   ['analyst||' + prefix + 'plan']: [{ output: { topics: [{ key: 'adder', find: 'FIND-adder', subtree: 'src' }], common_ground: '', history_question: '', docs_question: '' } }],
-  ['scout||' + prefix + 'scout:adder']: [hitTurn('adder', [['src/add.mjs', 1]])],
+  ['scout||' + prefix + 'scout:adder']: [hitTurn('adder', [['src/add.mjs', 1]]), ...end.navigator],
+  [end.ruler.key]: end.ruler.steps,
   ['analyst||' + prefix + 'judge:1']: [{ output: {
     items: [{ topic: 'adder', kind: 'behaviour', claim: 'SURVEYED-a9 add sums its two arguments', spans: [{ path: 'src/add.mjs', start: 1, end: 1 }], queries: [], sources: [], rests_on: [] }],
     risks: [], units: [{ unit: 'adder', ruling: 'anchored', ids: [], why: 'anchored' }],
   } }],
-})
+  }
+}
 
 /** The common script: the planner writes at round 1 and the first probe round is clean. */
 const clean = (text = S1) => ({ ...planner(written), ...probing(1, text) })

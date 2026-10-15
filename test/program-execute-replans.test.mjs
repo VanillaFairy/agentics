@@ -26,7 +26,7 @@ import { STANDING_AXES } from '../lib/briefs/probe.mjs'
 import { sectionsOf, unitsOf } from '../lib/evidence.mjs'
 import { heldBy } from '../lib/locks.mjs'
 import { specPath } from '../lib/store.mjs'
-import { closingTurn } from './harness/navigator.mjs'
+import { closedSearch } from './harness/navigator.mjs'
 import {
   T, E, leafEntry, subEffort, specText, done, said, failed, ruling, rulings, claim, staleRuler, rootReview,
   IMPL, world, entriesOf, kinds, statusOf, callsOf, dispatchedOf, seqOfFirst, moveBase, assertComplete,
@@ -61,7 +61,7 @@ const cleanProber = (units) => ({
 })
 /** Probe round `n` over `text` for folder `p`: a locate turn that ends every ask, and one prober that rules every unit clean. */
 const probing = (n, text) => ({
-  ['scout||probe:p:' + n + '/locate']: [closingTurn(['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)])],
+  ...closedSearch({ name: 'probe:p:' + n + '/locate', asks: ['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)] }),
   ['analyst||probe:p:' + n + '/prober:1']: [{ output: cleanProber(unitsOf(STANDING, sectionsOf(text))) }],
 })
 const PLANNER = 'planner|p|planner:p'

@@ -19,7 +19,7 @@ import { loadRole, tierFor } from '../lib/roles.mjs'
 import { launch } from '../lib/run.mjs'
 import { ARGS as SURVEY_ARGS } from '../lib/programs/survey.mjs'
 import { posix, readJson, resultPath, revParse, runJsonPath, specPath } from '../lib/store.mjs'
-import { closingTurn } from './harness/navigator.mjs'
+import { closedSearch } from './harness/navigator.mjs'
 import { programRig } from './harness/program-rig.mjs'
 import { scriptedRunner } from './fast/harness/scripted-runner.mjs'
 
@@ -36,7 +36,7 @@ const FILES = {
   'prior.md': 'what the earlier pass found\r\n',
 }
 const PROBE_SCRIPT = {
-  'scout||locate': [closingTurn(['guidance', 'ground:design'])],
+  ...closedSearch({ name: 'locate', asks: ['guidance', 'ground:design'] }),
   'analyst||prober:1': [{ output: { findings: [], units: [], notes: '', stop_reason: 'exhausted', not_reached: '' } }],
 }
 
@@ -166,7 +166,7 @@ test("probe: the run is claimed on the artefact's absolute path", async (t) => {
 
 test('probe: an attached run writes its result with coverage, run and cost', async (t) => {
   const { written } = await assertResultWritten(t, 'probe', ['--artifact', 'doc.md'], { script: PROBE_SCRIPT })
-  assert.equal(written.cost.dispatches, 2)
+  assert.equal(written.cost.dispatches, 4, 'two locate turns, the ruler and the prober')
 })
 
 test('run.mjs refuses a probe with no artefact', async (t) => {

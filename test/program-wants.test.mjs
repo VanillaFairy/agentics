@@ -342,7 +342,9 @@ test('one wording for a lost round', async (t) => {
 test('a reworded want ends', async (t) => {
   const REWORDED = 'WANT-where, exactly, a module path falls back'
   const nothingNew = { turns: [{ output: repoReturn({}) }], asks: 'want:2', ruling: 'not_converging', quiet: true }
-  const script = surveyScript([firstJudge, secondJudge([{ unit: 'loader', want: REWORDED }]), secondJudge([{ unit: 'loader', want: REWORDED + ' again' }])],
+  // Its third return rules the topic otherwise, so only the pass that added no fact can end the loop.
+  const reruled = { output: { items: [behaviour('loader', LOADER_CLAIM, 30)], risks: [], units: [{ unit: 'loader', ruling: 'unanchored', ids: [], why: 'still unsure' }], wants: [{ unit: 'loader', want: REWORDED + ' again' }] } }
+  const script = surveyScript([firstJudge, secondJudge([{ unit: 'loader', want: REWORDED }]), reruled],
     [loaderFound, fallbackFound, nothingNew])
   const { rig } = await surveyIn(t, script)
   assert.ok(on(rig, 'scout:loader').some((c) => c.brief.includes('want:2')), 'the reworded want was searched')

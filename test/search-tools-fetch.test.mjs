@@ -54,6 +54,8 @@ test('pages of a URL come from one body', async () => {
     assert.equal(one.pages, 2)
     assert.equal(two.lines[0].text, 'line 201')
     assert.match(one.lines[0].text, /^request \d+$/)
+    const back = await fetchUrl({ url: base + '/a', page: 1 }, { dir })
+    assert.equal(back.lines[0].text, one.lines[0].text, 'page 1 again is the body page 2 came from')
   } finally {
     body = was
   }

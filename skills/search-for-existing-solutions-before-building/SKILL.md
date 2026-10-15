@@ -14,8 +14,8 @@ skill starts it and reads its result.
 ## How this differs from `investigate`
 
 `investigate` searches the code you already have. This searches the world outside it. Same evidence
-discipline, opposite direction — and mixing them up wastes a whole run, because a scout with `Grep`
-and `Glob` cannot see a package registry, and a documentation researcher cannot see your repo.
+discipline, opposite direction — and mixing them up wastes a whole run: a scout's tools only read your tree
+(`grep`, `read`, `files`, `refs`) and cannot see a package registry; a documentation researcher cannot see your repo.
 
 One exception, and it is deliberate: this program also runs a single scout over your tree, asking
 only *do we already depend on something that does this*. A capability already on the dependency

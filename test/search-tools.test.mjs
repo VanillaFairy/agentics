@@ -3,7 +3,7 @@
 // the tree's edges — CRLF text, brackets and spaces in a path, an ignored directory a scope names,
 // node_modules, a submodule, a nested repository and a linked worktree — each where it belongs.
 //
-// Design: docs/DESIGN.md#evidence.
+// Design: docs/DESIGN.md#searches.
 
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'

@@ -2,7 +2,7 @@
 // shorthand class finds what it says, an unsupported token is refused at record and leaves a stored
 // item stale, and a scope path is the path it names.
 //
-// Design: docs/DESIGN.md#evidence.
+// Design: docs/DESIGN.md#items-and-anchors.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

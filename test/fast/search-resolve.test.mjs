@@ -1,7 +1,7 @@
 // test/fast/search-resolve.test.mjs — what a piece of material names, found with no model: the
 // paths it cites, the identifiers it writes in code form, the documents it names.
 //
-// Design: docs/DESIGN.md#p2--code-does-what-is-deterministic-models-only-judge.
+// Design: docs/DESIGN.md#searches and docs/DESIGN.md#p2--code-does-what-is-deterministic-models-only-judge.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

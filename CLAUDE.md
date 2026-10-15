@@ -74,8 +74,9 @@ it.
   Never re-run the whole pass.
 <!-- /agentics:verbatim -->
 
-Where this plugin needs shared ground it is code — `lib/citations.mjs`, the survey's common
-ground, the brief assembled by `lib/brief.mjs` — never a sentence asking a model to arrange it.
+Where this plugin needs shared ground it is code — `lib/citations.mjs`, the resolver's ground table
+(`lib/search/resolve.mjs`), the brief assembled by `lib/brief.mjs` — never a sentence asking a model
+to arrange it.
 
 ## Versioning
 
@@ -113,9 +114,9 @@ The laws themselves are in `docs/DESIGN.md#laws`.
 
 | Law | Enforced by |
 |---|---|
-| L1 — honest state | `tools/rules/coverage-block.mjs`, which requires a coverage block in every program's `resultOf`; `coverageOf` in `lib/programs/common.mjs`; `unaccountedOf` in `lib/integration.mjs`, which preflight applies to every integration branch in scope, stopping at `outside_work`; the coverage every searcher's return schema requires (`test/fast/schemas.test.mjs`); `resolveHandle` in `lib/store.mjs`, through which `lib/run.mjs` resolves every effort, folder, run and file argument (a ref is resolved by git or refused); status derived on read |
-| L2 — states end work, counts don't | `tools/rules/no-turn-caps.mjs`, over the programs and the execute program's units (`lib/programs/execute/`), `lib/run.mjs`, skills and roles; `tools/rules/no-loop-bounds.mjs`, over the programs and `lib/run.mjs`; the convergence predicates in `lib/verdict.mjs`; `askAfter` in `lib/programs/converge.mjs`; the runner's host-stop classes, waited out by `dispatch` in `lib/programs/common.mjs` |
-| L3 — separate judges | the role kinds in `lib/roles.mjs`; `judgeAllowed` and `dispatchJudge` in `lib/programs/common.mjs`; `tools/rules/no-self-verdict.mjs`, which bars verdict-named booleans and ruling fields from producer and searcher schemas and requires a judge's per-unit rulings; `verdictOf` in `lib/verdict.mjs` |
+| L1 — honest state | `tools/rules/coverage-block.mjs`, which requires a coverage block in every program's `resultOf`; `coverageOf` in `lib/programs/common.mjs`; `unaccountedOf` in `lib/integration.mjs`, which preflight applies to every integration branch in scope, stopping at `outside_work`; the navigator return every searcher's schema requires, with no coverage of its own (`test/fast/schemas.test.mjs`); `verifyReturn` in `lib/search/ledger.mjs`, which refuses a hit no tool call showed; the ledger's frontier at an ask's end, reported as `unreached`, and `coverageLines` in the same file, which labels each end by the weakest source it rests on; `resolveHandle` in `lib/store.mjs`, through which `lib/run.mjs` resolves every effort, folder, run and file argument (a ref is resolved by git or refused); status derived on read |
+| L2 — states end work, counts don't | `tools/rules/no-turn-caps.mjs`, over the programs, the execute program's units (`lib/programs/execute/`) and the search loop (`lib/programs/search/`), `lib/run.mjs`, skills and roles; `tools/rules/no-loop-bounds.mjs`, over the programs and `lib/run.mjs`; the convergence predicates in `lib/verdict.mjs`; `stateOf` in `lib/search/ledger.mjs`, which ends each ask of a search on its state; `askAfter` in `lib/programs/converge.mjs`, which schedules a convergence ruling, at a search's check-in the `ruler_search` ruling; the runner's host-stop classes, waited out by `dispatch` in `lib/programs/common.mjs` |
+| L3 — separate judges | the role kinds in `lib/roles.mjs`; `judgeAllowed` and `dispatchJudge` in `lib/programs/common.mjs`; `tools/rules/no-self-verdict.mjs`, which bars verdict-named booleans and ruling fields from producer and searcher schemas and requires a judge's per-unit rulings; `verdictOf` in `lib/verdict.mjs`; the search loop (`lib/programs/search/loop.mjs`), where convergence is ruled by `ruler_search` through `dispatchJudge` with every navigator session of the search as producer, and sufficiency by the consumers through wants |
 | L4 — the user owns decisions and their branch | `verifyAnswer` and `confirmAct` in `lib/host.mjs`, called by `approveAct` in `lib/approval.mjs`, `landAct` and `adoptAct` in `lib/boundary.mjs`; `answerTo` in `lib/host.mjs`, through which `lib/answers.mjs` records the user's answer in their words; `userBound` and `respecSettle` in `lib/respec.mjs`, under which each of the user's choices a changed spec makes is approved only on a recorded answer; `decisionProblems` in `lib/tree.mjs`; the runner's confinement and its watch on the user's checkout, and `measure`'s watch around every check in `lib/measure.mjs`; leaf-close's revert of what lies outside a leaf's locus in `lib/boundaries/leaf-close.mjs`; the `review` program's snapshot, which leaves the user's tree, index and stash untouched; `lib/verify.mjs`'s linked-worktree refusal; `land`'s refusals |
 | P2 — code does what is deterministic; models only judge | `tools/rules/skill-handles.mjs` (a skill's command carries handles only); `tools/rules/prompt-origin.mjs` (a prompt is built only by `lib/brief.mjs`, `lib/briefs/` and `renderMessage`); `tools/rules/no-skill-agents.mjs` (only the runner starts an agent); `resolveHandle` in `lib/store.mjs` |
 | P4 — everything earns its place | `test/fast/liveness.test.mjs`; `tools/rules/size-budget.mjs` |
@@ -139,9 +140,11 @@ rule fails it there, and a preload that makes process creation throw fails it at
 - `lib/boundaries/` — the boundaries an execution calls in-process: preflight, schedule and
   postflight, leaf-open, leaf-close, leaf-review, merge-batch and the suite gate, folder-review and
   rule-close, and the autonomous review's, over one records core (`lib/boundaries/INDEX.md`)
+- `lib/search/` — what a search is made of: the query dialect, the tree tools, the tool server, the
+  resolver, the search ledger and the pinned tree
 - `lib/programs/` — the programs that orchestrate, started by `lib/run.mjs`; the execute
-  program's units (a leaf, a planner's folder, the integration units) in `lib/programs/execute/`
-  (`lib/programs/INDEX.md`)
+  program's units (a leaf, a planner's folder, the integration units) in `lib/programs/execute/`,
+  the search loop in `lib/programs/search/` (`lib/programs/INDEX.md`)
 - `lib/briefs/` — the prompts the programs build, one file per program (`execute.mjs` the
   execution's reviewers, rulers, planner and investigator, `respec.mjs` a ruling's; a leaf round's
   thread brief is `lib/brief.mjs`'s) (`lib/briefs/INDEX.md`)

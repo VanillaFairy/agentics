@@ -3,7 +3,7 @@
 // ask ends on. Every fact keeps its source: code observed it, the navigator declared it, the ruler
 // ruled it.
 //
-// Design: docs/DESIGN.md#l2--states-end-work-counts-dont.
+// Design: docs/DESIGN.md#searches and docs/DESIGN.md#l2--states-end-work-counts-dont.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

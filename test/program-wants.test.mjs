@@ -4,7 +4,7 @@
 // units alone, and what they return for them replaces what they returned before; a want asked
 // before adds nothing, so the loop ends.
 //
-// Design: docs/DESIGN.md#probe, docs/DESIGN.md#survey.
+// Design: docs/DESIGN.md#searches, docs/DESIGN.md#probe, docs/DESIGN.md#survey.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

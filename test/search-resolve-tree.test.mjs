@@ -2,7 +2,7 @@
 // exist, where each named identifier is defined and referenced, what an effort's diff changed, and
 // the guidance a search is seeded with.
 //
-// Design: docs/DESIGN.md#p2--code-does-what-is-deterministic-models-only-judge.
+// Design: docs/DESIGN.md#searches and docs/DESIGN.md#p2--code-does-what-is-deterministic-models-only-judge.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

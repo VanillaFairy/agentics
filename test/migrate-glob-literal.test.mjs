@@ -536,12 +536,24 @@ test('a malformed scope is listed, not rewritten', (t) => {
     enumeration('good', ['src/[ab].ts']),
   )
   const before = entriesOf(repo)
+  const malformed = ['string scope', 'object scope', 'null scope', 'no scope']
+
+  const dry = cli(repo)
+  assert.equal(dry.error, undefined)
+  assert.equal(dry.signal, null)
+  const lines = (dry.stdout + dry.stderr).split('\n')
+  for (const claim of malformed) {
+    const { id } = before.find((e) => e.item.claim === claim).item
+    const named = lines.filter((l) => l.includes(id) || l.includes(claim))
+    assert.ok(named.some((l) => /malformed/i.test(l)), claim + ' is listed as malformed by its id or claim:\n' + lines.join('\n'))
+  }
+
   const r = cli(repo, '--yes')
   assert.equal(r.error, undefined)
   assert.equal(r.signal, null)
   const after = entriesOf(repo)
   assert.equal(after.length, before.length)
-  for (const claim of ['string scope', 'object scope', 'null scope', 'no scope']) {
+  for (const claim of malformed) {
     const was = before.find((e) => e.item.claim === claim)
     assert.deepEqual(after.find((e) => e.item.claim === claim), was, claim + ' is left as it was')
   }

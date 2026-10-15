@@ -2,7 +2,7 @@
 // execution folder's searches pin (the nearest existing integration head, else the base), and the
 // detached worktree that holds it, for every state the path can be found in.
 //
-// Design: docs/DESIGN.md#autonomous-review.
+// Design: docs/DESIGN.md#searches and docs/DESIGN.md#autonomous-review.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

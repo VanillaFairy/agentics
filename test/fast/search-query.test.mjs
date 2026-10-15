@@ -2,7 +2,7 @@
 // refuses and why, the pathspecs and identity it gives a query, the argument lists grepArgv builds,
 // and that the survey judge's brief names the dialect it is held to.
 //
-// Design: docs/DESIGN.md#evidence.
+// Design: docs/DESIGN.md#searches and docs/DESIGN.md#items-and-anchors.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

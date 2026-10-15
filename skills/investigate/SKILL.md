@@ -135,15 +135,15 @@ after it, and never as a footnote:
 
 - `dropped` — topics that produced no result at all: their judge gave them neither an item nor
   a risk
-- `incomplete` — searched, still not settled: a topic whose search ended short or whose items
-  went unrecorded or unruled, `common` for the common-ground search, `history` or `docs` when an
-  evidence channel stopped before finishing its search
+- `incomplete` — searched, still not settled: a topic whose search produced nothing or ended
+  short, or whose items went unrecorded or unruled, `history` or `docs` when that search ended short
 - `failed_channels` — a requested channel produced nothing at all, so any claim resting on it
-  is unsupported: `plan` (planning failed, so nothing was searched), `history`, `docs`, or
-  `synthesis` (the analyst who writes the answer failed: the evidence was gathered, is in
-  `result.evidence.context`, and was never written up)
-- `unreached` — surface nobody covered, one line each: a scout or a judge that failed and the
-  topics it left, a channel that failed, the synthesis
+  is unsupported: `plan` (planning failed, so nothing was searched), `history`, `docs`, a search
+  whose navigator was stopped, named by ask (`scout:<topic>:<topic>`), or `synthesis` (the
+  analyst who writes the answer failed: the evidence was gathered, is in `result.evidence.context`,
+  and was never written up)
+- `unreached` — surface nobody covered, one line each: a search that produced nothing, or the keys
+  a search never reached, a judge that failed and the topics it left, the synthesis
 
 In task mode, also read `result.tasks.gaps` and state it. That is where the synthesis records
 what the evidence could not settle, and what it refused to invent a task for. A task list can be

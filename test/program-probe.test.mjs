@@ -4,7 +4,7 @@
 // the gate, the record anchored to the snapshot, relaunches, and the result read back by
 // `approval.mjs reviewed --from-run`.
 //
-// Design: docs/DESIGN.md#probe, docs/DESIGN.md#what-a-probe-costs, docs/DESIGN.md#continued-searches,
+// Design: docs/DESIGN.md#probe, docs/DESIGN.md#what-a-probe-costs, docs/DESIGN.md#searches,
 // docs/DESIGN.md#coverage-block.
 
 import { after, test } from 'node:test'

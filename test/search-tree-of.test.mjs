@@ -1,7 +1,7 @@
 // test/search-tree-of.test.mjs — the tree a standalone program searches: its root, absolute and
 // posix, at the HEAD it has when the program starts.
 //
-// Design: docs/DESIGN.md#evidence.
+// Design: docs/DESIGN.md#searches.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

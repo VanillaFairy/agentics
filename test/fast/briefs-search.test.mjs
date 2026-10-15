@@ -2,7 +2,7 @@
 // is the navigator's system prompt, each turn's brief, the digest a renewed session starts from,
 // the convergence ruler's brief, and the ground table every reader of the search is handed.
 //
-// Design: docs/DESIGN.md#briefs-and-returns.
+// Design: docs/DESIGN.md#briefs-and-returns and docs/DESIGN.md#searches.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

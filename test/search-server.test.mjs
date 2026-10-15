@@ -3,7 +3,7 @@
 // leaves, exact repeats answered from the call they repeat, refusals recorded, the files a
 // dispatch's --mcp-config names, and the CLI the host starts.
 //
-// Design: docs/DESIGN.md#evidence.
+// Design: docs/DESIGN.md#searches.
 
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'

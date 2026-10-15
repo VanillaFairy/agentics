@@ -5,7 +5,7 @@
 // replaying what the journal holds. The scripted runner stands in for the host, and its `calls`
 // seam for the tool server.
 //
-// Design: docs/DESIGN.md#evidence and docs/DESIGN.md#l2--states-end-work-counts-dont.
+// Design: docs/DESIGN.md#searches and docs/DESIGN.md#l2--states-end-work-counts-dont.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

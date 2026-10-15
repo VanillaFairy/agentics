@@ -22,7 +22,7 @@ function tree(files) {
   return { root, sha: 'f'.repeat(40) }
 }
 const numbered = (n, tag) => Array.from({ length: n }, (_, i) => tag + (i + 1)).join('\n')
-const done = (extra = {}) => ({ end: 'done', label: 'observed', why: 'every key in scope was read or dismissed', declared: 'answered', absence: '', hits: [], dismissed: [], unreached: [], ...extra })
+const done = (extra = {}) => ({ end: 'done', label: 'observed', why: 'every key in scope was read or dismissed', declared: 'answered', answer: '', hits: [], dismissed: [], unreached: [], ...extra })
 
 function result(t, asks) {
   return { name: 'locate', status: 'returned', cause: '', tree: t, ground: { rows: [], seeds: [] }, asks, sessions: [], entries_n: 0, kinds: {}, coverage: { declared: [], incomplete: [], unreached: [], failed_channels: [] } }
@@ -133,4 +133,45 @@ test("tree.root is read, not the process's working directory", () => {
   const out = searchExcerpts(result(pinned, { 'ground:a': done({ hits: [{ key: 'src/a.ts', line: 5, note: 'n', turn: 1 }] }) }))
   assert.ok(out.text.includes('pinned5'))
   assert.equal(out.counts.unresolved, 0)
+})
+
+test('excerpts say what was looked for', () => {
+  const looked = [
+    { seq: 3, tool: 'grep', what: 'createStore', where: ['src/', 'lib/'], total: 4, pages: 1, pages_seen: 1 },
+    { seq: 5, tool: 'read', what: 'src/store.ts:1-40', where: ['src/store.ts'], total: 40, pages: 1, pages_seen: 1 },
+  ]
+  const text = searchExcerpts(result(tree({}), { 'ground:a': done({ looked }) })).text
+  assert.ok(text.includes('LOOKED:\n  call 3 grep createStore in src/, lib/ → 4\n  call 5 read src/store.ts:1-40 in src/store.ts → 40'), text)
+})
+
+test('excerpts say when nothing was looked for', () => {
+  const text = searchExcerpts(result(tree({}), { 'ground:a': done({ looked: [] }) })).text
+  assert.ok(text.includes('LOOKED:\n  (nothing looked for)'), text)
+})
+
+test('a hit under a ruled absence is marked', () => {
+  const a = done({ label: 'ruled', answer: 'absent', why: 'no store exists', hits: [{ key: 'src/x.ts', line: 0, note: 'a stub', turn: 1 }] })
+  const text = searchExcerpts(result(tree({}), { 'ground:a': a })).text
+  assert.ok(text.includes('  src/x.ts — a stub (ruled not an answer)'), text)
+  const answered = searchExcerpts(result(tree({}), { 'ground:a': { ...a, answer: 'answered' } })).text
+  assert.equal(answered.includes('(ruled not an answer)'), false)
+})
+
+test('an empty dismissal is marked', () => {
+  const a = done({ dismissed: [{ glob: 'docs/**', why: 'prose', turn: 2, read_to_end: false, closes: 0 }, { glob: 'gen/**', why: 'generated', turn: 2, read_to_end: false, closes: 3 }] })
+  const text = searchExcerpts(result(tree({}), { 'ground:a': a })).text
+  assert.ok(text.includes('  glob docs/** — prose (closed nothing)'), text)
+  assert.ok(text.includes('  glob gen/** — generated\n'), text)
+})
+
+test('owed files render by directory', () => {
+  const a = done({ unreached: [{ kind: 'files', key: 'src/data/', detail: '7 not covered' }] })
+  const text = searchExcerpts(result(tree({}), { 'ground:a': a })).text
+  assert.ok(text.includes('NOT REACHED:\n  files src/data/ — 7 not covered'), text)
+})
+
+test('the head names the ruled answer', () => {
+  const a = done({ label: 'ruled', answer: 'answered', why: 'the store is created in one place' })
+  const text = searchExcerpts(result(tree({}), { 'ground:a': a })).text
+  assert.ok(text.includes('=== locate:ground:a — done (ruled): answered: the store is created in one place'), text)
 })

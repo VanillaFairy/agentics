@@ -13,7 +13,7 @@ import { candidateKey, canonicalUrl, coverageLines, foldLedger, standingRefusals
 // ------------------------------------------------------------------ builders
 
 const NONE = { rows: [], seeds: [] }
-/** An ask that holds its material as a closed seed, so its scope is no frontier of its own; `bare` builds one that has nothing. */
+/** An ask that holds its material as a closed seed, so its scope is no agenda of its own; `bare` builds one that has nothing. */
 const ask = (key, extra = {}) => ({ key, find: 'what ' + key + ' asks', scope: ['.'], domain: 'repo', seeds: [{ key: 'MATERIAL.md', as: 'closed', reason: 'the material' }], ...extra })
 const bare = (key, extra = {}) => ask(key, { seeds: [], ...extra })
 
@@ -54,7 +54,11 @@ const ground = (...rows) => ({ rows, seeds: [] })
 
 const fold = ({ asks = [ask('a')], ground: g = NONE, calls = [], turns = [], rulings = [] } = {}) =>
   foldLedger({ asks, ground: g, calls, turns, rulings })
-const front = (l, a) => l.asks[a].frontier.map((f) => f.kind + ' ' + f.key)
+const agendaOf = (l, a) => {
+  assert.ok(Array.isArray(l.asks[a].agenda), 'ask ' + a + ' has an agenda')
+  return l.asks[a].agenda
+}
+const front = (l, a) => agendaOf(l, a).map((f) => f.kind + ' ' + f.key)
 const classes = (l) => l.refusals.map((r) => r.class)
 const hitsOf = (l, a) => l.asks[a].hits.map((h) => h.key + ':' + h.line)
 const SHA = 'a'.repeat(40)
@@ -303,9 +307,9 @@ test('verifyReturn sorts a return into accepted items and refusals, against the 
   assert.equal(JSON.stringify(l), frozen, 'the ledger is not changed')
 })
 
-// ------------------------------------------------------------------ frontier
+// ------------------------------------------------------------------ agenda
 
-test("a lead is on its ask's frontier until a read of it under that ask, or a dismissal", () => {
+test("a lead is on its ask's agenda until a read of it under that ask, or a dismissal", () => {
   const x = { asks: [ask('a'), ask('b')], calls: [move(1, 'a')], turns: [ret(1, 1, { leads: [{ ask: 'a', path: 'src/lead.js', why: 'imports the store' }] })] }
   assert.deepEqual(front(fold(x), 'a'), ['lead src/lead.js'])
   const byB = fold({ ...x, calls: [...x.calls, read(2, ['b'], 'src/lead.js', 1, 3, 40)], turns: [...x.turns, ret(2, 2)] })
@@ -316,14 +320,14 @@ test("a lead is on its ask's frontier until a read of it under that ask, or a di
   assert.deepEqual(front(dropped, 'a'), [])
 })
 
-test('unfetched overflow pages are frontier, one per page, until fetched under the ask or their call is dismissed', () => {
+test('unfetched overflow pages are agenda, one per page, until fetched under the ask or their call is dismissed', () => {
   const big = (seq, a, page) => grep(seq, [a], [['src/p' + page + '.js', 1]], { pattern: 'big', page, pages: 3, total: 600 })
   const calls = [big(1, 'a', 1), big(2, 'a', 2), big(3, 'b', 3)]
   const l = fold({ asks: [ask('a'), ask('b')], calls, turns: [ret(1, 3)] })
-  assert.deepEqual(l.asks.a.frontier.map((f) => [f.kind, f.key, f.detail]), [['overflow', 'call:1', 'page 3 of 3']])
-  assert.deepEqual(l.asks.b.frontier.map((f) => [f.kind, f.key, f.detail]), [['overflow', 'call:3', 'page 1 of 3'], ['overflow', 'call:3', 'page 2 of 3']])
+  assert.deepEqual(l.asks.a.agenda.map((f) => [f.kind, f.key, f.detail]), [['overflow', 'call:1', 'page 3 of 3']])
+  assert.deepEqual(l.asks.b.agenda.map((f) => [f.kind, f.key, f.detail]), [['overflow', 'call:3', 'page 1 of 3'], ['overflow', 'call:3', 'page 2 of 3']])
   const d = fold({ asks: [ask('a'), ask('b')], calls, turns: [ret(1, 3, { dismissed: [dismiss('a', { call: 2 })] })] })
-  assert.deepEqual(d.asks.a.frontier, [], 'any call of the query closes its pages')
+  assert.deepEqual(d.asks.a.agenda, [], 'any call of the query closes its pages')
 })
 
 const GROUND = ground(
@@ -334,13 +338,13 @@ const GROUND = ground(
   pathRow('src/elsewhere.ts', true, ['h', 'w']),
 )
 
-test("a repo ask's own ground rows are its frontier: a path's key, a symbol's definition files", () => {
+test("a repo ask's own ground rows are its agenda: a path's key, a symbol's definition files", () => {
   const l = fold({ asks: [ask('s', { scope: ['src'] }), ask('all')], ground: GROUND })
   assert.deepEqual(front(l, 's'), ['ground src/drop/stall.ts', 'ground src/data/items.ts'])
   assert.deepEqual(front(l, 'all'), ['ground src/drop/stall.ts', 'ground src/data/items.ts', 'ground docs/kb/MODULE_MAP.md'])
 })
 
-test("another ask's row, a row only context material named, a missing path, and every row of a history or web ask stay off the frontier", () => {
+test("another ask's row, a row only context material named, a missing path, and every row of a history or web ask stay off the agenda", () => {
   const l = fold({ asks: [ask('s'), ask('x'), ask('h', { domain: 'history' }), ask('w', { domain: 'web', scope: [] })], ground: GROUND })
   assert.deepEqual(front(l, 's'), ['ground src/drop/stall.ts', 'ground src/data/items.ts'])
   assert.deepEqual(front(l, 'x'), [])
@@ -352,62 +356,43 @@ test("another ask's row, a row only context material named, a missing path, and 
 const referenced = (mention, defs, files, asks = ['a']) => ({ ...symbolRow(mention, defs, asks), refs: files.map((key) => ({ key, count: 1, test: false })), files: files.length })
 const refsCall = (seq, asks, symbol, files) => ({ seq, tool: 'refs', args: { symbol }, asks, ok: true, total: files.length, observed: [], keys: files })
 
-test('a symbol the material names with reference sites is one frontier item until a refs call of it under the ask', () => {
+test('a symbol the material names with reference sites is one agenda item until a refs call of it under the ask', () => {
   const g = ground(referenced('composeArea', [['src/area.ts', 3]], ['src/meadow.ts', 'src/install.ts'], ['a', 'b']))
   const before = fold({ asks: [ask('a'), ask('b')], ground: g })
-  assert.deepEqual(front(before, 'a'), ['ground src/area.ts', 'ground symbol:composeArea'])
+  assert.deepEqual(front(before, 'a'), ['ground src/area.ts', 'symbol symbol:composeArea'])
   const after = fold({ asks: [ask('a'), ask('b')], ground: g, calls: [refsCall(1, ['a'], 'composeArea', ['src/meadow.ts', 'src/install.ts'])], turns: [ret(1, 1)] })
   assert.deepEqual(front(after, 'a'), ['ground src/area.ts'])
-  assert.deepEqual(front(after, 'b'), ['ground src/area.ts', 'ground symbol:composeArea'], 'the call named a only')
+  assert.deepEqual(front(after, 'b'), ['ground src/area.ts', 'symbol symbol:composeArea'], 'the call named a only')
 })
 
 test("a grep whose pattern names the symbol closes its item; one naming another symbol does not", () => {
   const g = ground(referenced('composeArea', [], ['src/meadow.ts']))
   const by = (pattern) => fold({ ground: g, calls: [grep(1, ['a'], [['src/meadow.ts', 8]], { pattern })], turns: [ret(1, 1)] })
   assert.deepEqual(front(by('\bcomposeArea\('), 'a'), [])
-  assert.deepEqual(front(by('composeEndless'), 'a'), ['ground symbol:composeArea'])
+  assert.deepEqual(front(by('composeEndless'), 'a'), ['symbol symbol:composeArea'])
   const dismissed = fold({ ground: g, calls: [move(1, 'a')], turns: [ret(1, 1, { dismissed: [dismiss('a', { path: 'symbol:composeArea' })] })] })
   assert.deepEqual(front(dismissed, 'a'), [], 'a dismissal of the item closes it')
 })
 
-test('following a symbol moves the stamp even when its reference files were already observed', () => {
+test('a refs call is a new query under the ask and moves the stamp though its files were observed; the same refs again moves nothing', () => {
   const g = ground(referenced('composeArea', [], ['src/meadow.ts']))
-  const l = fold({ ground: g, calls: [listed(1, ['a'], ['src/meadow.ts']), refsCall(2, ['a'], 'composeArea', ['src/meadow.ts'])], turns: [ret(1, 1), ret(2, 2)] })
-  assert.equal(l.asks.a.end, null, 'turn 2 followed the symbol: progress, not no_progress')
+  const refs = (seq, symbol) => refsCall(seq, ['a'], symbol, ['src/meadow.ts'])
+  const x = {
+    ground: g,
+    calls: [listed(1, ['a'], ['src/meadow.ts']), refs(2, 'composeArea'), refs(3, 'composeEndless'), { ...refs(4, 'composeEndless'), repeat_of: 3 }, refs(5, 'composeEndless')],
+    turns: [ret(1, 1), ret(2, 2), ret(3, 3), ret(4, 4), ret(5, 5)],
+  }
+  const stampAfter = (n) => fold({ ...x, turns: x.turns.slice(0, n) }).asks.a.stamp
+  assert.notEqual(stampAfter(2), stampAfter(1), 'following the symbol is a query the ask had not run')
+  assert.notEqual(stampAfter(3), stampAfter(2), 'so is a refs of a symbol no ground row names, over files already observed')
+  assert.equal(fold({ ...x, turns: x.turns.slice(0, 3) }).asks.a.end, null, 'turn 3 ran a new query: progress, not no_progress')
+  assert.equal(stampAfter(4), stampAfter(3), 'a repeat_of record is the same query')
+  assert.equal(stampAfter(5), stampAfter(3), 'so is the same tool and args again')
 })
 
 const filesCall = (seq, asks, glob, keys = []) => ({ seq, tool: 'files', args: { glob, page: 1 }, asks, ok: true, total: keys.length, page: 1, pages: 1, observed: [], keys })
 
-test('a repo ask with no seed and no ground row of its own has each scope root on its frontier', () => {
-  const l = fold({ asks: [bare('t', { scope: ['src', 'lib'] }), bare('w', { domain: 'web', scope: [] })], ground: ground(pathRow('src/a.ts', true, [])) })
-  assert.deepEqual(front(l, 't'), ['scope src', 'scope lib'])
-  assert.deepEqual(front(l, 'w'), [])
-  assert.deepEqual(front(fold({ asks: [bare('a')], ground: ground(pathRow('src/a.ts')) }), 'a'), ['ground src/a.ts'], 'an ask with its own rows has no scope item')
-  assert.deepEqual(front(fold({ asks: [ask('a')] }), 'a'), [], 'nor one with a seed')
-})
-
-test('a grep over the whole root, or a files glob that recurses from it, closes its scope item; a narrower call does not', () => {
-  const t = bare('t', { scope: ['src'] })
-  const by = (call) => front(fold({ asks: [t], calls: [call], turns: [ret(1, 1)] }), 't')
-  assert.deepEqual(by(grep(1, ['t'], [['src/a.ts', 1]])), [], 'no paths: the whole scope')
-  assert.deepEqual(by(grep(1, ['t'], [['src/a.ts', 1]], { paths: ['src'] })), [])
-  assert.deepEqual(by(grep(1, ['t'], [['src/game/a.ts', 1]], { paths: ['src/game'] })), ['scope src'])
-  assert.deepEqual(by(filesCall(1, ['t'], 'src/**/*.ts', ['src/a.ts'])), [])
-  assert.deepEqual(by(filesCall(1, ['t'], '**/index.ts', ['src/index.ts'])), [])
-  assert.deepEqual(by(filesCall(1, ['t'], 'src/game/*.ts', ['src/game/a.ts'])), ['scope src'])
-  assert.deepEqual(by(grep(1, ['x'], [['src/a.ts', 1]])), ['scope src'], 'a call under another ask')
-})
-
-test('a dismissal of the root closes its scope item, and a scope item nobody looked at is unreached at the end', () => {
-  const t = bare('t', { scope: ['src'] })
-  const dismissed = fold({ asks: [t], calls: [move(1, 't')], turns: [ret(1, 1, { dismissed: [dismiss('t', { path: 'src' })] })] })
-  assert.deepEqual(front(dismissed, 't'), [])
-  const idle = fold({ asks: [t], turns: [ret(1, 0, { asks: [declare('t', 'open')] }), ret(2, 0, { asks: [declare('t', 'open')] })] })
-  assert.equal(idle.asks.t.end.state, 'no_progress')
-  assert.ok(coverageLines(idle, NAME).unreached.some((u) => u.endsWith(':t: scope src (' + idle.asks.t.frontier[0].detail + ')')))
-})
-
-test('a symbol with no reference site is no frontier item of its own', () => {
+test('a symbol with no reference site is no agenda item of its own', () => {
   assert.deepEqual(front(fold({ ground: ground(symbolRow('ITEM_STAND', [['src/data/items.ts', 12]])) }), 'a'), ['ground src/data/items.ts'])
 })
 
@@ -436,7 +421,7 @@ test("a hit on a ground row's key closes it for the hit's asks", () => {
   assert.deepEqual(front(l, 'b'), ['ground src/a.ts'])
 })
 
-test('an open seed is frontier until closed; a closed seed never is, even when it is a ground row', () => {
+test('an open seed is agenda until closed; a closed seed never is, even when it is a ground row', () => {
   const g = ask('g', { seeds: [{ key: 'CLAUDE.md', as: 'open', reason: 'guidance' }, { key: 'docs/drop/DESIGN.md', as: 'closed', reason: "the probe's artefact, held whole by its probers" }] })
   const x = { asks: [g], ground: ground(pathRow('docs/drop/DESIGN.md', true, ['g']), pathRow('src/a.ts', true, ['g'])) }
   assert.deepEqual(front(fold(x), 'g'), ['seed CLAUDE.md', 'ground src/a.ts'])
@@ -444,7 +429,7 @@ test('an open seed is frontier until closed; a closed seed never is, even when i
   assert.deepEqual(front(readIt, 'g'), ['ground src/a.ts'])
 })
 
-test('a frontier key appears once, under the first of seed, lead and ground', () => {
+test('an agenda key appears once, under the first of seed, lead and ground', () => {
   const g = ask('g', { seeds: [{ key: 'CLAUDE.md', as: 'open', reason: 'guidance' }] })
   const l = fold({
     asks: [g], ground: ground(pathRow('CLAUDE.md', true, ['g']), pathRow('src/a.ts', true, ['g'])), calls: [move(1, 'g')],
@@ -472,7 +457,7 @@ test('a path dismissal closes the key and every key under it as a directory, and
   assert.deepEqual(front(l, 'a'), ['ground vendorx.js', 'ground src/a.js'])
 })
 
-test('a glob dismissal closes keys by git glob rules: * stays inside a segment, ** crosses directories', () => {
+test('a glob dismissal closes keys by the search dialect: * stays inside a segment, ** crosses directories', () => {
   const g = ground(pathRow('src/a.js'), pathRow('src/x/b.js'), pathRow('src/x/c.ts'))
   const one = fold({ ground: g, turns: [ret(1, 0, { dismissed: [dismiss('a', { glob: 'src/*.js' })] })] })
   assert.deepEqual(front(one, 'a'), ['ground src/x/b.js', 'ground src/x/c.ts'])
@@ -486,6 +471,17 @@ test('a path with brackets is literal: dismissing app/[id]/page.tsx closes exact
   const g = ground(pathRow('app/[id]/page.tsx'), pathRow('app/i/page.tsx'))
   const l = fold({ ground: g, turns: [ret(1, 0, { dismissed: [dismiss('a', { path: 'app/[id]/page.tsx' })] })] })
   assert.deepEqual(front(l, 'a'), ['ground app/i/page.tsx'])
+})
+
+test('brackets in a glob are literal too: app/[id]/* closes app/[id]/page.tsx and nothing a class would reach', () => {
+  const g = ground(pathRow('app/[id]/page.tsx'), pathRow('app/i/page.tsx'), pathRow('app/d/page.tsx'))
+  const closedBy = (glob) => {
+    const l = fold({ ground: g, turns: [ret(1, 0, { dismissed: [dismiss('a', { glob })] })] })
+    return front(l, 'a')
+  }
+  assert.deepEqual(closedBy('app/[id]/*'), ['ground app/i/page.tsx', 'ground app/d/page.tsx'])
+  assert.deepEqual(closedBy('app/[a-z]/*'), ['ground app/[id]/page.tsx', 'ground app/i/page.tsx', 'ground app/d/page.tsx'], 'a class is not a class: it closes nothing')
+  assert.deepEqual(closedBy('app/[!x]*/page.tsx'), ['ground app/[id]/page.tsx', 'ground app/i/page.tsx', 'ground app/d/page.tsx'], 'nor is a negated one')
 })
 
 test("a call dismissal closes every key that call returned and its query's unfetched pages", () => {
@@ -557,20 +553,20 @@ test('a hit accepted after a standing absent withdraws the absence', () => {
 
 // ------------------------------------------------------------------ ending
 
-test('done: answered or absent with an empty frontier ends the ask done at that turn', () => {
+test('done: answered or absent with an empty agenda ends the ask done at that turn', () => {
   const l = fold({ asks: [ask('a'), ask('b')], calls: [grep(1, ['b'], [])], turns: [ret(1, 1, { asks: [declare('a', 'answered'), declare('b', 'absent')] })] })
   assert.deepEqual(stateOf(l, { turn: 1, checkin: false }).ending.map(({ ask: a, state, label }) => [a, state, label]),
     [['a', 'done', 'declared'], ['b', 'done', 'observed']])
   assert.equal(typeof l.asks.a.end.why, 'string')
 })
 
-test('done waits while the frontier holds anything', () => {
+test('done waits while the agenda holds anything', () => {
   const x = { ground: ground(pathRow('src/a.ts')), turns: [ret(1, 0, { asks: [declare('a', 'answered')] }), ret(2, 0, { dismissed: [dismiss('a', { path: 'src/a.ts' })] })] }
   assert.equal(fold({ ...x, turns: x.turns.slice(0, 1) }).asks.a.end, null)
   assert.deepEqual([fold(x).asks.a.end.state, fold(x).asks.a.end.turn], ['done', 2])
 })
 
-test('a turn whose only act is answered, on an ask with an empty frontier, ends it done and not no_progress', () => {
+test('a turn whose only act is answered, on an ask with an empty agenda, ends it done and not no_progress', () => {
   const l = fold({ calls: [move(1, 'a')], turns: [ret(1, 1), ret(2, 1, { asks: [declare('a', 'answered')] })] })
   assert.deepEqual([l.asks.a.end.state, l.asks.a.end.turn], ['done', 2])
 })
@@ -747,8 +743,8 @@ test('coverageLines: a hit the navigator re-cited after reading is not unreached
   assert.deepEqual(coverageLines(l, NAME).unreached.filter((x) => x.includes('unobserved')), [])
 })
 
-test('leads and notes do not move the stamp; observed lines, hits, dismissals and declarations do', () => {
-  const base = { calls: [grep(1, ['a'], [['src/a.js', 1]])], turns: [ret(1, 1, { hits: [hit('a', 'src/a.js', 1, 'first')] })] }
+test('leads and notes do not move the stamp; observed lines, hits, a dismissal of an observed key and declarations do', () => {
+  const base = { calls: [grep(1, ['a'], [['src/a.js', 1], ['src/b.js', 2]])], turns: [ret(1, 1, { hits: [hit('a', 'src/a.js', 1, 'first')] })] }
   const before = fold(base).asks.a.stamp
   const after = (calls, o) => fold({ calls: [...base.calls, ...calls], turns: [...base.turns, ret(2, 1 + calls.length, o)] }).asks.a.stamp
   const line2 = () => grep(2, ['a'], [['src/a.js', 2]])
@@ -756,7 +752,8 @@ test('leads and notes do not move the stamp; observed lines, hits, dismissals an
   assert.equal(after([], { hits: [hit('a', 'src/a.js', 1, 'reworded')] }), before, 'a new note')
   assert.notEqual(after([line2()], {}), before, 'a new observed line')
   assert.notEqual(after([line2()], { hits: [hit('a', 'src/a.js', 2)] }), after([line2()], {}), 'a hit')
-  assert.notEqual(after([], { dismissed: [dismiss('a', { path: 'src/c.js' })] }), before, 'a dismissal')
+  assert.notEqual(after([], { dismissed: [dismiss('a', { path: 'src/b.js' })] }), before, 'a dismissal of a key that was observed')
+  assert.equal(after([], { dismissed: [dismiss('a', { path: 'src/c.js' })] }), before, 'a dismissal that closes nothing')
   assert.notEqual(after([], { asks: [declare('a', 'open')] }), before, 'a declaration')
 })
 
@@ -879,23 +876,23 @@ test('history holds one entry at from−1 and one per returned turn for every op
   assert.equal(l.asks.a.history.at(-1).stamp, l.asks.a.stamp)
 })
 
-test('dismissal paths and globs match the way git pathspecs do', () => {
-  const keys = ['src/a.js', 'src/x/y/a.js', 'src/xa.js', 'src/b.js', 'src/c.js', 'src/cc.js', 'docs/x.md', 'docsy.md', 'README.md', 'a b/c*.js', 'a b/cd.js']
+test('dismissal paths and globs match the way the search dialect does', () => {
+  const keys = ['src/a.js', 'src/x/y/a.js', 'src/xa.js', 'src/b.js', 'src/c.js', 'src/cc.js', 'docs/x.md', 'docsy.md', 'README.md', 'a b/c*.js', 'a b/cd.js', 'src/[!a]x.js']
   const g = ground(...keys.map((k) => pathRow(k)))
   const closed = (target) => {
     const l = fold({ ground: g, turns: [ret(1, 0, { dismissed: [dismiss('a', target)] })] })
-    const open = new Set(l.asks.a.frontier.map((f) => f.key))
+    const open = new Set(l.asks.a.agenda.map((f) => f.key))
     return keys.filter((k) => !open.has(k))
   }
   assert.deepEqual(closed({ glob: 'src/**/a.js' }), ['src/a.js', 'src/x/y/a.js'], '** matches zero or more directories')
-  assert.deepEqual(closed({ glob: 'src/[!a]*.js' }), ['src/xa.js', 'src/b.js', 'src/c.js', 'src/cc.js'], '[!a] is a negated class inside one segment')
+  assert.deepEqual(closed({ glob: 'src/[!a]*.js' }), ['src/[!a]x.js'], '[!a] is those four characters, not a class')
   assert.deepEqual(closed({ glob: 'src/?.js' }), ['src/a.js', 'src/b.js', 'src/c.js'], '? is one character, never a /')
   assert.deepEqual(closed({ glob: '**/*.md' }), ['docs/x.md', 'docsy.md', 'README.md'], 'a leading **/ also matches at the root')
   assert.deepEqual(closed({ path: 'docs/' }), ['docs/x.md'], 'a literal directory, trailing slash or not')
   assert.deepEqual(closed({ path: 'a b/c*.js' }), ['a b/c*.js'], 'a literal path takes * and spaces as they are')
 })
 
-test("an ask's stamp, end and frontier do not depend on the order of calls, items or the asks a call names", () => {
+test("an ask's stamp, end and agenda do not depend on the order of calls, items or the asks a call names", () => {
   const calls = [
     grep(1, ['a', 'b'], [['src/a.js', 1]]), read(2, ['b', 'a'], 'src/c.ts', 1, 4, 4),
     grep(3, ['a'], [['src/d.js', 2], ['src/e.js', 3]], { pages: 2, total: 300 }),
@@ -918,7 +915,7 @@ test("an ask's stamp, end and frontier do not depend on the order of calls, item
     assert.equal(y.asks[k].stamp, x.asks[k].stamp, k + ' stamp')
     assert.deepEqual(y.asks[k].end, x.asks[k].end, k + ' end')
     assert.deepEqual(y.asks[k].observed, x.asks[k].observed, k + ' observed')
-    assert.deepEqual(new Set(y.asks[k].frontier.map((f) => f.kind + ' ' + f.key)), new Set(x.asks[k].frontier.map((f) => f.kind + ' ' + f.key)), k + ' frontier')
+    assert.deepEqual(new Set(y.asks[k].agenda.map((f) => f.kind + ' ' + f.key)), new Set(x.asks[k].agenda.map((f) => f.kind + ' ' + f.key)), k + ' agenda')
   }
 })
 
@@ -988,7 +985,7 @@ test('coverageLines: incomplete names every ask that ended no_progress, not_conv
   assert.ok(stopped.incomplete.some((line) => line.startsWith(NAME + ':a')))
 })
 
-test("coverageLines: unreached holds one line per item of an ask's frontier at its end", () => {
+test("coverageLines: unreached holds one line per item of an ask's agenda at its end", () => {
   const l = fold({ ground: ground(pathRow('src/a.ts'), pathRow('src/b.ts')), calls: [move(1, 'a')], turns: [ret(1, 1), ret(2, 1)] })
   const c = coverageLines(l, NAME)
   assert.equal(c.unreached.length, 2)
@@ -1002,7 +999,7 @@ test('coverageLines: failed_channels names a navigator stop by its ask and a rul
   assert.deepEqual(ruler.failed_channels, ['converge:' + NAME])
 })
 
-test('an ask done on a checked absence with an empty frontier adds no coverage line', () => {
+test('an ask done on a checked absence with an empty agenda adds no coverage line', () => {
   const c = coverageLines(fold({ calls: [grep(1, ['a'], [])], turns: [ret(1, 1, { asks: [declare('a', 'absent')] })] }), NAME)
   assert.deepEqual(c, { declared: [], incomplete: [], unreached: [], failed_channels: [] })
 })
@@ -1037,7 +1034,7 @@ test('every kind of item naming only ended asks is refused names_only_ended_asks
   assert.deepEqual([l.asks.a.hits, l.asks.a.leads], [[], []])
 })
 
-test('an absence that is only declared, with an empty frontier, ends done labelled declared and is a declared coverage line', () => {
+test('an absence that is only declared, with an empty agenda, ends done labelled declared and is a declared coverage line', () => {
   const l = fold({ turns: [ret(1, 0, { asks: [declare('a', 'absent')] })] })
   assert.deepEqual([l.asks.a.absence, l.asks.a.end.state, l.asks.a.end.label], ['declared', 'done', 'declared'])
   const c = coverageLines(l, NAME)
@@ -1056,14 +1053,14 @@ test('a partial read does not close an open seed, and a hit on it does', () => {
 test('a query ran twice over has its overflow reported once per query, each keyed by its own first call', () => {
   const q = (seq, pattern, page) => grep(seq, ['a'], [['src/' + pattern + page + '.js', 1]], { pattern, page, pages: 2, total: 300 })
   const l = fold({ calls: [q(1, 'x', 1), q(2, 'y', 1)], turns: [ret(1, 2)] })
-  assert.deepEqual(l.asks.a.frontier.map((f) => f.kind + ' ' + f.key + ' ' + f.detail).sort(), ['overflow call:1 page 2 of 2', 'overflow call:2 page 2 of 2'])
+  assert.deepEqual(l.asks.a.agenda.map((f) => f.kind + ' ' + f.key + ' ' + f.detail).sort(), ['overflow call:1 page 2 of 2', 'overflow call:2 page 2 of 2'])
 })
 
 test('a glob dismissal never closes an overflow page, and neither does a path dismissal of the files it showed', () => {
   const calls = [grep(1, ['a'], [['src/a.js', 1]], { pages: 2, total: 300 })]
   for (const target of [{ glob: '**' }, { path: 'src' }]) {
     const l = fold({ calls, turns: [ret(1, 1, { dismissed: [dismiss('a', target)] })] })
-    assert.deepEqual(l.asks.a.frontier.map((f) => [f.kind, f.key]), [['overflow', 'call:1']], JSON.stringify(target))
+    assert.deepEqual(l.asks.a.agenda.map((f) => [f.kind, f.key]), [['overflow', 'call:1']], JSON.stringify(target))
   }
 })
 
@@ -1108,11 +1105,12 @@ test('the same ruling stream folds the same ledger whatever the order of rulings
 const STOP = (turn, calls_through) => ({ turn, calls_through, stop: 'brief_over_budget' })
 
 test('an ask that is both done and unmoved since an earlier return ends done, not no_progress', () => {
+  const page = (seq, n) => grep(seq, ['a'], [['src/b.js', 1]], { pattern: 'big', page: n, pages: 2, total: 300 })
   const l = fold({
-    calls: [grep(1, ['a'], [['src/b.js', 1]]), read(2, ['a'], 'src/b.js', 1, 1, 5)],
-    turns: [ret(1, 1, { leads: [{ ask: 'a', path: 'src/b.js', why: 'imports it' }], asks: [declare('a', 'answered')] }), ret(2, 2)],
+    calls: [page(1, 1), page(2, 2)],
+    turns: [ret(1, 1, { asks: [declare('a', 'answered')] }), ret(2, 2)],
   })
-  assert.equal(l.asks.a.history.at(-1).stamp, l.asks.a.history.at(-2).stamp, 'the read added nothing the stamp covers')
+  assert.equal(l.asks.a.history.at(-1).stamp, l.asks.a.history.at(-2).stamp, 'page 2 of the same query showed no line the ask had not seen')
   assert.deepEqual([l.asks.a.end.state, l.asks.a.end.turn], ['done', 2])
 })
 
@@ -1248,4 +1246,423 @@ test('in the web domain a path dismissal closes a lead on the same canonical URL
     turns: [ret(1, 1, { leads: [{ ask: 'w', path: 'https://A.com/docs/x#top', why: 'w' }], dismissed: [dismiss('w', { path: 'https://a.com/docs/x/' })] })],
   })
   assert.deepEqual(front(l, 'w'), [])
+})
+
+// ------------------------------------------------------------------ added by the T04a test author: the agenda, what an ask owes, what it looked for, the stamp
+
+const OWED = ['src/a.ts', 'src/b/c.ts', 'lib/d.ts']
+/** A scope-owing ask: no seed, no row, the scope's files as `owes`. */
+const owing = (key, owes, extra = {}) => bare(key, { scope: ['.'], owes, ...extra })
+const through = (calls) => Math.max(0, ...calls.map((c) => c.seq))
+/** Ask t owing `owes`, folded over `calls` returned in one turn (or over `turns`). */
+const owed = (calls, { owes = OWED, scope = ['.'], turns } = {}) => fold({ asks: [owing('t', owes, { scope })], calls, turns: turns ?? [ret(1, through(calls))] })
+const sorted = (keys) => [...keys].sort()
+const keysOf = (l, a, kind) => sorted(agendaOf(l, a).filter((f) => f.kind === kind).map((f) => f.key))
+const owedLeft = (l, a = 't') => keysOf(l, a, 'file')
+/** How many files the directories of ask a say they covered. */
+const coveredN = (l, a = 't') => Object.values(l.asks[a].covered ?? {}).reduce((n, d) => n + d.files, 0)
+const lookedOf = (l, a) => {
+  assert.ok(Array.isArray(l.asks[a].looked), 'ask ' + a + ' has a looked list')
+  return l.asks[a].looked
+}
+const GREP_ARGS = (pattern, paths = []) => ({ pattern, fixed: false, ignore_case: false, paths, page: 1 })
+/** A call the server refused: it shows nothing. */
+const refusedCall = (seq, asks, tool, args, refusal = 'outside_scope') => ({ seq, tool, args, asks, ok: false, refusal, detail: 'refused', observed: [], keys: [] })
+const fetchCall = (seq, asks, url) => ({ seq, tool: 'fetch', args: { url, page: 1 }, asks, ok: true, page: 1, pages: 1, observed: [{ key: url, line: 1 }], keys: [url] })
+const logCall = (seq, asks, pattern, paths = []) => ({ seq, tool: 'log', args: { mode: 'G', pattern, paths, page: 1 }, asks, ok: true, total: 1, page: 1, pages: 1, observed: [], keys: [SHA] })
+const showCall = (seq, asks, commit, path = '') => ({ seq, tool: 'show', args: { commit, path }, asks, ok: true, observed: [{ key: commit, line: 1 }], keys: [commit] })
+const websearch = (seq, asks, query) => ({ seq, tool: 'websearch', args: { query }, asks, ok: true, observed: [], keys: [] })
+/** The stamp of ask `a` as it stands after each turn of `x`, each from a fold of that prefix of its turns. */
+const stampsOf = (x, a = 'a') => x.turns.map((_, i) => fold({ ...x, turns: x.turns.slice(0, i + 1) }).asks[a].stamp)
+/** The stamps after a first turn that moves ask a and 40 more turns, each carrying `item(n)`. */
+const stampsOver40 = (item) => {
+  const turns = [ret(1, 1)]
+  for (let n = 2; n <= 41; n++) turns.push(ret(n, 1, item(n)))
+  return stampsOf({ calls: [move(1, 'a')], turns })
+}
+
+// ---- the agenda (N1)
+
+test('the view calls it agenda', () => {
+  const l = fold({ asks: [ask('a', { seeds: [{ key: 'CLAUDE.md', as: 'open', reason: 'guidance' }] })] })
+  assert.deepEqual(agendaOf(l, 'a').map((f) => f.key), ['CLAUDE.md'])
+  assert.equal(Object.hasOwn(l.asks.a, 'frontier'), false)
+})
+
+test('agenda kinds', () => {
+  const g = ask('a', { seeds: [{ key: 'CLAUDE.md', as: 'open', reason: 'guidance' }] })
+  const rows = ground(pathRow('src/a.ts'), referenced('composeArea', [['src/area.ts', 3]], ['src/meadow.ts']))
+  const l = fold({
+    asks: [g], ground: rows, calls: [grep(1, ['a'], [['src/p.js', 1]], { pattern: 'big', pages: 2, total: 300 })],
+    turns: [ret(1, 1, { leads: [{ ask: 'a', path: 'src/lead.js', why: 'imports it' }] })],
+  })
+  const byKind = {}
+  for (const f of agendaOf(l, 'a')) (byKind[f.kind] ??= []).push(f.key)
+  assert.deepEqual(Object.keys(byKind).sort(), ['ground', 'lead', 'overflow', 'seed', 'symbol'])
+  assert.deepEqual(byKind.seed, ['CLAUDE.md'])
+  assert.deepEqual(byKind.lead, ['src/lead.js'])
+  assert.deepEqual(sorted(byKind.ground), ['src/a.ts', 'src/area.ts'])
+  assert.deepEqual(byKind.symbol, ['symbol:composeArea'])
+  assert.equal(byKind.overflow.length, 1)
+})
+
+test('no scope item', () => {
+  const cases = {
+    'nothing happened': {},
+    'an empty owes list': { extra: { owes: [] } },
+    'a grep over the whole scope': { calls: [grep(1, ['t'], [['src/a.ts', 1]])], turns: [ret(1, 1)] },
+    'a dismissal of a root': { calls: [move(1, 't')], turns: [ret(1, 1, { dismissed: [dismiss('t', { path: 'src' })] })] },
+    'a files call that recurses from the root': { calls: [filesCall(1, ['t'], 'src/**', ['src/a.ts'])], turns: [ret(1, 1)] },
+  }
+  for (const [what, x] of Object.entries(cases)) {
+    const l = fold({ asks: [bare('t', { scope: ['src', 'lib'], ...x.extra }), bare('w', { domain: 'web', scope: [] })], calls: x.calls, turns: x.turns })
+    for (const k of ['t', 'w']) {
+      assert.equal(agendaOf(l, k).some((f) => f.kind === 'scope'), false, what + ': ' + k)
+      assert.deepEqual(agendaOf(l, k).filter((f) => f.kind !== 'overflow'), [], what + ': ' + k + ' has nothing to reach')
+    }
+  }
+})
+
+// ---- what a scope-owing ask owes (N2)
+
+test('a scope-owing ask owes its files', () => {
+  const l = fold({ asks: [owing('t', OWED)] })
+  assert.deepEqual(agendaOf(l, 't').map((f) => f.kind), ['file', 'file', 'file'])
+  assert.deepEqual(owedLeft(l), sorted(OWED))
+  assert.equal(l.asks.t.owes, true)
+  assert.equal(fold({ asks: [bare('t')] }).asks.t.owes, false, 'an ask that owes nothing says so')
+})
+
+test('a grep covers the files under its paths', () => {
+  const l = owed([grep(1, ['t'], [], { pattern: 'foo', paths: ['src'] })])
+  assert.deepEqual(owedLeft(l), ['lib/d.ts'])
+})
+
+test('a grep path covers as a path key or a glob of the search dialect, and a directory is not a name prefix', () => {
+  const files = ['src/a.ts', 'src/b/c.ts', 'srcx/e.ts', 'app/[id]/page.tsx', 'app/i/page.tsx']
+  const cases = [
+    [['src'], ['src/a.ts', 'src/b/c.ts']],
+    [['./src/'], ['src/a.ts', 'src/b/c.ts']],
+    [['src/a.ts'], ['src/a.ts']],
+    [['src/*.ts'], ['src/a.ts']],
+    [['src/**/*.ts'], ['src/a.ts', 'src/b/c.ts']],
+    [['app/[id]'], ['app/[id]/page.tsx']],
+    [['src', 'app/i'], ['src/a.ts', 'src/b/c.ts', 'app/i/page.tsx']],
+  ]
+  for (const [paths, covered] of cases) {
+    const l = owed([grep(1, ['t'], [], { pattern: 'foo', paths })], { owes: files })
+    assert.deepEqual(owedLeft(l), sorted(files.filter((f) => !covered.includes(f))), JSON.stringify(paths))
+  }
+})
+
+test('a grep without paths covers the scope', () => {
+  const owes = [...OWED, 'docs/x.md']
+  const calls = [grep(1, ['t'], [], { pattern: 'foo' })]
+  assert.deepEqual(owedLeft(owed(calls, { owes, scope: ['src', 'lib'] })), ['docs/x.md'], 'every owed file inside the scope, and none outside it')
+  assert.deepEqual(owedLeft(owed(calls, { owes, scope: ['.'] })), [])
+})
+
+test('a refused call covers nothing', () => {
+  const calls = [refusedCall(1, ['t'], 'grep', GREP_ARGS('foo'), 'unsupported_syntax'), refusedCall(2, ['t'], 'read', { path: 'lib/d.ts', from: 1, to: 0 })]
+  const l = owed(calls)
+  assert.deepEqual(owedLeft(l), sorted(OWED))
+  assert.equal(coveredN(l), 0)
+})
+
+test('a read covers its file', () => {
+  const l = fold({ asks: [owing('t', OWED), owing('u', OWED)], calls: [read(1, ['t'], 'lib/d.ts', 1, 40, 40)], turns: [ret(1, 1)] })
+  assert.deepEqual(owedLeft(l, 't'), ['src/a.ts', 'src/b/c.ts'])
+  assert.deepEqual(owedLeft(l, 'u'), sorted(OWED), 'a read under t covers nothing for u')
+})
+
+test('files covers nothing', () => {
+  const l = owed([filesCall(1, ['t'], '**', OWED)])
+  assert.deepEqual(owedLeft(l), sorted(OWED))
+  assert.equal(coveredN(l), 0, 'a listing is not a look inside')
+})
+
+test('a dismissal closes owed files', () => {
+  const dismissedBy = (target) => owed([], { turns: [ret(1, 0, { dismissed: [dismiss('t', target)] })] })
+  const byGlob = dismissedBy({ glob: 'src/**' })
+  assert.deepEqual(owedLeft(byGlob), ['lib/d.ts'])
+  assert.equal(byGlob.asks.t.dismissed[0].closes, 2, 'the two files it closed')
+  assert.deepEqual(owedLeft(dismissedBy({ path: 'src' })), ['lib/d.ts'])
+  assert.deepEqual(owedLeft(dismissedBy({ path: 'lib/d.ts' })), ['src/a.ts', 'src/b/c.ts'])
+})
+
+test('an outside_scope call covers no owed file and is not in looked', () => {
+  const calls = [refusedCall(1, ['t'], 'read', { path: 'lib/d.ts', from: 1, to: 0 }), refusedCall(2, ['t'], 'grep', GREP_ARGS('foo', ['src', 'lib']))]
+  const l = owed(calls, { owes: ['src/a.ts', 'lib/d.ts'], scope: ['src'] })
+  assert.deepEqual(owedLeft(l), ['lib/d.ts', 'src/a.ts'])
+  assert.deepEqual(lookedOf(l, 't'), [])
+})
+
+test('covered says what each directory rests on', () => {
+  const calls = [
+    grep(1, ['t'], [], { pattern: 'foo', paths: ['src'] }), read(2, ['t'], 'lib/d.ts', 1, 40, 40),
+    grep(3, ['t'], [], { pattern: 'foo', paths: ['src/b'] }),
+  ]
+  const l = owed(calls)
+  const c = l.asks.t.covered
+  assert.deepEqual(Object.keys(c).sort(), ['lib', 'src', 'src/b'])
+  assert.deepEqual(['lib', 'src', 'src/b'].map((dir) => c[dir].files), [1, 1, 1])
+  assert.ok(c.src.by.includes('grep foo'), JSON.stringify(c.src))
+  assert.ok(c['src/b'].by.includes('grep foo'), JSON.stringify(c['src/b']))
+  assert.ok(c.lib.by.some((s) => s.startsWith('read lib/d.ts:')), JSON.stringify(c.lib))
+  assert.equal(c.lib.by.includes('grep foo'), false, 'lib rests on the read alone')
+  for (const dir of Object.keys(c)) assert.equal(new Set(c[dir].by).size, c[dir].by.length, dir + ': the distinct strings, once each')
+  assert.deepEqual(owedLeft(l), [])
+})
+
+test('covered counts the files a directory has covered, not the calls', () => {
+  const calls = [
+    grep(1, ['t'], [], { pattern: 'one', paths: ['src/a.ts'] }), grep(2, ['t'], [], { pattern: 'two', paths: ['src/a.ts'] }),
+    grep(3, ['t'], [], { pattern: 'three', paths: ['src'] }),
+  ]
+  const at = (n) => owed(calls.slice(0, n), { owes: ['src/a.ts', 'src/b.ts'] }).asks.t.covered
+  assert.equal(at(1).src.files, 1)
+  assert.equal(at(2).src.files, 1, 'a second query over the same file')
+  assert.deepEqual(sorted(at(2).src.by), ['grep one', 'grep two'])
+  assert.equal(at(3).src.files, 2)
+})
+
+test('owes only without rows', () => {
+  const own = fold({ asks: [owing('t', OWED)], ground: ground(pathRow('src/a.ts', true, ['t'])) })
+  assert.deepEqual(front(own, 't'), ['ground src/a.ts'], 'an ask with its own row owes that row, not the scope')
+  const others = ground(pathRow('src/a.ts', true, ['x']), pathRow('docs/context.md', true, []))
+  const l = fold({ asks: [owing('t', OWED), ask('x')], ground: others })
+  assert.deepEqual(owedLeft(l), sorted(OWED), "another ask's row and a row only context named are not this ask's rows")
+  assert.deepEqual(keysOf(l, 't', 'ground'), [])
+})
+
+test('the owes list is the journal: the fold neither changes it nor depends on its order', () => {
+  const x = { asks: [owing('t', [...OWED])], calls: [grep(1, ['t'], [], { pattern: 'foo', paths: ['src'] })], turns: [ret(1, 1)] }
+  const frozen = JSON.stringify(x)
+  const l = fold(x)
+  assert.equal(JSON.stringify(x), frozen)
+  assert.deepEqual(fold(structuredClone(x)), l)
+  const flipped = fold({ ...x, asks: [owing('t', [...OWED].reverse())] })
+  assert.deepEqual(owedLeft(flipped), owedLeft(l))
+  assert.deepEqual(flipped.asks.t.covered, l.asks.t.covered)
+  assert.equal(flipped.asks.t.stamp, l.asks.t.stamp)
+})
+
+// ---- what an ask looked for (N3)
+
+test('looked lists what was looked for', () => {
+  const calls = [
+    grep(1, ['a'], [['src/a.ts', 2]], { pattern: 'seatDay' }),
+    filesCall(2, ['a', 'b'], 'src/**/*.ts', ['src/a.ts', 'src/b.ts']),
+    refsCall(3, ['a'], 'composeArea', ['src/m.ts']),
+    grep(4, ['b'], [], { pattern: 'only b' }),
+    grep(5, ['a'], [['src/late.ts', 1]], { pattern: 'after the turn' }),
+  ]
+  const l = fold({ asks: [ask('a', { scope: ['src'] }), ask('b', { scope: ['src'] })], calls: [...calls].reverse(), turns: [ret(1, 4)] })
+  const row = (e) => [e.seq, e.tool, e.what, e.total]
+  assert.deepEqual(lookedOf(l, 'a').map(row), [[1, 'grep', 'seatDay', 1], [2, 'files', 'src/**/*.ts', 2], [3, 'refs', 'composeArea', 1]])
+  assert.deepEqual(lookedOf(l, 'b').map(row), [[2, 'files', 'src/**/*.ts', 2], [4, 'grep', 'only b', 0]])
+  for (const e of [...lookedOf(l, 'a'), ...lookedOf(l, 'b')]) assert.ok(Array.isArray(e.where), 'seq ' + e.seq + ' has a where')
+})
+
+test('looked holds ok calls only', () => {
+  const calls = [
+    grep(1, ['a'], [['src/a.ts', 2]], { pattern: 'kept' }), refusedCall(2, ['a', 'b'], 'grep', GREP_ARGS('refused'), 'unsupported_syntax'),
+    grep(3, ['a'], [['src/b.ts', 4]], { pattern: 'also kept' }),
+  ]
+  const l = fold({ asks: [ask('a'), ask('b')], calls, turns: [ret(1, 3)] })
+  assert.deepEqual(lookedOf(l, 'a').map((e) => e.seq), [1, 3])
+  assert.deepEqual(lookedOf(l, 'b'), [])
+})
+
+test('what and where per tool', () => {
+  const url = 'https://github.com/pmndrs/zustand'
+  const calls = [
+    grep(1, ['a'], [['src/a.ts', 2]], { pattern: 'seatDay' }), filesCall(2, ['a'], 'src/**/*.ts', ['src/a.ts']),
+    refsCall(3, ['a'], 'composeArea', ['src/m.ts']), read(4, ['a'], 'src/a.ts', 3, 9, 40), fetchCall(5, ['w'], url),
+  ]
+  const l = fold({ asks: [ask('a', { scope: ['src', 'lib'] }), ask('w', { domain: 'web', scope: [] })], calls, turns: [ret(1, 5)] })
+  assert.deepEqual(lookedOf(l, 'a').map((e) => [e.tool, e.what]), [['grep', 'seatDay'], ['files', 'src/**/*.ts'], ['refs', 'composeArea'], ['read', 'src/a.ts:3-9']])
+  assert.deepEqual(lookedOf(l, 'w').map((e) => [e.tool, e.what]), [['fetch', url]])
+  assert.deepEqual(lookedOf(l, 'a')[0].where, ['src', 'lib'], 'a grep with no paths looked in the ask scope')
+})
+
+test('where per tool', () => {
+  const url = 'https://github.com/pmndrs/zustand'
+  const calls = [
+    grep(1, ['a'], [['src/a.ts', 2]], { paths: ['src', 'lib'] }), filesCall(2, ['a'], 'src/**/*.ts', ['src/a.ts']),
+    refsCall(3, ['a'], 'composeArea', ['src/m.ts']), read(4, ['a'], 'src/a.ts', 3, 9, 40),
+    logCall(5, ['h'], 'seatDay', ['lib']), showCall(6, ['h'], SHA, 'src/a.ts'), fetchCall(7, ['w'], url),
+  ]
+  const asks = [ask('a'), ask('h', { domain: 'history' }), ask('w', { domain: 'web', scope: [] })]
+  const l = fold({ asks, calls, turns: [ret(1, 7)] })
+  assert.deepEqual(lookedOf(l, 'a').map((e) => [e.tool, e.where]), [['grep', ['src', 'lib']], ['files', []], ['refs', []], ['read', ['src/a.ts']]])
+  assert.deepEqual(lookedOf(l, 'h').map((e) => [e.tool, e.where]), [['log', ['lib']], ['show', [SHA]]])
+  assert.deepEqual(lookedOf(l, 'w').map((e) => [e.tool, e.where]), [['fetch', [url]]])
+})
+
+test('looked counts pages seen', () => {
+  const page = (seq, n) => grep(seq, ['a'], [['src/p' + n + '.js', 1]], { pattern: 'big', page: n, pages: 3, total: 600 })
+  const l = fold({ calls: [page(1, 1), page(2, 3)], turns: [ret(1, 2)] })
+  const mine = lookedOf(l, 'a').filter((e) => e.what === 'big')
+  assert.ok(mine.length >= 1)
+  for (const e of mine) {
+    assert.equal(e.pages, 3)
+    assert.ok(e.pages_seen >= 1 && e.pages_seen <= 2, 'pages_seen ' + e.pages_seen + ' of the two fetched')
+  }
+  assert.equal(Math.max(...mine.map((e) => e.pages_seen)), 2, 'pages 1 and 3 are two pages seen')
+  const whole = fold({ calls: [grep(1, ['a'], [['src/a.js', 1]], { pattern: 'small' })], turns: [ret(1, 1)] })
+  assert.deepEqual(lookedOf(whole, 'a').map((e) => [e.pages, e.pages_seen]), [[1, 1]])
+})
+
+test('what for history and web tools', () => {
+  const calls = [logCall(1, ['h'], 'seatDay'), showCall(2, ['h'], SHA, 'src/a.ts'), showCall(3, ['h'], SHA), websearch(4, ['w'], 'zustand vs jotai')]
+  const l = fold({ asks: [ask('h', { domain: 'history' }), ask('w', { domain: 'web', scope: [] })], calls, turns: [ret(1, 4)] })
+  assert.deepEqual(lookedOf(l, 'h').map((e) => [e.tool, e.what]), [['log', 'seatDay'], ['show', SHA + ' src/a.ts'], ['show', SHA]])
+  assert.deepEqual(lookedOf(l, 'w').map((e) => [e.tool, e.what]), [['websearch', 'zustand vs jotai']])
+})
+
+test('a websearch is search-wide', () => {
+  const search = { ...websearch(2, [], 'zustand vs jotai'), from_log: 7 }
+  const x = { asks: [ask('a'), ask('w', { domain: 'web', scope: [] })], calls: [move(1, 'a'), search], turns: [ret(1, 2)] }
+  const l = fold(x)
+  assert.deepEqual(l.queries.map((c) => [c.seq, c.tool]), [[2, 'websearch']], 'the view holds it, and not a call that names an ask')
+  for (const k of ['a', 'w']) assert.equal(lookedOf(l, k).some((e) => e.tool === 'websearch'), false, k)
+  const without = fold({ ...x, calls: [x.calls[0]] })
+  for (const k of ['a', 'w']) assert.equal(l.asks[k].stamp, without.asks[k].stamp, k + ' stamp')
+  assert.deepEqual(without.queries, [])
+})
+
+// ---- the stamp (N4)
+
+test('a new query moves the stamp', () => {
+  const zero = (seq, pattern) => grep(seq, ['a'], [], { pattern })
+  const x = { calls: [move(1, 'a'), zero(2, 'no such name'), zero(3, 'nor this'), zero(4, 'nor that')], turns: [ret(1, 1), ret(2, 2), ret(3, 3), ret(4, 4)] }
+  assert.equal(new Set(stampsOf(x)).size, 4, 'each 0-hit grep of a new pattern is new evidence')
+  const l = fold(x)
+  assert.equal(l.asks.a.end, null, 'an ask exploring with new queries is not stalled')
+  assert.deepEqual(l.asks.a.observed, fold({ ...x, turns: x.turns.slice(0, 1) }).asks.a.observed, 'the greps showed nothing: it is the queries that moved it')
+})
+
+test('a repeat moves nothing', () => {
+  const first = grep(2, ['a'], [], { pattern: 'same' })
+  const x = { calls: [move(1, 'a'), first, { ...first, seq: 3, repeat_of: 2 }, { ...first, seq: 4 }], turns: [ret(1, 1), ret(2, 2), ret(3, 3), ret(4, 4)] }
+  const [one, afterFirst, afterRepeat, afterAgain] = stampsOf(x)
+  assert.notEqual(afterFirst, one, 'the first run is new')
+  assert.equal(afterRepeat, afterFirst, 'a repeat_of record')
+  assert.equal(afterAgain, afterFirst, 'the same tool and args again')
+})
+
+test('a later page is the same query', () => {
+  const seen = [['moved/1.js', 1]]
+  const page = (seq, n, shown = seen) => grep(seq, ['a'], shown, { pattern: 'big', page: n, pages: 3, total: 600 })
+  const same = { calls: [move(1, 'a'), page(2, 1), page(3, 2)], turns: [ret(1, 1), ret(2, 2), ret(3, 3)] }
+  const [afterMove, afterPage1, afterPage2] = stampsOf(same)
+  assert.notEqual(afterPage1, afterMove, 'page 1 is a query the ask had not run')
+  assert.equal(afterPage2, afterPage1, 'page 2 ran no new query and showed no line the ask had not seen')
+  const fresh = { ...same, calls: [move(1, 'a'), page(2, 1), page(3, 2, [['src/r.js', 3]])] }
+  const [, freshPage1, freshPage2] = stampsOf(fresh)
+  assert.notEqual(freshPage2, freshPage1, 'a line page 2 shows that was not seen still moves it')
+})
+
+test('a query differs by any argument but the page, and not by the order the arguments were written in', () => {
+  const base = grep(1, ['a'], [], { pattern: 'foo' })
+  const stampWith = (args) => fold({ calls: [base, { ...base, seq: 2, args }], turns: [ret(1, 1), ret(2, 2)] }).asks.a.stamp
+  const alone = fold({ calls: [base], turns: [ret(1, 1)] }).asks.a.stamp
+  const variants = { 'other paths': { ...base.args, paths: ['src'] }, 'ignore_case': { ...base.args, ignore_case: true }, 'fixed': { ...base.args, fixed: true }, 'other pattern': { ...base.args, pattern: 'bar' } }
+  for (const [what, args] of Object.entries(variants)) assert.notEqual(stampWith(args), alone, what)
+  assert.equal(stampWith({ page: 1, paths: [], ignore_case: false, fixed: false, pattern: 'foo' }), alone, 'the same arguments in another order')
+  assert.equal(stampWith({ ...base.args, page: 2 }), alone, 'page 2')
+})
+
+test('a refused call is no query, and a query under another ask is not this ask\'s', () => {
+  const refused = { calls: [move(1, 'a'), refusedCall(2, ['a'], 'grep', GREP_ARGS('refused pattern'), 'unsupported_syntax')], turns: [ret(1, 1), ret(2, 2)] }
+  const [one, two] = stampsOf(refused)
+  assert.equal(two, one, 'a refused call ran nothing')
+  const other = { asks: [ask('a'), ask('b')], calls: [move(1, ['a', 'b']), grep(2, ['b'], [], { pattern: 'only b' })], turns: [ret(1, 1), ret(2, 2)] }
+  const [a1, a2] = stampsOf(other, 'a')
+  const [b1, b2] = stampsOf(other, 'b')
+  assert.equal(a2, a1)
+  assert.notEqual(b2, b1)
+})
+
+test('a declaration changed back restores the stamp', () => {
+  const x = {
+    ground: ground(pathRow('src/a.ts')), calls: [move(1, 'a')],
+    turns: [ret(1, 1, { asks: [declare('a', 'answered')] }), ret(2, 1, { asks: [declare('a', 'open')] }), ret(3, 1, { asks: [declare('a', 'answered')] })],
+  }
+  const [first, second, third] = stampsOf(x)
+  assert.notEqual(second, first, 'the declaration is in the stamp')
+  assert.equal(third, first)
+})
+
+test('a dismissal that closes nothing moves nothing', () => {
+  const base = { calls: [move(1, 'a')], turns: [ret(1, 1)] }
+  const before = fold(base).asks.a.stamp
+  for (const target of [{ path: 'nowhere/x.ts' }, { glob: 'nowhere/**' }]) {
+    const l = fold({ ...base, turns: [...base.turns, ret(2, 1, { dismissed: [dismiss('a', target, 'a dead end')] })] })
+    const what = JSON.stringify(target)
+    assert.equal(l.asks.a.stamp, before, what)
+    assert.equal(l.asks.a.dismissed.length, 1, what + ' is kept')
+    assert.equal(l.asks.a.dismissed[0].closes, 0, what)
+    assert.equal(l.asks.a.dismissed[0].why, 'a dead end', what)
+    assert.deepEqual(l.refusals, [], what + ' is no refusal')
+    assert.deepEqual(coverageLines(l, NAME).unreached.filter((u) => u.includes('nowhere')), [], what + ' is no unreached line')
+  }
+})
+
+test('fresh empty dismissals never move the stamp', () => {
+  const stamps = stampsOver40((n) => ({ dismissed: [dismiss('a', { path: 'nowhere/' + n + '.ts' })] }))
+  assert.equal(stamps.length, 41)
+  assert.equal(new Set(stamps).size, 1)
+})
+
+test('fresh empty glob dismissals never move the stamp', () => {
+  const stamps = stampsOver40((n) => ({ dismissed: [dismiss('a', { glob: 'nowhere' + n + '/**' })] }))
+  assert.equal(stamps.length, 41)
+  assert.equal(new Set(stamps).size, 1)
+})
+
+test('refused citations never move the stamp', () => {
+  const stamps = stampsOver40((n) => ({ hits: [hit('a', 'src/x.ts', n)] }))
+  assert.equal(stamps.length, 41)
+  assert.equal(new Set(stamps).size, 1)
+  const turns = [ret(1, 1)]
+  for (let n = 2; n <= 41; n++) turns.push(ret(n, 1, { hits: [hit('a', 'src/x.ts', n)] }))
+  const l = fold({ calls: [move(1, 'a')], turns })
+  assert.ok(classes(l).includes('unobserved'), 'the refusals are recorded')
+  assert.notEqual(l.asks.a.refused, fold({ calls: [move(1, 'a')], turns: turns.slice(0, 1) }).asks.a.refused, 'in the refused digest, not the stamp')
+})
+
+test('a dismissal moves the stamp by what it closes', () => {
+  const x = {
+    ground: ground(pathRow('src/a.ts')), calls: [move(1, 'a')],
+    turns: [ret(1, 1), ret(2, 1, { dismissed: [dismiss('a', { glob: 'src/**' })] }), ret(3, 1, { dismissed: [dismiss('a', { glob: 'src/*.ts' })] })],
+  }
+  const [one, two, three] = stampsOf(x)
+  assert.notEqual(two, one, 'it closed an agenda item')
+  assert.equal(three, two, 'the same item again, by another glob')
+  const l = fold(x)
+  assert.equal(l.asks.a.dismissed[0].closes, 1)
+  assert.deepEqual(agendaOf(l, 'a'), [])
+})
+
+test('history records refused citations', () => {
+  const x = {
+    calls: [move(1, 'a'), move(2, 'a'), move(3, 'a'), move(4, 'a')],
+    turns: [
+      ret(1, 1), ret(2, 2, { hits: [hit('a', 'src/nowhere.js', 3, 'one wording')] }),
+      ret(3, 3, { hits: [hit('a', 'src/nowhere.js', 3, 'another wording')] }), ret(4, 4, { hits: [hit('a', 'src/elsewhere.js', 5)] }),
+    ],
+  }
+  const l = fold(x)
+  const history = l.asks.a.history
+  assert.deepEqual(history.map((h) => h.turn), [0, 1, 2, 3, 4])
+  for (const h of history) assert.ok(Object.hasOwn(h, 'refused'), 'turn ' + h.turn)
+  const [r0, r1, r2, r3, r4] = history.map((h) => h.refused)
+  assert.equal(r1, r0, 'nothing refused yet')
+  assert.notEqual(r2, r1, 'a citation was refused')
+  assert.equal(r3, r2, 'the same citation in other words is the same refusal')
+  assert.notEqual(r4, r3, 'another citation was refused')
+  assert.notEqual(r4, r2)
+  assert.equal(l.asks.a.refused, r4, 'the view holds the latest')
 })

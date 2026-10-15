@@ -81,13 +81,21 @@ test("a navigator's hit names its location in its domain's terms", () => {
   }
 })
 
-test('a search convergence ruling is one unit per ask, converging or not', () => {
-  assert.equal(kindOf('ruler_search'), 'judge')
+test('ruler_search rules the four search values', () => {
   const schema = schemaOf('ruler_search')
   assert.ok(schema.required.includes('units'))
   const unit = schema.properties.units.items
-  assert.deepEqual(unit.properties.ruling.enum, ['converging', 'not_converging'])
+  assert.deepEqual(unit.properties.ruling.enum, ['answered', 'absent', 'open', 'not_converging'])
   for (const field of ['unit', 'ruling', 'why']) assert.ok(unit.required.includes(field), field)
+})
+
+test('ruler_search has no converging', () => {
+  const unit = schemaOf('ruler_search').properties.units.items
+  assert.ok(!unit.properties.ruling.enum.includes('converging'))
+})
+
+test('ruler_search is a judge', () => {
+  assert.equal(kindOf('ruler_search'), 'judge')
 })
 
 test('no schema carries a size bound', () => {

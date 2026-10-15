@@ -51,7 +51,7 @@ export const webReturn = ({ hits = [], dismissed = [], leads = [], declare = {} 
 export const quietTurn = (keys) => ({ output: repoReturn({ declare: absentAll(keys) }) })
 /** A turn that dismisses everything on every ask's frontier and declares each absent: every ask in `keys` ends. */
 export const closingTurn = (keys) => ({
-  output: repoReturn({ dismissed: [{ ask: keys, glob: '**', why: 'nothing here bears on it' }], declare: absentAll(keys) }),
+  output: repoReturn({ dismissed: keys.map((k) => ({ ask: k, glob: '**', why: 'nothing here bears on it' })), declare: absentAll(keys) }),
 })
 /**
  * A turn that greps each hit's line for `ask` and returns it, dismisses the rest of every frontier
@@ -62,7 +62,7 @@ export const hitTurn = (ask, hits, others = []) => ({
   calls: [grepCall(ask, hits.map(([path, line]) => [path, line]))],
   output: repoReturn({
     hits: hits.map(([path, line, note]) => [ask, path, line, note]),
-    dismissed: [{ ask: [ask, ...others], glob: '**', why: 'nothing else here bears on it' }],
+    dismissed: [ask, ...others].map((k) => ({ ask: k, glob: '**', why: 'nothing else here bears on it' })),
     declare: { [ask]: 'answered', ...absentAll(others) },
   }),
 })

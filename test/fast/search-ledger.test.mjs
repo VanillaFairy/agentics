@@ -13,7 +13,9 @@ import { candidateKey, canonicalUrl, coverageLines, foldLedger, standingRefusals
 // ------------------------------------------------------------------ builders
 
 const NONE = { rows: [], seeds: [] }
-const ask = (key, extra = {}) => ({ key, find: 'what ' + key + ' asks', scope: ['.'], domain: 'repo', ...extra })
+/** An ask that holds its material as a closed seed, so its scope is no frontier of its own; `bare` builds one that has nothing. */
+const ask = (key, extra = {}) => ({ key, find: 'what ' + key + ' asks', scope: ['.'], domain: 'repo', seeds: [{ key: 'MATERIAL.md', as: 'closed', reason: 'the material' }], ...extra })
+const bare = (key, extra = {}) => ask(key, { seeds: [], ...extra })
 
 /** A grep call under `asks` that showed `lines`, each [key, line]. */
 function grep(seq, asks, lines, { pattern = 'p' + seq, paths = [], page = 1, pages = 1, total = lines.length } = {}) {
@@ -364,12 +366,45 @@ test("a grep whose pattern names the symbol closes its item; one naming another 
   const by = (pattern) => fold({ ground: g, calls: [grep(1, ['a'], [['src/meadow.ts', 8]], { pattern })], turns: [ret(1, 1)] })
   assert.deepEqual(front(by('\bcomposeArea\('), 'a'), [])
   assert.deepEqual(front(by('composeEndless'), 'a'), ['ground symbol:composeArea'])
+  const dismissed = fold({ ground: g, calls: [move(1, 'a')], turns: [ret(1, 1, { dismissed: [dismiss('a', { path: 'symbol:composeArea' })] })] })
+  assert.deepEqual(front(dismissed, 'a'), [], 'a dismissal of the item closes it')
 })
 
 test('following a symbol moves the stamp even when its reference files were already observed', () => {
   const g = ground(referenced('composeArea', [], ['src/meadow.ts']))
   const l = fold({ ground: g, calls: [listed(1, ['a'], ['src/meadow.ts']), refsCall(2, ['a'], 'composeArea', ['src/meadow.ts'])], turns: [ret(1, 1), ret(2, 2)] })
   assert.equal(l.asks.a.end, null, 'turn 2 followed the symbol: progress, not no_progress')
+})
+
+const filesCall = (seq, asks, glob, keys = []) => ({ seq, tool: 'files', args: { glob, page: 1 }, asks, ok: true, total: keys.length, page: 1, pages: 1, observed: [], keys })
+
+test('a repo ask with no seed and no ground row of its own has each scope root on its frontier', () => {
+  const l = fold({ asks: [bare('t', { scope: ['src', 'lib'] }), bare('w', { domain: 'web', scope: [] })], ground: ground(pathRow('src/a.ts', true, [])) })
+  assert.deepEqual(front(l, 't'), ['scope src', 'scope lib'])
+  assert.deepEqual(front(l, 'w'), [])
+  assert.deepEqual(front(fold({ asks: [bare('a')], ground: ground(pathRow('src/a.ts')) }), 'a'), ['ground src/a.ts'], 'an ask with its own rows has no scope item')
+  assert.deepEqual(front(fold({ asks: [ask('a')] }), 'a'), [], 'nor one with a seed')
+})
+
+test('a grep over the whole root, or a files glob that recurses from it, closes its scope item; a narrower call does not', () => {
+  const t = bare('t', { scope: ['src'] })
+  const by = (call) => front(fold({ asks: [t], calls: [call], turns: [ret(1, 1)] }), 't')
+  assert.deepEqual(by(grep(1, ['t'], [['src/a.ts', 1]])), [], 'no paths: the whole scope')
+  assert.deepEqual(by(grep(1, ['t'], [['src/a.ts', 1]], { paths: ['src'] })), [])
+  assert.deepEqual(by(grep(1, ['t'], [['src/game/a.ts', 1]], { paths: ['src/game'] })), ['scope src'])
+  assert.deepEqual(by(filesCall(1, ['t'], 'src/**/*.ts', ['src/a.ts'])), [])
+  assert.deepEqual(by(filesCall(1, ['t'], '**/index.ts', ['src/index.ts'])), [])
+  assert.deepEqual(by(filesCall(1, ['t'], 'src/game/*.ts', ['src/game/a.ts'])), ['scope src'])
+  assert.deepEqual(by(grep(1, ['x'], [['src/a.ts', 1]])), ['scope src'], 'a call under another ask')
+})
+
+test('a dismissal of the root closes its scope item, and a scope item nobody looked at is unreached at the end', () => {
+  const t = bare('t', { scope: ['src'] })
+  const dismissed = fold({ asks: [t], calls: [move(1, 't')], turns: [ret(1, 1, { dismissed: [dismiss('t', { path: 'src' })] })] })
+  assert.deepEqual(front(dismissed, 't'), [])
+  const idle = fold({ asks: [t], turns: [ret(1, 0, { asks: [declare('t', 'open')] }), ret(2, 0, { asks: [declare('t', 'open')] })] })
+  assert.equal(idle.asks.t.end.state, 'no_progress')
+  assert.ok(coverageLines(idle, NAME).unreached.some((u) => u.endsWith(':t: scope src (' + idle.asks.t.frontier[0].detail + ')')))
 })
 
 test('a symbol with no reference site is no frontier item of its own', () => {

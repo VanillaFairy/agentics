@@ -67,7 +67,10 @@ const asksOf = (text) => ['guidance', ...sectionsOf(text).map((s) => 'ground:' +
 /** A locate turn that greps each hit's line for its ask and returns it: asks with a hit answered, the rest absent. Each hit `[ask, path, line]`. */
 const locateTurn = (text, hits) => ({
   calls: hits.map(([ask, path, line]) => grepCall(ask, [[path, line]])),
-  output: repoReturn({ hits, declare: Object.fromEntries(asksOf(text).map((k) => [k, hits.some(([a]) => a === k) ? 'answered' : 'absent'])) }),
+  output: repoReturn({
+    hits, dismissed: asksOf(text).filter((k) => !hits.some(([a]) => a === k)).map((k) => ({ ask: k, glob: '**', why: 'nothing here bears on it' })),
+    declare: Object.fromEntries(asksOf(text).map((k) => [k, hits.some(([a]) => a === k) ? 'answered' : 'absent'])),
+  }),
 })
 const axis = (key, charge = 'attack the design on ' + key, source = 'docs/REVIEW.md') => ({ key, charge, source })
 const axesOut = (axes = [], over = {}) => ({ axes, guidance_read: ['docs/REVIEW.md'], notes: '', stop_reason: 'completed', ...over })
@@ -99,7 +102,7 @@ const deal = (keys, n) => Array.from({ length: n }, (_, i) => keys.filter((_, j)
  * A script for a whole round of `text` over `keys`: the locating scout's steps, the axes analyst's,
  * and each prober's, `probers[n](units)` giving prober n's steps (default: every unit ruled clean).
  */
-function scriptFor(text, keys, { locate = [quietTurn(asksOf(text)), quietTurn(asksOf(text))], axes = null, perAxis = false, probers = {} } = {}) {
+function scriptFor(text, keys, { locate = [closingTurn(asksOf(text))], axes = null, perAxis = false, probers = {} } = {}) {
   const sections = sectionsOf(text)
   const groups = deal(keys, headsFor(keys, linesOf(text).length, perAxis))
   const script = { 'scout||locate': locate }
@@ -256,7 +259,7 @@ const GROUND_HIT = ['ground:design', 'src/ground.js', 2]
 test('the locating search asks for guidance and for each section in scope, its charge holding the artefact', async (t) => {
   const { rig, args } = await probeIn(t, { script: scriptFor(DOC, STANDING).script })
   const calls = callsOf(rig, 'locate')
-  assert.equal(calls.length, 1, 'a quiet turn ends every ask of a probe with no frontier')
+  assert.equal(calls.length, 1, 'a turn that dismisses every frontier ends every ask')
   const charge = chargeOf(calls[0])
   for (const line of linesOf(args.artifact_text).filter((l) => l.trim() !== '')) assert.ok(charge.includes(line), 'the charge holds ' + JSON.stringify(line))
   for (const key of asksOf(DOC)) assert.ok(charge.includes(key), 'the charge asks ' + key)
@@ -325,21 +328,24 @@ test('each section in scope is material for its own ground ask, the rest of the 
 })
 
 test("a path a section cites is on that section's ground ask alone", async (t) => {
-  const { rig, result } = await probeIn(t, { ground: null, files: { [ART]: CITING_DOC, ...CITED_FILES }, script: scriptFor(CITING_DOC, STANDING).script })
+  const quiet = [quietTurn(asksOf(CITING_DOC)), quietTurn(asksOf(CITING_DOC))]
+  const { rig, result } = await probeIn(t, { ground: null, files: { [ART]: CITING_DOC, ...CITED_FILES }, script: scriptFor(CITING_DOC, STANDING, { locate: quiet }).script })
   assert.equal(callsOf(rig, 'locate').length, 2, 'a quiet turn leaves the citing section open')
   assert.deepEqual(result.coverage.incomplete, ['locate'])
   assert.ok(result.coverage.unreached.some((l) => l.includes('ground:design') && l.includes('src/limiter.js')), JSON.stringify(result.coverage))
-  assert.ok(!result.coverage.unreached.some((l) => l.includes('ground:intent')), JSON.stringify(result.coverage))
+  assert.ok(!result.coverage.unreached.some((l) => l.includes('ground:intent') && l.includes('src/limiter.js')), JSON.stringify(result.coverage))
+  assert.ok(result.coverage.unreached.some((l) => l.includes('ground:intent') && l.includes('scope .')), 'a section that names nothing holds its scope: ' + JSON.stringify(result.coverage))
 })
 
-test('the artefact is never a seed of its own guidance ask, so a quiet turn ends a probe of a docs/ artefact', async (t) => {
-  const { rig, result } = await probeIn(t, { ground: null, script: scriptFor(DOC, STANDING).script })
-  assert.equal(callsOf(rig, 'locate').length, 1)
-  assert.deepEqual(result.coverage.incomplete, [])
+test('the artefact is never a seed of its own guidance ask', async (t) => {
+  const quiet = [quietTurn(asksOf(DOC)), quietTurn(asksOf(DOC))]
+  const { result } = await probeIn(t, { ground: null, script: scriptFor(DOC, STANDING, { locate: quiet }).script })
+  assert.ok(!result.coverage.unreached.some((l) => l.includes(':guidance:') && l.includes(ART)), JSON.stringify(result.coverage))
 })
 
 test("the resolver's guidance seeds open on the guidance ask", async (t) => {
-  const { result } = await probeIn(t, { ground: null, files: { [ART]: DOC, 'docs/REVIEW.md': GROUND_FILES['docs/REVIEW.md'] }, script: scriptFor(DOC, STANDING).script })
+  const quiet = [quietTurn(asksOf(DOC)), quietTurn(asksOf(DOC))]
+  const { result } = await probeIn(t, { ground: null, files: { [ART]: DOC, 'docs/REVIEW.md': GROUND_FILES['docs/REVIEW.md'] }, script: scriptFor(DOC, STANDING, { locate: quiet }).script })
   assert.deepEqual(result.coverage.incomplete, ['locate'])
   assert.ok(result.coverage.unreached.some((l) => l.includes('guidance') && l.includes('docs/REVIEW.md')), JSON.stringify(result.coverage))
 })

@@ -130,7 +130,7 @@ test('each domain gets its own protocol, a web ask has no scope, and an unknown 
 
 function turns() {
   return foldLedger({
-    asks: [ask('a'), ask('b', { scope: ['lib'] }), ask('c', { scope: ['lib'] })],
+    asks: [ask('a'), ask('b', { scope: ['lib'] }), ask('c', { scope: ['lib'], seeds: [{ key: 'MATERIAL.md', as: 'closed' }] }), ask('d', { scope: ['lib'] })],
     ground: { rows: [row('src/b.ts')], seeds: [] },
     calls: [grep(1, ['a', 'b'], [['src/a.ts', 3]]), grep(2, ['a'], [['src/c.ts', 9]])],
     turns: [
@@ -149,6 +149,7 @@ test("a turn's brief holds each open ask's declaration and frontier, and the end
   assert.ok(t.startsWith('# Turn 3'))
   assert.ok(t.includes('### a — declared answered\n\nFrontier (2):\n- lead src/lead.ts — imports the store\n- ground src/b.ts'))
   assert.ok(t.includes('### c — nothing declared yet\n\nFrontier: empty. Declare this ask, or name what you will look at.'))
+  assert.ok(t.includes('### d — nothing declared yet\n\nFrontier (1):\n- scope lib — '), 'an ask its material gave nowhere holds its scope')
   assert.ok(t.includes('## Ended\n\n- b — done (declared): '))
   assert.equal(t.includes('### b —'), false)
   assert.ok(t.indexOf('### a —') < t.indexOf('### c —'))

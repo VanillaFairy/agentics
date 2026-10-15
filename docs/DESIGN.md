@@ -1904,7 +1904,7 @@ A consumer's wants add asks `want:<n>` to the program's own search (**Wants**, b
 | State | The search ledger is the only memory that decides anything, and it only grows: one call-log line per tool call, written by the tool server before it answers, and one journaled step per navigator return, folded by a pure function (`foldLedger`). |
 | Identity | Every key is canonical by construction: git's own output for the pinned tree (a repo-relative posix path, a full commit sha), or `canonicalUrl` and `candidateKey` on the web. One query dialect, `queryOf`, serves search and the evidence pool ([Items and anchors](#items-and-anchors)): it transpiles `\d \s \w` and their negations into POSIX classes and refuses what `git grep -E` would read otherwise. A refusal is a persisted fact, shown in the next turn's brief. |
 | Labels | Every fact and every end carries the weakest source it rests on: *observed* only when every fact under it is code's, *ruled* when it rests on a ruling, otherwise *declared*. |
-| Progress | A return progresses for an ask when it moves the ask's stamp (its observed set, hits, dismissal targets, reads to the end, closed seeds, followed symbols, declaration and absence) to a value the ask never had before. A turn answers only for the open asks it worked — a call or a return item named them — and a turn that named no open ask answers for every open ask, so an ask the turn left alone is not ended by it. For a pinned tree the observable `(key, line)` pairs are finite, a closure closes once and an exact repeat adds nothing, so a search ends without any count. |
+| Progress | A return progresses for an ask when it moves the ask's stamp (its observed set, hits, dismissal targets, reads to the end, closed seeds, followed symbols, covered roots, declaration and absence) to a value the ask never had before. A turn answers only for the open asks it worked — a call or a return item named them — and a turn that named no open ask answers for every open ask, so an ask the turn left alone is not ended by it. For a pinned tree the observable `(key, line)` pairs are finite, a closure closes once and an exact repeat adds nothing, so a search ends without any count. |
 | Ending | Each ask ends on its state — `done`, `no_progress` (only an ask the turn answers for), `not_converging` — or pauses `stopped`, resumable; a missing outcome pauses an ask and never ends one. |
 | Scheduling | The navigator chooses each next step. Code reports each open ask's frontier in the turn's brief, and folds the ledger to a budget only for a renewed session's digest. |
 
@@ -2011,8 +2011,13 @@ arrive in.
   of its queries not fetched, and its own ground-table rows — the mentions of that ask's own
   material: a path that exists, a symbol's definition files — that it has neither hit, read to their
   end, nor dismissed — and, for a symbol the resolver found references to, the symbol itself
-  (`symbol:<mention>`) until a call under the ask follows it: a `refs` of it, or a `grep` whose
-  pattern names it, whose unfetched pages stay frontier. Following a symbol moves the ask's stamp.
+  (`symbol:<mention>`) until a call under the ask follows it — a `refs` of it, or a `grep` whose
+  pattern names it, whose unfetched pages stay frontier — or a dismissal closes it. A repo ask with
+  no seed and no ground row of its own (its material named nothing on this tree, or it has none, as
+  a want) holds each root of its scope (kind `scope`) until a call under it covers the root — a
+  `grep` over all of it, or a `files` glob recursing from a directory that holds it — or a
+  dismissal closes it, so an ask nobody worked reports its scope `unreached`. Following a symbol and
+  covering a root move the ask's stamp.
   A row only shared context named sits on no frontier. Each is per ask: a call or an item counts for
   the asks it names. At an ask's end, its frontier is its `unreached`.
 - **Dismissals** name a path (a literal pathspec: a directory holds what is under it; in the web
@@ -3816,7 +3821,7 @@ dispatch.
 `foldLedger({asks, ground, calls, turns, rulings})` returns `{asks{<key>: {key, domain, scope[],
 find, from, observed[], hits[{key, line, note, turn, candidate?}], dismissed[{key?, glob?, call?,
 why, turn, read_to_end}], leads[{key, why, turn}], declared: '' | answered | absent | open, absence:
-'' | checked | declared, frontier[{kind: seed | lead | ground | overflow, key (a path, a url, `symbol:<mention>` or `call:<seq>`), detail}], end: null |
+'' | checked | declared, frontier[{kind: seed | lead | ground | scope | overflow, key (a path, a url, `symbol:<mention>`, a scope root or `call:<seq>`), detail}], end: null |
 {state: done | no_progress | not_converging | stopped, turn, label: observed | declared | ruled,
 why, by?}, stamp, history[{turn, stamp, observed_n, hits_n}]}}, refusals[{turn, item, class:
 unobserved | unknown_ask | names_only_ended_asks | contradicts_hit, asks[]}], calls[], calls_n,

@@ -1900,7 +1900,7 @@ A consumer's wants add asks `want:<n>` to the program's own search (**Wants**, b
 | State | The search ledger is the only memory that decides anything, and it only grows: one call-log line per tool call, written by the tool server before it answers, and one journaled step per navigator return, folded by a pure function (`foldLedger`). |
 | Identity | Every key is canonical by construction: git's own output for the pinned tree (a repo-relative posix path, a full commit sha), or `canonicalUrl` and `candidateKey` on the web. One query dialect, `queryOf`, serves search and the evidence pool ([Items and anchors](#items-and-anchors)): it transpiles `\d \s \w` and their negations into POSIX classes and refuses what `git grep -E` would read otherwise. A refusal is a persisted fact, shown in the next turn's brief. |
 | Labels | Every fact and every end carries the weakest source it rests on: *observed* only when every fact under it is code's, *ruled* when it rests on a ruling, otherwise *declared*. |
-| Progress | A return progresses for an ask when it moves the ask's stamp (its observed set, hits, dismissal targets, reads to the end, closed seeds, declaration and absence) to a value the ask never had before. A turn answers only for the asks it worked — a call or a return item named them — and a turn that named none answers for every open ask, so an ask the turn left alone is not ended by it. For a pinned tree the observable `(key, line)` pairs are finite, a closure closes once and an exact repeat adds nothing, so a search ends without any count. |
+| Progress | A return progresses for an ask when it moves the ask's stamp (its observed set, hits, dismissal targets, reads to the end, closed seeds, declaration and absence) to a value the ask never had before. A turn answers only for the open asks it worked — a call or a return item named them — and a turn that named no open ask answers for every open ask, so an ask the turn left alone is not ended by it. For a pinned tree the observable `(key, line)` pairs are finite, a closure closes once and an exact repeat adds nothing, so a search ends without any count. |
 | Ending | Each ask ends on its state — `done`, `no_progress` (only an ask the turn answers for), `not_converging` — or pauses `stopped`, resumable; a missing outcome pauses an ask and never ends one. |
 | Scheduling | The navigator chooses each next step. Code reports each open ask's frontier in the turn's brief, and folds the ledger to a budget only for a renewed session's digest. |
 
@@ -2021,7 +2021,8 @@ arrive in.
 
 **How a search ends.** After every navigator return, `stateOf` takes each open ask in order: `done`
 when it is declared `answered` or `absent` and its frontier is empty; `no_progress` when the turn
-answers for the ask (it worked the ask, or named no ask at all) and the ask's stamp equals any
+answers for the ask (it worked the ask, or named no open ask at all: an item naming only ended
+asks works none) and the ask's stamp equals any
 earlier stamp in its history, which also ends an answered → open → answered flip-flop; an ask the
 turn did not work stays open. Neither ends an ask in the return that is first to cite, unobserved, an
 item the ask has not been refused before (the same citation, wording aside): the ask gets one more

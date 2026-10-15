@@ -532,6 +532,15 @@ test('a quiet turn, with no call and no item, ends every open ask no_progress', 
   assert.deepEqual([l.asks.a.end.state, l.asks.a.end.turn, l.asks.b.end.state, l.asks.b.end.turn], ['no_progress', 2, 'no_progress', 2])
 })
 
+test('a turn whose items name only ended asks named no open ask: it answers for every open ask', () => {
+  const l = fold({
+    asks: [ask('a'), ask('want:1', { from: 2 })], calls: [move(1, 'a')],
+    turns: [ret(1, 1, { asks: [declare('a', 'answered')] }), ret(2, 1, { dismissed: [dismiss('a', { path: 'x.js' })] })],
+  })
+  assert.deepEqual(classes(l), ['names_only_ended_asks'])
+  assert.deepEqual([l.asks['want:1'].end.state, l.asks['want:1'].end.turn], ['no_progress', 2])
+})
+
 test('a turn whose only items are refused unobserved, and refused again, ends the asks they name no_progress', () => {
   const l = fold({ asks: [ask('a'), ask('b')], calls: [move(1, ['a', 'b'])], turns: [ret(1, 1), ret(2, 1, { hits: [hit('a', 'src/nowhere.js', 3)] }), ret(3, 1, { hits: [hit('a', 'src/nowhere.js', 3)] })] })
   assert.deepEqual(classes(l), ['unobserved', 'unobserved'])

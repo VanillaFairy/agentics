@@ -346,6 +346,41 @@ test("another ask's row, a row only context material named, a missing path, and 
   assert.deepEqual(front(l, 'w'), [])
 })
 
+/** A symbol row whose references the resolver found in `files`. */
+const referenced = (mention, defs, files, asks = ['a']) => ({ ...symbolRow(mention, defs, asks), refs: files.map((key) => ({ key, count: 1, test: false })), files: files.length })
+const refsCall = (seq, asks, symbol, files) => ({ seq, tool: 'refs', args: { symbol }, asks, ok: true, total: files.length, observed: [], keys: files })
+
+test('a symbol the material names with reference sites is one frontier item until a refs call of it under the ask', () => {
+  const g = ground(referenced('composeArea', [['src/area.ts', 3]], ['src/meadow.ts', 'src/install.ts'], ['a', 'b']))
+  const before = fold({ asks: [ask('a'), ask('b')], ground: g })
+  assert.deepEqual(front(before, 'a'), ['ground src/area.ts', 'ground symbol:composeArea'])
+  const after = fold({ asks: [ask('a'), ask('b')], ground: g, calls: [refsCall(1, ['a'], 'composeArea', ['src/meadow.ts', 'src/install.ts'])], turns: [ret(1, 1)] })
+  assert.deepEqual(front(after, 'a'), ['ground src/area.ts'])
+  assert.deepEqual(front(after, 'b'), ['ground src/area.ts', 'ground symbol:composeArea'], 'the call named a only')
+})
+
+test("a grep whose pattern names the symbol closes its item; one naming another symbol does not", () => {
+  const g = ground(referenced('composeArea', [], ['src/meadow.ts']))
+  const by = (pattern) => fold({ ground: g, calls: [grep(1, ['a'], [['src/meadow.ts', 8]], { pattern })], turns: [ret(1, 1)] })
+  assert.deepEqual(front(by('\bcomposeArea\('), 'a'), [])
+  assert.deepEqual(front(by('composeEndless'), 'a'), ['ground symbol:composeArea'])
+})
+
+test('following a symbol moves the stamp even when its reference files were already observed', () => {
+  const g = ground(referenced('composeArea', [], ['src/meadow.ts']))
+  const l = fold({ ground: g, calls: [listed(1, ['a'], ['src/meadow.ts']), refsCall(2, ['a'], 'composeArea', ['src/meadow.ts'])], turns: [ret(1, 1), ret(2, 2)] })
+  assert.equal(l.asks.a.end, null, 'turn 2 followed the symbol: progress, not no_progress')
+})
+
+test('a symbol with no reference site is no frontier item of its own', () => {
+  assert.deepEqual(front(fold({ ground: ground(symbolRow('ITEM_STAND', [['src/data/items.ts', 12]])) }), 'a'), ['ground src/data/items.ts'])
+})
+
+test("a symbol item nobody followed is the ask's unreached at its end", () => {
+  const l = fold({ ground: ground(referenced('composeArea', [], ['src/meadow.ts'])), turns: [ret(1, 0, { asks: [declare('a', 'answered')] })] })
+  assert.ok(coverageLines(l, NAME).unreached.some((u) => u.includes('symbol:composeArea')))
+})
+
 test('a read to the end closes a ground row for the asks the reads named, and a partial read does not', () => {
   const g = ground(pathRow('src/a.ts', true, ['a', 'b']), pathRow('src/b.ts', true, ['a', 'b']), pathRow('src/empty.ts', true, ['a', 'b']))
   const calls = [

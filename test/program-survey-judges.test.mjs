@@ -20,6 +20,7 @@ import { programContext } from '../lib/programs/common.mjs'
 import { survey } from '../lib/programs/survey.mjs'
 import { tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
+import { treeOf } from '../lib/search/pin.mjs'
 import { runLogPath } from '../lib/store.mjs'
 import {
   Q, GUIDE, FILES, FILE, TOPIC, plan, behaviour, anchoredUnit, judgeOut, ARGS, CLAIM,
@@ -372,4 +373,20 @@ test("the context file holds a reopened topic's latest risks, not its first retu
   assert.ok(text.includes('RISK-NEW-loader'), 'the latest risk')
   assert.ok(text.includes('RISK-KEPT-store'), "the other topic's risk stands")
   assert.ok(!text.includes('RISK-OLD-loader'), 'the replaced risk is gone')
+})
+
+test('guidance from the pinned tree', async (t) => {
+  const rig = rigFor(t, basicScript())
+  const parent = mkdtempSync(join(tmpdir(), 'agentics-survey-pinned-'))
+  t.after(() => rmSync(parent, { recursive: true, force: true }))
+  const wt = join(parent, 'wt')
+  const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', windowsHide: true }).trim()
+  git(rig.repo, 'worktree', 'add', '-q', '-b', 'pinned', wt)
+  const TREE_GUIDE = 'TREE-GUIDE-8c3d: the pinned tree has its own rules.'
+  writeFileSync(join(wt, 'CLAUDE.md'), '# Project\n\n' + TREE_GUIDE + '\n')
+  git(wt, 'commit', '-qam', 'pinned guidance')
+  await survey(rig.ctx, ARGS({ tree: treeOf(wt) }))
+  const brief = on(rig, 'plan')[0].brief
+  assert.ok(brief.includes(TREE_GUIDE), "the pinned tree's guidance")
+  assert.ok(!brief.includes(GUIDE), "not the context root's")
 })

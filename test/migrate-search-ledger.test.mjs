@@ -1243,3 +1243,19 @@ test('the CLI on a repository with no store prints an empty plan, with and witho
   }
   assert.equal(existsSync(join(dir, '.agentics')), false)
 })
+
+// ---- a group is no folder
+
+test('a group holds no folder: a round search that names one is left, not planned', (t) => {
+  const dir = store(t)
+  assert.equal(seedTree(dir, E, [{ id: 'f/g', kind: 'group', title: 'gather f/g' }, leaf('f/g/a')]).ok, true)
+  assert.equal(readTree(dir, E).nodes.get('f/g').kind, 'group')
+  execution(dir)
+  searched(dir, 'probe:f/g:1/locate')
+  const p = plan(dir)
+  assert.ok(!p.folders.some((f) => f.folder === 'f/g'), JSON.stringify(p.folders))
+  assert.deepEqual(byFolder(p, 'left'), { 'f/g': ['probe:f/g:1/locate'] })
+  assert.ok(p.left[0].why.length > 0)
+  assert.deepEqual(apply(p), { applied: 0, error: '' })
+  assert.deepEqual(events(dir).filter((e) => e.kind === 'replanned' && e.node === 'f/g'), [])
+})

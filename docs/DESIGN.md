@@ -1924,8 +1924,9 @@ directory-qualified file path (or a file name in backticks), an identifier in co
 backticks, CamelCase, SCREAMING_CASE or snake_case of two parts or more — or a document name. For
 each, the table records whether the path exists on this tree, an identifier's definition sites (one
 `git grep -E` per language) and its references by file with tests apart, and how many files mention
-it; when the program hands it an effort's diff, each changed file and each identifier the diff adds
-or removes. Rows that exist come first, identifiers by how few files mention them, so `ITEM_STAND`
+it; when the program hands it an effort's diff, each changed file. `scopeFiles` in the same module
+lists a scope-owing ask's files: the tracked and untracked files under the scope, sorted, by the
+`files` tool's own fence and submodule rules. Rows that exist come first, identifiers by how few files mention them, so `ITEM_STAND`
 rises and `config` sinks; what the tree lacks is kept, last, because a design often names what it
 will create. The table's seeds are the repository's guidance: every `CLAUDE.md` and `AGENTS.md`, the
 files `.agentics/config.json` lists under `guidance`, every `docs/**/*.md`, and the `INDEX.md` or

@@ -12,11 +12,13 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { sectionsOf, unitsOf } from '../lib/evidence.mjs'
+import { programContext } from '../lib/programs/common.mjs'
 import { probe } from '../lib/programs/probe.mjs'
+import { judgeLines } from '../lib/programs/search/consume.mjs'
 import { survey } from '../lib/programs/survey.mjs'
 import { EMPTY_GROUND, closingTurn, hitTurn, repoReturn, withGround } from './harness/navigator.mjs'
 import { programRig } from './harness/program-rig.mjs'
-import { ARGS, FILE, TOPIC, anchoredUnit, behaviour, endedRounds, plan, pool, rigFor, scouted } from './harness/survey-world.mjs'
+import { ARGS, FILE, TOPIC, anchoredUnit, behaviour, endedRounds, plan, pool, rescouted, rigFor, scouted } from './harness/survey-world.mjs'
 
 const on = (rig, thread) => rig.calls.filter((c) => c.thread.key === thread)
 const chargeOf = (call) => readFileSync(call.role.systemPromptFile, 'utf8')
@@ -297,4 +299,53 @@ test("a judge's want asked again adds nothing, and the survey ends", async (t) =
   const { rig } = await surveyIn(t, surveyScript([firstJudge, secondJudge([{ unit: 'loader', want: WANT_L }])]))
   assert.equal(on(rig, 'scout:loader').length, 3, 'no navigator turn after the want')
   assert.equal(on(rig, 'judge:1').length, 2, 'no third judge round')
+})
+
+test('survey judges keep their own pace', async (t) => {
+  const WANT_S = 'WANT-where a return is flushed'
+  const storeFirst = { output: {
+    items: [behaviour('store', STORE_CLAIM, 9)], risks: [],
+    units: [{ unit: 'store', ruling: 'unanchored', ids: [], why: 'the flush was not located' }], wants: [{ unit: 'store', want: WANT_S }],
+  } }
+  const rig = rigFor(t, {
+    'analyst||plan': [{ output: plan({ topics: [TOPIC.loader, TOPIC.store] }) }],
+    ...rescouted('loader', [hitTurn('loader', [[FILE.loader, 7]])], [hitTurn('want:1', [[FILE.loader, 30, 'NOTE-the fallback']])]),
+    ...rescouted('store', [hitTurn('store', [[FILE.store, 9]])], [hitTurn('want:1', [[FILE.store, 12, 'NOTE-the flush']])]),
+    'analyst||judge:1': [firstJudge, secondJudge()],
+    'analyst||judge:2': [storeFirst, { output: { items: [behaviour('store', STORE_CLAIM, 12)], risks: [], units: [anchoredUnit('store')], wants: [] } }],
+  })
+  // Judge 1's want search is held until judge 2 is dispatched for its own want (or a timeout gives up waiting).
+  const order = []
+  let release
+  const judge2Again = new Promise((resolve) => { release = resolve })
+  const timer = setTimeout(() => release(), 3000)
+  t.after(() => clearTimeout(timer))
+  const runAgent = async (call) => {
+    const at = call.thread.key + '#' + call.round
+    order.push(at)
+    if (at === 'judge:2#2') release()
+    if (call.thread.key === 'scout:loader' && call.brief.includes('want:1')) await judge2Again
+    return rig.ctx.runAgent(call)
+  }
+  await survey(programContext({ ...rig.ctx, runAgent }), ARGS({ pace: 'fast' }))
+  assert.ok(order.includes('judge:2#2'), 'judge 2 was dispatched for its want: ' + order.join(' '))
+  assert.ok(on(rig, 'scout:loader').some((c) => c.brief.includes('want:1')), "judge 1's want was searched")
+  assert.ok(order.indexOf('judge:2#2') < order.lastIndexOf('judge:1#2'), "judge 2's re-dispatch does not wait for judge 1's topic search: " + order.join(' '))
+})
+
+test('one wording for a lost round', async (t) => {
+  const { result } = await surveyIn(t, surveyScript([firstJudge, { status: 'failed', cause: 'host_error' }]))
+  const [line] = judgeLines({ 1: { passes: [{ round: 2, units: ['loader'], status: 'failed', cause: 'host_error', not_reached: '' }] } }, 'judge').unreached
+  assert.ok(result.coverage.unreached.includes(line), JSON.stringify(result.coverage.unreached))
+})
+
+test('a reworded want ends', async (t) => {
+  const REWORDED = 'WANT-where, exactly, a module path falls back'
+  const nothingNew = { turns: [{ output: repoReturn({}) }], asks: 'want:2', ruling: 'not_converging', quiet: true }
+  const script = surveyScript([firstJudge, secondJudge([{ unit: 'loader', want: REWORDED }]), secondJudge([{ unit: 'loader', want: REWORDED + ' again' }])],
+    [loaderFound, fallbackFound, nothingNew])
+  const { rig } = await surveyIn(t, script)
+  assert.ok(on(rig, 'scout:loader').some((c) => c.brief.includes('want:2')), 'the reworded want was searched')
+  assert.ok(!on(rig, 'scout:loader').some((c) => c.brief.includes('want:3')), 'a pass that added no fact ends the loop')
+  assert.equal(on(rig, 'judge:1').length, 3, 'no round after the pass that added nothing')
 })

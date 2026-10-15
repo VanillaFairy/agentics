@@ -639,3 +639,34 @@ test("the scope is the capability's digest, whatever else is asked", () => {
   assert.deepEqual(scopeOf({ ...base, intelligence: 'low' }, { repo: '/y', root: '/y/wt' }), expected)
   assert.notDeepEqual(scopeOf({ ...base, capability: 'Another capability.' }, at), expected)
 })
+
+test('solutions coverage by key', async (t) => {
+  // Three turns move the ask; the check-in after the third rules it open; the fourth moves nothing,
+  // so the search stalls at a state a ruling saw and the ask ends no_progress.
+  const research = { npm: [found([cand('alpha')], { open: true }), found([cand('beta')], { open: true }), found([cand('gamma')], { open: true }),
+    ok({ hits: [], dismissed: [], leads: [], asks: [] })] }
+  const script = scriptOf({ research, assess: [FAILED, FAILED] })
+  const checkin = endSearch({ name: 'research:npm', turn: 2, asks: ['npm'], ruling: 'open' })
+  script[checkin.ruler.key] = checkin.ruler.steps
+  const { rig, result } = await sweep(t, script)
+  assert.equal(callsOn(rig, 'research:npm').length, 4)
+  const own = result.coverage.unreached.filter((l) => l.startsWith('research:npm:npm: no_progress'))
+  assert.equal(own.length, 1, JSON.stringify(result.coverage.unreached))
+  assert.ok(result.coverage.incomplete.includes('find:npm'), 'the program names its channel itself')
+  for (const list of ['declared', 'unreached', 'failed_channels']) {
+    assert.ok(!result.coverage[list].some((l) => l.includes('find:npm')), list + ' holds no find:npm text')
+  }
+})
+
+test('guidance from the pinned tree', async (t) => {
+  const rig = rigFor(t, { script: scriptOf({ assess: DEFAULT_ASSESS }) })
+  const wt = join(rig.repo, '.claude', 'worktrees', 'pinned')
+  const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { windowsHide: true })
+  git(rig.repo, 'worktree', 'add', '--detach', wt, 'HEAD')
+  const TREE_GUIDE = 'TREE-GUIDE-5e1f: the pinned tree has its own rules.'
+  writeFileSync(join(wt, 'CLAUDE.md'), '# Guide\n\n' + TREE_GUIDE + '\n')
+  git(wt, 'commit', '-qam', 'the tree has its own guidance')
+  await solutions(rig.ctx, argsFor(rig, { tree: treeOf(wt) }))
+  assert.ok(firstBrief(rig, 'frame').includes(TREE_GUIDE), "the frame reads the pinned tree's guidance")
+  assert.ok(!firstBrief(rig, 'frame').includes(GUIDANCE), "not the context root's")
+})

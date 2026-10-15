@@ -492,11 +492,11 @@ async function webServer(t) {
 test('fetchUrl gives a page with its web key, status, lines and size', async (t) => {
   const at = await webServer(t)
   const url = at + '/doc#part'
-  const out = await fetchUrl({ url })
+  const out = await fetchUrl({ url }, { dir: mkdtempSync(join(tmpdir(), 'pin-')) })
   assert.equal(out.ok, true, JSON.stringify(out))
   assert.deepEqual([out.key, out.status, out.page, out.pages, out.lines, out.bytes],
     [canonicalUrl(url), 200, 1, 1, [{ line: 1, text: 'Grüße, docs' }], Buffer.byteLength('Grüße, docs\n')])
-  const missing = await fetchUrl({ url: at + '/nope' })
+  const missing = await fetchUrl({ url: at + '/nope' }, { dir: mkdtempSync(join(tmpdir(), 'pin-')) })
   assert.deepEqual([missing.ok, missing.status], [true, 404], 'any HTTP status is an answer')
 })
 
@@ -506,24 +506,24 @@ test('fetchUrl pages a long page, and a page past the last is past_eof', async (
   const pages = Math.ceil(all.length / PAGE_LINES)
   const got = []
   for (let p = 1; p <= pages; p++) {
-    const out = await fetchUrl({ url: at + '/long', page: p })
+    const out = await fetchUrl({ url: at + '/long', page: p }, { dir: mkdtempSync(join(tmpdir(), 'pin-')) })
     assert.deepEqual([out.page, out.pages, out.bytes], [p, pages, Buffer.byteLength(LONG)])
     got.push(...out.lines)
   }
   assert.deepEqual(got, all.map((text, i) => ({ line: i + 1, text })), 'the pages together are the page, numbered through, without CR')
-  refusedAs(await fetchUrl({ url: at + '/long', page: pages + 1 }), 'past_eof')
-  const empty = await fetchUrl({ url: at + '/empty' })
+  refusedAs(await fetchUrl({ url: at + '/long', page: pages + 1 }, { dir: mkdtempSync(join(tmpdir(), 'pin-')) }), 'past_eof')
+  const empty = await fetchUrl({ url: at + '/empty' }, { dir: mkdtempSync(join(tmpdir(), 'pin-')) })
   assert.deepEqual([empty.ok, empty.page, empty.lines], [true, 1, []], 'page 1 of an empty page is ok')
 })
 
 test('fetchUrl refuses what is not an http URL and names a server that never answered', async () => {
-  refusedAs(await fetchUrl({ url: 'file:///etc/passwd' }), 'not_canonical')
-  refusedAs(await fetchUrl({ url: 'not a url' }), 'not_canonical')
+  refusedAs(await fetchUrl({ url: 'file:///etc/passwd' }, { dir: mkdtempSync(join(tmpdir(), 'pin-')) }), 'not_canonical')
+  refusedAs(await fetchUrl({ url: 'not a url' }, { dir: mkdtempSync(join(tmpdir(), 'pin-')) }), 'not_canonical')
   const closed = createServer()
   await new Promise((r) => closed.listen(0, '127.0.0.1', r))
   const port = closed.address().port
   await new Promise((r) => closed.close(r))
-  refusedAs(await fetchUrl({ url: 'http://127.0.0.1:' + port + '/' }), 'expander_error')
+  refusedAs(await fetchUrl({ url: 'http://127.0.0.1:' + port + '/' }, { dir: mkdtempSync(join(tmpdir(), 'pin-')) }), 'expander_error')
 })
 
 // ------------------------------------------------------------------ pure
@@ -535,7 +535,7 @@ test('a test file is one under a test, tests or __tests__ segment, or named .tes
 
 test('a page is 200 lines and every refusal class is named', () => {
   assert.equal(PAGE_LINES, 200)
-  assert.deepEqual(REFUSALS, ['not_canonical', 'past_eof', 'unsupported_syntax', 'does_not_compile', 'expander_error', 'unknown_ask', 'outside_scope'])
+  assert.deepEqual(REFUSALS, ['not_canonical', 'past_eof', 'unsupported_syntax', 'does_not_compile', 'expander_error', 'unknown_ask', 'outside_scope', 'too_large'])
 })
 
 // ------------------------------------------------------------------ what the navigator is told

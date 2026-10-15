@@ -85,9 +85,10 @@ const retriedAt = (events, folder) => events
 
 /**
  * Pure. What the migration's replan of `folder`, dry-applied, changes: each node's derived status,
- * each ruling's answer and each node's standing review. [] when it changes none of them.
+ * the answer of each `affected` ruling (of all the rulings given) and each node's standing review. [] when it changes none of them.
  */
-function changesOf(tree, rulings, folder, stamp) {
+function changesOf(tree, allRulings, folder, stamp) {
+  const rulings = allRulings.filter((e) => typeof e.node === 'string' && e.ruling === 'affected')
   const top = [...tree.events, ...tree.nodes.values(), ...rulings].reduce((m, e) => Math.max(m, seqOf(e)), 0)
   const events = [...tree.events, { kind: 'replanned', node: folder, execution: stamp, reason: 'retry_escalated', by: 'migration', seq: top + 1 }]
   const changes = []
@@ -141,7 +142,6 @@ function effortParts(root, effort, out) {
   const tree = readTree(root, effort)
   const open = openExecutions({ repo: root, effort, execution: '' })
   const rulings = open.flatMap(({ stamp }) => readLog(root, effort, 'state:' + stamp).entries)
-    .filter((e) => typeof e.node === 'string' && e.ruling === 'affected')
   for (const { stamp } of open) {
     const run = executionRunId(effort, stamp)
     const found = roundSearches(readRunLog(root, run).entries)

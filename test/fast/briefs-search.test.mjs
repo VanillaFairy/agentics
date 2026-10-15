@@ -259,6 +259,15 @@ test('level 4 keeps the asks', () => {
   assert.equal(b.includes('src/lead2.ts'), false)
 })
 
+test("level 4 keeps each open ask's find on a delta brief", () => {
+  const l = facts(3)
+  const b = briefOf(l, facts(1), { level: 4, turn: 4 })
+  for (const s of Object.values(l.asks).filter((x) => !x.end)) {
+    assert.ok(b.includes('### ' + s.key + ' — '), s.key)
+    assert.ok(b.includes('Find: ' + s.find), s.key + ' find')
+  }
+})
+
 // ------------------------------------------------------------------ rulerBrief
 
 function ruled() {
@@ -325,6 +334,7 @@ test('the ruler sees the agenda by group', () => {
   const b = rulerBrief(facts(3), { asks: ['a', 'd'], turn: 3 })
   assert.ok(b.includes('- leads (2):'))
   assert.ok(b.includes('- symbol STORE (2):'))
+  assert.ok(b.includes('symbol:STORE — 1 referencing file, not followed'))
   assert.ok(b.includes('- x/: 1 files') && b.includes('- y/: 1 files'))
 })
 

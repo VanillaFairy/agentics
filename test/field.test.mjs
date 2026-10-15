@@ -76,9 +76,14 @@ test('check reads the oracle', () => {
   assert.equal(check('fence', runDir({ result: searchOf(done), calls: leaked })).ok, false, 'a .agentics/ key')
 
   const page = (v) => ({ key: 'http://127.0.0.1:47816/release-notes', status: 200, bytes: 9, lines: ['Release notes', 'version ' + v, 'Changes in version ' + v] })
-  assert.equal(check('web-shift', runDir({ result: searchOf(done), pages: [page(1)] })).ok, true)
-  assert.equal(check('web-shift', runDir({ result: searchOf(done), pages: [page(1), page(2)] })).ok, false, 'two snapshots')
-  assert.equal(check('web-shift', runDir({ result: searchOf(done) })).ok, false, 'no snapshot')
+  const fetchCall = (seq, p) => ({ seq, tool: 'fetch', ok: true, args: { url: 'http://127.0.0.1:47816/release-notes', page: p }, keys: ['http://127.0.0.1:47816/release-notes'] })
+  const twice = [fetchCall(1, 1), fetchCall(2, 2)]
+  const notes = (...v) => searchOf({ t1: { end: 'done', hits: v.map((n, i) => ({ key: 'http://127.0.0.1:47816/release-notes', line: i + 2, text: 'version ' + n })) } })
+  assert.equal(check('web-shift', runDir({ result: notes(1, 1), pages: [page(1)], calls: twice })).ok, true)
+  assert.equal(check('web-shift', runDir({ result: notes(1, 2), pages: [page(1)], calls: twice })).ok, false, 'two versions in the fetched lines')
+  assert.equal(check('web-shift', runDir({ result: notes(1), pages: [page(1)], calls: [fetchCall(1, 1)] })).ok, false, 'fetched once')
+  assert.equal(check('web-shift', runDir({ result: searchOf(done), pages: [page(1), page(2)], calls: twice })).ok, false, 'two snapshots')
+  assert.equal(check('web-shift', runDir({ result: searchOf(done), calls: twice })).ok, false, 'no snapshot')
   assert.equal(check('fence', join(root, 'nowhere')).ok, false, 'no result.json')
 })
 

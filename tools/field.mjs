@@ -194,9 +194,12 @@ const ORACLES = {
       const pages = join(d, 'pages')
       return existsSync(pages) ? readdirSync(pages).map((f) => readJson(join(pages, f))).filter((p) => p && String(p.key).includes('/release-notes')) : []
     })
-    const versions = new Set(snaps.flatMap((p) => list(p.lines).map((l) => (String(l).match(/version (\d+)/) || [])[1]).filter(Boolean)))
+    const fetches = callsOf(runDir).filter((c) => c.tool === 'fetch' && c.ok !== false && String(c.args && c.args.url).includes('/release-notes'))
+    const seen = [...snaps.flatMap((p) => list(p.lines)), JSON.stringify(searchesIn(result))].join('\n')
+    const versions = new Set([...seen.matchAll(/version (\d+)/g)].map((m) => m[1]))
     const fails = []
     if (!snaps.length) fails.push('no snapshot of ' + PAGE)
+    if (fetches.length < 2) fails.push(PAGE + ' fetched ' + fetches.length + ' time(s), not twice')
     if (versions.size > 1) fails.push('the page lines come from ' + versions.size + ' snapshots: versions ' + [...versions].join(', '))
     return { fails, notes: [] }
   },

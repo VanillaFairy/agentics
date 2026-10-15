@@ -309,7 +309,7 @@ test('negated and POSIX classes keep the old meaning at the anchor', (t) => {
     const want = oldFiles(repo, shas[0], scope)
     assert.ok(want.length > 0, JSON.stringify(scope) + ' matched files at the anchor, or this case shows nothing')
     assert.deepEqual(newFiles(repo, shas[0], hit[0].after), want, JSON.stringify(scope) + ' → ' + JSON.stringify(hit[0].after))
-    for (const part of hit[0].after) assert.ok(!/[[\]]/.test(part), part + ' still holds a class')
+    for (const part of hit[0].after) assert.ok(!/\[[^\]]*\]/.test(part), part + ' still holds a class') // a lone `]` is a literal name
   }
 })
 

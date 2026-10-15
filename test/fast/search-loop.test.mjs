@@ -592,8 +592,11 @@ test('a missing session is renewed, the next turn resumes the renewed one, and t
   assert.equal(new Set(sessions).size, 2, 'the first session and the renewed one')
   assert.ok(result.sessions.every((s) => s.thread === NAME))
   assert.ok(sessions.includes(calls[0].thread.session))
-  assert.ok(sessions.includes(calls[1].thread.session))
-  assert.notEqual(calls[1].thread.session, calls[0].thread.session, 'turn 2 runs in the renewed session')
+  const navSessions = w.log.entries().filter((e) => e.kind === 'dispatched' && e.thread === NAME).map((e) => e.session)
+  assert.deepEqual(navSessions.slice(0, 2), [calls[0].thread.session, calls[0].thread.session], 'turn 2 first resumes the first session')
+  const renewed = navSessions.at(-1)
+  assert.ok(sessions.includes(renewed))
+  assert.notEqual(renewed, calls[0].thread.session, 'turn 2 runs again in the renewed session')
   assert.deepEqual([result.asks.A.end, result.asks.A.label], ['done', 'ruled'])
 })
 
@@ -660,9 +663,10 @@ test('called again with more asks, a search replays what it ran and goes on with
   const before = await search(first.ctx, w.spec([A]))
   // the joining ask's ground journaled as the loop journals it (N12), so this fast test resolves nothing
   w.log.append('step', { key: NAME + '/ground:want:1', value: [] })
-  const again = w.start({ [NAV]: stepsOf([settling('want:1', 'src/b.ts:2'), idle()]), [RULER_AT(4)]: [ruler(['want:1', 'answered'])] })
+  // turn 3 is a check-in and want:1's stamp moved from its join baseline, so turn 3's ruling rules it
+  const again = w.start({ [NAV]: stepsOf([settling('want:1', 'src/b.ts:2')]), [RULER_AT(3)]: [ruler(['want:1', 'answered'])] })
   const after = await search(again.ctx, w.spec([A, want]))
-  assert.deepEqual(rolesIn(again.calls), ['scout', 'scout', 'ruler'], 'turns 1-2 and their ruling are replayed')
+  assert.deepEqual(rolesIn(again.calls), ['scout', 'ruler'], 'turns 1-2 and their ruling are replayed')
   const [three] = again.calls
   assert.equal(three.round, 3)
   assert.equal(three.resume, true)

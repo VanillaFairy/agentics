@@ -1,19 +1,18 @@
 // test/fast/search-loop.test.mjs — pins one search as code runs it: the ground built once, one
-// navigator session resumed turn by turn with the charge as its system prompt and the turn brief on
-// standard input, every ask ended on the state the records fold to, a separate ruler at the
-// check-ins, missing outcomes paused and never answered, and a relaunch or a call with more asks
-// replaying what the journal holds. The scripted runner stands in for the host, and its `calls`
-// seam for the tool server.
+// navigator session resumed turn by turn with the charge as its system prompt, asks ended only by a
+// ruling or by a stall after a ruling, one ruler dispatch per turn on the pinned tree with its brief
+// kept on disk, missing outcomes paused and never answered, and a relaunch replaying what the
+// journal holds. The scripted runner stands in for the host, and its `calls` seam for the tool server.
 //
 // Design: docs/DESIGN.md#searches and docs/DESIGN.md#l2--states-end-work-counts-dont.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { BRIEF_BUDGET_CHARS, chargeOf, digestOf, rulerBrief, turnBrief } from '../../lib/briefs/search.mjs'
+import { chargeOf } from '../../lib/briefs/search.mjs'
 import { renderMessage } from '../../lib/conversation.mjs'
 import { fnv1a } from '../../lib/plan-digest.mjs'
 import { programContext, scoped } from '../../lib/programs/common.mjs'
@@ -21,53 +20,71 @@ import { askAfter } from '../../lib/programs/converge.mjs'
 import { groundFor, search } from '../../lib/programs/search/loop.mjs'
 import { loadRole, tierFor } from '../../lib/roles.mjs'
 import { schemaOf } from '../../lib/schemas.mjs'
-import { coverageLines, foldLedger, standingRefusals, stateOf } from '../../lib/search/ledger.mjs'
+import { coverageLines, foldLedger, standingRefusals } from '../../lib/search/ledger.mjs'
 import { TOOLS_BY_DOMAIN, searchDir } from '../../lib/search/server.mjs'
 import { memoryLog } from './harness/memory-log.mjs'
 import { scriptedRunner } from './harness/scripted-runner.mjs'
 
 const RUN = '20260101-000000-test'
 const NOW = () => '2026-01-01T00:00:00.000Z'
-const TREE = { root: '/pinned/tree', sha: 'a'.repeat(40) }
+const SHA = 'a'.repeat(40)
 const NAME = 'locate'
 const NAV = 'scout||' + NAME
-const RULER_AT = (turn) => 'ruler||ruler:search:' + NAME + ':' + turn
-const GROUND = { rows: [], seeds: [] }
-const MATERIAL = [{ label: 'The artefact', text: '# The artefact\n\nIt names `src/a.mjs` and `parseWidget`.' }]
+const RULER_THREAD = (turn) => 'ruler:search:' + NAME + ':' + turn
+const RULER_AT = (turn) => 'ruler||' + RULER_THREAD(turn)
+const MATERIAL = [{ label: 'The artefact', text: '# The artefact\n\nIt names `src/a.ts` and `parseWidget`.' }]
 const CUT_OFF = renderMessage({ msg: 'cut_off' })
-/** A digest budget no ledger of this file comes near, so the digest is never folded. */
-const WHOLE = Number.MAX_SAFE_INTEGER
+const SEPARATOR = '\n\n---\n\n'
+/** The text of line 4 of src/a.ts on the pinned tree: the line a ruler brief must quote. */
+const SETTLED_LINE = 'export const answer = 42 // the settled line'
+const FILES = {
+  'src/a.ts': ['// a', 'import x from "x"', '', SETTLED_LINE, 'export default answer', '', '', '', '', ''],
+  'src/b.ts': ['// b', 'export const other = 7 // the other settled line', '', '', '', '', '', '', '', ''],
+}
+
+/** A ground row each ask owns, so no ask owes its scope file by file unless a test says so. */
+const rowOf = (key) => ({ kind: 'path', mention: 'src/' + key + '.ts', key: 'src/' + key + '.ts', exists: true, asks: [key], defs: [], refs: [], files: 0 })
+const groundOf = (keys) => ({ rows: keys.map(rowOf), seeds: [] })
+const GROUND = groundOf(['A', 'B', 'chain'])
 
 const ask = (key, over = {}) => ({ key, find: 'where ' + key + ' is settled', scope: ['.'], domain: 'repo', ...over })
-const specOf = (asks, over = {}) => ({ name: NAME, role: 'scout', schema: 'search_repo', tree: TREE, asks, material: MATERIAL, intelligence: 'normal', ...over })
 
 /**
- * One run's world: a scratch home, one log that every start reads back (a relaunch is a start over
- * the same log), the resolver calls the seam received, and the search's call log as it stands.
+ * One run's world: a scratch home holding the pinned tree, one log that every start reads back (a
+ * relaunch is a start over the same log), the resolver calls the seam received, and the search's
+ * call log as it stands. `home` and `log` let a second world stand on the first one's disk with
+ * another log (a crash).
  */
-function world(t, { ground = GROUND } = {}) {
-  const home = mkdtempSync(join(tmpdir(), 'agentics-search-loop-'))
-  t.after(() => rmSync(home, { recursive: true, force: true }))
+function world(t, { ground = GROUND, home = null, log = memoryLog() } = {}) {
+  if (!home) {
+    home = mkdtempSync(join(tmpdir(), 'agentics-search-loop-'))
+    t.after(() => rmSync(home, { recursive: true, force: true }))
+    for (const [key, lines] of Object.entries(FILES)) {
+      mkdirSync(join(home, 'tree', 'src'), { recursive: true })
+      writeFileSync(join(home, 'tree', key), lines.join('\n') + '\n')
+    }
+  }
+  const tree = { root: join(home, 'tree'), sha: SHA }
   const dir = join(home, 'run')
-  const log = memoryLog()
   const grounds = []
   const start = (script, { sleep = () => Promise.resolve() } = {}) => {
     const runner = scriptedRunner(script, { log, now: NOW })
     const ctx = {
       ...programContext({ repo: home, root: home, run: RUN, log, runAgent: runner.runAgent, now: NOW, sleep, dir }),
-      groundOf: async (tree, args) => { grounds.push({ tree, args }); return ground },
+      groundOf: async (tr, args) => { grounds.push({ tree: tr, args }); return ground },
     }
     return { ctx, calls: runner.calls }
   }
   const path = join(searchDir(dir, NAME), 'calls.jsonl')
   const journal = () => (existsSync(path) ? readFileSync(path, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line)) : [])
   const steps = () => Object.fromEntries(log.entries().filter((e) => e.kind === 'step').map((e) => [e.key, e.value]))
-  return { log, grounds, start, journal, steps, path, dir }
+  const spec = (asks, over = {}) => ({ name: NAME, role: 'scout', schema: 'search_repo', tree, asks, material: MATERIAL, intelligence: 'normal', ...over })
+  return { log, grounds, start, journal, steps, path, dir, home, tree, spec }
 }
 
 /** A grep code ran for `asks`, showing each `path:line` of `lines`. Its pattern tells calls apart. */
-const grep = (asks, lines, pattern = 'seen ' + lines.join(' ')) => ({
-  tool: 'grep', args: { pattern, fixed: false, ignore_case: false, paths: [], page: 1 }, asks, ok: true,
+const grep = (asks, lines, pattern = 'seen ' + lines.join(' '), paths = []) => ({
+  tool: 'grep', args: { pattern, fixed: false, ignore_case: false, paths, page: 1 }, asks, ok: true,
   total: lines.length, page: 1, pages: 1,
   observed: lines.map((at) => ({ key: at.split(':')[0], line: Number(at.split(':')[1]) })),
   keys: [...new Set(lines.map((at) => at.split(':')[0]))],
@@ -81,553 +98,623 @@ const turnOf = (calls, output) => ({ calls, output })
 const missing = (cause = 'host_error') => ({ missing: cause, calls: [] })
 /** A turn that greps one new line for `key` and leaves it open. */
 const looking = (key, n) => turnOf([grep([key], ['src/' + key.replace(/\W/g, '_') + '.mjs:' + n])], back({ asks: [declared(key, 'open')] }))
-/** A turn that settles `key` on a line its own grep shows. */
-const settling = (key, at) => turnOf([grep([key], [at], 'settle ' + at)], back({ hits: [hit([key], at)], asks: [declared(key, 'answered')] }))
 /** A turn that greps one new line for each of `keys` and leaves them all open. */
 const moving = (keys, n) => turnOf(keys.map((k) => grep([k], ['src/' + k + '.mjs:' + n])), back({ asks: keys.map((k) => declared(k, 'open')) }))
-const quiet = () => turnOf([], back())
+/** A turn that settles `key` on a line its own grep shows, and declares it answered. */
+const settling = (key, at) => turnOf([grep([key], [at], 'settle ' + at)], back({ hits: [hit([key], at)], asks: [declared(key, 'answered')] }))
+/** A turn that runs no call and returns nothing new: the turn a stall is found on. */
+const idle = () => turnOf([], back())
 
 /** The scripted starts of `turns`, in order. */
 const stepsOf = (turns) => turns.map((t) => (t.missing ? { status: 'failed', cause: t.missing, calls: t.calls } : { output: t.output, calls: t.calls }))
-const units = (...rulings) => rulings.map(([unit, ruling]) => ({ unit, ruling, why: unit + ' is ' + ruling + ' over the turns before the check-in' }))
+const units = (...rulings) => rulings.map(([unit, ruling]) => ({ unit, ruling, why: unit + ' is ' + ruling + ' on what the turns before showed' }))
+const ruler = (...rulings) => ({ output: { units: units(...rulings) } })
+
+/**
+ * The script of a search that closes: the navigator's `work` turns, an idle turn (the stall), and a
+ * ruler on the stall's turn ruling `rulings`. `turns` are the navigator turns, `turn` the stall's.
+ */
+function closing(work, ...rulings) {
+  const turns = [...work, idle()]
+  const turn = turns.length
+  return { turns, turn, script: { [NAV]: stepsOf(turns), [RULER_AT(turn)]: [ruler(...rulings)] } }
+}
 
 /**
  * Pure. The ledger the records of `turns` and `rulings` fold to: each call numbered as the server
- * numbers it, each turn through its last call, each ask open from its first turn (`from`, 1 unless
- * it joined later).
+ * numbers it, each turn through its last call, each ask open from its first turn.
  */
-function ledgerOf({ asks, turns, rulings = [], from = {}, ground = GROUND }) {
+function ledgerOf({ asks, turns, rulings = [], ground = GROUND }) {
   let seq = 0
   const calls = []
   const folded = turns.map((t, i) => {
     for (const c of t.calls) calls.push({ ...c, seq: ++seq })
-    if (t.stop) return { turn: i + 1, calls_through: seq, stop: t.stop }
     return t.missing ? { turn: i + 1, missing: t.missing, calls_through: seq } : { turn: i + 1, output: t.output, calls_through: seq }
   })
-  return foldLedger({ asks: asks.map((a) => ({ ...a, from: from[a.key] || a.from || 1 })), ground, calls, turns: folded, rulings })
+  return foldLedger({ asks: asks.map((a) => ({ ...a, from: a.from || 1 })), ground, calls, turns: folded, rulings })
 }
 
 const roleOf = (name) => loadRole(name).role
-/** The tool server's spec, as the MCP config a dispatch carried names it. */
 const serverSpecOf = (call) => JSON.parse(readFileSync(JSON.parse(readFileSync(call.mcpConfig, 'utf8')).mcpServers.search.args[2], 'utf8'))
 const rolesIn = (calls) => calls.map((c) => c.role.name)
+const rulersIn = (calls) => calls.filter((c) => c.role.name === 'ruler')
+const rulingSteps = (w) => Object.keys(w.steps()).filter((k) => k.startsWith(NAME + '/ruling:'))
+const rulingsIn = (w) => rulingSteps(w).flatMap((k) => w.steps()[k])
+const briefFile = (w, turn, round = 1) => join(searchDir(w.dir, NAME), 'rulings', turn + '-' + round + '.md')
 
 // --- turns -----------------------------------------------------------------------------------
 
-test('the first turn is a fresh session whose system prompt is the role and the charge, and whose standard input is the turn brief', async (t) => {
+test('the first turn is a fresh session whose system prompt is the role and the charge', async (t) => {
   const w = world(t)
   const asks = [ask('A')]
-  const { ctx, calls } = w.start({ [NAV]: stepsOf([settling('A', 'src/a.mjs:3')]) })
-  const result = await search(ctx, specOf(asks, { base: 'high' }))
-  assert.equal(calls.length, 1)
+  const { script } = closing([settling('A', 'src/a.ts:4')], ['A', 'answered'])
+  const { ctx, calls } = w.start(script)
+  await search(ctx, w.spec(asks, { base: 'high' }))
   const [first] = calls
   assert.equal(first.resume, false)
   assert.equal(first.round, 1)
   assert.equal(first.thread.key, NAME)
   assert.equal(first.role.name, 'scout')
+  assert.equal(first.cwd, w.tree.root)
   assert.deepEqual(first.schema, schemaOf('search_repo'))
   assert.deepEqual(first.tier, tierFor(roleOf('scout'), { intelligence: 'normal', base: 'high' }))
   const charge = chargeOf({ domain: 'repo', asks, material: MATERIAL, ground: GROUND })
   assert.equal(readFileSync(first.role.systemPromptFile, 'utf8'), roleOf('scout').prompt + '\n\n' + charge)
-  assert.equal(first.brief, turnBrief(ledgerOf({ asks, turns: [] }), { turn: 1 }))
-  assert.equal(result.asks.A.end, 'done')
+  assert.equal(typeof first.brief, 'string')
+  assert.ok(first.brief.length > 0)
 })
 
-test('every later turn resumes the same session with its own turn brief: no fresh session, no message, no continue_search', async (t) => {
+test('every later turn resumes the same session: no renewal, no message', async (t) => {
   const w = world(t)
-  const asks = [ask('A')]
-  const turns = [looking('A', 1), looking('A', 2), settling('A', 'src/A.mjs:2')]
-  const { ctx, calls } = w.start({ [NAV]: stepsOf(turns) })
-  const result = await search(ctx, specOf(asks))
-  assert.equal(calls.length, 3)
-  calls.slice(1).forEach((call, i) => {
-    const turn = i + 2
-    assert.equal(call.round, turn)
-    assert.equal(call.resume, true, 'turn ' + turn)
-    assert.equal(call.thread.key, NAME)
-    assert.equal(call.thread.session, calls[0].thread.session, 'turn ' + turn)
-    assert.equal(call.brief, turnBrief(ledgerOf({ asks, turns: turns.slice(0, turn - 1) }), { turn }), 'turn ' + turn)
+  const { script } = closing([looking('A', 1), looking('A', 2)], ['A', 'absent'])
+  const { ctx, calls } = w.start(script)
+  await search(ctx, w.spec([ask('A')]))
+  const nav = calls.filter((c) => c.role.name === 'scout')
+  assert.equal(nav.length, 3)
+  nav.slice(1).forEach((call, i) => {
+    assert.equal(call.round, i + 2)
+    assert.equal(call.resume, true, 'turn ' + (i + 2))
+    assert.equal(call.thread.session, nav[0].thread.session, 'turn ' + (i + 2))
   })
   assert.deepEqual(w.log.entries().filter((e) => e.kind === 'thread_renewed'), [])
   assert.deepEqual(w.log.entries().filter((e) => e.kind === 'message'), [])
-  assert.equal(result.asks.A.end, 'done')
 })
 
-test("a turn's thread brief is the ledger's digest, so a renewed session starts from the digest", async (t) => {
-  const w = world(t)
-  const asks = [ask('A')]
-  const turns = [looking('A', 1), looking('A', 2), settling('A', 'src/A.mjs:2')]
-  const [s1, s2, s3] = stepsOf(turns)
-  const { ctx, calls } = w.start({ [NAV]: [s1, { status: 'failed', cause: 'session_missing' }, s2, s3] })
-  const result = await search(ctx, specOf(asks))
-  assert.equal(calls.length, 3)
-  calls.forEach((call, i) => {
-    const digest = digestOf(ledgerOf({ asks, turns: turns.slice(0, i) }), { budget: WHOLE })
-    assert.equal(call.freshBrief, digest, 'turn ' + (i + 1))
-    assert.equal(call.briefDigest, fnv1a(digest), 'turn ' + (i + 1))
-  })
-  assert.deepEqual(w.log.entries().filter((e) => e.kind === 'thread_renewed').map((e) => [e.thread, e.why]), [[NAME, 'session_missing']])
-  const sessions = result.sessions.map((s) => s.session)
-  assert.equal(new Set(sessions).size, 2, 'the first session and the renewed one')
-  assert.ok(result.sessions.every((s) => s.thread === NAME))
-  assert.ok(sessions.includes(calls[0].thread.session))
-  assert.ok(sessions.includes(calls[2].thread.session))
-  assert.notEqual(calls[2].thread.session, calls[0].thread.session, 'turn 3 resumes the renewed session')
-  assert.equal(calls[2].resume, true)
-})
+// --- endings through the loop ----------------------------------------------------------------
 
-// --- endings ---------------------------------------------------------------------------------
-
-test('after each return the asks its state ends are ended, and the next turn is briefed without them', async (t) => {
+test('a stall is ruled and the ruling ends it', async (t) => {
   const w = world(t)
-  const asks = [ask('A'), ask('B')]
-  const turns = [
-    turnOf([grep(['A'], ['src/a.mjs:3']), grep(['B'], ['src/b.mjs:1'])],
-      back({ hits: [hit(['A'], 'src/a.mjs:3')], asks: [declared('A', 'answered'), declared('B', 'open')] })),
-    quiet(),
-  ]
-  const { ctx, calls } = w.start({ [NAV]: stepsOf(turns) })
-  const result = await search(ctx, specOf(asks))
-  assert.equal(calls.length, 2, 'B, which the second turn left as it was, ends there: no third turn')
-  assert.equal(calls[1].brief, turnBrief(ledgerOf({ asks, turns: turns.slice(0, 1) }), { turn: 2 }))
-  const end = ledgerOf({ asks, turns })
-  for (const key of ['A', 'B']) {
-    assert.deepEqual([result.asks[key].end, result.asks[key].label, result.asks[key].why],
-      [end.asks[key].end.state, end.asks[key].end.label, end.asks[key].end.why], key)
-  }
-  assert.deepEqual([result.asks.A.end, result.asks.B.end], ['done', 'no_progress'])
-})
-
-test('at a check-in the open asks whose state moved go to a separate ruler, one unit per ask, and at no other turn', async (t) => {
-  const w = world(t)
-  const asks = [ask('A')]
-  const turns = [looking('A', 1), looking('A', 2), looking('A', 3), settling('A', 'src/A.mjs:3')]
-  const ruled = units(['A', 'converging'])
-  const [s1, s2, s3, s4] = stepsOf(turns)
-  const { ctx, calls } = w.start({ [NAV]: [s1, { status: 'failed', cause: 'session_missing' }, s2, s3, s4], [RULER_AT(3)]: [{ output: { units: ruled } }] })
-  const result = await search(ctx, specOf(asks, { intelligence: 'max' }))
-  assert.deepEqual(rolesIn(calls), ['scout', 'scout', 'scout', 'ruler', 'scout'])
-  const ruler = calls[3]
-  const at3 = ledgerOf({ asks, turns: turns.slice(0, 3) })
-  const sent = stateOf(at3, { turn: 3, checkin: askAfter(3) }).toRuler
-  assert.deepEqual(sent, ['A'])
-  assert.equal(ruler.thread.key, 'ruler:search:' + NAME + ':3')
-  assert.deepEqual(ruler.schema, schemaOf('ruler_search'))
-  assert.equal(ruler.brief, rulerBrief(at3, { asks: sent, turn: 3 }))
-  assert.deepEqual(ruler.tier, tierFor(roleOf('ruler'), { intelligence: 'max' }))
-  assert.deepEqual(calls[0].tier, tierFor(roleOf('scout'), { intelligence: 'max', base: '' }))
-  assert.equal(new Set(result.sessions.map((s) => s.session)).size, 2, 'the navigator ran in two sessions')
-  for (const s of result.sessions) {
-    assert.notEqual(s.session, ruler.thread.session, 'the ruler is none of the navigator sessions')
-    assert.notEqual(s.thread, ruler.thread.key, 'the ruler is not on the navigator thread')
-  }
-  assert.equal(calls[4].brief, turnBrief(ledgerOf({ asks, turns: turns.slice(0, 3), rulings: [{ turn: 3, asks: sent, units: ruled }] }), { turn: 4 }))
-  assert.equal(result.asks.A.end, 'done')
-})
-
-test("a ruler's not_converging ends that ask, ruled, while its converging lets the other go on", async (t) => {
-  const w = world(t)
-  const asks = [ask('A'), ask('B')]
-  const turns = [moving(['A', 'B'], 1), moving(['A', 'B'], 2), moving(['A', 'B'], 3), settling('B', 'src/B.mjs:3')]
-  const ruled = units(['A', 'not_converging'], ['B', 'converging'])
-  const { ctx, calls } = w.start({ [NAV]: stepsOf(turns), [RULER_AT(3)]: [{ output: { units: ruled } }] })
-  const result = await search(ctx, specOf(asks))
-  assert.deepEqual(rolesIn(calls), ['scout', 'scout', 'scout', 'ruler', 'scout'])
-  const sent = stateOf(ledgerOf({ asks, turns: turns.slice(0, 3) }), { turn: 3, checkin: true }).toRuler
-  assert.equal(calls[4].brief, turnBrief(ledgerOf({ asks, turns: turns.slice(0, 3), rulings: [{ turn: 3, asks: sent, units: ruled }] }), { turn: 4 }))
-  assert.deepEqual([result.asks.A.end, result.asks.A.label, result.asks.A.why], ['not_converging', 'ruled', ruled[0].why])
-  assert.equal(result.asks.B.end, 'done')
-})
-
-test('an ask the ruler leaves unruled is ruled again at once, on the same state, before any other turn', async (t) => {
-  const w = world(t)
-  const asks = [ask('A'), ask('B')]
-  const both = turnOf([grep(['A'], ['src/A.mjs:3'], 'settle A'), grep(['B'], ['src/B.mjs:3'], 'settle B')],
-    back({ hits: [hit(['A'], 'src/A.mjs:3'), hit(['B'], 'src/B.mjs:3')], asks: [declared('A', 'answered'), declared('B', 'answered')] }))
-  const turns = [moving(['A', 'B'], 1), moving(['A', 'B'], 2), moving(['A', 'B'], 3), both]
-  const [ruledA, ruledB] = [units(['A', 'converging']), units(['B', 'converging'])]
-  const { ctx, calls } = w.start({ [NAV]: stepsOf(turns), [RULER_AT(3)]: [{ output: { units: ruledA } }, { output: { units: ruledB } }] })
-  const result = await search(ctx, specOf(asks))
-  assert.deepEqual(rolesIn(calls), ['scout', 'scout', 'scout', 'ruler', 'ruler', 'scout'])
-  const [first, second] = [calls[3], calls[4]]
-  const at3 = ledgerOf({ asks, turns: turns.slice(0, 3) })
-  const sent = stateOf(at3, { turn: 3, checkin: true }).toRuler
-  assert.deepEqual([...sent].sort(), ['A', 'B'])
-  assert.equal(first.brief, rulerBrief(at3, { asks: sent, turn: 3 }))
-  assert.equal(second.thread.key, first.thread.key)
-  assert.equal(second.round, 2)
-  assert.equal(second.brief, rulerBrief(at3, { asks: ['B'], turn: 3 }))
-  const rulings = [{ turn: 3, asks: sent, units: ruledA }, { turn: 3, asks: ['B'], units: ruledB }]
-  assert.equal(calls[5].brief, turnBrief(ledgerOf({ asks, turns: turns.slice(0, 3), rulings }), { turn: 4 }))
-  assert.deepEqual([result.asks.A.end, result.asks.B.end], ['done', 'done'])
-})
-
-test('an ask left unruled twice is stopped, never ended as an answer, and the other asks go on', async (t) => {
-  const w = world(t)
-  const asks = [ask('A'), ask('B')]
-  const turns = [moving(['A', 'B'], 1), moving(['A', 'B'], 2), moving(['A', 'B'], 3), settling('A', 'src/A.mjs:3')]
-  const { ctx, calls } = w.start({ [NAV]: stepsOf(turns), [RULER_AT(3)]: [{ output: { units: units(['A', 'converging']) } }, { output: { units: [] } }] })
-  const result = await search(ctx, specOf(asks))
-  assert.deepEqual(rolesIn(calls), ['scout', 'scout', 'scout', 'ruler', 'ruler', 'scout'])
-  assert.equal(result.asks.B.end, 'stopped')
-  assert.equal(result.asks.B.declared, 'open', 'the navigator\'s declaration stands; the stop is no answer')
-  assert.equal(result.asks.A.end, 'done')
-})
-
-test('a ruling that fails is dispatched again once, and failing again stops every ask it was to rule', async (t) => {
-  const w = world(t)
-  const asks = [ask('A')]
-  const turns = [looking('A', 1), looking('A', 2), looking('A', 3)]
-  const failed = { status: 'failed', cause: 'host_error' }
-  const { ctx, calls } = w.start({ [NAV]: stepsOf(turns), [RULER_AT(3)]: [failed, failed] })
-  const result = await search(ctx, specOf(asks))
-  assert.deepEqual(rolesIn(calls), ['scout', 'scout', 'scout', 'ruler', 'ruler'])
-  assert.equal(calls[4].round, 2)
-  assert.equal(result.asks.A.end, 'stopped')
+  const { script } = closing([settling('A', 'src/a.ts:4')], ['A', 'answered'])
+  const { ctx, calls } = w.start(script)
+  const result = await search(ctx, w.spec([ask('A')]))
+  assert.deepEqual(rolesIn(calls), ['scout', 'scout', 'ruler'], 'the declaration on turn 1 ends nothing; the stall on turn 2 goes to the ruler; no turn 3')
+  const [, , r] = calls
+  assert.equal(r.thread.key, RULER_THREAD(2))
+  assert.deepEqual(r.schema, schemaOf('ruler_search'))
+  assert.deepEqual(rulingsIn(w).flatMap((x) => x.asks), ['A'])
+  assert.deepEqual([result.asks.A.end, result.asks.A.answer, result.asks.A.label], ['done', 'answered', 'ruled'])
+  assert.equal(result.asks.A.why, units(['A', 'answered'])[0].why)
   assert.equal(result.status, 'returned')
+})
+
+test('a declaration alone never ends an ask: without a stall there is no ruler and no end', async (t) => {
+  const w = world(t)
+  const turns = [settling('A', 'src/a.ts:4'), missing(), missing()]
+  const { ctx, calls } = w.start({ [NAV]: stepsOf(turns) })
+  const result = await search(ctx, w.spec([ask('A')]))
+  assert.deepEqual(rolesIn(calls), ['scout', 'scout', 'scout'])
+  assert.equal(result.asks.A.end, 'stopped', 'the declared answer is not taken; two missing turns stop it')
+  assert.equal(result.asks.A.declared, 'answered')
+})
+
+/** Turn 1 works and declares, turn 2 idles (stall, ruled open), turn 3 idles again. */
+const OPEN_WHY = 'the caller in src/b.ts is not read yet'
+const reopened = () => ({
+  [NAV]: stepsOf([settling('A', 'src/a.ts:4'), idle(), idle()]),
+  [RULER_AT(2)]: [{ output: { units: [{ unit: 'A', ruling: 'open', why: OPEN_WHY }] } }],
+})
+
+test('an open ruling reaches the navigator', async (t) => {
+  const w = world(t)
+  const { ctx, calls } = w.start(reopened())
+  await search(ctx, w.spec([ask('A')]))
+  assert.deepEqual(rolesIn(calls).slice(0, 4), ['scout', 'scout', 'ruler', 'scout'])
+  const three = calls[3]
+  assert.equal(three.round, 3)
+  assert.ok(three.brief.toLowerCase().includes(('ruled open after turn 2: ' + OPEN_WHY).toLowerCase()), three.brief)
+})
+
+test('a stall after an open ruling ends without a ruler', async (t) => {
+  const w = world(t)
+  const { ctx, calls } = w.start(reopened())
+  const result = await search(ctx, w.spec([ask('A')]))
+  assert.deepEqual(rolesIn(calls), ['scout', 'scout', 'ruler', 'scout'], 'no second ruler dispatch and no turn 4')
+  assert.deepEqual([result.asks.A.end, result.asks.A.label], ['no_progress', 'observed'])
+  assert.ok(result.asks.A.why.includes(OPEN_WHY), 'the why names the standing open ruling: ' + result.asks.A.why)
+  assert.ok(!result.asks.A.answer, 'an observed end carries no answer')
+})
+
+/** A and B both look on turn 1, only B on turn 2, neither on turn 3: the stall at turn 3 (a check-in) owes both a ruling. */
+const TWO = () => [moving(['A', 'B'], 1), turnOf([grep(['B'], ['src/B.mjs:2'])], back({ asks: [declared('A', 'open'), declared('B', 'open')] })), idle()]
+
+test('one ruling step per turn', async (t) => {
+  assert.ok(askAfter(3), 'turn 3 is a check-in')
+  const w = world(t)
+  const { ctx, calls } = w.start({ [NAV]: stepsOf(TWO()), [RULER_AT(3)]: [ruler(['A', 'absent'], ['B', 'not_converging'])] })
+  const result = await search(ctx, w.spec([ask('A'), ask('B')]))
+  assert.deepEqual(rolesIn(calls), ['scout', 'scout', 'scout', 'ruler'], 'one ruler dispatch rules both')
+  assert.deepEqual(rulingSteps(w), [NAME + '/ruling:3'])
+  const records = w.steps()[NAME + '/ruling:3']
+  assert.equal(records.length, 1)
+  assert.deepEqual([...records[0].asks].sort(), ['A', 'B'])
+  assert.deepEqual(records[0].units.map((u) => u.unit).sort(), ['A', 'B'])
+  assert.ok(calls[3].brief.includes('## A') && calls[3].brief.includes('## B'), 'one brief rules both asks')
+  assert.deepEqual([result.asks.A.end, result.asks.A.answer], ['done', 'absent'])
+  assert.deepEqual([result.asks.B.end, result.asks.B.label], ['not_converging', 'ruled'])
+})
+
+test('the ruler reads the pinned tree', async (t) => {
+  const w = world(t)
+  const { script } = closing([settling('A', 'src/a.ts:4')], ['A', 'answered'])
+  const { ctx, calls } = w.start(script)
+  await search(ctx, w.spec([ask('A')]))
+  const [r] = rulersIn(calls)
+  assert.equal(r.cwd, w.tree.root)
+  const entry = w.log.entries().find((e) => e.kind === 'dispatched' && e.thread === RULER_THREAD(2))
+  assert.ok(entry, 'the ruler was dispatched')
+  assert.equal(entry.cwd, w.tree.root)
+})
+
+test('the ruler brief holds the hit lines', async (t) => {
+  const w = world(t)
+  const { script } = closing([settling('A', 'src/a.ts:4')], ['A', 'answered'])
+  const { ctx, calls } = w.start(script)
+  await search(ctx, w.spec([ask('A')]))
+  assert.ok(existsSync(briefFile(w, 2)), 'the brief file is kept')
+  const text = readFileSync(briefFile(w, 2), 'utf8')
+  assert.ok(text.includes(SETTLED_LINE), 'the line read from the tree: ' + text)
+  assert.ok(rulersIn(calls)[0].brief.includes(SETTLED_LINE))
+})
+
+test('the ruler brief is kept', async (t) => {
+  const w = world(t)
+  const { script } = closing([settling('A', 'src/a.ts:4')], ['A', 'answered'])
+  const { ctx } = w.start(script)
+  await search(ctx, w.spec([ask('A')]))
+  const path = briefFile(w, 2, 1)
+  assert.ok(existsSync(path), path)
+  const text = readFileSync(path, 'utf8')
+  assert.ok(text.includes('A'))
+  const entries = w.log.entries().filter((e) => e.kind === 'dispatched' && e.thread === RULER_THREAD(2))
+  assert.equal(entries.length, 1)
+  assert.equal(entries[0].brief_digest, fnv1a(text))
+})
+
+test('a second ruler round keeps its own brief file', async (t) => {
+  const w = world(t)
+  const { ctx, calls } = w.start({
+    [NAV]: stepsOf(TWO()),
+    [RULER_AT(3)]: [ruler(['A', 'absent']), ruler(['B', 'absent'])],
+  })
+  await search(ctx, w.spec([ask('A'), ask('B')]))
+  assert.equal(rulersIn(calls).length, 2)
+  const [one, two] = [readFileSync(briefFile(w, 3, 1), 'utf8'), readFileSync(briefFile(w, 3, 2), 'utf8')]
+  const digests = w.log.entries().filter((e) => e.kind === 'dispatched' && e.thread === RULER_THREAD(3)).map((e) => e.brief_digest)
+  assert.deepEqual(digests, [fnv1a(one), fnv1a(two)])
+  assert.ok(two.includes('## B') && !two.includes('## A'), 'round 2 rules only what round 1 left')
+})
+
+// --- the result (N8) -------------------------------------------------------------------------
+
+const PER_ASK = ['answer', 'declared', 'dismissed', 'end', 'hits', 'label', 'lines', 'looked', 'unreached', 'why']
+
+test('the result per ask', async (t) => {
+  const w = world(t)
+  const turns = TWO()
+  const { ctx } = w.start({ [NAV]: stepsOf(turns), [RULER_AT(3)]: [ruler(['A', 'absent'], ['B', 'not_converging'])] })
+  const asks = [ask('A'), ask('B')]
+  const result = await search(ctx, w.spec(asks))
+  const end = ledgerOf({ asks, turns, rulings: rulingsIn(w) })
+  for (const key of ['A', 'B']) {
+    const got = result.asks[key]
+    assert.deepEqual(Object.keys(got).sort(), PER_ASK, key)
+    assert.ok(!('absence' in got), key)
+    assert.deepEqual(Object.keys(got.lines).sort(), ['declared', 'failed', 'incomplete', 'unreached'], key)
+    assert.deepEqual(got.looked, end.asks[key].looked, key)
+    assert.deepEqual(got.hits, end.asks[key].hits, key)
+    assert.deepEqual(got.declared, end.asks[key].declared, key)
+    for (const list of Object.values(got.lines)) for (const line of list) assert.ok(line.startsWith(NAME + ':' + key), key + ' owns ' + line)
+  }
+  assert.deepEqual([result.asks.A.end, result.asks.A.answer, result.asks.A.label], ['done', 'absent', 'ruled'])
+  assert.ok(result.asks.A.lines.declared.some((l) => l.startsWith(NAME + ':A: ruled absent: ')), JSON.stringify(result.asks.A.lines))
+  assert.deepEqual(result.asks.A.lines.incomplete, [])
+  assert.deepEqual(result.asks.B.lines.declared, [])
+  assert.ok(result.asks.B.lines.incomplete.some((l) => l.startsWith(NAME + ':B: not_converging, ')), JSON.stringify(result.asks.B.lines))
+  assert.ok(!result.asks.B.answer, 'not_converging carries no answer')
+  assert.ok(!('absence' in result))
+  assert.ok(Array.isArray(result.queries))
+})
+
+test('the result folds owed files', async (t) => {
+  const w = world(t, { ground: { rows: [], seeds: [] } })
+  const owed = ['src/x/a.ts', 'src/x/b.ts', 'src/y/c.ts', 'src/z/d.ts']
+  // the scope's listing journaled as the loop journals it, so this fast test lists no tree
+  w.log.append('step', { key: NAME + '/owes:O', value: owed })
+  const work = turnOf([grep(['O'], [], 'nothing like it', ['src/y'])], back({ asks: [declared('O', 'absent')] }))
+  const { script } = closing([work], ['O', 'absent'])
+  const { ctx } = w.start(script)
+  const result = await search(ctx, w.spec([ask('O')]))
+  const got = result.asks.O
+  assert.equal(got.end, 'done')
+  assert.ok(!got.unreached.some((u) => u.kind === 'file'), 'no file item is reported file by file')
+  const files = got.unreached.filter((u) => u.kind === 'files').map((u) => [u.key, u.detail]).sort()
+  assert.deepEqual(files, [['src/x/', '2 not covered'], ['src/z/', '1 not covered']])
+  assert.ok(!got.unreached.some((u) => u.key === 'src/y/' || u.key === 'src/y/c.ts'), 'the grep over src/y covered it')
+  assert.ok(got.lines.unreached.includes(NAME + ':O: files src/x/ (2 not covered)'), JSON.stringify(got.lines.unreached))
+})
+
+test("coverage is the asks' lines", async (t) => {
+  const w = world(t)
+  const turns = [...TWO(), idle()]
+  // round 1 rules A only, round 2 rules nothing: B is stopped by the ruler, a search-wide failed line
+  const { ctx } = w.start({ [NAV]: stepsOf(turns), [RULER_AT(3)]: [ruler(['A', 'answered']), ruler()] })
+  const asks = [ask('A'), ask('B')]
+  const result = await search(ctx, w.spec(asks))
+  assert.equal(result.asks.B.end, 'stopped')
+  const flat = (field) => Object.values(result.asks).flatMap((a) => a.lines[field]).sort()
+  assert.deepEqual([...result.coverage.declared].sort(), flat('declared'))
+  assert.deepEqual([...result.coverage.incomplete].sort(), flat('incomplete'))
+  assert.deepEqual([...result.coverage.unreached].sort(), flat('unreached'))
+  assert.deepEqual([...result.coverage.failed_channels].sort(), [...flat('failed'), 'converge:' + NAME].sort())
+  assert.ok(flat('declared').length > 0 && flat('incomplete').length > 0)
+  const navTurns = turns.slice(0, w.log.entries().filter((e) => e.kind === 'step' && e.key.startsWith(NAME + '/turn:')).length)
+  assert.deepEqual(result.coverage, coverageLines(ledgerOf({ asks, turns: navTurns, rulings: rulingsIn(w) }), NAME))
 })
 
 // --- missing turns ---------------------------------------------------------------------------
 
-test('a navigator turn that ends without a return is dispatched again at once, as the next turn on the same ledger and session', async (t) => {
+test('a navigator turn that ends without a return is dispatched again at once, on the same session', async (t) => {
   const w = world(t)
-  const asks = [ask('A')]
-  const turns = [looking('A', 1), missing(), settling('A', 'src/A.mjs:1')]
-  const { ctx, calls } = w.start({ [NAV]: stepsOf(turns) })
-  const result = await search(ctx, specOf(asks))
-  assert.equal(calls.length, 3)
+  const turns = [settling('A', 'src/a.ts:4'), missing(), idle()]
+  const { ctx, calls } = w.start({ [NAV]: stepsOf(turns), [RULER_AT(3)]: [ruler(['A', 'answered'])] })
+  const result = await search(ctx, w.spec([ask('A')]))
+  assert.deepEqual(rolesIn(calls), ['scout', 'scout', 'scout', 'ruler'], 'a turn without a return is no comparison point: the stall is turn 3 against turn 1')
   const again = calls[2]
   assert.equal(again.round, 3)
   assert.equal(again.resume, true)
   assert.equal(again.thread.session, calls[0].thread.session)
-  assert.equal(again.brief, turnBrief(ledgerOf({ asks, turns: turns.slice(0, 2) }), { turn: 3 }))
   assert.equal(result.asks.A.end, 'done')
 })
 
-test('a second missing turn in a row stops every open ask, resumable, and the search makes no further call', async (t) => {
+test('a second missing turn in a row stops every open ask, and the search makes no further call', async (t) => {
   const w = world(t)
-  const asks = [ask('A'), ask('B')]
-  const turns = [
-    turnOf([grep(['A'], ['src/a.mjs:3']), grep(['B'], ['src/b.mjs:1'])],
-      back({ hits: [hit(['A'], 'src/a.mjs:3')], asks: [declared('A', 'answered'), declared('B', 'open')] })),
-    missing(), missing(),
-  ]
+  const turns = [moving(['A', 'B'], 1), missing(), missing()]
   const { ctx, calls } = w.start({ [NAV]: stepsOf(turns) })
-  const result = await search(ctx, specOf(asks))
+  const result = await search(ctx, w.spec([ask('A'), ask('B')]))
   assert.equal(calls.length, 3)
-  assert.deepEqual([result.asks.A.end, result.asks.B.end], ['done', 'stopped'])
+  assert.deepEqual([result.asks.A.end, result.asks.B.end], ['stopped', 'stopped'])
   assert.equal(result.status, 'returned')
-  assert.deepEqual(result.coverage, coverageLines(ledgerOf({ asks, turns }), NAME))
 })
 
 test('a search none of whose turns returned has failed with their cause, every ask stopped', async (t) => {
   const w = world(t)
-  const asks = [ask('A'), ask('B')]
-  const turns = [missing('host_error'), missing('host_error')]
-  const { ctx, calls } = w.start({ [NAV]: stepsOf(turns) })
-  const result = await search(ctx, specOf(asks))
+  const { ctx, calls } = w.start({ [NAV]: stepsOf([missing('host_error'), missing('host_error')]) })
+  const result = await search(ctx, w.spec([ask('A'), ask('B')]))
   assert.equal(calls.length, 2)
   assert.deepEqual([result.status, result.cause], ['failed', 'host_error'])
   assert.deepEqual([result.asks.A.end, result.asks.B.end], ['stopped', 'stopped'])
 })
 
-test('a brief over budget after every fold stops the open asks before any dispatch, by the navigator', async (t) => {
-  const w = world(t)
-  const asks = [ask('A'), ask('B')]
-  const material = [{ label: 'An artefact too big to brief', text: 'x'.repeat(BRIEF_BUDGET_CHARS + 1) }]
-  const { ctx, calls } = w.start({})
-  const result = await search(ctx, specOf(asks, { material }))
-  assert.equal(calls.length, 0, 'no session is started on a brief that cannot fit')
-  for (const key of ['A', 'B']) assert.deepEqual([result.asks[key].end, result.asks[key].why], ['stopped', 'brief_over_budget'], key)
-  assert.deepEqual([result.status, result.cause], ['failed', 'brief_over_budget'])
-  assert.deepEqual(w.steps()[NAME + '/turn:1'], { calls_through: 0, stop: 'brief_over_budget' })
-  const again = w.start({})
-  assert.deepEqual(await search(again.ctx, specOf(asks, { material })), result, 'a relaunch replays the stop')
-  assert.equal(again.calls.length, 0)
-})
+// --- replay ----------------------------------------------------------------------------------
 
-// --- relaunch --------------------------------------------------------------------------------
-
-test('a relaunch replays every journaled turn, ruling and the ground, and makes no new call', async (t) => {
+test('a relaunch replays', async (t) => {
   const w = world(t)
+  const { script } = closing([moving(['A', 'B'], 1), settling('A', 'src/a.ts:4')], ['A', 'answered'], ['B', 'absent'])
   const asks = [ask('A'), ask('B')]
-  const turns = [moving(['A', 'B'], 1), moving(['A', 'B'], 2), moving(['A', 'B'], 3), settling('A', 'src/A.mjs:3'), settling('B', 'src/B.mjs:3')]
-  const first = w.start({ [NAV]: stepsOf(turns), [RULER_AT(3)]: [{ output: { units: units(['A', 'converging'], ['B', 'converging']) } }] })
-  const ran = await search(first.ctx, specOf(asks))
+  const ran = await search(w.start(script).ctx, w.spec(asks))
+  const dispatched = w.log.entries().filter((e) => e.kind === 'dispatched').length
   const again = w.start({})
-  const replayed = await search(again.ctx, specOf(asks))
+  const replayed = await search(again.ctx, w.spec(asks))
   assert.deepEqual(replayed, ran)
   assert.equal(again.calls.length, 0)
+  assert.equal(w.log.entries().filter((e) => e.kind === 'dispatched').length, dispatched, 'no dispatch on a relaunch')
   assert.equal(w.grounds.length, 1)
+})
+
+test('a crash before the ruling rules once', async (t) => {
+  const w = world(t)
+  const { script } = closing([settling('A', 'src/a.ts:4')], ['A', 'answered'])
+  await search(w.start(script).ctx, w.spec([ask('A')]))
+  // the log as a crash right after the turn-2 step left it: nothing of the ruling
+  const entries = w.log.entries()
+  const cut = entries.findIndex((e) => e.kind === 'step' && e.key === NAME + '/turn:2')
+  assert.ok(cut > 0)
+  const log = memoryLog()
+  for (const { kind, seq, ...fields } of entries.slice(0, cut + 1)) log.append(kind, fields)
+  const c = world(t, { home: w.home, log })
+  const again = c.start({ [RULER_AT(2)]: [ruler(['A', 'answered'])] })
+  const result = await search(again.ctx, c.spec([ask('A')]))
+  assert.deepEqual(rolesIn(again.calls), ['ruler'], 'the turns replay; the ruler rules turn 2 once')
+  assert.equal(log.entries().filter((e) => e.kind === 'step' && e.key === NAME + '/ruling:2').length, 1)
+  assert.deepEqual([result.asks.A.end, result.asks.A.label], ['done', 'ruled'])
+  const relaunched = c.start({})
+  assert.deepEqual(await search(relaunched.ctx, c.spec([ask('A')])), result)
+  assert.equal(relaunched.calls.length, 0, 'a relaunch after the ruling rules nothing again')
 })
 
 test('a call-log line cut short by a killed server is a call that never answered: a relaunch skips it', async (t) => {
   const w = world(t)
-  const asks = [ask('A')]
-  const turns = [looking('A', 1), settling('A', 'src/A.mjs:1')]
-  const ran = await search(w.start({ [NAV]: stepsOf(turns) }).ctx, specOf(asks))
+  const { script } = closing([looking('A', 1), settling('A', 'src/a.ts:4')], ['A', 'answered'])
+  const ran = await search(w.start(script).ctx, w.spec([ask('A')]))
   appendFileSync(w.path, '{"seq": 3, "tool": "gre')
   const again = w.start({})
-  assert.deepEqual(await search(again.ctx, specOf(asks)), ran)
+  assert.deepEqual(await search(again.ctx, w.spec([ask('A')])), ran)
   assert.equal(again.calls.length, 0)
 })
 
 /** A turn cut by a host stop: the call it made before the stop, and the one it made after. */
 const BEFORE = grep(['A'], ['src/A.mjs:20'], 'before the stop')
-const AFTER = grep(['A'], ['src/A.mjs:21'], 'after the stop')
-const CUT = turnOf([BEFORE, AFTER], back({ asks: [declared('A', 'open')] }))
-const CUT_TURNS = [looking('A', 1), CUT, looking('A', 3), settling('A', 'src/A.mjs:21')]
-const CUT_RULED = { [RULER_AT(3)]: [{ output: { units: units(['A', 'converging']) } }] }
+const AFTER = grep(['A'], ['src/a.ts:4'], 'after the stop')
+const CUT = turnOf([BEFORE, AFTER], back({ hits: [hit(['A'], 'src/a.ts:4')], asks: [declared('A', 'answered')] }))
+/** Turn 1 looks, turn 2 is cut and settles, turn 3 idles: the stall at turn 3 is ruled. */
+const CUT_TURNS = [looking('A', 1), CUT, idle()]
+const CUT_RULED = { [RULER_AT(3)]: [ruler(['A', 'answered'])] }
 
-/** The same search, never interrupted. */
 async function uninterrupted(t) {
   const w = world(t)
   const run = w.start({ [NAV]: stepsOf(CUT_TURNS), ...CUT_RULED })
-  const result = await search(run.ctx, specOf([ask('A')]))
+  const result = await search(run.ctx, w.spec([ask('A')]))
   return { w, calls: run.calls, result }
 }
 
-test('a host stop in the middle of a turn resumes it with cut_off in the same session, and each call made before the stop counts once', async (t) => {
+const withoutTree = (result) => ({ ...result, tree: null })
+
+test('a host stop in the middle of a turn resumes it with cut_off and its brief in the same session, each call counted once', async (t) => {
   const plain = await uninterrupted(t)
   const w = world(t)
-  const [s1, , s3, s4] = stepsOf(CUT_TURNS)
-  const run = w.start({ [NAV]: [s1, { status: 'stopped', cause: 'rate_limit', calls: [BEFORE] }, { output: CUT.output, calls: [AFTER] }, s3, s4], ...CUT_RULED })
-  const result = await search(run.ctx, specOf([ask('A')]))
+  const [s1, , s3] = stepsOf(CUT_TURNS)
+  const run = w.start({ [NAV]: [s1, { status: 'stopped', cause: 'rate_limit', calls: [BEFORE] }, { output: CUT.output, calls: [AFTER] }, s3], ...CUT_RULED })
+  const result = await search(run.ctx, w.spec([ask('A')]))
   const [, stopped, resumed] = run.calls
   assert.deepEqual([stopped.round, resumed.round], [2, 2])
   assert.equal(resumed.resume, true)
-  assert.equal(resumed.brief, CUT_OFF)
+  assert.equal(resumed.brief, CUT_OFF + SEPARATOR + plain.calls[1].brief, 'cut_off followed by the turn brief, never cut_off alone')
   assert.equal(resumed.thread.session, stopped.thread.session)
   const seqs = w.journal().map((c) => c.seq)
   assert.equal(new Set(seqs).size, seqs.length, 'no call is in the call log twice')
   assert.deepEqual(w.journal(), plain.w.journal())
-  assert.deepEqual(run.calls.slice(3).map((c) => c.brief), plain.calls.slice(2).map((c) => c.brief), 'every later brief is the uninterrupted run\'s')
-  assert.deepEqual(result, plain.result)
+  assert.deepEqual(withoutTree(result), withoutTree(plain.result))
 })
 
-test("a run killed in the middle of a turn resumes that turn with cut_off on relaunch, and its ledger is an uninterrupted run's", async (t) => {
+test("a run killed in the middle of a turn resumes that turn with cut_off and its brief on relaunch", async (t) => {
   const plain = await uninterrupted(t)
   const w = world(t)
-  const [s1, , s3, s4] = stepsOf(CUT_TURNS)
+  const [s1, , s3] = stepsOf(CUT_TURNS)
   const killed = w.start({ [NAV]: [s1, { status: 'stopped', cause: 'rate_limit', calls: [BEFORE] }] }, { sleep: () => { throw new Error('killed while waiting') } })
-  await assert.rejects(search(killed.ctx, specOf([ask('A')])), /killed while waiting/)
-  const again = w.start({ [NAV]: [{ output: CUT.output, calls: [AFTER] }, s3, s4], ...CUT_RULED })
-  const result = await search(again.ctx, specOf([ask('A')]))
+  await assert.rejects(search(killed.ctx, w.spec([ask('A')])), /killed while waiting/)
+  const again = w.start({ [NAV]: [{ output: CUT.output, calls: [AFTER] }, s3], ...CUT_RULED })
+  const result = await search(again.ctx, w.spec([ask('A')]))
   const [resumed] = again.calls
   assert.equal(resumed.round, 2)
   assert.equal(resumed.resume, true)
-  assert.equal(resumed.brief, CUT_OFF)
+  assert.equal(resumed.brief, CUT_OFF + SEPARATOR + plain.calls[1].brief)
   assert.equal(resumed.thread.session, killed.calls[1].thread.session)
   assert.deepEqual(w.journal(), plain.w.journal())
-  assert.deepEqual(again.calls.slice(1).map((c) => c.brief), plain.calls.slice(2).map((c) => c.brief))
-  assert.deepEqual(result, plain.result)
+  assert.deepEqual(withoutTree(result), withoutTree(plain.result))
 })
 
 // --- what only a ruling ends -----------------------------------------------------------------
 
-test('a long chain whose observed state keeps moving is never ended by code: only the navigator and the ruler end it', async (t) => {
+test('a long chain whose state keeps moving is never ended by code: the ruler rules it at the check-ins and the stall', async (t) => {
   const w = world(t)
-  const asks = [ask('chain')]
-  const length = 40
-  const turns = [...Array.from({ length: length - 1 }, (_, i) => looking('chain', i + 1)), settling('chain', 'src/chain.mjs:' + (length - 1))]
-  const checkIns = turns.map((_, i) => i + 1).filter((turn) => askAfter(turn) && turn < length)
+  const moved = Array.from({ length: 10 }, (_, i) => looking('chain', i + 1))
+  const turns = [...moved, settling('chain', 'src/a.ts:4'), idle()]
+  assert.ok(askAfter(12))
   const script = { [NAV]: stepsOf(turns) }
-  for (const turn of checkIns) script[RULER_AT(turn)] = [{ output: { units: units(['chain', 'converging']) } }]
+  for (const turn of [3, 6, 9]) script[RULER_AT(turn)] = [ruler(['chain', 'open'])]
+  script[RULER_AT(12)] = [ruler(['chain', 'answered'])]
   const { ctx, calls } = w.start(script)
-  const result = await search(ctx, specOf(asks))
-  assert.equal(calls.filter((c) => c.role.name === 'scout').length, length, 'every turn the navigator took was dispatched')
-  assert.deepEqual(calls.filter((c) => c.role.name === 'ruler').map((c) => c.thread.key), checkIns.map((turn) => 'ruler:search:' + NAME + ':' + turn))
-  assert.equal(result.asks.chain.end, 'done')
+  const result = await search(ctx, w.spec([ask('chain')]))
+  assert.equal(calls.filter((c) => c.role.name === 'scout').length, 12)
+  assert.deepEqual(rulersIn(calls).map((c) => c.thread.key), [3, 6, 9, 12].map(RULER_THREAD))
+  assert.deepEqual([result.asks.chain.end, result.asks.chain.label], ['done', 'ruled'])
 })
 
-// --- more asks -------------------------------------------------------------------------------
-
-test('called again with more asks, a search replays what it ran and goes on with the new asks, in the same session and charge', async (t) => {
-  const w = world(t)
-  const A = ask('A')
-  const want = ask('want:1', { find: 'the worktree copy of src/a.mjs', from: 2 })
-  const t1 = settling('A', 'src/A.mjs:3')
-  const first = w.start({ [NAV]: stepsOf([t1]) })
-  const before = await search(first.ctx, specOf([A]))
-  const t2 = settling('want:1', 'src/a.mjs:12')
-  const again = w.start({ [NAV]: stepsOf([t2]) })
-  const after = await search(again.ctx, specOf([A, want]))
-  assert.equal(again.calls.length, 1, 'the first turn is replayed')
-  const [two] = again.calls
-  assert.equal(two.round, 2)
-  assert.equal(two.resume, true)
-  assert.equal(two.thread.session, first.calls[0].thread.session)
-  assert.equal(two.brief, turnBrief(ledgerOf({ asks: [A, want], turns: [t1] }), { turn: 2, joined: ['want:1'] }))
-  const charge = chargeOf({ domain: 'repo', asks: [A], material: MATERIAL, ground: GROUND })
-  assert.equal(readFileSync(two.role.systemPromptFile, 'utf8'), roleOf('scout').prompt + '\n\n' + charge,
-    'the charge stays the first call\'s, so the session\'s cached prompt holds')
-  assert.deepEqual(after.asks.A, before.asks.A)
-  assert.equal(after.asks['want:1'].end, 'done')
-  assert.equal(w.grounds.length, 1)
-  const relaunched = w.start({})
-  assert.deepEqual(await search(relaunched.ctx, specOf([A])), before)
-  assert.deepEqual(await search(relaunched.ctx, specOf([A, want])), after)
-  assert.equal(relaunched.calls.length, 0)
-})
+// --- configuration and journal ---------------------------------------------------------------
 
 test("each turn's MCP config serves the search's tree, its asks, its domain's tools and its call log", async (t) => {
   const w = world(t)
   const A = ask('A')
-  const want = ask('want:1', { find: 'the worktree copy of src/a.mjs', from: 2 })
-  const served = (asks) => ({ tree: TREE, asks: asks.map(({ key, scope, domain }) => ({ key, scope, domain })), tools: TOOLS_BY_DOMAIN.repo, calls: w.path })
-  const first = w.start({ [NAV]: stepsOf([settling('A', 'src/A.mjs:3')]) })
-  await search(first.ctx, specOf([A]))
-  assert.deepEqual(serverSpecOf(first.calls[0]), served([A]))
-  const again = w.start({ [NAV]: stepsOf([settling('want:1', 'src/a.mjs:12')]) })
-  await search(again.ctx, specOf([A, want]))
-  assert.deepEqual(serverSpecOf(again.calls[0]), served([A, want]), 'the joined ask is served from its turn on')
-  const h = world(t)
-  const H = ask('H', { domain: 'history' })
-  const history = h.start({ ['historian||' + NAME]: [{ output: back({ asks: [declared('H', 'absent')] }), calls: [] }] })
-  await search(history.ctx, specOf([H], { role: 'historian', schema: 'search_history' }))
-  assert.deepEqual(serverSpecOf(history.calls[0]), {
-    tree: TREE, asks: [{ key: 'H', scope: ['.'], domain: 'history' }], tools: TOOLS_BY_DOMAIN.history, calls: h.path,
-  })
+  const { script } = closing([settling('A', 'src/a.ts:4')], ['A', 'answered'])
+  const { calls, ctx } = w.start(script)
+  await search(ctx, w.spec([A]))
+  assert.deepEqual(serverSpecOf(calls[0]), { tree: w.tree, asks: [{ key: 'A', scope: ['.'], domain: 'repo' }], tools: TOOLS_BY_DOMAIN.repo, calls: w.path })
+})
+
+test('the ground table is built once per search, over its tree, material, diff, config and the union of its scopes', async (t) => {
+  const w = world(t)
+  const config = { guidance: ['docs/review.md'] }
+  const asks = [ask('A', { scope: ['src', 'lib'] }), ask('B', { scope: ['src'] })]
+  const diff = { base: 'b'.repeat(40), head: 'c'.repeat(40) }
+  const { ctx, calls } = w.start({ [NAV]: stepsOf(TWO()), [RULER_AT(3)]: [ruler(['A', 'absent'], ['B', 'absent'])] })
+  const result = await search(ctx, w.spec(asks, { diff, config }))
+  assert.equal(w.grounds.length, 1)
+  const [{ tree, args }] = w.grounds
+  assert.deepEqual(tree, w.tree)
+  assert.deepEqual([args.material, args.scope, args.diff, args.config], [MATERIAL, ['lib', 'src'], diff, config])
+  assert.deepEqual(result.ground, GROUND)
+  const charge = chargeOf({ domain: 'repo', asks, material: MATERIAL, ground: GROUND })
+  assert.equal(readFileSync(calls[0].role.systemPromptFile, 'utf8'), roleOf('scout').prompt + '\n\n' + charge)
+  await search(w.start({}).ctx, w.spec(asks, { diff, config }))
+  assert.equal(w.grounds.length, 1, 'a relaunch reads the ground from the journal')
+  assert.equal(await groundFor(w.start({}).ctx, w.tree, { material: MATERIAL }), GROUND)
+  assert.equal(w.grounds.length, 2, 'groundFor is the seam the loop resolves through')
+})
+
+test('a ground table the program hands over is recorded and used as given, and the search resolves nothing', async (t) => {
+  const w = world(t)
+  const given = groundOf(['A'])
+  const { script } = closing([settling('A', 'src/a.ts:4')], ['A', 'answered'])
+  const { ctx } = w.start(script)
+  const result = await search(ctx, w.spec([ask('A')], { ground: given }))
+  assert.equal(w.grounds.length, 0)
+  assert.deepEqual(w.steps()[NAME + '/ground'], given)
+  assert.deepEqual(result.ground, given)
+  assert.equal(result.asks.A.end, 'done')
+})
+
+test("the journal holds the ground, the asks' joining, each turn's last call and missing cause, and each turn's ruling", async (t) => {
+  const w = world(t)
+  const turns = [settling('A', 'src/a.ts:4'), missing(), idle()]
+  const ruled = units(['A', 'answered'])
+  const { ctx } = w.start({ [NAV]: stepsOf(turns), [RULER_AT(3)]: [{ output: { units: ruled } }] })
+  await search(ctx, w.spec([ask('A')]))
+  const steps = w.steps()
+  assert.deepEqual(steps[NAME + '/ground'], GROUND)
+  assert.deepEqual(steps[NAME + '/asks:0'], ['A'])
+  assert.deepEqual(steps[NAME + '/turn:1'], { calls_through: 1 })
+  assert.deepEqual(steps[NAME + '/turn:2'], { calls_through: 1, missing: 'host_error' })
+  assert.deepEqual(steps[NAME + '/turn:3'], { calls_through: 1 })
+  assert.deepEqual(steps[NAME + '/ruling:3'], [{ turn: 3, asks: ['A'], units: ruled }])
+  assert.deepEqual(rulingSteps(w), [NAME + '/ruling:3'])
+})
+
+// --- retained behaviour, on stall and ruling endings -----------------------------------------
+
+test('a missing session is renewed, the next turn resumes the renewed one, and the result names both sessions', async (t) => {
+  const w = world(t)
+  const [s1, s2] = stepsOf([settling('A', 'src/a.ts:4'), idle()])
+  const { ctx, calls } = w.start({ [NAV]: [s1, { status: 'failed', cause: 'session_missing' }, s2], [RULER_AT(2)]: [ruler(['A', 'answered'])] })
+  const result = await search(ctx, w.spec([ask('A')]))
+  assert.deepEqual(rolesIn(calls), ['scout', 'scout', 'ruler'])
+  assert.deepEqual(w.log.entries().filter((e) => e.kind === 'thread_renewed').map((e) => [e.thread, e.why]), [[NAME, 'session_missing']])
+  const sessions = result.sessions.map((s) => s.session)
+  assert.equal(new Set(sessions).size, 2, 'the first session and the renewed one')
+  assert.ok(result.sessions.every((s) => s.thread === NAME))
+  assert.ok(sessions.includes(calls[0].thread.session))
+  assert.ok(sessions.includes(calls[1].thread.session))
+  assert.notEqual(calls[1].thread.session, calls[0].thread.session, 'turn 2 runs in the renewed session')
+  assert.deepEqual([result.asks.A.end, result.asks.A.label], ['done', 'ruled'])
+})
+
+test('the ruler runs at the search\'s intelligence, on its own thread and session', async (t) => {
+  const w = world(t)
+  const { script } = closing([settling('A', 'src/a.ts:4')], ['A', 'answered'])
+  const { ctx, calls } = w.start(script)
+  const result = await search(ctx, w.spec([ask('A')], { intelligence: 'max' }))
+  const [r] = rulersIn(calls)
+  assert.deepEqual(r.tier, tierFor(roleOf('ruler'), { intelligence: 'max' }))
+  assert.deepEqual(calls[0].tier, tierFor(roleOf('scout'), { intelligence: 'max', base: '' }))
+  for (const s of result.sessions) {
+    assert.notEqual(s.session, r.thread.session, 'the ruler is none of the navigator sessions')
+    assert.notEqual(s.thread, r.thread.key, 'the ruler is not on the navigator thread')
+  }
+})
+
+test('a ruling that fails is dispatched again once, and failing again stops every ask it was to rule', async (t) => {
+  const w = world(t)
+  const failed = { status: 'failed', cause: 'host_error' }
+  const { ctx, calls } = w.start({ [NAV]: stepsOf([settling('A', 'src/a.ts:4'), idle()]), [RULER_AT(2)]: [failed, failed] })
+  const result = await search(ctx, w.spec([ask('A')]))
+  assert.deepEqual(rolesIn(calls), ['scout', 'scout', 'ruler', 'ruler'])
+  assert.equal(calls[3].round, 2)
+  assert.equal(result.asks.A.end, 'stopped')
+  assert.ok(!result.asks.A.answer, 'a stop is no answer')
+  assert.equal(result.status, 'returned')
 })
 
 test('two searches of one name under different scopes keep separate threads, call logs, servers and steps', async (t) => {
   const w = world(t)
   const asks = [ask('A')]
   const keys = ['probe:p:1/' + NAME, 'probe:p:2/' + NAME]
-  const script = Object.fromEntries(keys.map((key, i) => ['scout||' + key, stepsOf([settling('A', 'src/A.mjs:' + (i + 1))])]))
+  const script = {}
+  keys.forEach((key, i) => {
+    script['scout||' + key] = stepsOf([settling('A', 'src/a.ts:' + (i + 1)), idle()])
+    script['ruler||ruler:search:' + key + ':2'] = [ruler(['A', 'answered'])]
+  })
   const { ctx, calls } = w.start(script)
-  await search(scoped(ctx, 'probe:p:1'), specOf(asks))
-  await search(scoped(ctx, 'probe:p:2'), specOf(asks))
-  assert.deepEqual(calls.map((c) => c.thread.key), keys)
+  await search(scoped(ctx, 'probe:p:1'), w.spec(asks))
+  await search(scoped(ctx, 'probe:p:2'), w.spec(asks))
+  const nav = calls.filter((c) => c.role.name === 'scout')
+  assert.deepEqual(nav.map((c) => c.thread.key), [keys[0], keys[0], keys[1], keys[1]])
   const logs = keys.map((key) => join(searchDir(w.dir, key), 'calls.jsonl'))
   assert.notEqual(logs[0], logs[1])
-  assert.deepEqual(calls.map((c) => serverSpecOf(c).calls), logs)
+  assert.deepEqual(nav.map((c) => serverSpecOf(c).calls), [logs[0], logs[0], logs[1], logs[1]])
   logs.forEach((log, i) => {
     const records = readFileSync(log, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line))
     assert.deepEqual(records.map((r) => [r.seq, r.observed[0].line]), [[1, i + 1]], keys[i])
   })
   const steps = w.steps()
-  for (const key of keys) assert.deepEqual(steps[key + '/turn:1'], { calls_through: 1 }, key)
-})
-
-// --- what a search hands back ----------------------------------------------------------------
-
-test('a search returns its ends, hits, sessions, counts and coverage in the shape its programs read', async (t) => {
-  const w = world(t)
-  const asks = [ask('guidance'), ask('ground:intro'), ask('ground:api')]
-  const turns = [turnOf(
-    [grep(['guidance'], ['CLAUDE.md:1', 'docs/kb/a.md:4']), grep(['ground:intro'], ['src/a.mjs:3', 'src/b.mjs:5']), grep(['ground:api'], ['src/b.mjs:9'])],
-    back({
-      hits: [hit(['guidance'], 'CLAUDE.md:1'), hit(['guidance'], 'docs/kb/a.md:4'), hit(['ground:intro'], 'src/a.mjs:3'),
-        hit(['ground:intro'], 'src/b.mjs:5'), hit(['ground:api'], 'src/b.mjs:9')],
-      asks: asks.map((a) => declared(a.key, 'answered')),
-    }))]
-  const { ctx, calls } = w.start({ [NAV]: stepsOf(turns) })
-  const result = await search(ctx, specOf(asks))
-  const end = ledgerOf({ asks, turns })
-  assert.deepEqual([result.name, result.status, result.cause], [NAME, 'returned', ''])
-  assert.deepEqual(result.tree, TREE)
-  assert.deepEqual(result.ground, GROUND)
-  for (const a of asks) {
-    const got = result.asks[a.key]
-    const want = end.asks[a.key]
-    assert.deepEqual([got.end, got.label, got.why], [want.end.state, want.end.label, want.end.why], a.key)
-    assert.deepEqual([got.declared, got.absence], [want.declared, want.absence], a.key)
-    assert.deepEqual(got.hits, want.hits, a.key)
-    assert.deepEqual(got.dismissed, want.dismissed, a.key)
-    assert.deepEqual(got.unreached, want.frontier, a.key)
+  for (const key of keys) {
+    assert.deepEqual(steps[key + '/turn:1'], { calls_through: 1 }, key)
+    assert.ok(steps[key + '/ruling:2'], key + ' rules its own stall')
   }
-  assert.deepEqual(result.sessions, [{ session: calls[0].thread.session, thread: NAME }])
-  const keysIn = (pick) => new Set(Object.values(end.asks).filter(pick).flatMap((a) => a.hits.map((h) => h.key))).size
-  assert.equal(result.entries_n, keysIn(() => true))
-  assert.deepEqual(result.kinds, { guidance: keysIn((a) => a.key === 'guidance'), ground: keysIn((a) => a.key.startsWith('ground:')) })
-  assert.deepEqual(result.coverage, coverageLines(end, NAME))
 })
 
-test('an ask declared done in a return that cites an unobserved line gets one more turn with the refusal in its brief', async (t) => {
+test('called again with more asks, a search replays what it ran and goes on with the new asks, in the same session and charge', async (t) => {
   const w = world(t)
-  const asks = [ask('A')]
-  const turns = [
-    turnOf([grep(['A'], ['src/a.mjs:3'])], back({ hits: [hit(['A'], 'src/b.mjs:9')], asks: [declared('A', 'answered')] })),
-    quiet(),
-  ]
-  const { ctx, calls } = w.start({ [NAV]: stepsOf(turns) })
-  const result = await search(ctx, specOf(asks))
-  assert.equal(calls.length, 2, 'the navigator is shown the refusal before the ask ends')
-  assert.ok(calls[1].brief.includes('## Refused last turn\n\n- unobserved: hit src/b.mjs:9'), calls[1].brief)
-  assert.deepEqual([result.asks.A.end, result.asks.A.hits.length], ['done', 0])
-})
-
-test('a search hands its program every refusal still standing, and its coverage names the unobserved ones', async (t) => {
-  const w = world(t)
-  const asks = [ask('A')]
-  const turns = [
-    turnOf([grep(['A'], ['src/a.mjs:3'])], back({ hits: [hit(['A'], 'src/b.mjs:9')], asks: [declared('A', 'answered')] })),
-    turnOf([grep(['A'], ['src/c.mjs:1'])], back({ hits: [hit(['A'], 'src/c.mjs:1')], asks: [declared('A', 'answered')] })),
-  ]
-  const { ctx } = w.start({ [NAV]: stepsOf(turns) })
-  const result = await search(ctx, specOf(asks))
-  const end = ledgerOf({ asks, turns })
-  assert.deepEqual(result.refusals, standingRefusals(end))
-  assert.deepEqual(result.refusals.map((r) => [r.turn, r.class, r.item.path, r.asks]), [[1, 'unobserved', 'src/b.mjs', ['A']]])
-  assert.ok(result.coverage.unreached.some((l) => l.startsWith(NAME + ':A: ') && l.includes('src/b.mjs:9')), JSON.stringify(result.coverage.unreached))
-})
-
-test('the ground table is built once per search, over its tree, material, diff, config and the union of its scopes', async (t) => {
-  const ground = { rows: [{ kind: 'path', mention: 'src/A.mjs', key: 'src/A.mjs', exists: true, asks: ['A'], defs: [], refs: [], files: 0 }], seeds: [] }
-  const w = world(t, { ground })
-  const config = { guidance: ['docs/review.md'] }
-  const asks = [ask('A', { scope: ['src', 'lib'] }), ask('B', { scope: ['src'] })]
-  const diff = { base: 'b'.repeat(40), head: 'c'.repeat(40) }
-  const turns = [turnOf([grep(['A'], ['src/A.mjs:1'], 'a'), grep(['B'], ['src/B.mjs:1'], 'b')], back({
-    hits: [hit(['A'], 'src/A.mjs:1'), hit(['B'], 'src/B.mjs:1')],
-    asks: [declared('A', 'answered'), declared('B', 'answered')],
-  }))]
-  const { ctx, calls } = w.start({ [NAV]: stepsOf(turns) })
-  const result = await search(ctx, specOf(asks, { diff, config }))
+  const A = ask('A')
+  const want = ask('want:1', { find: 'the other settled line', from: 3 })
+  const { script } = closing([settling('A', 'src/a.ts:4')], ['A', 'answered'])
+  const first = w.start(script)
+  const before = await search(first.ctx, w.spec([A]))
+  // the joining ask's ground journaled as the loop journals it (N12), so this fast test resolves nothing
+  w.log.append('step', { key: NAME + '/ground:want:1', value: [] })
+  const again = w.start({ [NAV]: stepsOf([settling('want:1', 'src/b.ts:2'), idle()]), [RULER_AT(4)]: [ruler(['want:1', 'answered'])] })
+  const after = await search(again.ctx, w.spec([A, want]))
+  assert.deepEqual(rolesIn(again.calls), ['scout', 'scout', 'ruler'], 'turns 1-2 and their ruling are replayed')
+  const [three] = again.calls
+  assert.equal(three.round, 3)
+  assert.equal(three.resume, true)
+  assert.equal(three.thread.session, first.calls[0].thread.session)
+  const charge = chargeOf({ domain: 'repo', asks: [A], material: MATERIAL, ground: GROUND })
+  assert.equal(readFileSync(three.role.systemPromptFile, 'utf8'), roleOf('scout').prompt + '\n\n' + charge,
+    'the charge stays the first call\'s, so the session\'s cached prompt holds')
+  assert.deepEqual(after.asks.A, before.asks.A)
+  assert.deepEqual([after.asks['want:1'].end, after.asks['want:1'].label], ['done', 'ruled'])
   assert.equal(w.grounds.length, 1)
-  const [{ tree, args }] = w.grounds
-  assert.deepEqual(tree, TREE)
-  assert.deepEqual([args.material, args.scope, args.diff, args.config], [MATERIAL, ['lib', 'src'], diff, config])
+  const relaunched = w.start({})
+  assert.deepEqual(await search(relaunched.ctx, w.spec([A])), before)
+  assert.deepEqual(await search(relaunched.ctx, w.spec([A, want])), after)
+  assert.equal(relaunched.calls.length, 0)
+})
+
+test('a search returns its name, status, tree, ground, sessions and counts in the shape its programs read', async (t) => {
+  const keys = ['guidance', 'ground:intro', 'ground:api']
+  const ground = groundOf(keys)
+  const w = world(t, { ground })
+  const asks = keys.map((k) => ask(k))
+  const work = turnOf(
+    [grep(['guidance'], ['src/a.ts:4', 'src/b.ts:2']), grep(['ground:intro'], ['src/a.ts:1']), grep(['ground:api'], ['src/b.ts:1'])],
+    back({
+      hits: [hit(['guidance'], 'src/a.ts:4'), hit(['guidance'], 'src/b.ts:2'), hit(['ground:intro'], 'src/a.ts:1'), hit(['ground:api'], 'src/b.ts:1')],
+      asks: keys.map((k) => declared(k, 'answered')),
+    }))
+  const { script } = closing([work], ...keys.map((k) => [k, 'answered']))
+  const { ctx, calls } = w.start(script)
+  const result = await search(ctx, w.spec(asks))
+  assert.deepEqual([result.name, result.status, result.cause], [NAME, 'returned', ''])
+  assert.deepEqual(result.tree, w.tree)
   assert.deepEqual(result.ground, ground)
-  const charge = chargeOf({ domain: 'repo', asks, material: MATERIAL, ground })
-  assert.equal(readFileSync(calls[0].role.systemPromptFile, 'utf8'), roleOf('scout').prompt + '\n\n' + charge)
-  assert.equal(calls[0].brief, turnBrief(ledgerOf({ asks, turns: [], ground }), { turn: 1 }))
-  await search(w.start({}).ctx, specOf(asks, { diff, config }))
-  assert.equal(w.grounds.length, 1, 'a relaunch reads the ground from the journal')
-  assert.equal(await groundFor(w.start({}).ctx, TREE, { material: MATERIAL }), ground)
-  assert.equal(w.grounds.length, 2, 'groundFor is the seam the loop resolves through')
+  assert.deepEqual(result.sessions, [{ session: calls[0].thread.session, thread: NAME }])
+  for (const k of keys) assert.equal(result.asks[k].end, 'done', k)
+  const keysIn = (pick) => new Set(Object.entries(result.asks).filter(([k]) => pick(k)).flatMap(([, a]) => a.hits.map((h) => h.key))).size
+  assert.equal(result.entries_n, keysIn(() => true))
+  assert.deepEqual(result.kinds, { guidance: keysIn((k) => k === 'guidance'), ground: keysIn((k) => k.startsWith('ground:')) })
 })
 
-test('a ground table the program hands over is recorded and used as given, and the search resolves nothing', async (t) => {
-  const w = world(t)
-  const given = { rows: [{ kind: 'doc', mention: 'docs/kb/a.md', key: 'docs/kb/a.md', exists: true, asks: ['A'], defs: [], refs: [], files: 0 }], seeds: [] }
-  const asks = [ask('A')]
-  const turns = [turnOf([grep(['A'], ['docs/kb/a.md:2'])], back({ hits: [hit(['A'], 'docs/kb/a.md:2')], asks: [declared('A', 'answered')] }))]
-  const { ctx, calls } = w.start({ [NAV]: stepsOf(turns) })
-  const result = await search(ctx, specOf(asks, { ground: given }))
-  assert.equal(w.grounds.length, 0)
-  assert.deepEqual(w.steps()[NAME + '/ground'], given, 'the ground step records the table it was handed')
-  assert.deepEqual(result.ground, given)
-  const charge = chargeOf({ domain: 'repo', asks, material: MATERIAL, ground: given })
-  assert.equal(readFileSync(calls[0].role.systemPromptFile, 'utf8'), roleOf('scout').prompt + '\n\n' + charge)
-  assert.equal(calls[0].brief, turnBrief(ledgerOf({ asks, turns: [], ground: given }), { turn: 1 }))
-  assert.equal(result.asks.A.end, 'done')
-})
-
-test("the journal holds the ground, the asks' joining, each turn's last call and missing cause, and each check-in's rulings", async (t) => {
+test('an unobserved citation reaches the navigator before the ask can end, and the search hands back every refusal still standing', async (t) => {
   const w = world(t)
   const asks = [ask('A')]
-  const turns = [looking('A', 1), missing(), looking('A', 3), settling('A', 'src/A.mjs:3')]
-  const ruled = units(['A', 'converging'])
-  const { ctx } = w.start({ [NAV]: stepsOf(turns), [RULER_AT(3)]: [{ output: { units: ruled } }] })
-  await search(ctx, specOf(asks))
-  const steps = w.steps()
-  assert.deepEqual(steps[NAME + '/ground'], GROUND)
-  assert.deepEqual(steps[NAME + '/asks:0'], ['A'])
-  assert.deepEqual(steps[NAME + '/turn:1'], { calls_through: 1 })
-  assert.deepEqual(steps[NAME + '/turn:2'], { calls_through: 1, missing: 'host_error' })
-  assert.deepEqual(steps[NAME + '/turn:3'], { calls_through: 2 })
-  assert.deepEqual(steps[NAME + '/ruling:3'], [{ turn: 3, asks: ['A'], units: ruled }])
-  assert.deepEqual(steps[NAME + '/turn:4'], { calls_through: 3 })
+  const work = turnOf([grep(['A'], ['src/a.ts:4'])], back({ hits: [hit(['A'], 'src/b.ts:2')], asks: [declared('A', 'answered')] }))
+  const { turns, script } = closing([work], ['A', 'absent'])
+  const { ctx, calls } = w.start(script)
+  const result = await search(ctx, w.spec(asks))
+  assert.deepEqual(rolesIn(calls), ['scout', 'scout', 'ruler'], 'the navigator is shown the refusal before the ruling')
+  assert.ok(calls[1].brief.includes('unobserved') && calls[1].brief.includes('src/b.ts:2'), calls[1].brief)
+  assert.deepEqual([result.asks.A.end, result.asks.A.hits.length], ['done', 0])
+  const end = ledgerOf({ asks, turns, rulings: rulingsIn(w) })
+  assert.deepEqual(result.refusals, standingRefusals(end))
+  assert.deepEqual(result.refusals.map((r) => [r.turn, r.class, r.item.path, r.asks]), [[1, 'unobserved', 'src/b.ts', ['A']]])
+  assert.ok(result.coverage.unreached.some((l) => l.startsWith(NAME + ':A: ') && l.includes('src/b.ts:2')), JSON.stringify(result.coverage.unreached))
 })

@@ -47,19 +47,23 @@ export const webReturn = ({ hits = [], dismissed = [], leads = [], declare = {} 
   dismissed, leads, asks: declared(declare),
 })
 
-/** A turn that looked at nothing and declares every ask in `keys` absent; an ask with a frontier stays open. */
+/** A turn that looked at nothing and declares every ask in `keys` absent; a declaration ends nothing. */
 export const quietTurn = (keys) => ({ output: repoReturn({ declare: absentAll(keys) }) })
-/** A turn that dismisses everything on every ask's frontier and declares each absent: every ask in `keys` ends. */
+/**
+ * A turn that greps for each ask in `keys` and finds nothing, dismisses everything on every agenda and
+ * declares each absent. A declaration ends nothing: `endSearch` scripts the stall and the ruling after it.
+ */
 export const closingTurn = (keys) => ({
+  calls: [grepCall(keys, [], 'ABSENT')],
   output: repoReturn({ dismissed: keys.map((k) => ({ ask: k, glob: '**', why: 'nothing here bears on it' })), declare: absentAll(keys) }),
 })
 /**
- * A turn that greps each hit's line for `ask` and returns it, dismisses the rest of every frontier
+ * A turn that greps each hit's line for `ask` and returns it, dismisses the rest of every agenda
  * (hits apply before dismissals, so the hits stand), and declares `ask` answered and `others`
- * absent: every ask it names ends. Each hit `[path, line, note?]`.
+ * absent. Each hit `[path, line, note?]`. `endSearch` scripts the stall and the ruling that end it.
  */
 export const hitTurn = (ask, hits, others = []) => ({
-  calls: [grepCall(ask, hits.map(([path, line]) => [path, line]))],
+  calls: [grepCall(ask, hits.map(([path, line]) => [path, line])), ...(others.length ? [grepCall(others, [], 'ABSENT')] : [])],
   output: repoReturn({
     hits: hits.map(([path, line, note]) => [ask, path, line, note]),
     dismissed: [ask, ...others].map((k) => ({ ask: k, glob: '**', why: 'nothing else here bears on it' })),
@@ -71,3 +75,21 @@ export const openTurn = (ask, hits, lead) => ({
   calls: [grepCall(ask, hits.map(([path, line]) => [path, line]))],
   output: repoReturn({ hits: hits.map(([path, line, note]) => [ask, path, line, note]), leads: [{ ask, path: lead, why: 'not read yet' }] }),
 })
+
+/**
+ * The script steps that end a search after `turn`: an idle navigator turn and the ruler's ruling of `asks`.
+ * `name` is the search's thread key; the ruler steps go under `ruler.key`.
+ */
+export function endSearch({ name, turn, asks, ruling = 'absent' }) {
+  const units = askList(asks).map((unit) => ({ unit, ruling, why: unit + ' is ' + ruling + ' on what the turns showed' }))
+  return {
+    navigator: [{ output: repoReturn() }],
+    ruler: { key: 'ruler||ruler:search:' + name + ':' + (turn + 1), steps: [{ output: { units } }] },
+  }
+}
+
+/** The script of a search that `closingTurn` ends on its first turn: that turn, the stall, and the ruling of `asks` absent. */
+export function closedSearch({ role = 'scout', name, asks }) {
+  const end = endSearch({ name, turn: 1, asks })
+  return { [role + '||' + name]: [closingTurn(asks), ...end.navigator], [end.ruler.key]: end.ruler.steps }
+}

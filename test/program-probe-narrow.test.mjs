@@ -17,7 +17,7 @@ import { carriedFindings, liveItems, recordProbe, reviewScope, sectionsOf, units
 import { readLog } from '../lib/ledger.mjs'
 import { probe } from '../lib/programs/probe.mjs'
 import { evidenceReturnsDir, evidenceSnapshotsDir } from '../lib/store.mjs'
-import { closingTurn } from './harness/navigator.mjs'
+import { closedSearch } from './harness/navigator.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 const STANDING = ['ambiguity', 'invariants', 'yagni', 'reinvention']
@@ -55,8 +55,10 @@ const linesOf = (text) => text.trim().split('\n')
 
 // --- returns as the agents give them -----------------------------------------------------------
 
-/** One locate turn that ends every ask of the search over `text`, whatever the ground table holds. */
-const LOCATE = (text) => [closingTurn(['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)])]
+/** The locate script that ends every ask of the search over `text`: a closing turn, the stall, and the ruling. */
+const LOCATE = (text) => {
+  return closedSearch({ name: 'locate', asks: ['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)] })
+}
 const finding = (axisKey, severity, section, start, claim) => ({
   axis: axisKey, severity, section, claim, evidence: 'line ' + start, start, end: start,
 })
@@ -98,7 +100,7 @@ function narrowed(text, scope, { keys = STANDING, perAxis = false, probers = {},
   const touched = sectionsOf(text).filter((s) => scope.changed.some((r) => overlaps(s, r)))
   const groups = deal(keys, headsFor(keys, changedLines(scope.changed), perAxis))
   const unitsOfGroup = groups.map((g) => unitsOf(g, touched))
-  const script = { 'scout||locate': locate }
+  const script = { ...locate }
   unitsOfGroup.forEach((units, i) => {
     script['analyst||prober:' + (i + 1)] = probers[i + 1] ? probers[i + 1](units) : [{ output: proberOut(units) }]
   })
@@ -109,7 +111,7 @@ function narrowed(text, scope, { keys = STANDING, perAxis = false, probers = {},
 function fullScript(text, { keys = STANDING, findings = [] } = {}) {
   const sections = sectionsOf(text)
   const groups = deal(keys, headsFor(keys, linesOf(text).length, false))
-  const script = { 'scout||locate': LOCATE(text) }
+  const script = { ...LOCATE(text) }
   groups.forEach((g, i) => { script['analyst||prober:' + (i + 1)] = [{ output: proberOut(unitsOf(g, sections), i === 0 ? findings : []) }] })
   return script
 }
@@ -369,7 +371,7 @@ test('a store-refused finding in a narrowed round leaves the snapshot empty', as
   const w = reviewedThenEdited(t)
   // Every unit of the document is ruled, so the script serves a full round and a narrowed one alike.
   const all = unitsOf(STANDING, sectionsOf(EDITED))
-  const run = w.rig.relaunch({ 'scout||locate': LOCATE(EDITED), 'analyst||prober:1': [{ output: proberOut(all, [refused]) }] })
+  const run = w.rig.relaunch({ ...LOCATE(EDITED), 'analyst||prober:1': [{ output: proberOut(all, [refused]) }] })
   const result = await probe(run.ctx, argsFor(w.rig.repo, ART, { since: w.since }))
   assert.equal(result.snapshot, '')
   const fresh = result.findings.filter((f) => !f.carried).map((f) => f.id)

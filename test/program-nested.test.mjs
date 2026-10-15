@@ -22,7 +22,7 @@ import { probe } from '../lib/programs/probe.mjs'
 import { review } from '../lib/programs/review.mjs'
 import { survey } from '../lib/programs/survey.mjs'
 import { evidenceItemsPath, evidenceSnapshotsDir, posix, sessionOf } from '../lib/store.mjs'
-import { closingTurn, hitTurn } from './harness/navigator.mjs'
+import { closedSearch, endSearch, hitTurn } from './harness/navigator.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', windowsHide: true })
@@ -33,10 +33,13 @@ function rigFor(t, opts = {}) {
   return rig
 }
 
+const RULER = 'ruler:search:'
+/** `thread` under `<prefix>/`; a search ruler's thread holds the prefixed search key after `ruler:search:`. */
+const underPrefix = (prefix, thread) => (thread.startsWith(RULER) ? RULER + prefix + '/' + thread.slice(RULER.length) : prefix + '/' + thread)
 /** `script` with every thread under `<prefix>/`, as a scoped program's dispatches key it. */
 const prefixed = (prefix, script) => Object.fromEntries(Object.entries(script).map(([key, steps]) => {
   const [role, node, thread] = key.split('|')
-  return [role + '|' + node + '|' + prefix + '/' + thread, steps]
+  return [role + '|' + node + '|' + underPrefix(prefix, thread), steps]
 }))
 /** A result as JSON with the rig's repository spelt `<repo>`, so two rigs' results compare. */
 const portable = (result, repo) => {
@@ -61,7 +64,11 @@ const itemOut = (key, line) => ({ topic: key, kind: 'behaviour', claim: claimOf(
 /** A survey planning `planned` and scouting and judging `searched`, each topic at its own line. */
 function surveyScript({ planned, searched = planned.map((t) => t.key) }) {
   const s = { 'analyst||plan': [{ output: planOut(planned) }] }
-  searched.forEach((key, i) => { s['scout||scout:' + key] = [hitTurn(key, [[A, 3 + i]])] })
+  searched.forEach((key, i) => {
+    const end = endSearch({ name: 'scout:' + key, turn: 1, asks: key, ruling: 'answered' })
+    s['scout||scout:' + key] = [hitTurn(key, [[A, 3 + i]]), ...end.navigator]
+    s[end.ruler.key] = end.ruler.steps
+  })
   if (searched.length > 0) {
     s['analyst||judge:1'] = [{ output: {
       items: searched.map((key, i) => itemOut(key, 3 + i)), risks: [],
@@ -103,10 +110,14 @@ const proberOut = (units, findings = []) => ({
   units: units.map((unit) => ({ unit, ruling: findings.some((f) => f.axis + '@' + f.section === unit) ? 'findings' : 'clean', ids: [], why: 'why ' + unit })),
   notes: '', stop_reason: 'exhausted', not_reached: '',
 })
+/** The locate script that ends every ask of the search over `text`: a closing turn, the stall, and the ruling. */
+function locateScript(text) {
+  return closedSearch({ name: 'locate', asks: ['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)] })
+}
 /** A full round of `text`: one prober holds the four standing axes (twelve lines buy one), `prober` its steps. */
 function probeScript(text, { findings = [], prober } = {}) {
   const units = unitsOf(STANDING, sectionsOf(text))
-  return { 'scout||locate': [closingTurn(['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)])], 'analyst||prober:1': prober ? prober(units) : [{ output: proberOut(units, findings) }] }
+  return { ...locateScript(text), 'analyst||prober:1': prober ? prober(units) : [{ output: proberOut(units, findings) }] }
 }
 const NOTE = finding('yagni', 'note', 'intent', 4, 'CARRIED-NOTE-a1 the key is never defined')
 const GAP = finding('reinvention', 'gap', 'design', 12, 'CARRIED-GAP-b2 a token bucket exists already')
@@ -125,7 +136,7 @@ test('two scoped surveys in one context keep their threads and steps apart', asy
     survey(scoped(rig.ctx, 'survey:f1'), surveyArgs()),
     survey(scoped(rig.ctx, 'survey:f2'), surveyArgs({ question: 'How long does the cache keep a path?' })),
   ])
-  for (const call of rig.calls) assert.match(call.thread.key, /^survey:f[12]\//, call.thread.key)
+  for (const call of rig.calls) assert.match(call.thread.key.replace(RULER, ''), /^survey:f[12]\//, call.thread.key)
   const threads = (p) => new Set(rig.calls.filter((c) => c.thread.key.startsWith(p + '/')).map((c) => c.thread.key.slice(p.length + 1)))
   assert.deepEqual([...threads('survey:f1')].sort(), ['judge:1', 'plan', 'scout:loader'])
   assert.deepEqual([...threads('survey:f2')].sort(), ['judge:1', 'plan', 'scout:cache'])
@@ -164,7 +175,7 @@ test('a scoped probe returns what the unscoped probe returns for the same script
   const want = await probe(plain.ctx, probeArgs(plain.repo))
   const got = await probe(scoped(nested.ctx, 'probe:f:1'), probeArgs(nested.repo))
   assert.ok(nested.calls.length > 0)
-  for (const call of nested.calls) assert.ok(call.thread.key.startsWith('probe:f:1/'), call.thread.key)
+  for (const call of nested.calls) assert.ok(call.thread.key.replace(RULER, '').startsWith('probe:f:1/'), call.thread.key)
   for (const key of stepKeys(nested)) assert.ok(key.startsWith('probe:f:1/'), key)
   assert.equal(want.findings.length, 1, 'the fixture records one finding')
   assert.deepEqual(portable(got, nested.repo), portable(want, plain.repo))
@@ -197,7 +208,7 @@ test('a pool unreadable after the re-judge is reported, and its suspect items se
   }
   const result = await survey(programContext({ ...rig.ctx, log }), surveyArgs({ ground: ['src'] }))
   assert.ok(saved !== null, 'the fixture: the rulings were journaled')
-  assert.equal(rig.calls.filter((c) => c.thread.key === 'scout:loader').length, 1)
+  assert.equal(rig.calls.filter((c) => c.thread.key === 'scout:loader').length, 2, 'one search: its turn and the stall')
   assert.ok(result.coverage.failed_channels.includes('pool'), JSON.stringify(result.coverage))
   assert.ok(result.coverage.unreached.some((l) => l.includes('pool') && l.includes('re-judge')), JSON.stringify(result.coverage.unreached))
   assert.equal(result.coverage.complete, false)
@@ -260,7 +271,7 @@ test('each carried finding reaches the prober beside its own claim', async (t) =
   const carried = carriedFindings(w.scope)
   assert.equal(carried.length, 2, 'the fixture carries both findings')
   const touched = sectionsOf(EDITED).filter((s) => w.scope.changed.some((r) => r.start <= s.end && s.start <= r.end))
-  const run = w.rig.relaunch({ 'scout||locate': [closingTurn(['guidance', ...sectionsOf(EDITED).map((s) => 'ground:' + s.slug)])], 'analyst||prober:1': [{ output: proberOut(unitsOf(STANDING, touched)) }] })
+  const run = w.rig.relaunch({ ...locateScript(EDITED), 'analyst||prober:1': [{ output: proberOut(unitsOf(STANDING, touched)) }] })
   await probe(run.ctx, probeArgs(w.rig.repo, { since: w.since }))
   const [call] = run.calls.filter((c) => c.thread.key === 'prober:1')
   const briefLines = call.brief.split('\n')

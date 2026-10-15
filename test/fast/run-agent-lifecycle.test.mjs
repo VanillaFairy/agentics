@@ -378,3 +378,114 @@ test('a continuation stopped by the host stops the call', async () => {
   assert.deepEqual(after.filter((e) => e.kind === 'host_stop').map((e) => e.cause), [expected.cause])
   assert.equal(ofKind(after, 'returned').length, 0, 'a stopped continuation stays in progress')
 })
+
+// ------------------------------------------------------------------ a prompt the host refused as too long
+
+const TOO_LONG = 'Prompt is too long'
+const AT_GEN = (gen) => sessionOf({ ...ids, gen })
+/** The thread as `dispatch` hands it: it can name the session of any later generation. */
+const threadWith = { key: THREAD, session: S, gen: 0, nextSession: NEXT, sessionAt: AT_GEN }
+
+test('a refit renews with the next brief', async () => {
+  const { spawns, mine, out } = await run({ refits: ['r2', 'r3'] }, {
+    script: [{ pid: 4242, code: 1, stderr: TOO_LONG }, { pid: 4243, lines: streamIn(NEXT) }],
+  })
+  assert.equal(spawns.length, 2, 'the refused call, then one fresh call')
+  assert.equal(valueAfter(spawns[0].args, '--session-id'), S)
+  assertStartsFresh(spawns[1], NEXT, 'r2')
+  assertRenewed(mine, 'context_exceeded')
+  assert.equal(ofKind(mine, 'dispatched').length, 2, 'each start is dispatched')
+  assert.equal(out.status, 'returned')
+  assert.equal(out.session, NEXT)
+})
+
+test('a refused resume renews with the next refit, not the thread brief', async () => {
+  const { spawns, out } = await run({ resume: true, refits: ['r2'] }, {
+    seed: endedWith(null),
+    script: [{ pid: 4242, code: 1, stderr: TOO_LONG }, { pid: 4243, lines: streamIn(NEXT) }],
+  })
+  assert.equal(valueAfter(spawns[0].args, '--resume'), S)
+  assertStartsFresh(spawns[1], NEXT, 'r2')
+  assert.equal(out.status, 'returned')
+})
+
+test('refits are walked in order, each in a session of its own', async () => {
+  const { spawns, mine, out } = await run({ refits: ['r2', 'r3'], thread: threadWith }, {
+    script: [{ pid: 4242, code: 1, stderr: TOO_LONG }, { pid: 4243, code: 1, stderr: TOO_LONG }, { pid: 4244, lines: streamIn(AT_GEN(2)) }],
+  })
+  assert.equal(spawns.length, 3)
+  assertStartsFresh(spawns[1], NEXT, 'r2')
+  assertStartsFresh(spawns[2], AT_GEN(2), 'r3')
+  assert.deepEqual(ofKind(mine, 'thread_renewed').map((e) => [e.gen, e.why]), [[1, 'context_exceeded'], [2, 'context_exceeded']])
+  assert.equal(out.status, 'returned')
+  assert.equal(out.session, AT_GEN(2))
+})
+
+test('refits run out', async () => {
+  const { spawns, mine, out } = await run({ refits: ['r2'], thread: threadWith }, {
+    script: [{ pid: 4242, code: 1, stderr: TOO_LONG }, { pid: 4243, code: 1, stderr: TOO_LONG }, { pid: 4244, lines: streamIn(NEXT) }],
+  })
+  assert.equal(spawns.length, 2, 'no start past the last refit')
+  assert.equal(out.status, 'failed')
+  assert.equal(out.cause, 'context_exceeded')
+  assert.equal(ofKind(mine, 'thread_renewed').length, 1)
+  const last = mine.filter((e) => e.dispatch === D).at(-1)
+  assert.equal(last.kind, 'returned', 'the call does not stay in progress')
+  assert.equal(last.cause, 'context_exceeded')
+})
+
+test('a refused prompt with no refit fails as context_exceeded', async () => {
+  const { spawns, mine, out } = await run({}, { script: [{ pid: 4242, code: 1, stderr: TOO_LONG }] })
+  assert.equal(spawns.length, 1)
+  assert.equal(out.cause, 'context_exceeded')
+  assert.equal(ofKind(mine, 'thread_renewed').length, 0)
+})
+
+test('a refit with no session to renew into fails as context_exceeded', async () => {
+  const thread = { key: THREAD, session: S, gen: 0 }
+  const { spawns, mine, out } = await run({ refits: ['r2'], thread }, { script: [{ pid: 4242, code: 1, stderr: TOO_LONG }, { pid: 4243, lines: streamIn(NEXT) }] })
+  assert.equal(spawns.length, 1)
+  assert.equal(out.cause, 'context_exceeded')
+  assert.equal(ofKind(mine, 'thread_renewed').length, 0)
+})
+
+// ------------------------------------------------------------------ what a call records of its stream
+
+const compactLines = readFileSync(join(here, '..', 'fixtures', 'runner', 'stream-compact.jsonl'), 'utf8').split(/\r?\n/).filter((l) => l.trim())
+const compactIn = (session) => compactLines.map((l) => l.split(JSON.parse(compactLines[0]).session_id).join(session))
+const webSearchLine = (query) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't' + query, name: 'WebSearch', input: { query } }] }, session_id: S })
+
+test('returned records compaction', async () => {
+  const compacted = await run({}, { script: [{ pid: 4242, lines: compactIn(S) }] })
+  assert.equal(ofKind(compacted.mine, 'returned')[0].compacted, true)
+  const plain = await run({}, { script: [{ pid: 4242, lines: streamIn(S) }] })
+  assert.equal(ofKind(plain.mine, 'returned')[0].compacted, false)
+})
+
+test('WebSearch is journaled as it streams', async () => {
+  const { mine, out } = await run({}, { script: [{ pid: 4242, code: 1, stderr: 'boom', lines: [streamIn(S)[0], webSearchLine('first'), webSearchLine('second')] }] })
+  assert.equal(out.cause, 'host_error')
+  const used = ofKind(mine, 'tool_used')
+  assert.deepEqual(used.map(({ dispatch, thread, tool, input }) => ({ dispatch, thread, tool, input })), [
+    { dispatch: D, thread: THREAD, tool: 'WebSearch', input: { query: 'first' } },
+    { dispatch: D, thread: THREAD, tool: 'WebSearch', input: { query: 'second' } },
+  ])
+  assert.ok(used.every((u) => u.seq < ofKind(mine, 'returned')[0].seq), 'each is journaled before its call returns')
+})
+
+test('only WebSearch is journaled as tool_used', async () => {
+  const { mine } = await run({}, { script: [{ pid: 4242, lines: contextIn(S) }] })
+  assert.equal(ofKind(mine, 'tool_used').length, 0)
+})
+
+test('tool_used survives a cut-off once', async () => {
+  const r = rig({ script: [
+    { pid: 4242, code: 1, stderr: LIMIT, lines: [streamIn(S)[0], webSearchLine('before the cut')] },
+    { pid: 4243, lines: [streamIn(S)[0], webSearchLine('after the resume'), ...streamIn(S).slice(1)] },
+  ] })
+  const first = await runAgent(makeCall(), r.ports)
+  assert.equal(first.status, 'stopped')
+  const second = await runAgent(makeCall({ resume: true }), r.ports)
+  assert.equal(second.status, 'returned')
+  assert.deepEqual(ofKind(r.log.entries(), 'tool_used').map((e) => e.input.query), ['before the cut', 'after the resume'])
+})

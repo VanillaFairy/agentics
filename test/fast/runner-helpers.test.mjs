@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { KEPT_HOST_VARIABLES, LEAN_FLAGS, PERMISSION_FLAGS, buildArgs, classifyCall, cleanEnv, parseStream, returnedEntry } from '../../lib/runner.mjs'
+import { KEPT_HOST_VARIABLES, LEAN_FLAGS, PERMISSION_FLAGS, buildArgs, classifyCall, cleanEnv, dispatchedEntry, parseStream, returnedEntry } from '../../lib/runner.mjs'
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'runner')
 const SUCCESS = readFileSync(join(fixtures, 'stream-success.jsonl'), 'utf8')
@@ -293,6 +293,39 @@ test('a returned record carries its context, null when none was measured', () =>
   assert.equal(returnedEntry(c, { session: 's', status: 'returned', context: 2002 }).context, 2002)
 })
 
+const COMPACT = readFileSync(join(fixtures, 'stream-compact.jsonl'), 'utf8')
+
+test('parseStream sees a compaction', () => {
+  assert.equal(parseStream(COMPACT).compacted, true)
+  assert.equal(parseStream(SUCCESS).compacted, false)
+  assert.equal(parseStream('').compacted, false)
+})
+
+test('parseStream lists WebSearch inputs', () => {
+  assert.deepEqual(parseStream(COMPACT).webSearches, [{ query: 'a' }, { query: 'b' }])
+  assert.deepEqual(parseStream(SUCCESS).webSearches, [])
+})
+
+test('a returned record carries whether the call compacted', () => {
+  const c = { dispatch: 'd' }
+  assert.equal(returnedEntry(c, { session: 's', status: 'returned' }).compacted, false)
+  assert.equal(returnedEntry(c, { session: 's', status: 'returned', compacted: true }).compacted, true)
+})
+
+const ROLE_FILE = 'C:/run/roles/doc-researcher-0a1b2c3d.md'
+const dispatchedCall = (over = {}) => ({
+  dispatch: 'd', node: 'n', round: 1, thread: { key: 't' }, role: { name: 'doc-researcher', systemPromptFile: ROLE_FILE },
+  tier: { model: 'opus' }, brief: 'b', cwd: 'C:/work/tree', ...over,
+})
+
+test('dispatched records the prompt digest and cwd', () => {
+  const entry = dispatchedEntry(dispatchedCall(), { pid: 1, session: 's' })
+  assert.equal(entry.prompt, '0a1b2c3d', 'the digest in the system-prompt file name, not the role name')
+  assert.equal(entry.cwd, 'C:/work/tree')
+  const other = dispatchedEntry(dispatchedCall({ role: { name: 'doc-researcher', systemPromptFile: 'C:/other/dir/roles/doc-researcher-ffffffff.md' } }), { pid: 1, session: 's' })
+  assert.equal(other.prompt, 'ffffffff', 'the digest is the name\'s, wherever the file lies')
+})
+
 test('an empty stream reads as nothing', () => {
   const p = parseStream('')
   assert.equal(p.result ?? null, null)
@@ -337,6 +370,15 @@ test('a success without structured output failed the schema', () => {
   const { structured_output, ...bare } = SUCCESS_RESULT
   const p = parseStream(stream(resultLine(bare)))
   failed(classifyCall({ code: 0, stderr: '', parsed: p }), 'schema_failed')
+})
+
+test('a too-long prompt is context_exceeded', () => {
+  failed(classifyCall({ code: 1, stderr: 'Prompt is too long\n', parsed: NOTHING() }), 'context_exceeded')
+})
+
+test('a context-limit result is context_exceeded', () => {
+  const p = parseStream(stream(resultLine({ subtype: 'success', is_error: true, result: 'input length and max_tokens exceed context limit: 190000 + 32000 > 200000' })))
+  failed(classifyCall({ code: 1, stderr: '', parsed: p }), 'context_exceeded')
 })
 
 test('a rate limit stops the call', () => {

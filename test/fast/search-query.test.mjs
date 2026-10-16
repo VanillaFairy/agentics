@@ -259,16 +259,17 @@ test('grepArgv passes a pattern that starts with a dash as the value of -e', () 
 })
 
 test("the survey judge's brief names the tokens the dialect transpiles and refuses", () => {
-  const topic = { key: 't', subtree: 'src', find: 'every caller of load', search: { status: 'returned', end: 'done' } }
+  const topic = { key: 't', subtree: 'src', find: 'every caller of load', search: { status: 'done', why: '' } }
   const brief = judgeBrief({ question: 'q', topics: [topic], excerpts: '' })
   for (const token of [...Object.keys(OUTSIDE), '\\b', '(?']) assert.ok(brief.includes(token), 'the brief names ' + token)
 })
 
-test("the survey judge's brief reads a topic's search as its status and end", () => {
+test("the survey judge's brief reads a topic's search as its status and why", () => {
   const brief = (search) => judgeBrief({ question: 'q', topics: [{ key: 't', subtree: 'src', find: 'f', search }], excerpts: '' })
-  assert.ok(brief({ status: 'returned', end: 'done' }).includes('Its search: its search ended done.\n'), 'a done search is told as done')
-  assert.ok(brief({ status: 'returned', end: 'stopped', why: 'WHY-x' }).includes('its search ended stopped (WHY-x)'), 'a short search names its end and why')
-  assert.ok(brief({ status: 'failed', cause: 'CAUSE-x' }).includes('its search failed (CAUSE-x)'), 'a failed search names its cause')
+  assert.ok(brief({ status: 'done', why: '' }).includes('Its search: its search ended done.\n'), 'a done search is told as done')
+  assert.ok(brief({ status: 'stalled', why: 'WHY-s' }).includes('its search stalled (WHY-s)'), 'a stalled search names its why')
+  assert.ok(brief({ status: 'budget', why: 'WHY-b' }).includes('its search ended budget (WHY-b)'), 'a search at its budget names its why')
+  assert.ok(brief({ status: 'failed', why: 'CAUSE-x' }).includes('its search ended failed (CAUSE-x)'), 'a failed search names its cause')
 })
 
 // ------------------------------------------------------------------ identity: pathKey, fenced, globOf

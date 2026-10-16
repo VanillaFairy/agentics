@@ -122,7 +122,7 @@ test("one ruler rules the change at its role's tier", async (t) => {
   assert.equal(call.role.name, 'ruler')
   assert.equal(call.thread.key, rulerThread(brief))
   assert.deepEqual(call.schema, schemaOf('ruler_respec'))
-  assert.deepEqual(call.tier, tierFor(loadRole('ruler').role))
+  assert.deepEqual(call.tier, tierFor(loadRole('ruler').role, { intelligence: 'normal' }))
 })
 
 test("the ruler's brief holds the change, every node and every spec it names whole", async (t) => {
@@ -429,7 +429,7 @@ test('a run cut off after the ruler returned settles on relaunch without calling
     await run.ctx.runAgent(call)
     throw new Error('cut off after the ruler returned')
   }
-  await assert.rejects(rule(programContext({ ...run.ctx, runAgent }), args(folder)))
+  await assert.rejects(rule(programContext({ intelligence: 'normal', ...run.ctx, runAgent }), args(folder)))
   const again = rig.relaunch({})
   const out = await rule(again.ctx, args(folder))
   assert.equal(again.calls.length, 0)
@@ -466,7 +466,7 @@ test('a run cut off before the ruler returned rules the moved text on relaunch',
   const { rig, folder } = changed(t)
   const cut = rig.relaunch({})
   const runAgent = async () => { throw new Error('cut off before the ruler returned') }
-  await assert.rejects(rule(programContext({ ...cut.ctx, runAgent }), args(folder)))
+  await assert.rejects(rule(programContext({ intelligence: 'normal', ...cut.ctx, runAgent }), args(folder)))
   writeSpec(rig.repo, folder, H2_TEXT)
   const moved = respecBrief(rig.repo, E, folder)
   assert.equal(moved.status, 'brief', JSON.stringify(moved))
@@ -505,7 +505,7 @@ test('a settle refused with a next other than rule_it ends the ruling loop on it
     writeSpec(rig.repo, '.', EDITS.decision.text)
     return run.ctx.runAgent(call)
   }
-  const out = await rule(programContext({ ...run.ctx, runAgent }), args(folder))
+  const out = await rule(programContext({ intelligence: 'normal', ...run.ctx, runAgent }), args(folder))
   assert.deepEqual([out.status, out.next], ['refused', 'rule_parent_first'], JSON.stringify(out))
   assert.equal(run.calls.length, 1)
   assert.equal(runRecords(rig.repo, rig.run, 'message').length, 0)

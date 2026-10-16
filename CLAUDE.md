@@ -51,8 +51,8 @@ second; the script reruns a failed run's failures before calling any of them red
   file has a size budget in `tools/budgets.json`, enforced by the `size-budget` lint rule.
 - **A format change ships a one-shot migration script, never a permanent second reader**
   (`tools/migrate-*.mjs`).
-- Planning sessions keep gitignored scratch under `docs/`; nothing in the repository may point
-  into it.
+- `docs/superpowers/` is gitignored scratch for the vf-superpowers planning skills; nothing in
+  the repository may point into it.
 
 Whoever decides a dispatch — a program's author, or a session — works to this:
 

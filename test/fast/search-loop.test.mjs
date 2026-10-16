@@ -70,7 +70,7 @@ function world(t, { ground = GROUND, home = null, log = memoryLog() } = {}) {
   const start = (script, { sleep = () => Promise.resolve() } = {}) => {
     const runner = scriptedRunner(script, { log, now: NOW })
     const ctx = {
-      ...programContext({ repo: home, root: home, run: RUN, log, runAgent: runner.runAgent, now: NOW, sleep, dir }),
+      ...programContext({ intelligence: 'normal', repo: home, root: home, run: RUN, log, runAgent: runner.runAgent, now: NOW, sleep, dir }),
       groundOf: async (tr, args) => { grounds.push({ tree: tr, args }); return ground },
     }
     return { ctx, calls: runner.calls }

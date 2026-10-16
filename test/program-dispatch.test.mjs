@@ -75,7 +75,7 @@ test('the context holds six agents at once by default', { timeout: 60_000 }, asy
   const threads = ['t1', 't2', 't3', 't4', 't5', 't6', 't7']
   const rig = rigFor(t, { script: Object.fromEntries(threads.map((th) => ['scout||' + th, [{ output: scoutOut() }]])) })
   const g = gated(rig.ctx.runAgent)
-  const ctx = programContext({ repo: rig.repo, run: rig.run, log: rig.log, runAgent: g.runAgent, now: rig.ctx.now, sleep: rig.ctx.sleep, env: {} })
+  const ctx = programContext({ intelligence: 'normal', repo: rig.repo, run: rig.run, log: rig.log, runAgent: g.runAgent, now: rig.ctx.now, sleep: rig.ctx.sleep, env: {} })
   assert.equal(ctx.maxAgents, 6)
   let settled = false
   const all = Promise.all(threads.map((thread) => dispatch(ctx, spec({ thread }))))
@@ -93,7 +93,7 @@ test('the context holds six agents at once by default', { timeout: 60_000 }, asy
 
 async function firstCall(t, { over = {}, rigOpts = {}, ctxOver = null, key = KEY } = {}) {
   const rig = rigFor(t, { script: { [key]: [{ output: scoutOut() }] }, ...rigOpts })
-  const ctx = ctxOver ? programContext({ ...rig.ctx, ...ctxOver }) : rig.ctx
+  const ctx = ctxOver ? programContext({ intelligence: 'normal', ...rig.ctx, ...ctxOver }) : rig.ctx
   const result = await dispatch(ctx, spec(over))
   assert.equal(rig.calls.length, 1, 'one call')
   return { rig, ctx, call: rig.calls[0], result }
@@ -220,7 +220,7 @@ test("dispatch reads the stored return, not the runner's word", async (t) => {
     writeFileSync(returnPath(call.dir, call.dispatch), JSON.stringify(rewritten))
     return out
   }
-  const r = await dispatch(programContext({ ...rig.ctx, runAgent }), spec())
+  const r = await dispatch(programContext({ intelligence: 'normal', ...rig.ctx, runAgent }), spec())
   assert.equal(r.status, 'returned')
   assert.deepEqual(r.output, rewritten)
 })
@@ -232,7 +232,7 @@ test('a returned call whose stored return cannot be read fails return_unreadable
     rmSync(returnPath(call.dir, call.dispatch), { force: true })
     return out
   }
-  const r = await dispatch(programContext({ ...rig.ctx, runAgent }), spec())
+  const r = await dispatch(programContext({ intelligence: 'normal', ...rig.ctx, runAgent }), spec())
   assert.equal(r.status, 'failed')
   assert.equal(r.cause, 'return_unreadable')
 })
@@ -336,7 +336,7 @@ test('a dispatch started and never returned is resumed in its own session with t
   const rig = rigFor(t)
   const scout = loadRole('scout').role
   rig.log.append('dispatched', dispatchedEntry({
-    dispatch: keyFor(), node: '', round: 1, thread: { key: 'plan' }, role: { name: 'scout' }, tier: tierFor(scout),
+    dispatch: keyFor(), node: '', round: 1, thread: { key: 'plan' }, role: { name: 'scout' }, tier: tierFor(scout, { intelligence: 'normal' }),
     brief: threadBrief, briefDigest: fnv1a(threadBrief), carries: [],
   }, { pid: 4242, session: sessionFor(rig) }))
   const again = rig.relaunch({ [KEY]: [{ output: scoutOut() }] })
@@ -403,7 +403,7 @@ test('a host-stopped call gives up its slot while it sleeps', { timeout: 60_000 
   const rig = rigFor(t, { script: { 'scout||a': [{ status: 'stopped', cause: 'rate_limit' }, { output: scoutOut() }], 'scout||b': [{ output: scoutOut() }] } })
   let wake = null
   const sleep = () => new Promise((r) => { wake = r })
-  const ctx = programContext({ ...rig.ctx, maxAgents: 1, sleep })
+  const ctx = programContext({ intelligence: 'normal', ...rig.ctx, maxAgents: 1, sleep })
   let aDone = false
   const a = dispatch(ctx, spec({ thread: 'a' })).then((r) => { aDone = true; return r })
   await until(() => wake !== null, 'the first call sleeps')
@@ -418,7 +418,7 @@ test('no more than maxAgents calls are in flight at once', { timeout: 60_000 }, 
   const threads = ['t1', 't2', 't3', 't4', 't5']
   const rig = rigFor(t, { script: Object.fromEntries(threads.map((th) => ['scout||' + th, [{ output: scoutOut() }]])) })
   const g = gated(rig.ctx.runAgent)
-  const ctx = programContext({ ...rig.ctx, runAgent: g.runAgent, maxAgents: 2 })
+  const ctx = programContext({ intelligence: 'normal', ...rig.ctx, runAgent: g.runAgent, maxAgents: 2 })
   let settled = false
   const all = Promise.all(threads.map((thread) => dispatch(ctx, spec({ thread }))))
   all.then(() => { settled = true }, () => { settled = true })

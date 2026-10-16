@@ -149,7 +149,7 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     const w = world(t)
     w.rig.script({})
     const refusing = { ...w.rig.xc, log: { ...w.rig.xc.log, append() { throw new Error('the ledger refused the write') } } }
-    const out = await runLeaf(w.ctx, refusing, { id: 'b' })
+    const out = await runLeaf(w.ctx, refusing, { id: 'b', intelligence: 'normal' })
     assert.equal(out.outcome, 'faulted')
     assert.deepEqual(faultsOf(w.rig), [])
   })

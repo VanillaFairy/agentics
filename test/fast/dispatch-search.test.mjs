@@ -30,7 +30,7 @@ function context(t, runnerOf) {
   const dir = mkdtempSync(join(tmpdir(), 'agentics-dispatch-search-'))
   t.after(() => rmSync(dir, { recursive: true, force: true }))
   const log = memoryLog()
-  return programContext({ repo: dir, run: RUN, dir, log, runAgent: runnerOf(log), now: NOW, sleep: async () => {}, env: {} })
+  return programContext({ intelligence: 'normal', repo: dir, run: RUN, dir, log, runAgent: runnerOf(log), now: NOW, sleep: async () => {}, env: {} })
 }
 
 test("a charge becomes the system prompt after the role's body", async (t) => {

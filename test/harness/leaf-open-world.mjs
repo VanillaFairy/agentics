@@ -64,11 +64,11 @@ export async function cycle(t, rigor = 'tdd-pair', extra = []) {
     leaf('g', { rigor, role: 'green', deps: ['r'], locus: ['src/r.mjs'] }),
     ...extra,
   ])
-  const red = await leafOpen(xc, { node: 'r' })
+  const red = await leafOpen(xc, { node: 'r', intelligence: 'normal' })
   const redHead = commitIn(red.cwd, { 'test/r.test.mjs': RED }, 'Pin r')
   ran(xc, { node: 'r', round: 1, role: 'test-author', thread: 'producer:r', ret: { status: 'done' } })
   xc.log.append('approved', { node: 'r', head_sha: redHead, review_rounds: 1, at_integration: false })
-  const green = await leafOpen(xc, { node: 'g' })
+  const green = await leafOpen(xc, { node: 'g', intelligence: 'normal' })
   return { r, xc, green, redHead }
 }
 

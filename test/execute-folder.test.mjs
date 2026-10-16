@@ -85,7 +85,7 @@ const putSpec = (rig, text) => {
 const readSpec = (rig) => readFileSync(specFile(rig), 'utf8')
 
 /** A context whose runner writes p's spec as a planner round starts (`writes[round]`) and throws where `trap` says. */
-const playing = (rig, writes, trap) => programContext({
+const playing = (rig, writes, trap) => programContext({ intelligence: 'normal',
   ...rig.ctx,
   runAgent(call) {
     if (trap && trap(call, rig)) throw new Error('the runner was cut off at ' + call.thread.key)

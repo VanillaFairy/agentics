@@ -26,7 +26,7 @@ import {
 const HUMAN_TEXT = ['the page reads well', 'the message is kind']
 
 /** A context whose runner runs `during(call)` before the scripted reviewer answers. */
-const watching = (rig, during) => programContext({
+const watching = (rig, during) => programContext({ intelligence: 'normal',
   ...rig.ctx,
   runAgent: async (call) => {
     await during(call)
@@ -170,7 +170,7 @@ test('a worktree a cut-off run left behind is removed and made again', async (t)
 test('the worktree is removed after a failure', async (t) => {
   const { rig, args } = reviewRig(t, scriptOf(returnOf()))
   let cwd = ''
-  const ctx = programContext({
+  const ctx = programContext({ intelligence: 'normal',
     ...rig.ctx,
     runAgent: async (call) => {
       cwd = call.cwd
@@ -233,7 +233,7 @@ test("the reviewer is dispatched at its role's tier with its read-only permissio
   assert.equal(call.role.name, 'reviewer')
   assert.equal(call.thread.key, 'reviewer')
   assert.deepEqual(call.schema, schemaOf('reviewer'))
-  assert.deepEqual(call.tier, tierFor(role))
+  assert.deepEqual(call.tier, tierFor(role, { intelligence: 'normal' }))
   assert.deepEqual(call.permissions, readOnlyPermissions(role))
 })
 
@@ -249,7 +249,7 @@ test("the reviewer's brief holds the units, the shas, the diff command and the g
 test('a reviewer sharing the producing session is refused, and every unit stays open', async (t) => {
   const { rig, args } = reviewRig(t, scriptOf(returnOf()))
   const own = sessionOf({ effort: rig.ctx.effort, execution: rig.run, node: '', role: 'reviewer', thread: 'reviewer' })
-  const out = await review(programContext({ ...rig.ctx, env: { CLAUDE_CODE_SESSION_ID: own } }), args())
+  const out = await review(programContext({ intelligence: 'normal', ...rig.ctx, env: { CLAUDE_CODE_SESSION_ID: own } }), args())
   assert.equal(rig.calls.length, 0)
   assert.deepEqual(out.coverage.failed_channels, ['reviewer'])
   assert.equal(out.coverage.complete, false)

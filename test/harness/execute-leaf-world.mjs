@@ -78,7 +78,7 @@ const jobKey = (call) => call.role.name + '|' + call.node + '#' + call.round
  * (`around(call, real)` when a test replaces it). `sleep` replaces the rig's hand-resolved one.
  */
 function leg(w, rig, { sleep, around } = {}) {
-  const ctx = programContext({
+  const ctx = programContext({ intelligence: 'normal',
     ...rig.ctx,
     ...(sleep ? { sleep } : {}),
     runAgent: async (call) => {
@@ -90,7 +90,7 @@ function leg(w, rig, { sleep, around } = {}) {
       return around ? around(call, rig.ctx.runAgent) : rig.ctx.runAgent(call)
     },
   })
-  return { rig, ctx, xc: rig.xc, run: (id = 'b', over = {}) => runLeaf(ctx, rig.xc, { id, ...over }) }
+  return { rig, ctx, xc: rig.xc, run: (id = 'b', over = {}) => runLeaf(ctx, rig.xc, { intelligence: 'normal', id, ...over }) }
 }
 
 /**

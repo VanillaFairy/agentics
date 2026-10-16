@@ -35,7 +35,7 @@ export function programRig({ files = {}, script = {}, effort = '', maxAgents = 6
     const sleeps = []
     const log = runLog(repo, RUN)
     const runner = scriptedRunner(s, { log, now: NOW })
-    const ctx = programContext({
+    const ctx = programContext({ intelligence: 'normal',
       repo, run: RUN, effort, log, runAgent: runner.runAgent, now: NOW,
       sleep: (ms) => { sleeps.push(ms); return Promise.resolve() },
       env, maxAgents, resumable: { program: 'test', scope: {}, args: {} },
@@ -121,7 +121,7 @@ export function executionRig(t, { spec = RIG_SPEC, commands = RIG_COMMANDS, file
     const sleeps = []
     const log = executionLog(repo, EFFORT, STAMP)
     const xc = executionContext({ repo, effort: EFFORT, execution: STAMP, log })
-    const ctx = programContext({
+    const ctx = programContext({ intelligence: 'normal',
       repo, run: EFFORT + '.' + STAMP, effort: EFFORT, log, now: NOW, dir, execution: STAMP,
       runAgent: (call) => { calls.push(call); return runner.runAgent(call) },
       sleep: (ms) => { sleeps.push(ms); return Promise.resolve() },

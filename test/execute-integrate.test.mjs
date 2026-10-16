@@ -166,7 +166,7 @@ function driftWorld(t) {
   return {
     rig, a, pre, thread: 'ruler:drift:root:' + pre.slice(0, 8),
     brief: mergePath(rig.repo, rig.effort, rig.stamp, '.', pre).replace(/\.json$/, '.drift.md'),
-    merge: (extra = {}) => mergeUnit(rig.ctx, rig.xc, { target: '.', children: handed(a), ...extra }),
+    merge: (extra = {}) => mergeUnit(rig.ctx, rig.xc, { intelligence: 'normal', target: '.', children: handed(a), ...extra }),
   }
 }
 
@@ -269,7 +269,7 @@ test('a merge-batch that cannot run stops its target and rules nothing', SLOW, a
   const wt = rig.worktreeOf('.')
   rig.git('worktree', 'remove', '--force', wt)
   rig.git('worktree', 'add', '-q', '-b', 'other', wt)
-  const out = await mergeUnit(rig.ctx, rig.xc, { target: '.', children: handed(a) })
+  const out = await mergeUnit(rig.ctx, rig.xc, { target: '.', children: handed(a), intelligence: 'normal' })
 
   assert.equal(out.outcome, 'stopped')
   assert.deepEqual(out.merged, [])
@@ -280,7 +280,7 @@ test('a merge-batch that cannot run stops its target and rules nothing', SLOW, a
 
 test('a merge the boundary refuses is a program fault on its target', SLOW, async (t) => {
   const rig = executionRig(t)
-  const out = await mergeUnit(rig.ctx, rig.xc, { target: 'a', children: [] })
+  const out = await mergeUnit(rig.ctx, rig.xc, { target: 'a', children: [], intelligence: 'normal' })
 
   assert.equal(out.outcome, 'faulted')
   assert.deepEqual(kinds(rig, 'fault').map((f) => [f.node, f.channel]), [['a', 'program']])
@@ -301,7 +301,7 @@ test('a failing suite gate escalates the composite unreviewed', SLOW, async (t) 
   const rig = executionRig(t, { commands: SPLIT, files: { 'test/big/add.test.mjs': BIG_TEST } })
   const wt = rig.worktreeOf('.')
   commitIn(wt, { 'src/add.mjs': BREAK_BIG }, 'Break only the big test')
-  const out = await reviewUnit(rig.ctx, rig.xc, { id: '.', where: { base: rig.base_sha, worktree: wt } })
+  const out = await reviewUnit(rig.ctx, rig.xc, { id: '.', where: { base: rig.base_sha, worktree: wt }, intelligence: 'normal' })
 
   assert.equal(out.outcome, 'failed')
   assert.equal(out.said, '')
@@ -324,7 +324,7 @@ const abWorld = (t) => {
 }
 const THREAD_ROOT = 'integration:.:1'
 const reviewerKey = (thread = THREAD_ROOT, node = '.') => `reviewer|${node}|${thread}`
-const review = (w, extra = {}) => reviewUnit(w.rig.ctx, w.rig.xc, { id: '.', where: w.where, unreviewed: w.unreviewed, ...extra })
+const review = (w, extra = {}) => reviewUnit(w.rig.ctx, w.rig.xc, { intelligence: 'normal', id: '.', where: w.where, unreviewed: w.unreviewed, ...extra })
 
 test("the root's integration review is earned once work merged: claims recorded, said its dispatch", SLOW, async (t) => {
   const w = abWorld(t)
@@ -412,7 +412,7 @@ test('an integration reviewer leaves an approved leaf approved: its dispatch nam
   rig.log.append('merged', { node: 'c/k', into: rig.branchOf('c'), merged_sha: sha, head_sha: sha })
   rig.script({ [reviewerKey('integration:c:1', 'c')]: [reviewed([claim('k is there')])] })
   assert.equal(statusOf(rig, 'y'), 'approved')
-  const out = await reviewUnit(rig.ctx, rig.xc, { id: 'c', where: { base, worktree: wt }, unreviewed: ['c/k'] })
+  const out = await reviewUnit(rig.ctx, rig.xc, { id: 'c', where: { base, worktree: wt }, unreviewed: ['c/k'], intelligence: 'normal' })
 
   assert.equal(out.outcome, 'reviewed')
   assert.deepEqual(dispatchedOf(rig, 'reviewer').map((e) => e.node), ['c'])
@@ -425,7 +425,7 @@ test("a sub-folder's integration review is not earned when no child lacked a rev
   const base = rootHead(rig)
   assert.equal(ensureIntegration(rig.repo, rig.effort, 'c', rig.envelope).ok, true)
   const wt = rig.worktreeOf('c')
-  const out = await reviewUnit(rig.ctx, rig.xc, { id: 'c', where: { base, worktree: wt }, unreviewed: ['c/v'] })
+  const out = await reviewUnit(rig.ctx, rig.xc, { id: 'c', where: { base, worktree: wt }, unreviewed: ['c/v'], intelligence: 'normal' })
 
   assert.equal(out.outcome, 'not_earned')
   assert.equal(out.said, '')
@@ -470,7 +470,7 @@ for (const cause of ['checkout', 'watch_failed']) {
   test(`an integration review whose dispatch failed ${cause} is a checkout fault on the folder and a lost check`, SLOW, async (t) => {
     const w = abWorld(t)
     const runAgent = async (call) => ({ status: 'failed', cause, message: 'the host said ' + cause, session: call.thread.session })
-    const out = await reviewUnit(programContext({ ...w.rig.ctx, runAgent }), w.rig.xc, { id: '.', where: w.where, unreviewed: w.unreviewed })
+    const out = await reviewUnit(programContext({ intelligence: 'normal', ...w.rig.ctx, runAgent }), w.rig.xc, { id: '.', where: w.where, unreviewed: w.unreviewed })
     assert.deepEqual([out.outcome, out.said], ['lost', ''])
     assert.deepEqual(kinds(w.rig, 'fault').map((f) => [f.node, f.channel]), [['.', 'checkout']])
     assert.equal(kinds(w.rig, 'claims').length, 0)
@@ -486,7 +486,7 @@ test('a relaunch takes a lost integration review up again in its own session', S
 
   const again = w.rig.relaunch()
   again.script({ [reviewerKey()]: [reviewed([claim('a is there'), claim('b is there')])] })
-  const out = await reviewUnit(again.ctx, again.xc, { id: '.', where: w.where, unreviewed: w.unreviewed })
+  const out = await reviewUnit(again.ctx, again.xc, { id: '.', where: w.where, unreviewed: w.unreviewed, intelligence: 'normal' })
 
   assert.equal(out.outcome, 'reviewed')
   assert.equal(again.calls.length, 1)
@@ -510,7 +510,7 @@ function staleWorld(t, { approved = false } = {}) {
   const text = 'THE STALE BRIEF ' + NOW + '\nNode a was planned against the old base.\n'
   writeWhole(brief, text)
   writeWhole(record, { now: NOW, nodes: ['a'] })
-  return { rig, brief, record, text, thread: 'ruler:stale:' + NOW, rule: (extra = {}) => ruleUnit(rig.ctx, rig.xc, { kind: 'stale', record, brief, ...extra }) }
+  return { rig, brief, record, text, thread: 'ruler:stale:' + NOW, rule: (extra = {}) => ruleUnit(rig.ctx, rig.xc, { intelligence: 'normal', kind: 'stale', record, brief, ...extra }) }
 }
 
 test('a ruler on an approved leaf leaves it approved', SLOW, async (t) => {
@@ -597,7 +597,7 @@ test("a drift over a sub-folder is ruled on the folder's own thread, named by th
   writeWhole(record, { target: 'c', pre, head_sha: pre, drift: [{ node: 'y', contract: 'api', files: ['src/y.mjs'] }] })
   const thread = 'ruler:drift:' + nodeKey('c') + ':' + pre.slice(0, 8)
   rig.script({ [rulerKey(thread)]: [rulings(ruling('y', 'unaffected'))] })
-  const out = await ruleUnit(rig.ctx, rig.xc, { kind: 'drift', record, brief })
+  const out = await ruleUnit(rig.ctx, rig.xc, { kind: 'drift', record, brief, intelligence: 'normal' })
 
   assert.equal(out.outcome, 'ruled')
   assert.equal(call(rig).thread.key, thread)

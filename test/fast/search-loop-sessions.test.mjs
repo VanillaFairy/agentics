@@ -57,7 +57,7 @@ function world(t, { ground = GROUND, groundOf = null } = {}) {
   const start = (script, { sleep = () => Promise.resolve() } = {}) => {
     const runner = scriptedRunner(script, { log, now: NOW })
     const ctx = {
-      ...programContext({ repo: home, root: home, run: RUN, log, runAgent: runner.runAgent, now: NOW, sleep, dir }),
+      ...programContext({ intelligence: 'normal', repo: home, root: home, run: RUN, log, runAgent: runner.runAgent, now: NOW, sleep, dir }),
       groundOf: async (tree, args) => { grounds.push({ tree, args }); return groundOf ? groundOf(tree, args) : ground },
       scopeFilesOf: async (tree, scope) => {
         scopes.push({ tree, scope })

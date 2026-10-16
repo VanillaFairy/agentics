@@ -184,8 +184,8 @@ test("each dispatch's tier is its role's at the dial", async (t) => {
     assert.deepEqual(callsOn(rig, 'assess')[0].schema, schemaOf('assessment'), intelligence + ' assess schema')
     assert.deepEqual(tier('frame'), tierFor(role('analyst'), { intelligence, base: 'medium' }), intelligence + ' frame')
     assert.deepEqual(tier('assess'), tierFor(role('analyst'), { intelligence, base: 'high' }), intelligence + ' assess')
-    assert.deepEqual(tier('research:npm'), tierFor(role('doc-researcher')), intelligence + ' researcher')
-    assert.deepEqual(tier('repo'), tierFor(role('scout')), intelligence + ' scan')
+    assert.deepEqual(tier('research:npm'), tierFor(role('doc-researcher'), { intelligence }), intelligence + ' researcher')
+    assert.deepEqual(tier('repo'), tierFor(role('scout'), { intelligence }), intelligence + ' scan')
   }
 })
 

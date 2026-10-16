@@ -304,7 +304,7 @@ async function poolInWorktree(t, run) {
 }
 
 test('the pool is read in the checkout the survey runs in', async (t) => {
-  await poolInWorktree(t, (rig, wt) => survey(programContext({ ...rig.ctx, root: wt }), ARGS()))
+  await poolInWorktree(t, (rig, wt) => survey(programContext({ intelligence: 'normal', ...rig.ctx, root: wt }), ARGS()))
 })
 
 test('the pool is read in the tree the survey is handed', async (t) => {

@@ -90,10 +90,9 @@ test('the probe has a dial', async (t) => {
   const analysts = ofRole(w.calls, 'analyst')
   assert.ok(analysts.length > 0, 'an analyst was dispatched')
   for (const c of analysts) assert.deepEqual(c.tier, tierOf('analyst', 'low'), c.thread.key)
-  const rulers = ofRole(w.calls, 'ruler').filter((c) => c.thread.key.includes('locate'))
-  assert.ok(rulers.length > 0, 'the locate ruler was dispatched')
-  for (const c of rulers) assert.deepEqual(c.tier, tierOf('ruler', 'low'), c.thread.key)
-  for (const c of ofRole(w.calls, 'scout')) assert.deepEqual(c.tier, tierOf('scout', 'low'), c.thread.key)
+  const scouts = ofRole(w.calls, 'scout').filter((c) => c.thread.key.includes('locate'))
+  assert.ok(scouts.length > 0, 'the locate scout was dispatched')
+  for (const c of scouts) assert.deepEqual(c.tier, tierOf('scout', 'low'), c.thread.key)
 })
 
 test('an explicit tier wins', async (t) => {

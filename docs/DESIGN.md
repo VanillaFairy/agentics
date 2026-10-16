@@ -85,7 +85,8 @@ more complete than it is, and what stays incomplete leads every report.
 
 *Enforced by:* the `coverage-block` lint rule (every program result computes `complete` from its
 fields); `searchCoverage` and `coverageLine` in `lib/programs/search/consume.mjs`, which write each
-search's coverage line from its status, its journal's calls and hits and its why;
+search's coverage line from its status, its journal's calls and hits, its rounds, its why and the
+scout's own word;
 `resolveHandle` in `lib/store.mjs`, the one way a CLI turns an argument into a thing, which refuses
 an unknown one as `unknown_<kind>`; status derived on read (P3); an integration branch holds no
 commit no record accounts for (`outside_work`: `unaccountedOf` in `lib/integration.mjs`, which
@@ -2064,14 +2065,17 @@ rounds[], coverage}` ([Search result](#search-result)):
 
 **Coverage.** Each program builds its coverage (L1) from its searches' results, through
 `lib/programs/search/consume.mjs`. `coverageLine` names the search, its status, its counts of calls
-and hits (`no hits` for none) and its why:
+and hits (`no hits` for none), its rounds and what the last added (from `coverage`), its why, and,
+when the last returned scout said anything, that text labelled as the scout's own word, its
+whitespace folded to one line. A caller that reads only the line sees a search that ran many rounds,
+or one whose scout says it left something unlooked at:
 
 ```
-locate: done, 41 calls, 23 hits
-scout:loader: done, 1 call, no hits
-history: stalled, 30 calls, 2 hits: nothing new in the last 12 calls
-research:crates: budget, 7 calls, 1 hit: spent $1.02 of its $1 budget
-repo: failed, 0 calls, no hits: host_error: exit 1
+locate: done, 41 calls, 23 hits, 11 rounds (the last added 0); the scout's own word: did not open vendor/
+scout:loader: done, 1 call, no hits, 1 round (the last added 0)
+history: stalled, 30 calls, 2 hits, 2 rounds (the last added 1): nothing new in the last 12 calls
+research:crates: budget, 7 calls, 1 hit, 1 round (the last added 1): spent $1.02 of its $1 budget
+repo: failed, 0 calls, no hits, 1 round (the last added 0): host_error: exit 1
 ```
 
 `searchCoverage` puts a `done` or `stalled` search's line in `declared` — a complete end
@@ -3849,7 +3853,7 @@ digest, so a start in a renewed session gets a spec of its own.
 
 `{name, status: done | stalled | budget | failed, why, summary, hits[], calls[], cost, tree{root,
 sha}, pages, sessions[{session, thread}], rounds[{added, cost}], coverage{rounds, last_added,
-skipped}}`: `why` says how it ended for every status but `done`
+skipped}}` (`coverageLine` writes `coverage` into the line): `why` says how it ended for every status but `done`
 (`''`); `summary` the last returned round's scout's summary (`''` when none returned); `hits` the journal's ok hits,
 each once ([Call log](#call-log)); `calls` one line per journaled call, hits left out; `cost` the
 dollars recorded on every round's `returned` entries; `pages` the run's `pages/`

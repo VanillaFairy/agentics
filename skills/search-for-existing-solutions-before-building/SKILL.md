@@ -115,9 +115,9 @@ So, **binding**:
 - You may not report "nothing exists, build it" while `coverage.complete === false`. Say what
   was not reached, and say plainly that the sweep did not finish.
 - Two lists carry the two halves, and they mean opposite things. `declared` says how each search
-  ended: *"research:crates: done, 9 calls, no hits"* is **evidence for building**. `unreached` says
-  what a search never reached: *"research:crates: budget, 4 calls, 1 hit: spent $1.02 of its $1
-  budget"* is **evidence of nothing at all**. Present them apart.
+  ended: *"research:crates: done, 1 call, no hits, 1 round (the last added 0)"* is **evidence for
+  building**, with the scout's own word on what it skipped. What it never reached: *"research:crates:
+  budget, 4 calls, 1 hit, 1 round (the last added 1): spent $1"* is **evidence of nothing**; keep them apart.
 - `dropped` names the angles the frame gave beyond `--max-angles` (4 unless passed): nobody
   searched them. `incomplete` naming `research:<angle>` or `repo` is a search that stopped short, and
   `assess:<candidate>` a candidate the assessment did not rule on.

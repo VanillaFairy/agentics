@@ -62,7 +62,7 @@ test('a stalled channel is complete, its line declared', async (t) => {
 
 test("declared holds each channel search's coverage line", async (t) => {
   const { result } = await runSurvey(t, fullScript())
-  for (const name of ['history', 'docs']) assert.ok(cov(result).declared.includes(name + ': done, 0 calls, 1 hit'), name + ': ' + JSON.stringify(cov(result).declared))
+  for (const name of ['history', 'docs']) assert.ok(cov(result).declared.includes(name + ": done, 0 calls, 1 hit, 2 rounds (the last added 0); the scout's own word: nothing more"), name + ': ' + JSON.stringify(cov(result).declared))
 })
 
 test("the result names each channel's status and its hit count, and the context holds its findings", async (t) => {

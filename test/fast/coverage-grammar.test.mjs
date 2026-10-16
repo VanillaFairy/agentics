@@ -21,23 +21,24 @@ const NAME = 'probe:find'
 const WHY_STALLED = 'why-the-guard-stalled'
 const WHY_BUDGET = 'why-the-budget-ended-it'
 const WHY_FAILED = 'why-the-search-failed'
+const SKIPPED = 'what-the-scout-says-it-skipped'
 
 const hit = (n) => ({ key: 'src/file-' + n + '.js', line: n })
-const result = (status, calls, hits, why = '') => ({
-  name: NAME, status, why, calls: Array.from({ length: calls }, (_, i) => 'call ' + i), hits: Array.from({ length: hits }, (_, i) => hit(i + 1)),
+const result = (status, calls, hits, why = '', rounds = 1, skipped = '') => ({
+  name: NAME, status, why, coverage: { rounds, last_added: 0, skipped }, calls: Array.from({ length: calls }, (_, i) => 'call ' + i), hits: Array.from({ length: hits }, (_, i) => hit(i + 1)),
 })
 
 /** One result per end the skills talk about, each with its status. */
 const results = () => [
-  result('done', 3, 2),
+  result('done', 3, 2, '', 3, SKIPPED),
   result('done', 1, 0),
-  result('stalled', 30, 2, WHY_STALLED),
+  result('stalled', 30, 2, WHY_STALLED, 2, SKIPPED),
   result('budget', 7, 1, WHY_BUDGET),
   result('failed', 0, 0, WHY_FAILED),
 ]
 
 /** The values that vary per search, longest first so a value inside another is not cut first. */
-const VARS = [NAME, WHY_STALLED, WHY_BUDGET, WHY_FAILED].sort((x, y) => y.length - x.length)
+const VARS = [NAME, WHY_STALLED, WHY_BUDGET, WHY_FAILED, SKIPPED].sort((x, y) => y.length - x.length)
 
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const HOLE = '\u0000'
@@ -70,8 +71,8 @@ const unmatched = (quotes, regexes) => quotes.filter((q) => !regexes.some(({ re 
 test('the coverage lines name each end the skills talk about', () => {
   const { written } = shapes()
   const lines = written.map((w) => w.line)
-  const has = (prefix, why = '') => lines.some((l) => l.startsWith(NAME + ': ' + prefix) && l.endsWith(why))
-  assert.ok(has('done, 3 calls, 2 hits'), 'a done search with hits writes its counts\n' + lines.join('\n'))
+  const has = (prefix, why = '') => lines.some((l) => l.startsWith(NAME + ': ' + prefix) && l.includes(why))
+  assert.ok(has('done, 3 calls, 2 hits, 3 rounds', "; the scout's own word: " + SKIPPED), 'a done search with hits writes its counts, rounds and the scout\'s word\n' + lines.join('\n'))
   assert.ok(has('done, 1 call, no hits'), 'a done search without hits says no hits\n' + lines.join('\n'))
   assert.ok(has('stalled, ', ': ' + WHY_STALLED), 'a stalled search writes its why\n' + lines.join('\n'))
   assert.ok(has('budget, 7 calls, 1 hit', ': ' + WHY_BUDGET), 'a budget search writes its why\n' + lines.join('\n'))

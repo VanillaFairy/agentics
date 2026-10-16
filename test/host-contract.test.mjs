@@ -330,21 +330,21 @@ test('a search tool server reaches a session only through --mcp-config, across a
   writeFileSync(join(dir, 'b.txt'), '7\nsecond\n')
   const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir }).toString().trim()
   const run = join(dir, '.agentics', 'runs', 'v0')
+  const session = randomUUID()
   const spec = {
-    tree: { root: dir.split('\\').join('/'), sha }, asks: [{ key: 'guidance', scope: ['.'], domain: 'repo' }],
+    tree: { root: dir.split('\\').join('/'), sha }, scope: ['.'], labels: [],
     tools: TOOLS_BY_DOMAIN.repo, calls: join(searchDir(run, 'probe:v0'), 'calls.jsonl'),
+    pages: join(run, 'pages'), session,
   }
   const mcpConfig = mcpConfigFor(run, 'probe:v0', spec)
   const prefix = 'mcp__' + SERVER_NAME + '__'
-  const tools = TOOLS_BY_DOMAIN.repo.map((name) => prefix + name)
+  const tools = [...TOOLS_BY_DOMAIN.repo, 'hit'].map((name) => prefix + name)
   const { allowed, disallowed } = readOnlyPermissions({ tools })
-  const session = randomUUID()
-  const ask = 'Pass ask: "guidance" on every tool call.'
   const why = (r) => 'denials: ' + JSON.stringify(r.parsed.denials) + ', tools used: ' + JSON.stringify(toolsUsed(r.out.stdout)) +
     ', offered: ' + JSON.stringify(offered(r.out.stdout)) + ', stderr: ' + r.out.stderr.slice(-400)
   const ours = (name) => name.startsWith(prefix) || name === 'StructuredOutput'
 
-  const first = await call(dir, { prompt: ask + ' Use the grep tool to find the line holding NEEDLE_ONE and return x = the number on that line.', session, tools, allowed, disallowed, mcpConfig })
+  const first = await call(dir, { prompt: 'Use the grep tool to find the line holding NEEDLE_ONE, then record it with the hit tool (its path, its line and a short note), and return x = the number on that line.', session, tools, allowed, disallowed, mcpConfig })
   assert.equal(first.cls.status, 'returned', why(first))
   assert.equal(first.parsed.structured.x, 41, why(first))
   const host = offered(first.out.stdout)
@@ -353,14 +353,16 @@ test('a search tool server reaches a session only through --mcp-config, across a
   assert.ok(host.every(ours), 'no host tool is offered: ' + why(first))
   assert.deepEqual(first.parsed.denials, [], why(first))
 
-  const again = await call(dir, { prompt: ask + ' Use the read tool to read b.txt and return x = the number on its first line.', session, resume: true, tools, allowed, disallowed, mcpConfig })
+  const again = await call(dir, { prompt: 'Use the read tool to read b.txt and return x = the number on its first line.', session, resume: true, tools, allowed, disallowed, mcpConfig })
   assert.equal(again.cls.status, 'returned', why(again))
   assert.equal(again.parsed.structured.x, 7, why(again))
   for (const r of [first, again]) assert.ok(toolsUsed(r.out.stdout).every(ours), 'only the server\'s tools were used: ' + why(r))
 
   const log = readFileSync(spec.calls, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
   assert.ok(log.some((c) => c.tool === 'grep' && c.ok && c.observed.some((o) => o.key === 'a.txt')), JSON.stringify(log))
-  assert.ok(log.some((c) => c.tool === 'read' && c.ok && c.ended && c.ended.key === 'b.txt'), JSON.stringify(log))
+  assert.ok(log.some((c) => c.tool === 'hit' && c.ok && c.hit.path === 'a.txt' && c.hit.line === 1), JSON.stringify(log))
+  assert.ok(log.some((c) => c.tool === 'read' && c.ok && c.args.path === 'b.txt'), JSON.stringify(log))
+  assert.ok(log.every((c) => c.session === session), 'every record carries the spec\'s session: ' + JSON.stringify(log))
   assert.deepEqual(log.map((c) => c.seq), log.map((_, i) => i + 1), 'one numbering across both sessions\' servers')
   const used = [first, again].flatMap((r) => toolsUsed(r.out.stdout)).filter((n) => n !== 'StructuredOutput')
   assert.equal(log.length, used.length, 'every call the sessions made is in the log, and nothing else')

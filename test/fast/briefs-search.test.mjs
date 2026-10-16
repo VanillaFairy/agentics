@@ -236,6 +236,33 @@ test('owed files render by directory', () => {
   assert.equal(b.includes('f5.ts'), false)
 })
 
+test('seeds render by directory, each name once and a shared reason once', () => {
+  const keys = Array.from({ length: 300 }, (_, i) => 'docs/d' + (i % 12) + '/note-' + i + '.md')
+  const seeds = keys.map((key) => ({ key, as: 'open', reason: 'guidance the resolver found' }))
+  const b = briefOf(foldLedger({ asks: [ask('a', { seeds })], ground: { rows: [], seeds: [] }, calls: [], turns: [] }), null, { turn: 1 })
+  assert.equal(b.split('guidance the resolver found').length, 2)
+  assert.equal(b.split('docs/d3/').length, 2)
+  for (const key of keys) assert.ok(b.includes(key.slice(key.lastIndexOf('/') + 1)), key)
+})
+
+test('a seed at the root is its bare name, and seeds with different reasons keep one line each', () => {
+  const brief = (seeds) => briefOf(foldLedger({ asks: [ask('a', { seeds })], ground: { rows: [], seeds: [] }, calls: [], turns: [] }), null, { turn: 1 })
+  const root = brief([{ key: 'CLAUDE.md', as: 'open', reason: 'r' }, { key: 'AGENTS.md', as: 'open', reason: 'r' }])
+  assert.ok(root.includes('\n  - CLAUDE.md, AGENTS.md'))
+  const mixed = brief([{ key: 'docs/a.md', as: 'open', reason: 'one, two' }, { key: 'docs/b.md', as: 'open', reason: 'three' }])
+  assert.ok(mixed.includes('  - docs/a.md — one, two\n  - docs/b.md — three'))
+})
+
+test('a ground row or symbol that is its own only item is one line', () => {
+  const ground = {
+    rows: [row('src/b.ts'), { kind: 'symbol', mention: 'LONE', key: 'LONE', exists: true, asks: ['a'], defs: [], refs: [{ key: 'src/use.ts', count: 1, test: false }], files: 1 }],
+    seeds: [],
+  }
+  const b = briefOf(foldLedger({ asks: [ask('a')], ground, calls: [], turns: [] }), null, { turn: 1 })
+  assert.equal(b.split('src/b.ts').length, 2)
+  assert.equal(b.split('LONE').length, 2)
+})
+
 test('each level folds', () => {
   assert.deepEqual(FOLD_LEVELS, [1, 2, 3, 4])
   for (const [l, base] of [[facts(3), null], [facts(3), facts(1)]]) {

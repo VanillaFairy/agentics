@@ -705,7 +705,9 @@ depends on nothing a turn changes, so the host reads it back from cache on every
 table in it holds only the rows no ask owns. Each turn's standard input is `briefOf(ledger, base)`:
 what changed since the ledger the session last saw — the asks that joined with what they ask, per
 open ask its declaration, standing ruling and what its agenda gained and lost (a call always named
-by its seq, owed files one line per directory), the calls, the refusals with their reasons, and each
+by its seq, owed files one line per directory, seeds that share a reason one line per directory
+naming its files, a ground row named by its own key or a lone symbol on one line), the calls, the
+refusals with their reasons, and each
 ended ask on one line. A fresh, renewed or compacted session gets `briefOf(ledger, null)`, the whole
 state, and a prompt the host refuses as too long is sent again at fold levels 2–4
 ([Searches](#searches)). The search ruler is briefed by `rulerBrief` ([Searches](#searches)).

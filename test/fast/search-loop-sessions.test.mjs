@@ -120,6 +120,13 @@ function ledgerOf({ asks, turns, rulings = [], from = {}, owes = {}, ground = GR
   return foldLedger({ asks: specs, ground, calls, turns: folded, rulings })
 }
 
+/** A brief holds an agenda item: a seed by its directory's line and its name, any other by its key. */
+function holds(brief, item) {
+  if (item.kind !== 'seed') return brief.includes(item.key)
+  const at = item.key.lastIndexOf('/')
+  return at < 0 ? brief.includes(item.key) : brief.includes(item.key.slice(0, at) + '/: ') && brief.includes(item.key.slice(at + 1))
+}
+
 const navCalls = (calls) => calls.filter((c) => c.role.name !== 'ruler')
 const navStarts = (starts, key = NAV) => starts.filter((s) => s.key === key)
 const ofRound = (starts, round) => navStarts(starts).filter((s) => s.round === round)
@@ -140,8 +147,8 @@ test('a resumed turn gets what changed', async (t) => {
   assert.equal(two.resume, true)
   assert.equal(two.thread.session, one.thread.session)
   assert.equal(two.brief, briefOf(L1, L0, { turn: 2 }), 'the base is the ledger the session was last briefed on')
-  assert.ok(one.brief.includes(SEED.key), 'the seed is on the first brief')
-  assert.ok(!two.brief.includes(SEED.key), 'an agenda item that did not change is not sent again')
+  assert.ok(holds(one.brief, { kind: 'seed', key: SEED.key }), 'the seed is on the first brief')
+  assert.ok(!two.brief.includes('seed.mjs'), 'an agenda item that did not change is not sent again')
   assert.equal(result.asks.A.end, 'done')
 })
 
@@ -162,7 +169,7 @@ test('a renewed session gets the whole state', async (t) => {
   assert.equal(renewed.stdin, briefOf(L2, null, { turn: 3 }), "the fresh session's prompt is the whole state")
   for (const a of Object.values(L2.asks).filter((s) => !s.end)) {
     assert.ok(renewed.stdin.includes(a.find), a.key + ': its find')
-    for (const item of a.agenda.filter((f) => f.kind !== 'file')) assert.ok(renewed.stdin.includes(item.key), a.key + ': ' + item.key)
+    for (const item of a.agenda.filter((f) => f.kind !== 'file')) assert.ok(holds(renewed.stdin, item), a.key + ': ' + item.key)
     for (const { dir } of fileGroups(a.agenda.filter((f) => f.kind === 'file').map((f) => f.key))) assert.ok(renewed.stdin.includes(dir + '/'), a.key + ': ' + dir)
   }
   assert.equal(result.asks.A.end, 'done')

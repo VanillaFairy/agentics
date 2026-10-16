@@ -26,11 +26,11 @@ const RULING = { ruling: 'converging', why: 'the evidence still moves' }
 const spec = (over = {}) => ({ role: 'ruler', schema: 'ruler_convergence', thread: 'ruler:t', brief: 'Rule it.', ...over })
 
 /** A run's context over a scratch directory; `runnerOf(log)` builds the runner on the context's own log. */
-function context(t, runnerOf) {
+function context(t, runnerOf, sleep = async () => {}) {
   const dir = mkdtempSync(join(tmpdir(), 'agentics-dispatch-search-'))
   t.after(() => rmSync(dir, { recursive: true, force: true }))
   const log = memoryLog()
-  return programContext({ intelligence: 'normal', repo: dir, run: RUN, dir, log, runAgent: runnerOf(log), now: NOW, sleep: async () => {}, env: {} })
+  return programContext({ intelligence: 'normal', repo: dir, run: RUN, dir, log, runAgent: runnerOf(log), now: NOW, sleep, env: {} })
 }
 
 test("a charge becomes the system prompt after the role's body", async (t) => {
@@ -276,4 +276,98 @@ test('a thread names the session of every later generation', async (t) => {
   assert.equal(at.sessionAt(0), at.session)
   assert.equal(at.sessionAt(1), at.nextSession)
   assert.notEqual(at.sessionAt(2), at.nextSession)
+})
+
+// ------------------------------------------------------------------ renewals briefed now, a server per session, a dollar budget
+
+const KEY = 'ruler||ruler:t'
+
+/** A run over the scripted runner playing `steps` for the ruler's thread; `sleep` stands in for waiting out a host stop. */
+function scripted(t, steps, sleep) {
+  let runner
+  const ctx = context(t, (log) => (runner = scriptedRunner({ [KEY]: steps }, { log })).runAgent, sleep)
+  return { ctx, starts: () => runner.starts }
+}
+
+/** A briefNow whose every answer is stamped with how many times it was asked. */
+function stamped() {
+  let n = 0
+  const briefNow = () => 'journal now ' + ++n
+  return { briefNow, asked: () => n }
+}
+
+test('a renewal briefs the new session with what briefNow says at that moment', async (t) => {
+  const { ctx, starts } = scripted(t, [{ status: 'failed', cause: 'context_exceeded' }, { output: RULING }])
+  const now = stamped()
+  const out = await dispatch(ctx, round(1, { briefNow: now.briefNow }))
+  assert.equal(out.status, 'returned')
+  const [first, second] = starts()
+  assert.equal(first.stdin, 'brief 1')
+  assert.equal(second.resume, false)
+  assert.notEqual(second.session, first.session)
+  assert.equal(second.stdin, 'journal now ' + now.asked())
+})
+
+test('a session too large is renewed with briefNow, not the brief fixed at dispatch', async (t) => {
+  const { ctx, starts } = scripted(t, [{ output: RULING, context: 10_000_000 }, { output: RULING }])
+  await dispatch(ctx, round(1))
+  const now = stamped()
+  await dispatch(ctx, round(2, { briefNow: now.briefNow }))
+  const renewed = starts()[1]
+  assert.equal(renewed.resume, false)
+  assert.equal(renewed.stdin, 'journal now 1')
+  assert.deepEqual(ctx.log.entries().filter((e) => e.kind === 'thread_renewed').map((e) => e.why), ['too_large'])
+})
+
+test('a missing session is renewed with briefNow', async (t) => {
+  const { ctx, starts } = scripted(t, [{ output: RULING }, { status: 'failed', cause: 'session_missing' }, { output: RULING }])
+  await dispatch(ctx, round(1))
+  const out = await dispatch(ctx, round(2, { briefNow: stamped().briefNow }))
+  assert.equal(out.status, 'returned')
+  const [, missing, renewed] = starts()
+  assert.equal(missing.resume, true)
+  assert.equal(renewed.resume, false)
+  assert.equal(renewed.stdin, 'journal now 1')
+})
+
+test('a second refusal as too long fails the call', async (t) => {
+  const { ctx, starts } = scripted(t, [{ status: 'failed', cause: 'context_exceeded' }, { status: 'failed', cause: 'context_exceeded' }])
+  const out = await dispatch(ctx, round(1, { briefNow: stamped().briefNow }))
+  assert.equal(out.status, 'failed')
+  assert.equal(out.cause, 'context_exceeded')
+  assert.equal(starts().length, 2)
+})
+
+test('budgetNow is asked at every start and passed as --max-budget-usd', async (t) => {
+  const { ctx, starts } = scripted(t, [{ status: 'stopped', cause: 'rate_limit' }, { output: RULING }])
+  const left = [0.5, 0.3]
+  const out = await dispatch(ctx, round(1, { budgetNow: () => left.shift() }))
+  assert.equal(out.status, 'returned')
+  assert.deepEqual(starts().map((s) => valueAfter(s.args, '--max-budget-usd')), ['0.5', '0.3'])
+})
+
+test('no budget left starts nothing and fails budget', async (t) => {
+  const { ctx, starts } = scripted(t, [{ output: RULING }])
+  const out = await dispatch(ctx, round(1, { budgetNow: () => 0 }))
+  assert.equal(out.status, 'failed')
+  assert.equal(out.cause, 'budget')
+  assert.equal(starts().length, 0)
+})
+
+test('a call stopped at its budget fails budget and is not waited out', async (t) => {
+  let slept = 0
+  const { ctx, starts } = scripted(t, [{ status: 'failed', cause: 'budget' }, { output: RULING }], async () => { slept++ })
+  const out = await dispatch(ctx, round(1, { budgetNow: () => 1 }))
+  assert.equal(out.status, 'failed')
+  assert.equal(out.cause, 'budget')
+  assert.equal(starts().length, 1)
+  assert.equal(slept, 0)
+})
+
+test('a function mcpConfig is resolved with the session each start runs in', async (t) => {
+  const { ctx, starts } = scripted(t, [{ status: 'failed', cause: 'context_exceeded' }, { output: RULING }])
+  await dispatch(ctx, round(1, { briefNow: stamped().briefNow, mcpConfig: (s) => 'cfg-' + s }))
+  const [first, renewed] = starts()
+  assert.notEqual(first.session, renewed.session)
+  for (const s of [first, renewed]) assert.equal(valueAfter(s.args, '--mcp-config'), 'cfg-' + s.session)
 })

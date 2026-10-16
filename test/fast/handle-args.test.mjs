@@ -10,6 +10,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { KINDS as RUN_KINDS } from '../../lib/run.mjs'
 import { HANDLE_MAX, PATH_MAX, TEXT_MAX, argProblem, handleArgs, textFlag, textFlags } from '../../lib/store.mjs'
 
 const KINDS = { '--repo': 'path', '--effort': 'handle', '--node': 'handle', '--text': 'text', '--json': 'switch' }
@@ -143,4 +144,12 @@ test('a positional is refused where none is taken, and checked by its kind where
 test('the walk starts where it is told: from the first token for a CLI with no verb', () => {
   assert.equal(handleArgs(['--effort', 'e1'], KINDS, { from: 0 }), null)
   assert.equal(handleArgs(['--effort', 'e 1'], KINDS, { from: 0 }).kind, 'args_unreadable')
+})
+
+test('a usd argument takes a dollar amount', () => {
+  const usd = RUN_KINDS.usd
+  assert.deepEqual(usd.resolve('1.5'), { ok: true, value: 1.5 })
+  assert.deepEqual(usd.resolve('2'), { ok: true, value: 2 })
+  assert.equal(usd.empty, 0, 'absent is no cap')
+  for (const bad of ['abc', '-1', '1.']) assert.equal(usd.resolve(bad).error.kind, 'bad_arg', bad)
 })

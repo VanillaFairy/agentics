@@ -21,6 +21,7 @@ const FAILURES = {
   session_missing: (result, session) => ({ code: 1, lines: [], stderr: 'No conversation found with session ID: ' + session }),
   host_error: () => ({ code: 1, lines: [], stderr: '' }),
   context_exceeded: () => ({ code: 1, lines: [], stderr: 'Prompt is too long' }),
+  budget: (result) => ({ code: 1, lines: [result({ subtype: 'error_max_budget_usd', is_error: true, errors: ['Reached maximum budget'] })], stderr: '' }),
 }
 
 const valueAfter = (args, flag) => { const i = args.indexOf(flag); return i < 0 ? '' : args[i + 1] }
@@ -28,7 +29,8 @@ const valueAfter = (args, flag) => { const i = args.indexOf(flag); return i < 0 
 /** The call log of a call's search server: the `calls` path of the spec its MCP config names. */
 function callLogOf(call, key) {
   if (!call.mcpConfig) throw new Error(key + ': a step with calls needs a call with an mcpConfig')
-  const args = JSON.parse(readFileSync(call.mcpConfig, 'utf8')).mcpServers.search.args
+  const path = typeof call.mcpConfig === 'function' ? call.mcpConfig(call.thread.session) : call.mcpConfig
+  const args = JSON.parse(readFileSync(path, 'utf8')).mcpServers.search.args
   return JSON.parse(readFileSync(args[args.indexOf('--spec') + 1], 'utf8')).calls
 }
 
@@ -80,7 +82,7 @@ export function scriptedRunner(script, { log, now = () => '2026-01-01T00:00:00.0
     if (i >= steps.length) throw new Error('the script has no start ' + (i + 1) + ' for ' + key)
     next.set(key, i + 1)
     const session = valueAfter(args, '--resume') || valueAfter(args, '--session-id')
-    starts.push({ key, round: call.round, session, resume: args.includes('--resume'), stdin })
+    starts.push({ key, round: call.round, session, resume: args.includes('--resume'), stdin, args })
     const out = play(steps[i], session, key)
     onSpawn(++pid)
     if (steps[i].calls) appendCalls(callLogOf(call, key), steps[i].calls)

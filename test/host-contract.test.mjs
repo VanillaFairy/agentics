@@ -30,8 +30,8 @@ function scratch(t) {
   return dir
 }
 const cli = () => { const r = resolveCli(); assert.ok(r.ok, r.error && r.error.message); return spawner(r.path) }
-const call = async (dir, { prompt, session, resume = false, model = 'haiku', effort = '', tools = [], allowed = [], disallowed = [], schema = SCHEMA, cwd = dir, mcpConfig = '' }) => {
-  const args = buildArgs({ systemPromptFile: join(dir, 'role.md'), tools, allowed, disallowed, model, effort, schema, session, resume, mcpConfig })
+const call = async (dir, { prompt, session, resume = false, model = 'haiku', effort = '', tools = [], allowed = [], disallowed = [], schema = SCHEMA, cwd = dir, mcpConfig = '', maxBudgetUsd = null }) => {
+  const args = buildArgs({ systemPromptFile: join(dir, 'role.md'), tools, allowed, disallowed, model, effort, schema, session, resume, mcpConfig, maxBudgetUsd })
   const out = await cli()(args, { stdin: prompt, env: cleanEnv(process.env), cwd })
   const parsed = parseStream(out.stdout)
   return { out, parsed, cls: classifyCall({ code: out.code, stderr: out.stderr, parsed }) }
@@ -364,4 +364,16 @@ test('a search tool server reaches a session only through --mcp-config, across a
   assert.deepEqual(log.map((c) => c.seq), log.map((_, i) => i + 1), 'one numbering across both sessions\' servers')
   const used = [first, again].flatMap((r) => toolsUsed(r.out.stdout)).filter((n) => n !== 'StructuredOutput')
   assert.equal(log.length, used.length, 'every call the sessions made is in the log, and nothing else')
+})
+
+test('the host stops a call at --max-budget-usd, and on --resume counts only that process', { skip, timeout: 300000 }, async (t) => {
+  const dir = scratch(t)
+  const capped = await call(dir, { prompt: 'Return x = 3.', session: randomUUID(), maxBudgetUsd: 0.00001 })
+  assert.equal(capped.cls.cause, 'budget')
+  const session = randomUUID()
+  const first = await call(dir, { prompt: 'Return x = 4.', session })
+  assert.equal(first.cls.status, 'returned')
+  const c = first.parsed.costTotal
+  const again = await call(dir, { prompt: 'Return x = 5.', session, resume: true, maxBudgetUsd: c * 0.9 })
+  assert.equal(again.cls.status, 'returned', 'a resume under the session total runs: the cap counts this process alone')
 })

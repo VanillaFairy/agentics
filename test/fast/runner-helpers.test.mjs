@@ -433,3 +433,15 @@ test('anything else is a host error', () => {
   failed(got, 'host_error')
   assert.ok(got.message.length > 0)
 })
+
+test('buildArgs passes --max-budget-usd when a budget is given, and nothing when it is not', () => {
+  const args = buildArgs(call({ maxBudgetUsd: 0.25 }))
+  assert.equal(args[args.indexOf('--max-budget-usd') + 1], '0.25')
+  assert.equal(buildArgs(call()).indexOf('--max-budget-usd'), -1)
+})
+
+test('a result stopped at the budget is the terminal class budget', () => {
+  const cls = classifyCall({ code: 1, parsed: { result: { subtype: 'error_max_budget_usd', is_error: true, errors: ['Reached maximum budget ($1)'] }, structured: null } })
+  assert.equal(cls.status, 'failed')
+  assert.equal(cls.cause, 'budget')
+})

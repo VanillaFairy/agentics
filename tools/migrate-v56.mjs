@@ -1,14 +1,17 @@
-// tools/migrate-search-ledger.mjs — the one-shot move of a store whose searches ran in rounds, run
-// once, on the user's go.
+// tools/migrate-v56.mjs — the one-shot move of a store whose searches ran in a shape 5.6.0 does not
+// read, run once, on the user's go.
 //
 // Design: docs/DESIGN.md#migration-from-4x.
 //
-// A round search is a searcher's dispatch on a thread the round machinery named — `scout:*`,
-// `common`, `locate`, `history`, `docs`, `research:*` or `repo`, under any scope — with no
-// `<thread>/ground` step beside it: the search loop journals that step before its first turn. A
-// stopped program run holding one gets a `program` fault and a failed end, so its next claim mints
-// a new run. A folder of an open execution holding one under `probe:<folder>:<n>` or
-// `survey:<folder>` gets `replanned {reason: retry_escalated, by: migration}`, which plans it
+// An old-shape search — a 5.4.1 round search or a 5.5.0 navigator search — is a searcher's dispatch
+// on a search thread (`scout:*`, `common`, `locate`, `history`, `docs`, `research:*` or `repo`,
+// under any scope) whose `searchDir(<home>, <thread>)` holds no `server-*.json` spec without an
+// `asks` key, the lean scout's spec. A stopped program run holding one gets a `program` fault
+// (`migrate-v56: <n> of its searches are in a shape 5.6.0 does not read; start the program
+// again`) and a failed end, so its next claim mints
+// a new run; a run whose latest segment the 5.4.1 migration faulted (`migrate-search-ledger:`)
+// gets nothing more. A folder of an open execution holding one under `probe:<folder>:<n>` or
+// `survey:<folder>[:<basis>]` gets `replanned {reason: retry_escalated, by: migration}`, which plans it
 // afresh under a new basis, only where that record, dry-applied, leaves every node's derived
 // status, every affected ruling's answer and every review's standing as they were (an unaffected
 // ruling stands outright, so no replan moves it); every other folder is listed with the user's
@@ -25,23 +28,31 @@ import { openExecutions } from '../lib/boundaries/execution.mjs'
 import { rulingAnswered } from '../lib/boundaries/records.mjs'
 import { append, appendRun, readLog, readRunLog, runState } from '../lib/ledger.mjs'
 import { loadRole } from '../lib/roles.mjs'
+import { searchDir } from '../lib/search/server.mjs'
 import {
   agenticsRoot, executionRunId, isRunId, mainCheckout, posix, readJson, runHome, runJsonPath, runsDir, safeSlug,
 } from '../lib/store.mjs'
 import { deriveStatus, readTree, standingReview } from '../lib/tree.mjs'
 
-const MARK = 'migrate-search-ledger:'
-const GROUND = '/ground'
+const MARK = 'migrate-v56:'
+const OLD_MARK = 'migrate-search-ledger:'
 const ROUND_NAME = /(?:^|\/)(?:scout:[^/]+|common|locate|history|docs|research:[^/]+|repo)$/
 const FOLDER = '(\\.|[a-z0-9][a-z0-9-]*(?:/[a-z0-9][a-z0-9-]*)*)'
 const PROBE = new RegExp('^probe:' + FOLDER + ':\\d+/locate$')
-const SURVEY = new RegExp('^survey:' + FOLDER + '/(?:scout:[^/]+|common|history|docs|research:[^/]+)$')
+const SURVEY = new RegExp('^survey:' + FOLDER + '(?::.*)?/(?:scout:[^/]+|common|history|docs|research:[^/]+)$')
 const BOUNDARY = posix(join(dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'boundary.mjs'))
 
 const seqOf = (e) => (e && Number.isInteger(e.seq) ? e.seq : 0)
 const dirsOf = (dir) => {
   try {
     return readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
+  } catch {
+    return []
+  }
+}
+const filesOf = (dir) => {
+  try {
+    return readdirSync(dir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name)
   } catch {
     return []
   }
@@ -59,18 +70,32 @@ function isSearcher(name) {
   return kinds.get(key)
 }
 
-/** The round searches among one home's records: each thread, with the seq of its latest dispatch. */
-function roundSearches(entries) {
-  const opened = new Set(entries.filter((e) => e.kind === 'step' && typeof e.key === 'string' && e.key.endsWith(GROUND))
-    .map((e) => e.key.slice(0, -GROUND.length)))
+/** Whether a search thread's directory holds a server spec of the lean scout: one without `asks`. */
+function leanSpec(dir, thread) {
+  const at = searchDir(dir, thread)
+  for (const name of filesOf(at).filter((f) => /^server-.*\.json$/.test(f))) {
+    const spec = readJson(join(at, name))
+    if (spec && typeof spec === 'object' && !Object.hasOwn(spec, 'asks')) return true
+  }
+  return false
+}
+
+/** The old-shape searches among one home's records: each thread, with the seq of its latest dispatch. */
+function oldSearches(dir, entries) {
   const out = new Map()
   for (const e of entries) {
     if (e.kind !== 'dispatched' || typeof e.thread !== 'string' || !ROUND_NAME.test(e.thread)) continue
-    if (opened.has(e.thread) || !isSearcher(e.role)) continue
+    if (!isSearcher(e.role) || leanSpec(dir, e.thread)) continue
     out.set(e.thread, Math.max(out.get(e.thread) || 0, seqOf(e)))
   }
   return out
 }
+
+/** Pure. The records of a run log's latest segment: those after its last `run` record. */
+const segmentOf = (entries) => entries.slice(entries.findLastIndex((e) => e.kind === 'run') + 1)
+
+/** Pure. Whether a segment holds a fault whose detail starts with `mark`. */
+const faultedWith = (since, mark) => since.some((e) => e.kind === 'fault' && String(e.detail || '').startsWith(mark))
 
 /** Pure. The folder an execution's search thread names, or '' when it names none. */
 function folderOf(thread) {
@@ -123,28 +148,30 @@ const optionsOf = (root, effort, stamp, folder) => [
   },
 ]
 
-/** The stopped program runs holding a round search; a live one is refused. */
+/** The stopped program runs holding an old-shape search; a live one is refused. */
 function runParts(root, out) {
   for (const run of dirsOf(runsDir(root)).filter((r) => isRunId(r) && !runHome(root, r).stamp).sort()) {
     const meta = readJson(runJsonPath(root, run))
     if (!meta || typeof meta !== 'object') continue
     const st = runState(root, run)
     if (st.state !== 'live' && st.state !== 'stopped') continue
-    const threads = [...roundSearches(readRunLog(root, run).entries).keys()].sort()
+    const { entries } = readRunLog(root, run)
+    if (faultedWith(segmentOf(entries), OLD_MARK)) continue
+    const threads = [...oldSearches(runHome(root, run).dir, entries).keys()].sort()
     if (threads.length === 0) continue
     if (st.state === 'live') out.refused.push({ what: 'run ' + run, why: 'it is live: pid ' + st.run.pid })
     else out.runs.push({ run, program: String(meta.program || ''), threads })
   }
 }
 
-/** One effort's open executions: each folder holding a round search, planned, excluded or left; a live execution refused. */
+/** One effort's open executions: each folder holding an old-shape search, planned, excluded or left; a live execution refused. */
 function effortParts(root, effort, out) {
   const tree = readTree(root, effort)
   const open = openExecutions({ repo: root, effort, execution: '' })
   const rulings = open.flatMap(({ stamp }) => readLog(root, effort, 'state:' + stamp).entries)
   for (const { stamp } of open) {
     const run = executionRunId(effort, stamp)
-    const found = roundSearches(readRunLog(root, run).entries)
+    const found = oldSearches(runHome(root, run).dir, readRunLog(root, run).entries)
     if (found.size === 0) continue
     const st = runState(root, run)
     if (st.state === 'live') {
@@ -185,18 +212,21 @@ export function plan(repo) {
   return out
 }
 
-/** The records a run still lacks of its migration, from the disk now: none unless it is stopped and holds a round search. */
+/**
+ * The records a run still lacks of its migration, from the disk now: none unless it is stopped,
+ * holds an old-shape search and its latest segment carries no 5.4.1 migration fault.
+ */
 function runRecords(root, run) {
   if (runState(root, run).state !== 'stopped') return []
   const { entries } = readRunLog(root, run)
-  const found = roundSearches(entries)
+  const since = segmentOf(entries)
+  if (faultedWith(since, OLD_MARK)) return []
+  const found = oldSearches(runHome(root, run).dir, entries)
   if (found.size === 0) return []
-  const since = entries.slice(entries.findLastIndex((e) => e.kind === 'run') + 1)
-  const faulted = since.some((e) => e.kind === 'fault' && String(e.detail || '').startsWith(MARK))
   return [
-    ...(faulted ? [] : [{
+    ...(faultedWith(since, MARK) ? [] : [{
       kind: 'fault', node: '', channel: 'program',
-      detail: MARK + ' ' + found.size + ' of its searches ran in rounds, which nothing reads; start the program again',
+      detail: MARK + ' ' + found.size + ' of its searches are in a shape 5.6.0 does not read; start the program again',
     }]),
     { kind: 'ended', result: { status: 'failed', file: '', complete: false } },
   ]

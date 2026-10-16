@@ -387,6 +387,15 @@ test('files reads brackets literally', async () => {
   assert.deepEqual((await files(tree, { glob: 'app/[id]/**' }, { scope: ['.'] })).keys, ['app/[id]/page view.tsx'])
 })
 
+test('a glob written as brace alternation is refused, never matched as nothing', async () => {
+  const listed = await files(tree, { glob: '**/{CLAUDE.md,AGENTS.md}' }, { scope: ['.'] })
+  assert.equal(listed.ok, false, JSON.stringify(listed))
+  assert.equal(listed.refusal, 'unsupported_syntax')
+  const grepped = await grep(tree, { pattern: 'x', paths: ['src/{a,b}.mjs'] }, { scope: ['.'] })
+  assert.equal(grepped.ok, false, JSON.stringify(grepped))
+  assert.equal(grepped.refusal, 'unsupported_syntax')
+})
+
 test('files keeps * within a segment and reads ? as one character', async () => {
   const flat = reached.map(([k]) => k).filter((k) => /^src\/[^/]+\.mjs$/.test(k)).sort()
   assert.ok(flat.length >= 2)

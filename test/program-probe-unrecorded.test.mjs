@@ -16,7 +16,7 @@ import { sectionsOf, unitsOf } from '../lib/evidence.mjs'
 import { readLog } from '../lib/ledger.mjs'
 import { probe } from '../lib/programs/probe.mjs'
 import { hashSpec } from '../lib/spec.mjs'
-import { closedSearch } from './harness/navigator.mjs'
+import { closedSearch } from './fast/harness/scout.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 const E = 'e1'
@@ -42,17 +42,15 @@ const proberOut = (units, findings) => ({
   notes: '', stop_reason: 'exhausted', not_reached: '',
 })
 
-/** The locate script that ends every ask of the search over `text`: a closing turn, the stall, and the ruling. */
-function locateScript(text) {
-  return closedSearch({ name: 'locate', asks: ['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)] })
-}
+/** The locate script: one scout session that finds nothing. */
+const locateScript = () => closedSearch({ name: 'locate' })
 
 /** The real probe over a rig holding the spec, one prober holding every standing axis. */
 async function probeRound(t, findings) {
   const units = unitsOf(KEYS, sectionsOf(DOC))
   const rig = programRig({
     files: { [SPEC]: DOC },
-    script: { ...locateScript(DOC), 'analyst||prober:1': [{ output: proberOut(units, findings) }] },
+    script: { ...locateScript(), 'analyst||prober:1': [{ output: proberOut(units, findings) }] },
   })
   t.after(() => rig.cleanup())
   const artifact = join(rig.repo, ...SPEC.split('/'))

@@ -15,9 +15,9 @@ import { join } from 'node:path'
 import { reviewedFromResult } from '../lib/approval.mjs'
 import { carriedFindings, liveItems, recordProbe, reviewScope, sectionsOf, unitsOf } from '../lib/evidence.mjs'
 import { readLog } from '../lib/ledger.mjs'
-import { probe } from '../lib/programs/probe.mjs'
+import { locateMaterial, probe } from '../lib/programs/probe.mjs'
 import { evidenceReturnsDir, evidenceSnapshotsDir } from '../lib/store.mjs'
-import { closedSearch } from './harness/navigator.mjs'
+import { closedSearch } from './fast/harness/scout.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 const STANDING = ['ambiguity', 'invariants', 'yagni', 'reinvention']
@@ -55,10 +55,8 @@ const linesOf = (text) => text.trim().split('\n')
 
 // --- returns as the agents give them -----------------------------------------------------------
 
-/** The locate script that ends every ask of the search over `text`: a closing turn, the stall, and the ruling. */
-const LOCATE = (text) => {
-  return closedSearch({ name: 'locate', asks: ['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)] })
-}
+/** The locate script: one scout session that finds nothing. */
+const LOCATE = () => closedSearch({ name: 'locate' })
 const finding = (axisKey, severity, section, start, claim) => ({
   axis: axisKey, severity, section, claim, evidence: 'line ' + start, start, end: start,
 })
@@ -96,7 +94,7 @@ const changedLines = (changed) => changed.reduce((n, r) => n + r.end - r.start +
  * returns: the sections a changed range touches, the probers' groups and units, and a script giving
  * each prober's steps (`probers[n](units)`, default every unit ruled clean).
  */
-function narrowed(text, scope, { keys = STANDING, perAxis = false, probers = {}, locate = LOCATE(text) } = {}) {
+function narrowed(text, scope, { keys = STANDING, perAxis = false, probers = {}, locate = LOCATE() } = {}) {
   const touched = sectionsOf(text).filter((s) => scope.changed.some((r) => overlaps(s, r)))
   const groups = deal(keys, headsFor(keys, changedLines(scope.changed), perAxis))
   const unitsOfGroup = groups.map((g) => unitsOf(g, touched))
@@ -111,7 +109,7 @@ function narrowed(text, scope, { keys = STANDING, perAxis = false, probers = {},
 function fullScript(text, { keys = STANDING, findings = [] } = {}) {
   const sections = sectionsOf(text)
   const groups = deal(keys, headsFor(keys, linesOf(text).length, false))
-  const script = { ...LOCATE(text) }
+  const script = { ...LOCATE() }
   groups.forEach((g, i) => { script['analyst||prober:' + (i + 1)] = [{ output: proberOut(unitsOf(g, sections), i === 0 ? findings : []) }] })
   return script
 }
@@ -185,12 +183,27 @@ test('a probe given since attacks only the sections the changed lines touch', as
   }
 })
 
-test('a narrowed round asks only for the sections its changed lines fall in', async (t) => {
-  const { run, touched } = await narrowRound(t)
+test("a narrowed round's locate material is its changed ranges", async (t) => {
+  const { run, scope } = await narrowRound(t)
   const charge = readFileSync(run.calls.find((c) => c.thread.key === 'locate').role.systemPromptFile, 'utf8')
-  for (const s of sectionsOf(EDITED)) {
-    assert.equal(charge.includes('ground:' + s.slug), touched.some((x) => x.slug === s.slug), 'ground:' + s.slug)
+  const lines = EDITED.split('\n')
+  for (const r of scope.changed) {
+    assert.ok(charge.includes(ART + ', lines ' + r.start + '-' + r.end), 'the range ' + r.start + '-' + r.end + ' is a material label')
+    assert.ok(charge.includes(lines.slice(r.start - 1, r.end).join('\n')), 'the range ' + r.start + '-' + r.end + ' is material')
   }
+  for (const line of ['limit inbound requests per key', 'a token bucket per key, refilled each second']) {
+    assert.ok(!charge.includes(line), 'a line no edit touched is not material: ' + line)
+  }
+})
+
+test('the locate material is the artefact whole, or each changed range alone', () => {
+  const lines = EDITED.replace(/\n$/, '').split('\n')
+  assert.deepEqual(locateMaterial(EDITED, ART, null), [{ label: ART, text: lines.join('\n') }])
+  const changed = [{ start: 2, end: 3 }, { start: 9, end: 9 }]
+  assert.deepEqual(locateMaterial(EDITED, ART, changed), [
+    { label: ART + ', lines 2-3', text: lines[1] + '\n' + lines[2] },
+    { label: ART + ', lines 9-9', text: lines[8] },
+  ])
 })
 
 test("a narrowed round's scope names the changed lines", async (t) => {

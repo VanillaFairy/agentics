@@ -1,5 +1,5 @@
 // test/program-probe.test.mjs — pins the probe program's full round: its scope and snapshot, the
-// shared ground resolved once, the locating search and its continuation, the repository's axes beside
+// shared ground resolved once, the one locating search and its ends, the repository's axes beside
 // the standing four, the head count and the round-robin deal, what reaches which brief, the units and
 // the gate, the record anchored to the snapshot, relaunches, and the result read back by
 // `approval.mjs reviewed --from-run`.
@@ -16,19 +16,19 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { reviewedFromResult } from '../lib/approval.mjs'
-import { groundText } from '../lib/briefs/search.mjs'
+import { LOCATE_FIND, LOCATE_LABELS } from '../lib/briefs/probe.mjs'
+import { scoutCharge } from '../lib/briefs/search.mjs'
 import { resolveCitations } from '../lib/citations.mjs'
 import { liveItems, reviewScope, sectionsOf, unitsOf } from '../lib/evidence.mjs'
 import { readLog } from '../lib/ledger.mjs'
 import { programContext } from '../lib/programs/common.mjs'
-import { probe, scopeOf } from '../lib/programs/probe.mjs'
+import { locateMaterial, probe, scopeOf } from '../lib/programs/probe.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
 import { treeOf } from '../lib/search/pin.mjs'
 import { evidenceReturnsDir, posix } from '../lib/store.mjs'
-import { EMPTY_GROUND, closingTurn, endSearch, grepCall, hitTurn, openTurn, quietTurn, repoReturn, withGround } from './harness/navigator.mjs'
 import { programRig } from './harness/program-rig.mjs'
-import { endedRounds } from './harness/survey-world.mjs'
+import { closedSearch, grepRecord, hitRecord, hitTurn, scoutStep, stalledRecord } from './fast/harness/scout.mjs'
 import { scriptedRunner } from './fast/harness/scripted-runner.mjs'
 
 const STANDING = ['ambiguity', 'invariants', 'yagni', 'reinvention']
@@ -63,35 +63,11 @@ const linesOf = (text) => text.trim().split('\n')
 
 // --- returns as the agents give them -----------------------------------------------------------
 
-/** The locating search's asks over `text`: guidance, then one ground ask per section. */
-const asksOf = (text) => ['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)]
-/**
- * A locate turn that greps each hit's line for its ask and returns it, the rest with a grep that finds
- * nothing: asks with a hit declared answered, the rest absent. Each hit `[ask, path, line]`.
- */
-const locateTurn = (text, hits) => ({
-  calls: [
-    ...hits.map(([ask, path, line]) => grepCall(ask, [[path, line]])),
-    grepCall(asksOf(text).filter((k) => !hits.some(([a]) => a === k)), [], 'ABSENT'),
-  ],
-  output: repoReturn({
-    hits, dismissed: asksOf(text).filter((k) => !hits.some(([a]) => a === k)).map((k) => ({ ask: k, glob: '**', why: 'nothing here bears on it' })),
-    declare: Object.fromEntries(asksOf(text).map((k) => [k, hits.some(([a]) => a === k) ? 'answered' : 'absent'])),
-  }),
-})
-/** scriptFor's options for one `locateTurn` over `hits`: the turn, and the asks it answers ruled answered. */
-const located = (text, hits) => ({ locate: [locateTurn(text, hits)], answered: [...new Set(hits.map(([ask]) => ask))] })
-/**
- * The steps that end the locate search after its `turn` turns: the stall, and one ruling of every ask,
- * those in `answered` answered and the rest absent.
- */
-function endLocate(text, turn, answered) {
-  const ends = [
-    endSearch({ name: 'locate', turn, asks: asksOf(text).filter((k) => !answered.includes(k)) }),
-    endSearch({ name: 'locate', turn, asks: answered, ruling: 'answered' }),
-  ]
-  return { navigator: ends[0].navigator, key: ends[0].ruler.key, steps: [{ output: { units: ends.flatMap((e) => e.ruler.steps[0].output.units) } }] }
-}
+/** A hit the locating search journals. */
+const hitOf = (path, line, label, note = 'bears on it') => ({ path, line, note, label })
+/** scriptFor's options for a locate whose scout journals `hits` and returns. */
+const located = (hits) => ({ locate: [hitTurn(hits)] })
+const NOTHING_LOCATED = closedSearch({ name: 'locate' })['scout||locate']
 const axis = (key, charge = 'attack the design on ' + key, source = 'docs/REVIEW.md') => ({ key, charge, source })
 const axesOut = (axes = [], over = {}) => ({ axes, guidance_read: ['docs/REVIEW.md'], notes: '', stop_reason: 'completed', ...over })
 const finding = (axisKey, severity, section, start, over = {}) => ({
@@ -119,23 +95,14 @@ const headsFor = (keys, lines, perAxis) =>
 const deal = (keys, n) => Array.from({ length: n }, (_, i) => keys.filter((_, j) => j % n === i))
 
 /**
- * A script for a whole round of `text` over `keys`: the locating scout's steps, the axes analyst's,
- * and each prober's, `probers[n](units)` giving prober n's steps (default: every unit ruled clean).
- * The locate turns end by a stall and a ruling: `answered` asks ruled answered, the rest absent; with
- * `stalled`, the last locate turn is the stall and every ask is ruled `stalled` on it.
+ * A script for a whole round of `text` over `keys`: the locating scout's steps (default: it finds
+ * nothing), the axes analyst's, and each prober's, `probers[n](units)` giving prober n's steps
+ * (default: every unit ruled clean).
  */
-function scriptFor(text, keys, { locate = [closingTurn(asksOf(text))], answered = [], stalled = null, axes = null, perAxis = false, probers = {} } = {}) {
+function scriptFor(text, keys, { locate = NOTHING_LOCATED, axes = null, perAxis = false, probers = {} } = {}) {
   const sections = sectionsOf(text)
   const groups = deal(keys, headsFor(keys, linesOf(text).length, perAxis))
-  const script = {}
-  if (stalled) {
-    // the last of `locate` is the stall: the ruler rules every ask `stalled` on it
-    const end = endSearch({ name: 'locate', turn: locate.length - 1, asks: asksOf(text), ruling: stalled })
-    Object.assign(script, { 'scout||locate': locate, [end.ruler.key]: end.ruler.steps })
-  } else {
-    const end = endLocate(text, locate.length, answered)
-    Object.assign(script, { 'scout||locate': [...locate, ...end.navigator], [end.key]: end.steps })
-  }
+  const script = { 'scout||locate': locate }
   if (axes) script['analyst||axes'] = axes
   groups.forEach((g, i) => {
     const units = unitsOf(g, sections)
@@ -144,11 +111,11 @@ function scriptFor(text, keys, { locate = [closingTurn(asksOf(text))], answered 
   return { script, groups, sections, unitsOfGroup: groups.map((g) => unitsOf(g, sections)) }
 }
 
-/** A probe over a rig; `ground` fixes the resolver's answer (`null`: the real resolver over the rig). */
-async function probeIn(t, { files = { [ART]: DOC }, path = ART, script, over = {}, config = {}, ground = EMPTY_GROUND } = {}) {
+/** A probe over a rig. */
+async function probeIn(t, { files = { [ART]: DOC }, path = ART, script, over = {}, config = {} } = {}) {
   const rig = rigFor(t, { files, script, config })
   const args = argsFor(rig.repo, path, over)
-  const result = await probe(ground ? withGround(rig.ctx, ground) : rig.ctx, args)
+  const result = await probe(rig.ctx, args)
   return { rig, args, result }
 }
 const chargeOf = (call) => readFileSync(call.role.systemPromptFile, 'utf8')
@@ -283,139 +250,105 @@ const GROUND_FILES = {
   'docs/REVIEW.md': ['# Review', 'GUIDANCE_LINE_TOKEN every limit names its unit', 'end'].join('\n') + '\n',
   'src/ground.js': ['// ground', 'export const GROUND_LINE_TOKEN = 1', 'export const end = 2'].join('\n') + '\n',
 }
-const GUIDE_HIT = ['guidance', 'docs/REVIEW.md', 2]
-const GROUND_HIT = ['ground:design', 'src/ground.js', 2]
+const GUIDE_HIT = hitOf('docs/REVIEW.md', 2, 'guidance')
+const GROUND_HIT = hitOf('src/ground.js', 2, 'ground')
 
-test('the locating search asks for guidance and for each section in scope, its charge holding the artefact', async (t) => {
+test('the locating search is one scout session whose charge holds the find, its labels and the artefact', async (t) => {
   const { rig, args } = await probeIn(t, { script: scriptFor(DOC, STANDING).script })
   const calls = callsOf(rig, 'locate')
-  assert.equal(calls.length, 2, 'a closing turn and the stall the ruler ends every ask on')
+  assert.equal(calls.length, 1)
+  assert.deepEqual([calls[0].role.name, calls[0].schema], ['scout', schemaOf('search')])
   const charge = chargeOf(calls[0])
-  for (const line of linesOf(args.artifact_text).filter((l) => l.trim() !== '')) assert.ok(charge.includes(line), 'the charge holds ' + JSON.stringify(line))
-  for (const key of asksOf(DOC)) assert.ok(charge.includes(key), 'the charge asks ' + key)
+  assert.ok(charge.includes(LOCATE_FIND), 'the charge holds the find')
+  const material = locateMaterial(DOC, ART, null)
+  assert.ok(charge.includes(scoutCharge({ domain: 'repo', find: LOCATE_FIND, scope: args.roots, labels: LOCATE_LABELS, material })), 'the charge is the scout charge of the find, its labels and the artefact')
+  for (const label of ['`guidance`', '`ground`']) assert.ok(charge.includes(label), 'the charge names the label ' + label)
+  assert.ok(charge.includes(linesOf(args.artifact_text).join('\n')), 'the charge holds the artefact whole')
 })
 
-test('located ground reaches every prober and located guidance the axes analyst alone', async (t) => {
-  const { script } = scriptFor(DOC, STANDING, { ...located(DOC, [GUIDE_HIT, GROUND_HIT]), axes: [{ output: axesOut([]) }], perAxis: true })
+test('located hits reach every prober', async (t) => {
+  const { script } = scriptFor(DOC, STANDING, { ...located([GUIDE_HIT, GROUND_HIT]), axes: [{ output: axesOut([]) }], perAxis: true })
   const { rig } = await probeIn(t, { files: { [ART]: DOC, ...GROUND_FILES }, script, over: { per_axis: true } })
+  const calls = proberCalls(rig)
+  assert.equal(calls.length, STANDING.length)
+  for (const c of calls) {
+    for (const token of ['GROUND_LINE_TOKEN', 'GUIDANCE_LINE_TOKEN']) assert.ok(c.brief.includes(token), c.thread.key + ' holds ' + token)
+  }
+})
+
+test('located guidance reaches the axes analyst alone', async (t) => {
+  const { script } = scriptFor(DOC, STANDING, { ...located([GUIDE_HIT, GROUND_HIT]), axes: [{ output: axesOut([]) }] })
+  const { rig } = await probeIn(t, { files: { [ART]: DOC, ...GROUND_FILES }, script })
   const [axesCall] = callsOf(rig, 'axes')
   assert.ok(axesCall, 'an axes call')
   assert.ok(axesCall.brief.includes('GUIDANCE_LINE_TOKEN'))
   assert.ok(!axesCall.brief.includes('GROUND_LINE_TOKEN'))
-  const calls = proberCalls(rig)
-  assert.equal(calls.length, STANDING.length)
-  for (const c of calls) {
-    assert.ok(c.brief.includes('GROUND_LINE_TOKEN'), c.thread.key + ' holds the located ground')
-    assert.ok(!c.brief.includes('GUIDANCE_LINE_TOKEN'), c.thread.key + ' holds no located guidance')
-  }
 })
 
-test('repo_ground counts the files the ground asks hit and the hits no file holds', async (t) => {
-  const hits = [GROUND_HIT, ['ground:design', 'src/missing.js', 5]]
+test('repo_ground counts the hits and the hits no file holds', async (t) => {
+  const hits = [GROUND_HIT, hitOf('src/missing.js', 5, 'ground')]
   const files = { [ART]: DOC, ...GROUND_FILES }
-  const { result } = await probeIn(t, { files, script: scriptFor(DOC, STANDING, located(DOC, hits)).script })
+  const { result } = await probeIn(t, { files, script: scriptFor(DOC, STANDING, located(hits)).script })
   assert.deepEqual(result.repo_ground, {
-    located: new Set(hits.map(([, path]) => path)).size,
-    unresolved: hits.filter(([, path]) => !(path in files)).length,
+    status: 'done', hits: hits.length, unresolved: hits.filter((h) => !(h.path in files)).length,
   })
 })
 
-test('a hit on a line no call showed never reaches the probers', async (t) => {
-  const unobserved = { output: repoReturn({ hits: [GROUND_HIT], declare: Object.fromEntries(asksOf(DOC).map((k) => [k, 'absent'])) }) }
-  const { rig, result } = await probeIn(t, {
-    files: { [ART]: DOC, ...GROUND_FILES }, script: scriptFor(DOC, STANDING, { locate: [unobserved, quietTurn(asksOf(DOC))], stalled: 'not_converging' }).script,
-  })
-  assert.equal(result.repo_ground.located, 0)
-  assert.ok(!proberBrief(rig, 1).includes('GROUND_LINE_TOKEN'))
-})
-
-test('what the document names reaches every prober as the ground table', async (t) => {
-  const ground = {
-    rows: [{ kind: 'symbol', mention: 'GROUND_LINE_TOKEN', key: 'src/ground.js', exists: true, asks: ['ground:design'], defs: [{ key: 'src/ground.js', line: 2 }], refs: [], files: 1 }],
-    seeds: [],
-  }
-  const { rig } = await probeIn(t, {
-    files: { [ART]: DOC, ...GROUND_FILES }, ground, script: scriptFor(DOC, STANDING, { locate: [closingTurn(asksOf(DOC))], perAxis: true }).script, over: { per_axis: true },
-  })
-  const calls = proberCalls(rig)
-  assert.equal(calls.length, STANDING.length)
-  for (const c of calls) assert.ok(c.brief.includes(groundText(ground)), c.thread.key + ' holds the ground table')
-})
-
-test('each section in scope is material for its own ground ask, the rest of the artefact context', async (t) => {
-  const seen = []
-  const rig = rigFor(t, { files: { [ART]: DOC }, script: scriptFor(DOC, STANDING).script })
-  await probe(withGround(rig.ctx, EMPTY_GROUND, seen), argsFor(rig.repo, ART))
-  assert.equal(seen.length, 1, 'one resolver run')
-  const { material } = seen[0]
-  for (const s of sectionsOf(DOC)) {
-    const own = material.filter((m) => (m.asks || []).includes('ground:' + s.slug))
-    assert.equal(own.length, 1, s.slug + ' has its own material')
-    assert.ok(own[0].text.includes(linesOf(DOC)[s.start - 1]), s.slug + "'s material is its own text")
-  }
-  assert.ok(!material.some((m) => (m.asks || []).includes('guidance')), 'guidance is seeded, never material')
-  for (const line of linesOf(DOC).filter((l) => l.trim() !== '')) assert.ok(material.some((m) => m.text.includes(line)), 'the material holds ' + line)
-})
-
-test("a path a section cites is on that section's ground ask alone", async (t) => {
-  const quiet = [quietTurn(asksOf(CITING_DOC)), quietTurn(asksOf(CITING_DOC))]
-  const { rig, result } = await probeIn(t, { ground: null, files: { [ART]: CITING_DOC, ...CITED_FILES }, script: scriptFor(CITING_DOC, STANDING, { locate: quiet, stalled: 'not_converging' }).script })
-  assert.equal(callsOf(rig, 'locate').length, 2, 'a quiet turn leaves the citing section open')
-  assert.deepEqual(result.coverage.incomplete, ['locate'])
-  assert.ok(result.coverage.unreached.some((l) => l.includes('ground:design') && l.includes('src/limiter.js')), JSON.stringify(result.coverage))
-  assert.ok(!result.coverage.unreached.some((l) => l.includes('ground:intent') && l.includes('src/limiter.js')), JSON.stringify(result.coverage))
-  assert.ok(result.coverage.unreached.some((l) => l.startsWith('locate:ground:intent: files ')), 'a section that names nothing owes its scope: ' + JSON.stringify(result.coverage))
-})
-
-test('the artefact is never a seed of its own guidance ask', async (t) => {
-  const quiet = [quietTurn(asksOf(DOC)), quietTurn(asksOf(DOC))]
-  const { result } = await probeIn(t, { ground: null, script: scriptFor(DOC, STANDING, { locate: quiet, stalled: 'not_converging' }).script })
-  assert.ok(!result.coverage.unreached.some((l) => l.includes(':guidance:') && l.includes(ART)), JSON.stringify(result.coverage))
-})
-
-test("the resolver's guidance seeds open on the guidance ask", async (t) => {
-  const quiet = [quietTurn(asksOf(DOC)), quietTurn(asksOf(DOC))]
-  const { result } = await probeIn(t, { ground: null, files: { [ART]: DOC, 'docs/REVIEW.md': GROUND_FILES['docs/REVIEW.md'] }, script: scriptFor(DOC, STANDING, { locate: quiet, stalled: 'not_converging' }).script })
-  assert.deepEqual(result.coverage.incomplete, ['locate'])
-  assert.ok(result.coverage.unreached.some((l) => l.includes('guidance') && l.includes('docs/REVIEW.md')), JSON.stringify(result.coverage))
-})
-
-test('a locating search that produced nothing leaves the repository axes and ground failed, and the standing axes probed', async (t) => {
-  const { rig, result } = await probeIn(t, { script: scriptFor(DOC, STANDING, { locate: [FAIL, FAIL] }).script })
-  assert.ok(result.coverage.failed_channels.includes('repo-axes'), JSON.stringify(result.coverage))
-  assert.ok(result.coverage.failed_channels.includes('repo-ground'), JSON.stringify(result.coverage))
+test('a failed locate leaves the ground not located and the probe incomplete', async (t) => {
+  const { rig, result } = await probeIn(t, { script: scriptFor(DOC, STANDING, { locate: [FAIL] }).script })
+  assert.ok(result.coverage.failed_channels.includes('locate'), JSON.stringify(result.coverage))
+  assert.ok(result.coverage.unreached.some((l) => l.startsWith('locate: failed')), JSON.stringify(result.coverage))
   assert.equal(callsOf(rig, 'axes').length, 0)
   assert.deepEqual(keysOf(result), STANDING)
-  assert.ok(proberCalls(rig).length > 0, 'the probers still run')
+  assert.ok(proberBrief(rig, 1).includes('NOT LOCATED'), 'the probers are told the ground was not located')
   assert.equal(result.coverage.complete, false)
 })
 
-/** A locate turn that hits the ground file and leaves it to be read to its end: the ground ask stays open. */
-const openLocate = () => openTurn('ground:design', [['src/ground.js', 2]], 'src/ground.js')
+test('a stalled locate is complete and keeps what it found', async (t) => {
+  const locate = [scoutStep({ calls: [grepRecord([[GROUND_HIT.path, GROUND_HIT.line]]), stalledRecord()], hits: [GROUND_HIT] })]
+  const { rig, result } = await probeIn(t, { files: { [ART]: DOC, ...GROUND_FILES }, script: scriptFor(DOC, STANDING, { locate }).script })
+  assert.deepEqual(result.coverage.incomplete, [])
+  assert.ok(result.coverage.declared.some((l) => l.startsWith('locate: stalled')), JSON.stringify(result.coverage))
+  assert.ok(proberBrief(rig, 1).includes('GROUND_LINE_TOKEN'), 'the prober holds what the locate found')
+  assert.ok(!proberBrief(rig, 1).includes('did NOT finish'))
+})
 
-test('a locating search whose state stops moving is incomplete and keeps what it found', async (t) => {
-  const locate = [openLocate(), { output: repoReturn({ declare: {} }) }]
-  const { rig, result } = await probeIn(t, { files: { [ART]: DOC, ...GROUND_FILES }, script: scriptFor(DOC, STANDING, { locate, stalled: 'not_converging' }).script })
-  assert.equal(callsOf(rig, 'locate').length, 2)
+test('a locate stopped at its budget keeps its hits and is incomplete', async (t) => {
+  const locate = [{ status: 'failed', cause: 'budget', cost_total: 1.02, calls: [hitRecord(GROUND_HIT)] }]
+  const { rig, result } = await probeIn(t, { files: { [ART]: DOC, ...GROUND_FILES }, script: scriptFor(DOC, STANDING, { locate }).script, over: { search_budget: 1 } })
   assert.deepEqual(result.coverage.incomplete, ['locate'])
-  assert.ok(!result.coverage.failed_channels.includes('repo-ground'), JSON.stringify(result.coverage))
-  assert.ok(proberBrief(rig, 1).includes('GROUND_LINE_TOKEN'), "the prober holds the first turn's ground")
+  assert.ok(result.coverage.unreached.some((l) => l.startsWith('locate: budget')), JSON.stringify(result.coverage))
+  assert.equal(result.repo_ground.hits, 1)
+  assert.ok(proberBrief(rig, 1).includes('GROUND_LINE_TOKEN'), 'the prober holds what the locate found')
   assert.ok(proberBrief(rig, 1).includes('did NOT finish'), 'the prober is told the search did not finish')
 })
 
-test('a locating search that stops after a turn returned is incomplete, fails its asks, and keeps what it found', async (t) => {
-  const locate = [openLocate(), FAIL, FAIL]
-  const { result, rig } = await probeIn(t, { files: { [ART]: DOC, ...GROUND_FILES }, script: scriptFor(DOC, STANDING, { locate }).script })
-  assert.deepEqual(result.coverage.incomplete, ['locate'])
-  assert.ok(result.coverage.failed_channels.some((c) => c.startsWith('locate:')), JSON.stringify(result.coverage))
-  assert.ok(!result.coverage.failed_channels.includes('repo-ground'), 'the search produced something: ' + JSON.stringify(result.coverage))
-  assert.equal(result.repo_ground.located, 1)
-  assert.ok(proberBrief(rig, 1).includes('GROUND_LINE_TOKEN'), 'the prober holds what the first turn found')
+test('a locate that found nothing says no hits', async (t) => {
+  const { result } = await probeIn(t, { script: scriptFor(DOC, STANDING).script })
+  assert.ok(result.coverage.declared.includes('locate: done, 0 calls, no hits'), JSON.stringify(result.coverage))
+  assert.deepEqual(result.repo_ground, { status: 'done', hits: 0, unresolved: 0 })
+})
+
+test('the search budget caps the locate', async (t) => {
+  const rig = rigFor(t, { files: { [ART]: DOC } })
+  const runner = scriptedRunner(scriptFor(DOC, STANDING).script, { log: rig.log })
+  await probe(programContext({ ...rig.ctx, runAgent: runner.runAgent }), argsFor(rig.repo, ART, { search_budget: 2 }))
+  const [start] = runner.starts.filter((s) => s.key === 'scout||locate')
+  const args = start.args
+  assert.equal(Number(args[args.indexOf('--max-budget-usd') + 1]), 2)
+})
+
+test('no prober is offered wants or a ground table', async (t) => {
+  const { rig } = await probeIn(t, { script: scriptFor(DOC, STANDING, { perAxis: true }).script, over: { per_axis: true } })
+  for (const c of proberCalls(rig)) {
+    assert.ok(!c.brief.includes('WANTS'), c.thread.key + ' is offered no wants')
+    assert.ok(!c.brief.includes('WHAT THE DOCUMENT NAMES'), c.thread.key + ' holds no ground table')
+  }
 })
 
 test('a tree handed in-process is searched and cited; the artefact is snapshotted where the probe started', async (t) => {
-  const found = ['ground:design', 'src/other.js', 2]
-  const rig = rigFor(t, { files: { [ART]: CITING_DOC, ...CITED_FILES }, script: scriptFor(CITING_DOC, STANDING, located(CITING_DOC, [found])).script })
+  const found = hitOf('src/other.js', 2, 'ground')
+  const rig = rigFor(t, { files: { [ART]: CITING_DOC, ...CITED_FILES }, script: scriptFor(CITING_DOC, STANDING, located([found])).script })
   const wt = join(rig.repo, '.claude', 'worktrees', 'other')
   git(rig.repo, 'worktree', 'add', '--detach', wt, 'HEAD')
   writeFileSync(join(wt, 'src', 'limiter.js'), CITED_FILES['src/limiter.js'].replace('CITED_LINE_TOKEN', 'TREE_LINE_TOKEN'))
@@ -423,7 +356,7 @@ test('a tree handed in-process is searched and cited; the artefact is snapshotte
   git(wt, 'add', '-A')
   git(wt, 'commit', '-qm', 'the tree moves on')
   const args = { ...argsFor(rig.repo, ART), tree: treeOf(wt) }
-  const result = await probe(withGround(rig.ctx), args)
+  const result = await probe(rig.ctx, args)
   assert.ok(proberBrief(rig, 1).includes('TREE_LINE_TOKEN'), 'the citations were read from the tree')
   assert.ok(!proberBrief(rig, 1).includes('CITED_LINE_TOKEN'), 'not from the checkout the probe started in')
   assert.ok(proberBrief(rig, 1).includes('TREE_ONLY_TOKEN'), "the search's hit was read from the tree")
@@ -431,57 +364,24 @@ test('a tree handed in-process is searched and cited; the artefact is snapshotte
 })
 
 test('without a handed tree the citations are read from ctx.root, not from the checkout ctx.repo names', async (t) => {
-  const rig = rigFor(t, { files: { [ART]: CITING_DOC, ...CITED_FILES }, script: scriptFor(CITING_DOC, STANDING, { locate: [closingTurn(asksOf(CITING_DOC))] }).script })
+  const rig = rigFor(t, { files: { [ART]: CITING_DOC, ...CITED_FILES }, script: scriptFor(CITING_DOC, STANDING).script })
   const wt = join(rig.repo, '.claude', 'worktrees', 'rooted')
   git(rig.repo, 'worktree', 'add', '--detach', wt, 'HEAD')
   writeFileSync(join(wt, 'src', 'limiter.js'), CITED_FILES['src/limiter.js'].replace('CITED_LINE_TOKEN', 'ROOT_LINE_TOKEN'))
   git(wt, 'commit', '-qam', 'the root moves on')
-  await probe(withGround({ ...rig.ctx, root: wt }), argsFor(rig.repo, ART))
+  await probe({ ...rig.ctx, root: wt }, argsFor(rig.repo, ART))
   assert.ok(proberBrief(rig, 1).includes('ROOT_LINE_TOKEN'), "the citations were read from ctx.root's tree")
   assert.ok(!proberBrief(rig, 1).includes('CITED_LINE_TOKEN'), 'not from ctx.repo')
 })
 
-test('ground is what the probers were handed', async (t) => {
-  const UNIT_W = 'yagni@design'
-  const WANT_W = 'WANT-where the bucket is kept'
-  const files = { [ART]: DOC, ...GROUND_FILES, 'src/want.js': ['// want', 'export const WANT_LINE_TOKEN = 1', ''].join('\n') }
-  const script = {
-    ...endedRounds('scout', 'locate', [
-      { turns: [locateTurn(DOC, [GUIDE_HIT, GROUND_HIT])], asks: asksOf(DOC), ruling: 'answered' },
-      // the want's turn hits a file, and the ruler rules it not converging: coverage moves, ground does not
-      { turns: [hitTurn('want:1', [['src/want.js', 2, 'NOTE-the bucket']])], asks: 'want:1', ruling: 'not_converging' },
-    ]),
-    'analyst||axes': [{ output: axesOut([]) }],
-  }
-  STANDING.forEach((a, i) => {
-    const units = unitsOf([a], sectionsOf(DOC))
-    script['analyst||prober:' + (i + 1)] = a === 'yagni'
-      ? [{ output: { ...proberOut(units), wants: [{ unit: UNIT_W, want: WANT_W }] } }, { output: proberOut([UNIT_W]) }]
-      : [{ output: proberOut(units) }]
-  })
-  const { rig, result } = await probeIn(t, { files, script, over: { per_axis: true } })
-  assert.equal(callsOf(rig, 'prober:3').length, 2, 'the want was answered to its prober')
-  assert.equal(callsOf(rig, 'axes').length, 1)
-  const axesBrief = callsOf(rig, 'axes')[0].brief
-  assert.ok(axesBrief.includes('GUIDANCE_LINE_TOKEN'), 'the axes brief holds the guidance the first view located')
-  assert.ok(!axesBrief.includes('WANT_LINE_TOKEN'), 'and nothing a want found later')
-  for (const n of [1, 2, 3, 4]) {
-    const first = callsOf(rig, 'prober:' + n)[0].brief
-    assert.ok(first.includes('GROUND_LINE_TOKEN'), 'prober:' + n + ' was handed the located ground')
-    assert.ok(!first.includes('WANT_LINE_TOKEN'))
-  }
-  assert.deepEqual(result.repo_ground, { located: 1, unresolved: 0 }, 'the recorded ground is the view handed out: ' + JSON.stringify(result.repo_ground))
-  assert.ok(result.coverage.declared.some((l) => l.startsWith('want 1: ended not_converging')), 'coverage reads the final view: ' + JSON.stringify(result.coverage.declared))
-})
-
 test('guidance is read from the pinned tree', async (t) => {
   const files = { [ART]: DOC, 'CLAUDE.md': 'ROOT_GUIDE_TOKEN the checkout\'s rules\n' }
-  const rig = rigFor(t, { files, script: scriptFor(DOC, STANDING).script })
+  const rig = rigFor(t, { files, script: scriptFor(DOC, STANDING, { axes: [{ output: axesOut([]) }] }).script })
   const wt = join(rig.repo, '.claude', 'worktrees', 'pinned')
   git(rig.repo, 'worktree', 'add', '--detach', wt, 'HEAD')
   writeFileSync(join(wt, 'CLAUDE.md'), 'TREE_GUIDE_TOKEN the pinned tree\'s rules\n')
   git(wt, 'commit', '-qam', 'the tree moves on')
-  await probe(withGround(rig.ctx), { ...argsFor(rig.repo, ART), tree: treeOf(wt) })
+  await probe(rig.ctx, { ...argsFor(rig.repo, ART), tree: treeOf(wt) })
   const brief = proberBrief(rig, 1)
   assert.ok(brief.includes('TREE_GUIDE_TOKEN'), "the guidance is the pinned tree's")
   assert.ok(!brief.includes('ROOT_GUIDE_TOKEN'), 'not the guidance at ctx.root')
@@ -490,7 +390,7 @@ test('guidance is read from the pinned tree', async (t) => {
 // --- axes --------------------------------------------------------------------------------------
 
 const withGuidance = (axesSteps, keys = STANDING, extra = {}) =>
-  scriptFor(DOC, keys, { ...located(DOC, [GUIDE_HIT]), axes: axesSteps, ...extra })
+  scriptFor(DOC, keys, { ...located([GUIDE_HIT]), axes: axesSteps, ...extra })
 
 test('located guidance buys one axes analyst', async (t) => {
   const read = ['docs/REVIEW.md', 'CLAUDE.md']
@@ -503,11 +403,18 @@ test('located guidance buys one axes analyst', async (t) => {
 })
 
 test('no guidance located buys no axes analyst and fails nothing', async (t) => {
-  const { script } = scriptFor(DOC, STANDING, located(DOC, [GROUND_HIT]))
+  const { script } = scriptFor(DOC, STANDING, located([GROUND_HIT]))
   const { rig, result } = await probeIn(t, { files: { [ART]: DOC, ...GROUND_FILES }, script })
   assert.equal(callsOf(rig, 'axes').length, 0)
   assert.deepEqual(keysOf(result), STANDING)
   assert.deepEqual(result.coverage.failed_channels, [])
+})
+
+test('configured guidance buys the axes analyst with no guidance hit', async (t) => {
+  const files = { [ART]: DOC, 'docs/STYLE.md': 'STYLE_GUIDE_TOKEN write short lines\n' }
+  const { script } = scriptFor(DOC, STANDING, { axes: [{ output: axesOut([]) }] })
+  const { rig } = await probeIn(t, { files, script, config: { guidance: ['docs/STYLE.md'] } })
+  assert.equal(callsOf(rig, 'axes').length, 1)
 })
 
 test("the repository's axes join the standing four, slugged and each key once", async (t) => {
@@ -618,7 +525,7 @@ test("every dispatch runs as its role at that role's tier", async (t) => {
   const scout = tierFor(loadRole('scout').role, { intelligence: 'normal' })
   const analyst = tierFor(loadRole('analyst').role, { intelligence: 'normal' })
   const [locate] = callsOf(rig, 'locate')
-  assert.deepEqual([locate.role.name, locate.schema, locate.tier], ['scout', schemaOf('search_repo'), scout])
+  assert.deepEqual([locate.role.name, locate.schema, locate.tier], ['scout', schemaOf('search'), scout])
   const [axesCall] = callsOf(rig, 'axes')
   assert.deepEqual([axesCall.role.name, axesCall.schema, axesCall.tier], ['analyst', schemaOf('axes'), analyst])
   const calls = proberCalls(rig)
@@ -645,7 +552,7 @@ test("each prober's brief holds its own axes with their charges and no other pro
   const doc = longDoc(801)
   const returned = [axis('alpha', 'CHARGE_ALPHA_TOKEN check every retry'), axis('beta', 'CHARGE_BETA_TOKEN check every bound')]
   const keys = [...STANDING, 'alpha', 'beta']
-  const { script, groups } = scriptFor(doc, keys, { ...located(doc, [GUIDE_HIT]), axes: [{ output: axesOut(returned) }] })
+  const { script, groups } = scriptFor(doc, keys, { ...located([GUIDE_HIT]), axes: [{ output: axesOut(returned) }] })
   const { rig, result } = await probeIn(t, { files: { [ART]: doc, ...GROUND_FILES }, script })
   assert.deepEqual(result.analysts, groups)
   const charge = { alpha: 'CHARGE_ALPHA_TOKEN check every retry', beta: 'CHARGE_BETA_TOKEN check every bound' }
@@ -806,7 +713,7 @@ test('a relaunch after a prober failed calls only it and records the round once'
   const { script, unitsOfGroup } = secondFails()
   const { rig, args } = await probeIn(t, { script, over: { per_axis: true } })
   const again = rig.relaunch({ 'analyst||prober:2': [{ output: proberOut(unitsOfGroup[1]) }] })
-  const result = await probe(withGround(again.ctx), args)
+  const result = await probe(again.ctx, args)
   assert.deepEqual(again.calls.map((c) => [c.thread.key, c.resume]), [['prober:2', true]])
   assert.equal(probeReturns(rig.repo).length, 1)
   assert.deepEqual(result.coverage.failed_channels, [])
@@ -822,7 +729,7 @@ test('a relaunch keeps the snapshot its first start took', async (t) => {
   const edited = reviewScope(rig.repo, args.artifact).snapshot
   assert.notEqual(edited, first)
   const again = rig.relaunch({ 'analyst||prober:2': [{ output: proberOut(unitsOfGroup[1]) }] })
-  const result = await probe(withGround(again.ctx), argsFor(rig.repo, ART, { per_axis: true }))
+  const result = await probe(again.ctx, argsFor(rig.repo, ART, { per_axis: true }))
   assert.equal(result.snapshot, first)
 })
 
@@ -886,11 +793,11 @@ test('a gap or a note leaves a complete probe ratifiable', async (t) => {
   assert.equal(result.ratifiable, true)
 })
 
-test('a complete probe declares every ask of its locating search and carries its resumable', async (t) => {
+test('a complete probe declares its locating search and carries its resumable', async (t) => {
   const { rig, result } = await probeIn(t, { script: scriptFor(DOC, STANDING).script })
   const { declared, ...rest } = result.coverage
   assert.deepEqual(rest, { complete: true, dropped: [], incomplete: [], failed_channels: [], unreached: [], resumable: rig.ctx.resumable })
-  for (const key of asksOf(DOC)) assert.ok(declared.some((l) => l.includes(key)), 'declared names ' + key)
+  assert.ok(declared.some((l) => l.startsWith('locate: done')), JSON.stringify(declared))
 })
 
 // --- the result's shape: one round with one note finding, run once -----------------------------
@@ -932,11 +839,9 @@ test('a relaunch calls nothing that returned', async (t) => {
   const { script } = scriptFor(DOC, STANDING, { probers: { 1: (u) => [{ output: proberOut(u, { findings }) }] } })
   const { rig, args, result } = await probeIn(t, { script })
   const again = rig.relaunch({})
-  const resolved = []
-  const second = await probe(withGround(again.ctx, EMPTY_GROUND, resolved), args)
+  const second = await probe(again.ctx, args)
   assert.deepEqual(second, result)
   assert.equal(again.calls.length, 0)
-  assert.equal(resolved.length, 0, 'the ground table is replayed, never resolved again')
   assert.equal(probeReturns(rig.repo).length, 1)
 })
 

@@ -13,7 +13,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { canonicalUrl } from '../lib/search/ledger.mjs'
+import { canonicalUrl } from '../lib/search/query.mjs'
 import {
   PAGE_LINES, REFUSALS, fetchUrl, files, grep, isTestKey, keyOf, log, read, refs, show,
 } from '../lib/search/tools.mjs'

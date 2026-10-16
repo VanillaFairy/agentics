@@ -1,5 +1,5 @@
 // test/fast/schemas.test.mjs — pins the return schemas the runner hands the host: their kinds, the
-// envelope every navigator returns, and the ladders their judges grade on. Which fields carry a
+// searcher return, and the ladders their judges grade on. Which fields carry a
 // ruling, and that every judge rules per unit, is the no-self-verdict lint rule's
 // (test/fast/no-self-verdict.test.mjs).
 //
@@ -32,70 +32,6 @@ test('every schema is an object schema whose required names are properties', () 
     assert.equal(schema.additionalProperties, false, name)
     for (const r of schema.required) assert.ok(Object.hasOwn(schema.properties, r), name + ' requires ' + r + ', which it does not define')
   }
-})
-
-const navigators = () => ofKind('searcher').filter(([name]) => name !== 'search')
-
-test('every navigator returns hits, dismissals, leads and a declaration per ask', () => {
-  assert.ok(navigators().length > 0)
-  for (const [name, { schema }] of navigators()) {
-    for (const field of ['hits', 'dismissed', 'leads', 'asks']) {
-      assert.ok(schema.required.includes(field), name + ' lacks ' + field)
-      assert.equal(schema.properties[field].type, 'array', name + '.' + field)
-    }
-    const asks = schema.properties.asks.items
-    assert.deepEqual(asks.properties.declared.enum, ['answered', 'absent', 'open'], name)
-    for (const field of ['ask', 'declared']) assert.ok(asks.required.includes(field), name + ' asks.' + field)
-    assert.equal(asks.properties.ask.type, 'string', name)
-    for (const field of ['hits', 'dismissed']) {
-      const item = schema.properties[field].items
-      assert.deepEqual([item.properties.ask.type, item.properties.ask.items.type], ['array', 'string'], name + '.' + field + ' names its asks')
-      assert.ok(item.required.includes('ask'), name + '.' + field + ' requires ask')
-    }
-    const dismissal = schema.properties.dismissed.items
-    assert.ok(dismissal.required.includes('why'), name + ' dismissals say why')
-    for (const field of ['path', 'glob', 'call']) assert.ok(!dismissal.required.includes(field), name + ' dismissal requires ' + field)
-    assert.equal(dismissal.properties.call.type, 'integer', name)
-    const lead = schema.properties.leads.items
-    for (const field of ['ask', 'path', 'why']) assert.ok(lead.required.includes(field), name + ' lead.' + field)
-  }
-})
-
-test('no navigator declares its own coverage or a stop reason', () => {
-  for (const [name, { schema }] of navigators()) {
-    for (const field of ['stop_reason', 'searched', 'no_match', 'not_reached']) assert.ok(!Object.hasOwn(schema.properties, field), name + ' carries ' + field)
-  }
-})
-
-test("a navigator's hit names its location in its domain's terms", () => {
-  const hitOf = (name) => schemaOf(name).properties.hits.items
-  for (const [name, fields] of [['search_repo', ['ask', 'path', 'line', 'note']], ['search_history', ['ask', 'commit', 'note']], ['search_web', ['ask', 'url', 'note']]]) {
-    assert.equal(kindOf(name), 'searcher', name)
-    for (const field of fields) assert.ok(hitOf(name).required.includes(field), name + ' hit requires ' + field)
-  }
-  assert.equal(hitOf('search_repo').properties.line.type, 'integer')
-  const web = hitOf('search_web')
-  assert.ok(!web.required.includes('candidate'), 'a web hit need not be a candidate')
-  for (const field of ['name', 'source_url', 'what_it_is', 'latest_version', 'license', 'maintenance', 'covers', 'does_not_cover']) {
-    assert.ok(web.properties.candidate.required.includes(field), 'a candidate requires ' + field)
-  }
-})
-
-test('ruler_search rules the four search values', () => {
-  const schema = schemaOf('ruler_search')
-  assert.ok(schema.required.includes('units'))
-  const unit = schema.properties.units.items
-  assert.deepEqual(unit.properties.ruling.enum, ['answered', 'absent', 'open', 'not_converging'])
-  for (const field of ['unit', 'ruling', 'why']) assert.ok(unit.required.includes(field), field)
-})
-
-test('ruler_search has no converging', () => {
-  const unit = schemaOf('ruler_search').properties.units.items
-  assert.ok(!unit.properties.ruling.enum.includes('converging'))
-})
-
-test('ruler_search is a judge', () => {
-  assert.equal(kindOf('ruler_search'), 'judge')
 })
 
 test('no schema carries a size bound', () => {
@@ -152,18 +88,6 @@ test('schemaOf and kindOf answer for every name and refuse an unknown one', () =
   }
   assert.equal(schemaOf('nothing'), null)
   assert.equal(kindOf('nothing'), '')
-})
-
-test('the prober and items schemas take an optional wants list of unit and want', () => {
-  for (const name of ['prober', 'items']) {
-    const schema = schemaOf(name)
-    const wants = schema.properties.wants
-    assert.ok(wants, name + ' has wants')
-    assert.ok(!schema.required.includes('wants'), name + "'s wants is optional")
-    assert.equal(wants.type, 'array')
-    assert.deepEqual(Object.keys(wants.items.properties).sort(), ['unit', 'want'])
-    assert.deepEqual([wants.items.properties.unit.type, wants.items.properties.want.type], ['string', 'string'])
-  }
 })
 
 test('the searcher return is a summary', () => {

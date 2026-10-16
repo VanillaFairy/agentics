@@ -8,12 +8,10 @@ import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 
 import { fnv1a } from '../lib/plan-digest.mjs'
-import * as query from '../lib/search/query.mjs'
-import * as ledger from '../lib/search/ledger.mjs'
+import { canonicalUrl } from '../lib/search/query.mjs'
 import * as tools from '../lib/search/tools.mjs'
 
 const { fetchUrl } = tools
-const canonicalUrl = query.canonicalUrl ?? ledger.canonicalUrl
 
 let server
 let base

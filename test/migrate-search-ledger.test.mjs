@@ -18,16 +18,12 @@ import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { append, appendRun, readLog, readRunLog, runLog, runState } from '../lib/ledger.mjs'
-import { programContext, scoped } from '../lib/programs/common.mjs'
-import { search } from '../lib/programs/search/loop.mjs'
 import { ROLE_NAMES, loadRole } from '../lib/roles.mjs'
 import { effortStateDir, executionDir, executionRunId, mainCheckout, posix, runDir, runJsonPath, runLogPath } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
 import { apply, plan } from '../tools/migrate-search-ledger.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 import { DEAD_PID } from './harness/dead-pid.mjs'
-import { endSearch } from './harness/navigator.mjs'
-import { scriptedRunner } from './fast/harness/scripted-runner.mjs'
 
 const TOOL = join(dirname(fileURLToPath(import.meta.url)), '..', 'tools', 'migrate-search-ledger.mjs')
 const E = 'e1'
@@ -212,55 +208,6 @@ test('a searcher thread under any other name is no round search', (t) => {
   assert.deepEqual(plan(dir).runs, [])
 })
 
-/**
- * A stopped probe run whose `locate` search the search loop itself ran, on disk: the real `search`
- * through the real runner over a scripted CLI, its log the run's own. One turn greps the line and
- * declares the ask answered; an idle turn stalls the search and the ruler rules it answered. `prefix` scopes the search as a nested program's is. Its thread.
- */
-async function loopRun(dir, run, prefix = '') {
-  mkdirSync(runDir(dir, run), { recursive: true })
-  put(runJsonPath(dir, run), runMeta(run, 'probe', false))
-  const log = runLog(dir, run)
-  log.append('run', { program: 'probe', scope: {}, pid: DEAD_PID })
-  const thread = (prefix ? prefix + '/' : '') + 'locate'
-  const at = { key: 'src/a.mjs', line: 3 }
-  const turn = {
-    calls: [{
-      tool: 'grep', args: { pattern: 'parseWidget', fixed: false, ignore_case: false, paths: [], page: 1 }, asks: ['A'], ok: true,
-      total: 1, page: 1, pages: 1, observed: [at], keys: [at.key],
-    }],
-    output: {
-      hits: [{ ask: ['A'], path: at.key, line: at.line, note: 'parseWidget is defined here' }], dismissed: [], leads: [],
-      asks: [{ ask: 'A', declared: 'answered' }],
-    },
-  }
-  const end = endSearch({ name: thread, turn: 1, asks: ['A'], ruling: 'answered' })
-  const runner = scriptedRunner({ ['scout||' + thread]: [turn, ...end.navigator], [end.ruler.key]: end.ruler.steps }, { log, now: () => OLD })
-  const base = {
-    ...programContext({ intelligence: 'normal', repo: dir, root: dir, run, log, runAgent: runner.runAgent, now: () => OLD, sleep: () => Promise.resolve(), dir: runDir(dir, run) }),
-    groundOf: async () => ({ rows: [], seeds: [] }),
-  }
-  const result = await search(prefix ? scoped(base, prefix) : base, {
-    name: 'locate', role: 'scout', schema: 'search_repo', tree: { root: posix(dir), sha: 'a'.repeat(40) },
-    asks: [{ key: 'A', find: 'where parseWidget is defined', scope: ['.'], domain: 'repo', seeds: [{ key: at.key, as: 'open', reason: 'the artefact names it' }] }],
-    material: [{ label: 'The artefact', text: 'It names `parseWidget`.' }], intelligence: 'normal',
-  })
-  assert.equal(result.status, 'returned', JSON.stringify(result.cause))
-  return thread
-}
-
-for (const prefix of ['', 'probe:p:1']) {
-  test('a search the loop ran' + (prefix ? ' under ' + prefix : '') + ' is no round search, its ground step written by the loop', async (t) => {
-    const dir = store(t)
-    const thread = await loopRun(dir, RUN, prefix)
-    const { entries } = readRunLog(dir, RUN)
-    assert.ok(entries.some((e) => e.kind === 'dispatched' && e.thread === thread && e.role === 'scout'), 'the loop dispatched the navigator on ' + thread)
-    assert.ok(entries.some((e) => e.kind === 'step' && e.key === thread + '/ground'), 'the loop journaled ' + thread + '/ground')
-    assert.equal(runState(dir, RUN).state, 'stopped')
-    const p = plan(dir)
-    assert.deepEqual([p.runs, p.refused], [[], []])
-  })
-}
 
 // ------------------------------------------------------------------ program runs
 

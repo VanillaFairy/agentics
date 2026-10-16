@@ -32,7 +32,7 @@ function rigFor(t, opts) {
   return rig
 }
 
-const spec = (over = {}) => ({ role: 'scout', schema: 'search_repo', thread: 'plan', brief: BRIEF, ...over })
+const spec = (over = {}) => ({ role: 'scout', schema: 'search', thread: 'plan', brief: BRIEF, ...over })
 const hit = (path, line) => ({ ask: ['plan'], path, line, note: 'there' })
 const scoutOut = ({ hits = [hit('lib/store.mjs', 12)] } = {}) => ({ hits, dismissed: [], leads: [], asks: [] })
 
@@ -111,11 +111,11 @@ test("a first call's system prompt file holds the role's body", async (t) => {
 })
 
 test('a first call carries the schema it names', async (t) => {
-  const rig = rigFor(t, { script: { 'ruler||a': [{ output: { rulings: [] } }], 'ruler||b': [{ output: { units: [] } }] } })
+  const rig = rigFor(t, { script: { 'ruler||a': [{ output: { rulings: [] } }], 'ruler||b': [{ output: { ruling: 'converging', why: 'w' } }] } })
   await dispatch(rig.ctx, { role: 'ruler', schema: 'ruler_premises', thread: 'a', brief: BRIEF })
-  await dispatch(rig.ctx, { role: 'ruler', schema: 'ruler_search', thread: 'b', brief: BRIEF })
+  await dispatch(rig.ctx, { role: 'ruler', schema: 'ruler_convergence', thread: 'b', brief: BRIEF })
   assert.deepEqual(rig.calls[0].schema, schemaOf('ruler_premises'))
-  assert.deepEqual(rig.calls[1].schema, schemaOf('ruler_search'))
+  assert.deepEqual(rig.calls[1].schema, schemaOf('ruler_convergence'))
 })
 
 test("a first call runs in the thread's first session", async (t) => {
@@ -168,7 +168,7 @@ test("a first call's tier is the role's at the dial", async (t) => {
     },
   })
   const cases = [
-    { role: 'scout', schema: 'search_repo', thread: 's', intelligence: 'normal', base: 'high' },
+    { role: 'scout', schema: 'search', thread: 's', intelligence: 'normal', base: 'high' },
     { role: 'analyst', schema: 'axes', thread: 'max', intelligence: 'max', base: '' },
     { role: 'analyst', schema: 'axes', thread: 'low', intelligence: 'low', base: 'medium' },
   ]
@@ -183,7 +183,7 @@ test("a first call's tier is the role's at the dial", async (t) => {
 test("a first call's permissions are the role's read-only rules", async (t) => {
   const rig = rigFor(t, { script: { [KEY]: [{ output: scoutOut() }], 'historian||h': [{ output: { hits: [], dismissed: [], leads: [], asks: [] } }] } })
   await dispatch(rig.ctx, spec())
-  await dispatch(rig.ctx, { role: 'historian', schema: 'search_history', thread: 'h', brief: BRIEF })
+  await dispatch(rig.ctx, { role: 'historian', schema: 'search', thread: 'h', brief: BRIEF })
   assert.deepEqual(rig.calls[0].permissions, readOnlyPermissions(loadRole('scout').role))
   assert.deepEqual(rig.calls[1].permissions, readOnlyPermissions(loadRole('historian').role))
 })
@@ -503,7 +503,7 @@ test('a step that throws records nothing', async (t) => {
 // --- messages --------------------------------------------------------------------------------
 
 const MSG = { msg: 'declined', payload: { why: 'the kiwi case is pinned already' } }
-const deliverSpec = (over = {}) => ({ role: 'scout', schema: 'search_repo', thread: 'plan', threadBrief: BRIEF, ...MSG, round: 2, ...over })
+const deliverSpec = (over = {}) => ({ role: 'scout', schema: 'search', thread: 'plan', threadBrief: BRIEF, ...MSG, round: 2, ...over })
 const twoRounds = () => ({ [KEY]: [{ output: scoutOut() }, { output: scoutOut() }] })
 
 test('a message is recorded before the dispatch that carries it', async (t) => {

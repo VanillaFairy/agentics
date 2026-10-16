@@ -1,7 +1,7 @@
 // test/intelligence-dial.test.mjs — one intelligence dial per program run: set on the context at
 // entry (`ctx.intelligence`) and per nested program (`scoped`), read by every dispatch and search a
-// program makes, the probe's and the solutions' searches and rulers included; a call's own tier wins.
-// A scripted host plays every navigator turn idle, so each search stalls, goes to its ruler, and ends.
+// program makes, the probe's and the solutions' searches included; a call's own tier wins.
+// A scripted host plays every scout turn idle, so each search returns its summary and ends.
 //
 // Design: docs/DESIGN.md#programs.
 
@@ -36,7 +36,7 @@ const FRAME = {
 }
 const PLAN = { output: { topics: [{ key: 'store', find: 'where the store is written', subtree: '' }], common_ground: '', history_question: '', docs_question: '' } }
 
-/** What the host plays for a call keyed `role|node|thread`: a navigator turn is idle, a frame or plan returns, every other call fails. */
+/** What the host plays for a call keyed `role|node|thread`: a searcher turn is idle, a frame or plan returns, every other call fails. */
 function stepFor(key) {
   const [role, , thread] = key.split('|')
   if (['scout', 'doc-researcher', 'historian'].includes(role)) return IDLE
@@ -64,7 +64,6 @@ function world(t, { intelligence } = {}) {
   const runner = scriptedRunner(SCRIPT, { log, now: NOW })
   const ctx = {
     ...programContext({ repo: home, root: home, run: RUN, log, runAgent: runner.runAgent, now: NOW, sleep: () => Promise.resolve(), dir: join(home, 'run'), intelligence }),
-    groundOf: async () => ({ rows: [], seeds: [] }),
   }
   return { ctx, calls: runner.calls, tree: { root: join(home, 'tree'), sha: SHA }, home }
 }

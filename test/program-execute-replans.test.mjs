@@ -26,7 +26,7 @@ import { STANDING_AXES } from '../lib/briefs/probe.mjs'
 import { sectionsOf, unitsOf } from '../lib/evidence.mjs'
 import { heldBy } from '../lib/locks.mjs'
 import { specPath } from '../lib/store.mjs'
-import { closedSearch } from './harness/navigator.mjs'
+import { closedSearch } from './fast/harness/scout.mjs'
 import {
   T, E, leafEntry, subEffort, specText, done, said, failed, ruling, rulings, claim, staleRuler, rootReview,
   IMPL, world, entriesOf, kinds, statusOf, callsOf, dispatchedOf, seqOfFirst, moveBase, assertComplete,

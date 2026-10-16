@@ -10,15 +10,16 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { callLines, resumeBrief, scoutCharge } from '../../lib/briefs/search.mjs'
+import { STOP_LINE, callLines, resumeBrief, roundBrief, scoutCharge } from '../../lib/briefs/search.mjs'
 import { renderMessage } from '../../lib/conversation.mjs'
 import { programContext } from '../../lib/programs/common.mjs'
 import { budgetOf, coverageLine, searchComplete, searchCoverage } from '../../lib/programs/search/consume.mjs'
 import { ROLE_OF, search } from '../../lib/programs/search/search.mjs'
+import { loadRole } from '../../lib/roles.mjs'
 import { STALL_WINDOW, mcpConfigFor, openCalls, searchDir } from '../../lib/search/server.mjs'
 import { dispatchKey } from '../../lib/store.mjs'
 import { memoryLog } from './harness/memory-log.mjs'
-import { grepRecord, hitRecord, hitTurn, scoutStep, stalledRecord } from './harness/scout.mjs'
+import { closingRound, grepRecord, hitRecord, hitTurn, scoutStep, stalledRecord } from './harness/scout.mjs'
 import { scriptedRunner } from './harness/scripted-runner.mjs'
 
 const RUN = '20260101-000000-test'
@@ -48,7 +49,7 @@ const repo = (r, over = {}) => search(r.ctx, { name: 'locate', domain: 'repo', f
 // ------------------------------------------------------------------ the result
 
 test("a search whose scout returns is done, its hits the journal's", async (t) => {
-  const r = rig(t, { 'scout||locate': [hitTurn([A, B], { summary: 'found both' })] })
+  const r = rig(t, { 'scout||locate': [hitTurn([A, B]), closingRound('found both')] })
   const out = await repo(r)
   assert.equal(out.status, 'done')
   assert.equal(out.why, '')
@@ -63,20 +64,20 @@ test('a finding only in the summary is not a hit', async (t) => {
 })
 
 test('two hits on one line are one hit', async (t) => {
-  const r = rig(t, { 'scout||locate': [scoutStep({ hits: [A, { ...A, note: 'again' }] })] })
+  const r = rig(t, { 'scout||locate': [scoutStep({ hits: [A, { ...A, note: 'again' }] }), closingRound()] })
   assert.deepEqual((await repo(r)).hits, [A])
 })
 
 test('two hits on one commit are one hit', async (t) => {
   const c = { commit: 'a'.repeat(40), note: 'the change' }
-  const r = rig(t, { [ROLE_OF.history + '||history']: [scoutStep({ hits: [c, { ...c, note: 'again' }] })] })
+  const r = rig(t, { [ROLE_OF.history + '||history']: [scoutStep({ hits: [c, { ...c, note: 'again' }] }), closingRound()] })
   const out = await search(r.ctx, { name: 'history', domain: 'history', find: 'when', tree: r.tree })
   assert.deepEqual(out.hits, [c])
 })
 
 test('two hits on one page, spelled two ways, are one hit', async (t) => {
   const u = { url: 'https://example.com/docs', note: 'the docs' }
-  const r = rig(t, { 'doc-researcher||research': [scoutStep({ hits: [u, { url: 'https://EXAMPLE.com/docs#intro', note: 'again' }] })] })
+  const r = rig(t, { 'doc-researcher||research': [scoutStep({ hits: [u, { url: 'https://EXAMPLE.com/docs#intro', note: 'again' }] }), closingRound()] })
   const out = await search(r.ctx, { name: 'research', domain: 'web', find: 'docs', tree: r.tree })
   assert.deepEqual(out.hits, [u])
 })
@@ -85,13 +86,13 @@ test('one candidate reached by two names is one hit', async (t) => {
   const candidate = { name: 'Left-Pad', source_url: 'https://github.com/x/left-pad', what_it_is: 'a pad', latest_version: '1', license: 'MIT', maintenance: 'active', covers: 'pads', does_not_cover: 'trims' }
   const one = { url: 'https://github.com/x/left-pad', note: 'it', candidate }
   const two = { url: 'https://npmjs.com/left-pad', note: 'it again', candidate: { ...candidate, name: 'left-pad' } }
-  const r = rig(t, { 'doc-researcher||research': [scoutStep({ hits: [one, two] })] })
+  const r = rig(t, { 'doc-researcher||research': [scoutStep({ hits: [one, two] }), closingRound()] })
   const out = await search(r.ctx, { name: 'research', domain: 'web', find: 'a pad', tree: r.tree })
   assert.deepEqual(out.hits, [one])
 })
 
 test("calls are the journal's call lines, hits left out", async (t) => {
-  const r = rig(t, { 'scout||locate': [hitTurn([A])] })
+  const r = rig(t, { 'scout||locate': [hitTurn([A]), closingRound()] })
   const out = await repo(r)
   assert.deepEqual(out.calls, ['grep TOKEN → 1 found'])
 })
@@ -146,7 +147,7 @@ test('a budget is a positive search_budget, else none', () => {
 // ------------------------------------------------------------------ renewals, resumes and replays
 
 test('a renewed session is briefed with the hits journaled before it', async (t) => {
-  const r = rig(t, { 'scout||locate': [{ status: 'failed', cause: 'context_exceeded', calls: [hitRecord(A)] }, scoutStep({ hits: [B] })] })
+  const r = rig(t, { 'scout||locate': [{ status: 'failed', cause: 'context_exceeded', calls: [hitRecord(A)] }, scoutStep({ hits: [B] }), closingRound()] })
   const out = await repo(r)
   const [first, second] = r.runner.starts
   assert.notEqual(second.session, first.session)
@@ -155,7 +156,7 @@ test('a renewed session is briefed with the hits journaled before it', async (t)
 })
 
 test('a returned search replays', async (t) => {
-  const r = rig(t, { 'scout||locate': [hitTurn([A])] })
+  const r = rig(t, { 'scout||locate': [hitTurn([A]), closingRound()] })
   const out = await repo(r)
   const again = r.again({})
   const replay = await search(again.ctx, { name: 'locate', domain: 'repo', find: 'where TOKEN is', tree: r.tree })
@@ -166,7 +167,7 @@ test('a returned search replays', async (t) => {
 test('a search cut off mid-session resumes it with nothing re-sent', async (t) => {
   const r = rig(t, { 'scout||locate': [{ status: 'failed', cause: 'host_error', calls: [hitRecord(A)] }] })
   await repo(r)
-  const again = r.again({ 'scout||locate': [scoutStep({ hits: [B] })] })
+  const again = r.again({ 'scout||locate': [scoutStep({ hits: [B] }), closingRound()] })
   const out = await search(again.ctx, { name: 'locate', domain: 'repo', find: 'where TOKEN is', tree: r.tree })
   const [start] = again.runner.starts
   assert.equal(valueAfter(start.args, '--resume'), r.runner.starts[0].session)
@@ -188,13 +189,82 @@ test('a renewal with no journal on disk gets the opening brief', async (t) => {
 test('a changed find starts a new session briefed with the journal', async (t) => {
   const r = rig(t, { 'scout||locate': [{ status: 'failed', cause: 'host_error', calls: [hitRecord(A)] }] })
   await repo(r)
-  const again = r.again({ 'scout||locate': [scoutStep({ hits: [B] })] })
+  const again = r.again({ 'scout||locate': [scoutStep({ hits: [B] }), closingRound()] })
   const out = await search(again.ctx, { name: 'locate', domain: 'repo', find: 'something else', tree: r.tree })
   const [start] = again.runner.starts
   assert.equal(start.resume, false)
   assert.notEqual(start.session, r.runner.starts[0].session)
   assert.ok(start.stdin.includes('src/a.mjs:3 — the adder'), start.stdin)
   assert.deepEqual(out.hits, [A, B])
+})
+
+// ------------------------------------------------------------------ rounds
+
+const C = { path: 'src/c.mjs', line: 1, note: 'the third' }
+const callsIn = (r) => openCalls(join(searchDir(r.dir, 'locate'), 'calls.jsonl'))
+
+test('the opening and every search role carry one stop line, which says nothing of pages', () => {
+  const words = (text) => text.split(/\s+/).filter(Boolean).join(' ')
+  assert.ok(resumeBrief([]).endsWith(STOP_LINE))
+  for (const role of ['scout', 'historian', 'doc-researcher']) assert.ok(words(loadRole(role).role.prompt).includes(STOP_LINE), role)
+  assert.ok(!STOP_LINE.includes('page'), STOP_LINE)
+  assert.ok(STOP_LINE.includes('as soon as a tool shows it relevant'), STOP_LINE)
+})
+
+test('a round that added hits is followed by a fresh round briefed with the hits so far', async (t) => {
+  const r = rig(t, { 'scout||locate': [hitTurn([A]), scoutStep({ hits: [B] }), closingRound()] })
+  const out = await repo(r)
+  const [first, second] = r.runner.starts
+  assert.equal(second.resume, false)
+  assert.notEqual(second.session, first.session)
+  assert.ok(second.stdin.endsWith(roundBrief(callsIn(r).filter((c) => c.session === first.session))), second.stdin)
+  assert.ok(second.stdin.includes('- src/a.mjs:3 — the adder'), second.stdin)
+  assert.deepEqual(out.hits, [A, B])
+})
+
+test('the search ends on the first round that adds no new hit', async (t) => {
+  const r = rig(t, { 'scout||locate': [hitTurn([A]), scoutStep({ hits: [{ ...A, note: 'again' }] }), scoutStep({ hits: [B] })] })
+  const out = await repo(r)
+  assert.equal(r.runner.starts.length, 2)
+  assert.equal(out.status, 'done')
+  assert.deepEqual(out.hits, [A])
+})
+
+test('a dollar budget stops the search in a later round', async (t) => {
+  const r = rig(t, { 'scout||locate': [{ ...hitTurn([A]), cost_total: 0.6 }, { status: 'failed', cause: 'budget', cost_total: 0.5 }, closingRound()] })
+  const out = await repo(r, { budget: 1 })
+  assert.equal(r.runner.starts.length, 2)
+  assert.equal(valueAfter(r.runner.starts[1].args, '--max-budget-usd'), '0.4')
+  assert.equal(out.status, 'budget')
+  assert.equal(out.cost, 1.1)
+  assert.deepEqual(out.hits, [A])
+})
+
+test('a relaunch mid-round resumes that round with nothing re-sent, the finished rounds kept', async (t) => {
+  const r = rig(t, { 'scout||locate': [hitTurn([A]), { status: 'failed', cause: 'host_error', calls: [hitRecord(B)] }] })
+  await repo(r)
+  const [first, second] = r.runner.starts
+  const again = r.again({ 'scout||locate': [scoutStep(), closingRound()] })
+  const out = await search(again.ctx, { name: 'locate', domain: 'repo', find: 'where TOKEN is', tree: r.tree })
+  const [resumed] = again.runner.starts
+  assert.equal(valueAfter(resumed.args, '--resume'), second.session)
+  assert.equal(resumed.stdin, CUT_OFF)
+  assert.deepEqual(callsIn(r).filter((c) => c.tool === 'hit').map((c) => [c.session, c.hit]), [[first.session, A], [second.session, B]])
+  assert.deepEqual(out.hits, [A, B])
+  assert.equal(out.coverage.rounds, 3)
+})
+
+test('coverage carries the rounds run, what the last added and what the scout says it skipped', async (t) => {
+  const r = rig(t, { 'scout||locate': [{ ...hitTurn([A, B]), cost_total: 0.25 }, { ...scoutStep({ hits: [C] }), cost_total: 0.5 }, closingRound('did not read docs/')] })
+  const out = await repo(r)
+  assert.deepEqual(out.coverage, { rounds: 3, last_added: 0, skipped: 'did not read docs/' })
+  assert.deepEqual(out.rounds, [{ added: 2, cost: 0.25 }, { added: 1, cost: 0.5 }, { added: 0, cost: 0 }])
+})
+
+test('coverage of a search the budget stopped names what its last round added', async (t) => {
+  const r = rig(t, { 'scout||locate': [{ ...hitTurn([A]), cost_total: 0.6 }, { status: 'failed', cause: 'budget', cost_total: 0.5, calls: [hitRecord(B)] }] })
+  const out = await repo(r, { budget: 1 })
+  assert.deepEqual(out.coverage, { rounds: 2, last_added: 1, skipped: 'searched' })
 })
 
 // ------------------------------------------------------------------ server specs, WebSearch, pages

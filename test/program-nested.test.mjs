@@ -22,7 +22,7 @@ import { probe } from '../lib/programs/probe.mjs'
 import { review } from '../lib/programs/review.mjs'
 import { survey } from '../lib/programs/survey.mjs'
 import { evidenceItemsPath, evidenceSnapshotsDir, posix, sessionOf } from '../lib/store.mjs'
-import { hitTurn } from './fast/harness/scout.mjs'
+import { closingRound, hitTurn } from './fast/harness/scout.mjs'
 import { closedSearch } from './fast/harness/scout.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
@@ -66,7 +66,7 @@ const itemOut = (key, line) => ({ topic: key, kind: 'behaviour', claim: claimOf(
 function surveyScript({ planned, searched = planned.map((t) => t.key) }) {
   const s = { 'analyst||plan': [{ output: planOut(planned) }] }
   searched.forEach((key, i) => {
-    s['scout||scout:' + key] = [hitTurn([{ path: A, line: 3 + i, note: 'NOTE-' + key }])]
+    s['scout||scout:' + key] = [hitTurn([{ path: A, line: 3 + i, note: 'NOTE-' + key }]), closingRound()]
   })
   if (searched.length > 0) {
     s['analyst||judge:1'] = [{ output: {
@@ -207,7 +207,7 @@ test('a pool unreadable after the re-judge is reported, and its suspect items se
   }
   const result = await survey(programContext({ intelligence: 'normal', ...rig.ctx, log }), surveyArgs({ ground: ['src'] }))
   assert.ok(saved !== null, 'the fixture: the rulings were journaled')
-  assert.equal(rig.calls.filter((c) => c.thread.key === 'scout:loader').length, 1, 'one search')
+  assert.equal(rig.calls.filter((c) => c.thread.key === 'scout:loader').length, 2, 'a round that found and one that found nothing new')
   assert.ok(result.coverage.failed_channels.includes('pool'), JSON.stringify(result.coverage))
   assert.ok(result.coverage.unreached.some((l) => l.includes('pool') && l.includes('re-judge')), JSON.stringify(result.coverage.unreached))
   assert.equal(result.coverage.complete, false)

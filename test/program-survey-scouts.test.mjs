@@ -123,7 +123,7 @@ test('topic keys are slugged, and a repeated key is numbered', async (t) => {
     { key: 'loader-path-3', subtree: 'src/shared', forced: false },
   ]
   assert.deepEqual(result.topics.map(({ key, subtree, forced }) => ({ key, subtree, forced })), expected)
-  for (const { key } of expected) assert.equal(on(rig, 'scout:' + key).length, 1, key)
+  for (const { key } of expected) assert.equal(on(rig, 'scout:' + key).length, 2, key)
 })
 
 test('every planned topic is scouted, beyond max_topics', async (t) => {
@@ -134,7 +134,7 @@ test('every planned topic is scouted, beyond max_topics', async (t) => {
     ...topicSearch('cache', [[FILE.cache, 2]]),
     ...emptyJudges(),
   }, { max_topics: 1 })
-  for (const key of ['loader', 'store', 'cache']) assert.equal(on(rig, 'scout:' + key).length, 1, key)
+  for (const key of ['loader', 'store', 'cache']) assert.equal(on(rig, 'scout:' + key).length, 2, key)
   assert.deepEqual(result.topics.map((x) => x.key), ['loader', 'store', 'cache'])
 })
 
@@ -155,7 +155,7 @@ test("a topic's search runs as the scout at the dial, its charge holding the que
     const { rig } = await runSurvey(t, fullScript(), { intelligence })
     for (const key of ['loader', 'store']) {
       const calls = on(rig, 'scout:' + key)
-      assert.equal(calls.length, 1, key + ': one dispatch')
+      assert.equal(calls.length, 2, key + ': two rounds')
       assert.equal(calls[0].role.name, 'scout')
       assert.deepEqual(calls[0].schema, schemaOf('search'))
       assert.deepEqual(calls[0].tier, tierFor(roleOf('scout'), { intelligence }), intelligence)

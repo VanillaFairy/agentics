@@ -16,7 +16,7 @@ import { fnv1a } from '../lib/plan-digest.mjs'
 import { investigate, scopeOf } from '../lib/programs/investigate.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
-import { hitTurn, scoutStep } from './fast/harness/scout.mjs'
+import { closingRound, hitTurn, scoutStep } from './fast/harness/scout.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 const QUESTION = 'Can the config loader drop its cache?'
@@ -32,7 +32,7 @@ const task = (n) => ({ ref: 't' + n, subject: 'Do step ' + n, description: 'src/
 const argsOf = (over = {}) => ({ question: QUESTION, roots: ['.'], notes: '', as_tasks: false, intelligence: 'normal', pace: 'balanced', ...over })
 
 /** The scout script of topic `key`, its search finding `hits` (`[path, line, note]`). */
-const answeredBy = (key, hits) => ({ ['scout||scout:' + key]: [hitTurn(hits.map(([path, line, note]) => ({ path, line, note })))] })
+const answeredBy = (key, hits) => ({ ['scout||scout:' + key]: [hitTurn(hits.map(([path, line, note]) => ({ path, line, note }))), closingRound()] })
 
 /** A one-topic survey whose judge records one claim, then the synthesis step(s) given. */
 const script = (synthesis, over = {}) => ({
@@ -72,9 +72,9 @@ test("the investigation's scope is its question", () => {
 test('the survey runs inside this run, on its log', async (t) => {
   const r = rig(t, script(REPORT))
   await investigate(r.ctx, argsOf())
-  assert.deepEqual(r.calls.map((c) => c.thread.key), ['plan', 'scout:loader', 'judge:1', 'synthesis'])
+  assert.deepEqual(r.calls.map((c) => c.thread.key), ['plan', 'scout:loader', 'scout:loader', 'judge:1', 'synthesis'])
   const dispatched = r.log.entries().filter((e) => e.kind === 'dispatched').map((e) => e.thread)
-  assert.deepEqual(dispatched, ['plan', 'scout:loader', 'judge:1', 'synthesis'])
+  assert.deepEqual(dispatched, ['plan', 'scout:loader', 'scout:loader', 'judge:1', 'synthesis'])
 })
 
 test('the survey is asked the question, with the roots, notes, intelligence and pace', async (t) => {
@@ -169,7 +169,7 @@ test('a failed synthesis keeps the evidence and names the failure', async (t) =>
 test("the evidence is the survey's: items, context, risks, history and docs", async (t) => {
   const r = rig(t, script(REPORT, {
     'analyst||plan': [{ output: plan([topic('loader')], { history_question: 'When did the cache land?' }) }],
-    'historian||history': [scoutStep({ hits: [{ commit: SHA, note: 'abc123 added the cache' }] })],
+    'historian||history': [scoutStep({ hits: [{ commit: SHA, note: 'abc123 added the cache' }] }), closingRound()],
   }))
   const out = await investigate(r.ctx, argsOf())
   assert.deepEqual(out.evidence.items.map((i) => i.id), [...liveItems(r.repo).keys()])

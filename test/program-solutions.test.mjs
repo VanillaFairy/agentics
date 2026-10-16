@@ -21,7 +21,7 @@ import { schemaOf } from '../lib/schemas.mjs'
 import { treeOf } from '../lib/search/pin.mjs'
 import { TOOLS_BY_DOMAIN, searchDir } from '../lib/search/server.mjs'
 import { evidenceReturnsDir, posix } from '../lib/store.mjs'
-import { hitTurn, scoutStep, stalledRecord } from './fast/harness/scout.mjs'
+import { closingRound, hitTurn, scoutStep, stalledRecord } from './fast/harness/scout.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 // --- the world -------------------------------------------------------------------------------
@@ -73,8 +73,8 @@ const BUDGET = { status: 'failed', cause: 'budget' }
 
 /** A script keyed `<role>||<thread>`: the frame, a researcher per slug, the scan and the assessor. */
 function scriptOf({ frame = [ok(frameOut())], research = { npm: [found([cand('alpha')])] }, repo = [scanned([hit('src/config.mjs', 2)])], assess } = {}) {
-  const s = { 'analyst||frame': frame, 'scout||repo': repo }
-  for (const [slug, steps] of Object.entries(research)) s['doc-researcher||research:' + slug] = steps
+  const s = { 'analyst||frame': frame, 'scout||repo': [...repo, closingRound()] }
+  for (const [slug, steps] of Object.entries(research)) s['doc-researcher||research:' + slug] = [...steps, closingRound()]
   if (assess !== undefined) s['analyst||assess'] = assess
   return s
 }
@@ -269,7 +269,7 @@ test('the repository scan is one scout call on thread repo, its brief holding th
   const roots = ['packages/parser', 'tools/cfg']
   const { rig } = await sweep(t, scriptOf({ assess: DEFAULT_ASSESS }), { args: { roots } })
   const on = callsOn(rig, 'repo')
-  assert.equal(on.length, 1, 'one session')
+  assert.equal(on.length, 2, 'a round that found and one that found nothing new')
   assert.equal(on[0].role.name, 'scout')
   assert.deepEqual(on[0].schema, schemaOf('search'))
   const f = frameOut()
@@ -279,7 +279,7 @@ test('the repository scan is one scout call on thread repo, its brief holding th
 
 test('the repository scan runs whatever the researchers return', async (t) => {
   const { rig, result } = await sweep(t, scriptOf({ research: { npm: [FAILED] } }))
-  assert.equal(callsOn(rig, 'repo').length, 1)
+  assert.equal(callsOn(rig, 'repo').length, 2)
   assert.equal(result.counts.present, 1)
 })
 

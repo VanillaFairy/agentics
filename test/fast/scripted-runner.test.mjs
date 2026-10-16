@@ -190,7 +190,7 @@ test("a step's calls are appended to its search's call log, numbered after the l
   const out = await r.runAgent(callIn(dir, { mcpConfig: config }))
   assert.equal(out.status, 'returned')
   assert.deepEqual(callLog(calls).map((c) => c.seq), [7, 8, 9])
-  assert.deepEqual(callLog(calls).slice(1).map(({ seq, ...c }) => c), [rec('lib/a.mjs', 3), rec('lib/b.mjs', 9)], 'each record as the step gave it, with its seq')
+  assert.deepEqual(callLog(calls).slice(1).map(({ seq, session, ...c }) => c), [rec('lib/a.mjs', 3), rec('lib/b.mjs', 9)], 'each record as the step gave it, with its seq and session')
   await r.runAgent(callIn(dir, { round: 2, resume: true, mcpConfig: config }))
   assert.deepEqual(callLog(calls).map((c) => c.seq), [7, 8, 9, 10])
 })

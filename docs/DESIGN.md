@@ -75,7 +75,8 @@ names none.
 
 Everything shows exactly how complete it is. A producer's or judge's return states what it covered
 and what it did not reach; a search's coverage is code's own record: its status from the runner and the
-loop guard, and its journal's calls and hits, never the scout's account ([Searches](#searches)); and "looked and found nothing" never merges
+loop guard, its journal's calls and hits, and its rounds, with the scout's own word on what it
+skipped carried beside them as the scout's ([Searches](#searches)); and "looked and found nothing" never merges
 with "never looked": a name that resolves to nothing, a return that is not there, a unit nobody
 ruled on reads as absent or open, never as empty or passed. Work is in one of three states: **in progress**; **escalated**, carrying
 what was established, what was tried, what remains and how to resume; or **done**, every unit of
@@ -95,8 +96,8 @@ preflight reads before anything runs and the adopt check reports, [Outside work]
 Work escalates on a state, never on a count. The states are three: a decision only the user can
 make; a claim an independent ruling (L3) finds cannot be met as written; and no progress — the
 same state again, or an independent ruling that a loop is not converging. A count may decide when
-to ask; it never decides the answer. A search ends when its scout returns, on its loop guard, or on
-a dollar budget the user set. The guard's window is the one count in a search: a stall detector the
+to ask; it never decides the answer. A search ends when a round of its scout adds no new hit, or
+on a round the host or a dollar budget the user set stopped. The guard's window is the one count in a search: a stall detector the
 tool server owns, never a cap on calls that find something new. An external stop — a usage limit, a host error, a crash, the user — leaves work in progress, resumed from the records.
 
 *Enforced by:* the `no-turn-caps` lint rule (no turn or spend cap on a dispatch, over the programs,
@@ -127,7 +128,7 @@ judge, and `dispatchJudge` in `lib/programs/common.mjs`, which refuses to put a 
 session that produced it or any session of its thread; the `no-self-verdict` lint rule over
 `lib/schemas.mjs` (producer and searcher schemas carry no ruling fields, and a judge's schema rules
 per unit); `verdictOf` in `lib/verdict.mjs`, where approval is every unit ruled and none ruled
-blocking; a search, the one place a producer ends its own work: the scout's return is a
+blocking; a search, the one place a producer ends its own work: a scout round that adds no new hit is a
 declaration that ends the search and can make a program's coverage complete, and never enters a
 verdict; its hits are judged where they are consumed — by the probers, the survey judges, the
 assessor and the reviews ([Searches](#searches)).
@@ -639,8 +640,8 @@ committed; `lib/roles.mjs` refuses a bad one when a dispatch loads it.
 
 | role | kind | does | tools | may run |
 |---|---|---|---|---|
-| scout | searcher | find what one search of the repository tree is charged with, in one session, through code's tools | `mcp__search__grep`, `mcp__search__read`, `mcp__search__files`, `mcp__search__refs`, `mcp__search__hit` | — |
-| historian | searcher | find what one search of the repository's history is charged with, in one session, through code's tools | `mcp__search__log`, `mcp__search__show`, `mcp__search__grep`, `mcp__search__read`, `mcp__search__hit` | — |
+| scout | searcher | find what one search of the repository tree is charged with, one session a round, through code's tools | `mcp__search__grep`, `mcp__search__read`, `mcp__search__files`, `mcp__search__refs`, `mcp__search__hit` | — |
+| historian | searcher | find what one search of the repository's history is charged with, one session a round, through code's tools | `mcp__search__log`, `mcp__search__show`, `mcp__search__grep`, `mcp__search__read`, `mcp__search__hit` | — |
 | doc-researcher | searcher | find what one search of what vendors and specifications say is charged with; its fetches go through code | WebSearch, `mcp__search__fetch`, `mcp__search__hit` | — |
 | analyst | judge | judge what it is handed: plan a survey, judge evidence into items, re-judge suspect items, derive a review's axes, rule as a prober, frame and assess a solutions sweep, draft an approach from a stance, answer an investigation or turn it into tasks | Read | — |
 | ruler | judge | rule whether a change moved a node's premise; rule whether a loop converges | Read | — |
@@ -697,9 +698,11 @@ A search's scout is briefed by `lib/briefs/search.mjs`. Its **charge** (`scoutCh
 domain's tool protocol, the find, the scope, the labels and the program's material fenced as data
 — is its system prompt, beside the role's text (`promptFile(role, dir, charge)`), and depends on
 nothing a session changes, so the host reads it back from cache on every turn. Its standard input
-is `resumeBrief(journal)`: the opening for an empty journal, else the hits recorded and the calls
-run, one line each (`callLines`). A renewed session gets the same brief built at that moment
-(`briefNow`, [Searches](#searches)). Probers and survey judges get a search's hits through
+is `resumeBrief(journal)` in the first round: the opening for an empty journal, else the hits
+recorded and the calls run, one line each (`callLines`); a later round's is `roundBrief(journal)`,
+the same lines and the ask to find what the earlier rounds missed. A renewed session gets its
+round's brief built at that moment (`briefNow`, [Searches](#searches)). The opening and the scout's
+role end on one stop line (`STOP_LINE`). Probers and survey judges get a search's hits through
 `hitExcerpts`. The `prompt-origin` lint rule
 treats `charge` as a prompt key beside `brief`, `threadBrief` and `prompt`.
 
@@ -1879,8 +1882,8 @@ every prompt from there.
 A search is how a program learns what a tree, its history or the web says about a question it
 cannot answer from what it holds: a probe's locate, a survey topic and its history and docs, a
 solutions sweep's repository scan and its researchers. Every one is one call of `search`
-(`lib/programs/search/search.mjs`): one scout session that finds what it was asked to find, over
-code's tools, on a pinned tree.
+(`lib/programs/search/search.mjs`): rounds of a scout, each a fresh session that finds what it was
+asked to find over code's tools on a pinned tree, until a round adds no new hit.
 
 ```
 program ──► search(ctx, {name, domain, find, material, scope, labels, budget, tree})
@@ -1894,7 +1897,10 @@ program ──► search(ctx, {name, domain, find, material, scope, labels, budg
               │   every record goes to calls.jsonl, tagged with its session, before the answer
               │   loop guard: 12 tool calls in a row in this session that show nothing new → stalled
               ▼
-        return {summary}   →   result {name, status, why, summary, hits[], calls[], cost, …}
+        return {summary}   →   new hits this round? ── yes ──► next round, a fresh session
+              │ no                                         briefed with the journal's hits and calls
+              ▼
+        result {name, status, why, summary, hits[], calls[], cost, rounds[], coverage, …}
 ```
 
 | program | search (its thread) | role, domain | what it finds |
@@ -1921,11 +1927,11 @@ on nothing a session changes, so the host caches it. The scout greps for what th
 on its own: no code resolves the material, seeds the search or ranks what it reads.
 
 **The roles.** `scout` (repo), `historian` (history) and `doc-researcher` (web) are short roles:
-find what the charge names, record each finding with `hit` the moment a tool shows it (a finding only
-in the summary is lost), cite only lines a tool showed, end only after paging every result listing it opened to its last
-page and recording with `hit` everything its summary names (a search that ends early leaves the
-listings' later pages unread and its summary's paths unrecorded), then stop when what was asked is
-found or there is nothing more to look at, and return a one-paragraph summary. Each returns the `search` schema,
+find what the charge names, cite only lines a tool showed, record each finding with `hit` as soon as a
+tool shows it relevant, not in one batch at the end (a finding only in the summary is lost), stop
+when what was asked is found or there is nothing more to look at, and return a one-paragraph summary
+of what it found and where it did not look. Every role and the opening brief carry the same
+stop line (`STOP_LINE` in `lib/briefs/search.mjs`). Each returns the `search` schema,
 `{summary}`, which holds no ruling field (L3). Each role's tools hold `mcp__search__hit`; the
 doc-researcher also holds the host's `WebSearch`.
 
@@ -2003,7 +2009,16 @@ spec](#search-tool-server-spec)) carrying its own `session`.
   the call log as a `websearch` record, with the session of the dispatch that ran it, so the calls
   and the resume brief show it.
 
-**Resume.** The journal is the artifact. `search` runs one dispatch through `dispatch`, with
+**Rounds.** One scout session decides when it is done, and what it leaves unread it does not say
+in a way code can act on. So `search` runs rounds: round `n` is one dispatch, key round `n`, and a
+round after the first starts the thread's next session (`fresh`), briefed with `roundBrief`: the
+hits and calls every earlier round journaled, and the ask to find what they missed. The search
+ends on the first round whose sessions add no hit key the earlier rounds lacked. A round is more
+searching, never a re-check of the hits before it: nothing rules on them (L3). No count ends the
+rounds (L2); a dollar budget caps every round's spend together. A round's hits are the journal's
+hits whose `session` is one of the round's.
+
+**Resume.** The journal is the artifact. Each round runs one dispatch through `dispatch`, with
 `renewOnChange`:
 
 - A host stop or a cut-off resumes the same session, which still holds its context and its opening
@@ -2018,29 +2033,34 @@ spec](#search-tool-server-spec)) carrying its own `session`.
   Nothing is folded or ranked.
 - Compaction is the host's business: a compacted session goes on from the host's summary, and its
   hits are already in the journal.
-- A search whose session returned is finished: rerunning the program replays its stored return,
-  and its result is read from the journal again.
+- A round whose session returned is finished: rerunning the program replays its stored return, so
+  a relaunch mid-round replays the rounds before it and resumes that round's session with
+  `cut_off` alone; the result is read from the journal again.
 
 **Budget.** The user sets it per program run, `--search-budget <usd>` on `probe`, `survey` and
 `solutions`, applied to each search of the run (`budgetOf`); unset or 0 means no cap. The host's
 `--max-budget-usd` counts the spend of the process, not the session, as measured on the host, so
 `search` passes the runner a function (`budgetNow`) that the runner calls at every CLI start: the
-budget less the `cost_usd` recorded on the search dispatch's `returned` entries. A remainder of zero
+budget less the `cost_usd` recorded on the `returned` entries of every round's dispatch. A remainder of zero
 or less starts no process. The host's stop at the cap (`error_max_budget_usd`) is the runner's
 `budget` class, terminal, which `dispatch` does not wait out. A killed process records no cost, so
 a search can overrun its budget by that process's spend.
 
-**The result.** `{name, status, why, summary, hits[], calls[], cost, tree, pages, sessions[]}`
-([Search result](#search-result)):
+**The result.** `{name, status, why, summary, hits[], calls[], cost, tree, pages, sessions[],
+rounds[], coverage}` ([Search result](#search-result)):
 
-- `done`: the scout returned and the guard never fired. `stalled`: the scout returned after the
-  guard fired, `why` `nothing new in the last 12 calls`. `budget`: the cap stopped it, `why` the
+- `done`: the last round's scout returned with no new hit and the guard never fired in that round.
+  `stalled`: it returned after the guard fired in that round, `why` `nothing new in the last 12
+  calls`. `budget`: the cap stopped it, `why` the
   spend against the budget. `failed`: the host failed past `dispatch`'s waits, `why` the cause.
 - `hits` are the journal's ok `hit` records (`hitsOf`), each once: by `(path, line)`, by commit, by
   `canonicalUrl`, and a candidate by `candidateKey`.
 - `calls` are the journal's call lines, the lines the resume brief holds.
 - `sessions` are the sessions the search's thread ran in: no judge of its hits may be one of them
   (`dispatchJudge`, L3).
+- `rounds` is each round's `{added, cost}`: the hits it added and the dollars recorded on it.
+  `coverage` is `{rounds, last_added, skipped}`: how many rounds ran, what the last added, and the
+  last returned scout's summary, its own word on where it did not look. `summary` is that text too.
 
 **Coverage.** Each program builds its coverage (L1) from its searches' results, through
 `lib/programs/search/consume.mjs`. `coverageLine` names the search, its status, its counts of calls
@@ -2066,10 +2086,11 @@ commit's subject; a `url` hit's note and, when it names a line, the lines around
 pinned page. It also counts the hits and the unresolved ones.
 
 **The laws.** L1: a search's coverage is code's own record — its status from the runner and the
-guard, its calls and hits from the journal — and nothing in it is the scout's account. L2: a search
-ends when the scout returns, on the loop guard, or on a budget the user set; `STALL_WINDOW` is the
-one count, a stall detector the server owns, never a cap on calls that find something new. L3: the
-scout's `done` is a declaration: it ends the search and can make a program's coverage complete, but
+guard, its calls, hits and rounds from the journal — with the scout's word on what it skipped
+carried as the scout's, never as code's. L2: a search ends when a round adds no new hit, or on a
+round the host or a budget the user set stopped; `STALL_WINDOW` is the
+one count, a stall detector the server owns, never a cap on calls that find something new. L3: a
+round that adds nothing is a declaration: it ends the search and can make a program's coverage complete, but
 it enters no verdict; the work that consumes the hits is judged where it always is. L4: the tools
 read the pinned tree and write nothing but the run's own files, and the user's checkout, index and
 stash are never touched. P2: the tools, the journal, the guard, every brief and every dedup are
@@ -3827,11 +3848,13 @@ digest, so a start in a renewed session gets a spec of its own.
   programs (readers).
 
 `{name, status: done | stalled | budget | failed, why, summary, hits[], calls[], cost, tree{root,
-sha}, pages, sessions[{session, thread}]}`: `why` says how it ended for every status but `done`
-(`''`); `summary` the scout's return (`''` when it did not return); `hits` the journal's ok hits,
+sha}, pages, sessions[{session, thread}], rounds[{added, cost}], coverage{rounds, last_added,
+skipped}}`: `why` says how it ended for every status but `done`
+(`''`); `summary` the last returned round's scout's summary (`''` when none returned); `hits` the journal's ok hits,
 each once ([Call log](#call-log)); `calls` one line per journaled call, hits left out; `cost` the
-dollars recorded on the search dispatch's `returned` entries; `pages` the run's `pages/`
-directory; `sessions` every session the search's thread ran in.
+dollars recorded on every round's `returned` entries; `pages` the run's `pages/`
+directory; `sessions` every session the search's thread ran in; `rounds` each round's added hits and dollars;
+`coverage` the rounds run, the hits the last added, and `skipped`, the scout's summary.
 
 ### Program results
 

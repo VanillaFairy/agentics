@@ -1944,7 +1944,7 @@ search's tree.
 |---|---|---|
 | `grep` | repo, history | `git grep` in the shared query dialect, `--untracked`, binaries skipped |
 | `read` | repo, history | a line range of one file from disk, saying where it stopped and how long the file is |
-| `files` | repo | a glob over tracked and untracked files, in the search glob dialect (`GLOB_RULES`: `*` within a segment, `**` across segments, `?` one character, everything else literal) |
+| `files` | repo | a glob over tracked and untracked files, in the search glob dialect (`GLOB_RULES`: `*` within a segment, `**` across segments, `?` one character, everything else literal; a `{a,b}` alternation is refused `unsupported_syntax`, in `files` and in `grep` paths alike, so a glob never matches nothing for want of a reading) |
 | `refs` | repo | word-bounded references to a symbol by file, tests marked, `total` their sum |
 | `log` | history | `-G`, `-S` or `--grep` over the tree's history, each commit with the keys it touched |
 | `show` | history | a commit, or one path in it |

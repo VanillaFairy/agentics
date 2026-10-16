@@ -16,9 +16,10 @@ export const id = 'no-turn-caps'
 
 // The role files are in scope too: CLAUDE.md's enforcement table assigns IL1 to this rule, and a
 // turn cap written into a role's own file is the most damaging place one can appear — every
-// dispatch of that role inherits it. So are the programs, the execute program's units and the
-// search loop, and lib/run.mjs, which start every dispatch (docs/DESIGN.md#self-checks).
-export const applies = /(SKILL\.md|^roles\/[^/]+\.md|^lib\/programs\/(execute\/|search\/)?[^/]+\.mjs|^lib\/run\.mjs)$/
+// dispatch of that role inherits it. So are the programs, the execute program's units, the
+// search loop and its core in lib/search/, and lib/run.mjs, which start every dispatch
+// (docs/DESIGN.md#self-checks).
+export const applies = /(SKILL\.md|^roles\/[^/]+\.md|^lib\/programs\/(execute\/|search\/)?[^/]+\.mjs|^lib\/search\/[^/]+\.mjs|^lib\/run\.mjs)$/
 
 /** Option-shaped caps, `rounds` among them — see the header. */
 const CAP_IDENTIFIER = /\bmax_?(turns|tool_?calls|rounds)\b/gi

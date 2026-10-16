@@ -1,4 +1,4 @@
-// tools/rules/no-loop-bounds.mjs — L2: a program's loop ends on a state, never on a count.
+// tools/rules/no-loop-bounds.mjs — L2: a loop in a program or in lib/search ends on a state, never on a count.
 //
 // Design: docs/DESIGN.md#l2--states-end-work-counts-dont. A loop that stops after N rounds ends
 // work on a counter, and what it leaves looks like a finished result. A program that wants to ask
@@ -14,7 +14,7 @@
 
 export const id = 'no-loop-bounds'
 
-export const applies = /^lib\/(programs\/.+|run)\.mjs$/
+export const applies = /^lib\/(programs\/.+|search\/[^/]+|run)\.mjs$/
 
 /**
  * Replace the contents of strings and comments with spaces, preserving length and

@@ -112,14 +112,6 @@ function dispatchedBefore(ctx, n, over = {}) {
 /** The `dispatched` entry the first real dispatch of a context wrote. */
 const firstDispatched = (ctx) => ctx.log.entries().find((e) => e.kind === 'dispatched')
 
-test('dispatch passes refits through', async (t) => {
-  const { ctx, calls } = host(t)
-  await dispatch(ctx, round(1, { refits: ['a', 'b'] }))
-  await dispatch(ctx, round(2))
-  assert.deepEqual(calls[0].refits, ['a', 'b'])
-  assert.deepEqual(calls[1].refits, [], 'no refits is an empty list')
-})
-
 test('a dispatched entry records the prompt digest and the cwd of its call', async (t) => {
   const { ctx, calls } = host(t)
   await dispatch(ctx, round(1, { charge: 'A', cwd: 'C:/elsewhere' }))
@@ -186,7 +178,7 @@ test('a started call whose prompt did not change is resumed without a renewal', 
   await dispatch(ctx, renewing(2, { charge: 'A' }))
   assert.equal(renewals().length, 0)
   assert.equal(valueAfter(starts[1].args, '--resume'), starts[0].session)
-  assert.equal(starts[1].stdin, CUT_OFF, 'without resendOnCutOff the cut-off message goes alone')
+  assert.equal(starts[1].stdin, CUT_OFF, 'the cut-off message goes alone')
 })
 
 test('an old dispatched entry is unchanged', async (t) => {
@@ -247,27 +239,12 @@ test('one renewal record per renewal', async (t) => {
   assert.ok(!killed.starts[1].args.includes('--resume'))
 })
 
-test('resendOnCutOff resends the brief', async (t) => {
-  const { ctx, starts, renewals } = host(t)
-  await dispatch(ctx, round(1, { charge: 'A' }))
-  const first = firstDispatched(ctx)
-  dispatchedBefore(ctx, 2, { prompt: first.prompt, cwd: first.cwd, session: starts[0].session })
-  await dispatch(ctx, renewing(2, { charge: 'A', resendOnCutOff: true }))
-  assert.equal(renewals().length, 0)
-  assert.equal(valueAfter(starts[1].args, '--resume'), starts[0].session)
-  assert.equal(starts[1].stdin, CUT_OFF + SEPARATOR + 'brief 2')
-})
-
-test('a host stop resends the brief', async (t) => {
-  const resent = host(t, ['stop', 'return'])
-  const out = await dispatch(resent.ctx, round(1, { resendOnCutOff: true }))
+test('a host stop resumes with cut_off alone', async (t) => {
+  const { ctx, starts } = host(t, ['stop', 'return'])
+  const out = await dispatch(ctx, round(1))
   assert.equal(out.status, 'returned')
-  assert.equal(valueAfter(resent.starts[1].args, '--resume'), resent.starts[0].session)
-  assert.equal(resent.starts[1].stdin, CUT_OFF + SEPARATOR + 'brief 1')
-
-  const alone = host(t, ['stop', 'return'])
-  await dispatch(alone.ctx, round(1))
-  assert.equal(alone.starts[1].stdin, CUT_OFF, 'without resendOnCutOff the cut-off message goes alone')
+  assert.equal(valueAfter(starts[1].args, '--resume'), starts[0].session)
+  assert.equal(starts[1].stdin, CUT_OFF)
 })
 
 test('a thread names the session of every later generation', async (t) => {

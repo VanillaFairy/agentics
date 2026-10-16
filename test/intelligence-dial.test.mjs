@@ -75,13 +75,13 @@ const ofRole = (calls, role) => calls.filter((c) => c.role.name === role)
 test('solutions hands its dial to its searches', async (t) => {
   const w = world(t, { intelligence: 'max' })
   await solutions(w.ctx, { capability: 'Parse TOML.', roots: ['.'], constraints: '', notes: '', max_angles: 4, intelligence: 'max', tree: w.tree })
-  for (const role of ['scout', 'doc-researcher', 'ruler']) {
+  for (const role of ['scout', 'doc-researcher']) {
     const calls = ofRole(w.calls, role)
     assert.ok(calls.length > 0, role + ' was dispatched')
     for (const c of calls) assert.deepEqual(c.tier, tierOf(role, 'max'), role + ' on ' + c.thread.key)
   }
-  assert.ok(ofRole(w.calls, 'ruler').some((c) => c.thread.key.includes('research:npm')), "the researcher's ruler")
-  assert.ok(ofRole(w.calls, 'ruler').some((c) => c.thread.key.includes(':repo:')), "the repo scout's ruler")
+  assert.ok(ofRole(w.calls, 'doc-researcher').some((c) => c.thread.key.includes('research:npm')), 'the researcher')
+  assert.ok(ofRole(w.calls, 'scout').some((c) => c.thread.key.endsWith('repo')), 'the repo scout')
 })
 
 test('the probe has a dial', async (t) => {

@@ -1,8 +1,8 @@
 ---
 name: historian
 kind: searcher
-tools: mcp__search__log, mcp__search__show, mcp__search__grep, mcp__search__read
-schemas: search_history
+tools: mcp__search__log, mcp__search__show, mcp__search__grep, mcp__search__read, mcp__search__hit
+schemas: search_history, search
 model: sonnet
 effort: medium
 ---

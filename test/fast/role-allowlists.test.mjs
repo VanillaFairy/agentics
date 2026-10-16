@@ -14,14 +14,14 @@ const ROLES = fileURLToPath(new URL('../../roles/', import.meta.url))
 
 const PINNED = {
   scout: {
-    kind: 'searcher', tools: ['mcp__search__files', 'mcp__search__grep', 'mcp__search__read', 'mcp__search__refs'], commands: [],
-    schemas: ['search_repo'],
+    kind: 'searcher', tools: ['mcp__search__files', 'mcp__search__grep', 'mcp__search__hit', 'mcp__search__read', 'mcp__search__refs'], commands: [],
+    schemas: ['search_repo', 'search'],
   },
   historian: {
-    kind: 'searcher', tools: ['mcp__search__grep', 'mcp__search__log', 'mcp__search__read', 'mcp__search__show'], commands: [],
-    schemas: ['search_history'],
+    kind: 'searcher', tools: ['mcp__search__grep', 'mcp__search__hit', 'mcp__search__log', 'mcp__search__read', 'mcp__search__show'], commands: [],
+    schemas: ['search_history', 'search'],
   },
-  'doc-researcher': { kind: 'searcher', tools: ['WebSearch', 'mcp__search__fetch'], commands: [], schemas: ['search_web'] },
+  'doc-researcher': { kind: 'searcher', tools: ['WebSearch', 'mcp__search__fetch', 'mcp__search__hit'], commands: [], schemas: ['search_web', 'search'] },
   planner: { kind: 'producer', tools: ['Edit', 'Glob', 'Grep', 'Read', 'Write'], commands: [], schemas: ['planner_write', 'planner_settle'] },
   implementer: {
     kind: 'producer', tools: ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write'],

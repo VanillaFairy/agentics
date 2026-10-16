@@ -34,7 +34,7 @@ test('every schema is an object schema whose required names are properties', () 
   }
 })
 
-const navigators = () => ofKind('searcher')
+const navigators = () => ofKind('searcher').filter(([name]) => name !== 'search')
 
 test('every navigator returns hits, dismissals, leads and a declaration per ask', () => {
   assert.ok(navigators().length > 0)
@@ -164,4 +164,9 @@ test('the prober and items schemas take an optional wants list of unit and want'
     assert.deepEqual(Object.keys(wants.items.properties).sort(), ['unit', 'want'])
     assert.deepEqual([wants.items.properties.unit.type, wants.items.properties.want.type], ['string', 'string'])
   }
+})
+
+test('the searcher return is a summary', () => {
+  assert.equal(SCHEMAS.search.kind, 'searcher')
+  assert.deepEqual(SCHEMAS.search.schema.required, ['summary'])
 })

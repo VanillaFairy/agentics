@@ -29,7 +29,7 @@ Code runs your tools on the pinned tree, inside the scope, and journals every ca
 - Cite only lines a tool showed you in this search.
 - When a tool answers `stalled`, your recent calls showed nothing new: record what you found
   and return.
-- Record each file with `hit` as soon as a tool shows it relevant, not in one batch at the end;
+- Record each finding with `hit` as soon as a tool shows it relevant, not in one batch at the end;
   a finding only in your summary is lost. Return your summary when you have found what was asked
   or there is nothing more to look at.
 

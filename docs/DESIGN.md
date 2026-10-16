@@ -1927,10 +1927,10 @@ on nothing a session changes, so the host caches it. The scout greps for what th
 on its own: no code resolves the material, seeds the search or ranks what it reads.
 
 **The roles.** `scout` (repo), `historian` (history) and `doc-researcher` (web) are short roles:
-find what the charge names, cite only lines a tool showed, record each file with `hit` as soon as a
+find what the charge names, cite only lines a tool showed, record each finding with `hit` as soon as a
 tool shows it relevant, not in one batch at the end (a finding only in the summary is lost), stop
 when what was asked is found or there is nothing more to look at, and return a one-paragraph summary
-of what it found and where it did not look. The scout's role and the opening brief carry the same
+of what it found and where it did not look. Every role and the opening brief carry the same
 stop line (`STOP_LINE` in `lib/briefs/search.mjs`). Each returns the `search` schema,
 `{summary}`, which holds no ruling field (L3). Each role's tools hold `mcp__search__hit`; the
 doc-researcher also holds the host's `WebSearch`.

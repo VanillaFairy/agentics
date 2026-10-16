@@ -203,10 +203,10 @@ test('a changed find starts a new session briefed with the journal', async (t) =
 const C = { path: 'src/c.mjs', line: 1, note: 'the third' }
 const callsIn = (r) => openCalls(join(searchDir(r.dir, 'locate'), 'calls.jsonl'))
 
-test('the opening and the scout role carry one stop line, which says nothing of pages', () => {
+test('the opening and every search role carry one stop line, which says nothing of pages', () => {
   const words = (text) => text.split(/\s+/).filter(Boolean).join(' ')
   assert.ok(resumeBrief([]).endsWith(STOP_LINE))
-  assert.ok(words(loadRole('scout').role.prompt).includes(STOP_LINE))
+  for (const role of ['scout', 'historian', 'doc-researcher']) assert.ok(words(loadRole(role).role.prompt).includes(STOP_LINE), role)
   assert.ok(!STOP_LINE.includes('page'), STOP_LINE)
   assert.ok(STOP_LINE.includes('as soon as a tool shows it relevant'), STOP_LINE)
 })

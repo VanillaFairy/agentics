@@ -109,7 +109,7 @@ const leanSearch = (dir, home, thread, name = 'server-x.json') =>
 const navigatorSearch = (dir, home, thread, name = 'server-n.json') =>
   put(join(searchDir(home, thread), name), JSON.stringify({ ...leanSpecBody(dir, home, thread), asks: [{ ask: 'where is x', label: 'guidance' }] }))
 /** The run home of execution `stamp` of e1. */
-const execHome = (dir, stamp = OPEN) => runDir(dir, executionRunId(E, stamp))
+const execHome = (dir, stamp = OPEN) => executionDir(dir, E, stamp)
 
 /**
  * A program run outside an execution holding `threads` ([thread, role]); `ground` names threads the

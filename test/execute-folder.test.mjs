@@ -30,7 +30,8 @@ import { schemaOf } from '../lib/schemas.mjs'
 import { checkFolder, hashSpec } from '../lib/spec.mjs'
 import { dispatchKey, mainCheckout, posix, readConfig, readJson, sessionOf, specPath } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
-import { closedSearch, endSearch, hitTurn } from './harness/navigator.mjs'
+import { endSearch, hitTurn } from './harness/navigator.mjs'
+import { closedSearch } from './fast/harness/scout.mjs'
 import { executionRig } from './harness/program-rig.mjs'
 
 const E = 'e1'
@@ -122,9 +123,9 @@ const proberOut = (units, findings = []) => ({
   units: units.map((unit) => ({ unit, ruling: findings.some((f) => f.axis + '@' + f.section === unit) ? 'findings' : 'clean', ids: [], why: 'why ' + unit })),
   notes: '', stop_reason: 'exhausted', not_reached: '',
 })
-/** Probe round `n` over `text`: a locate turn that ends every ask, and one prober holding the standing axes. */
+/** Probe round `n` over `text`: a locate that finds nothing, and one prober holding the standing axes. */
 const probing = (n, text, findings = [], { units } = {}) => ({
-  ...closedSearch({ name: 'probe:p:' + n + '/locate', asks: ['guidance', ...sectionsOf(text).map((s) => 'ground:' + s.slug)] }),
+  ...closedSearch({ name: 'probe:p:' + n + '/locate' }),
   ['analyst||probe:p:' + n + '/prober:1']: [{ output: proberOut(units || unitsFor(text), findings) }],
 })
 const lineOf = (text, needle) => text.split('\n').findIndex((l) => l.includes(needle)) + 1
@@ -169,7 +170,8 @@ const under = (rig, prefix) => rig.calls.filter((c) => c.thread.key.startsWith(p
 const nodeOf = (rig, id) => readTree(rig.repo, E).nodes.get(id)
 /** The tree roots the search servers of the calls under `prefix` were started over. */
 const searchedUnder = (rig, prefix) => new Set(under(rig, prefix).filter((c) => c.mcpConfig).map((c) => {
-  const args = JSON.parse(readFileSync(c.mcpConfig, 'utf8')).mcpServers.search.args
+  const path = typeof c.mcpConfig === 'function' ? c.mcpConfig(c.thread.session) : c.mcpConfig
+  const args = JSON.parse(readFileSync(path, 'utf8')).mcpServers.search.args
   return JSON.parse(readFileSync(args[args.indexOf('--spec') + 1], 'utf8')).tree.root
 }))
 /** The basis of p's first plan, as `planFolder` names it. */
@@ -260,8 +262,8 @@ test("a folder's probe gets its dial", async (t) => {
   for (const intelligence of ['low', 'max']) {
     const w = world(t, { steps: clean(), writes: { 1: S1 } })
     assert.equal((await w.run({ intelligence })).outcome, 'prepared')
-    const gated = w.rig.calls.filter((c) => c.thread.key.includes('probe:p:1/')).filter((c) => ['analyst', 'ruler'].includes(c.role.name))
-    assert.ok(gated.some((c) => c.role.name === 'analyst') && gated.some((c) => c.role.name === 'ruler'), 'the probe dispatched its prober and its locate ruler')
+    const gated = w.rig.calls.filter((c) => c.thread.key.includes('probe:p:1/')).filter((c) => ['analyst', 'scout'].includes(c.role.name))
+    assert.ok(gated.some((c) => c.role.name === 'analyst') && gated.some((c) => c.role.name === 'scout'), 'the probe dispatched its prober and its locate scout')
     for (const c of gated) assert.deepEqual(c.tier, tierFor(loadRole(c.role.name).role, { intelligence }), c.thread.key + ' under the dial ' + intelligence)
   }
 })

@@ -1922,8 +1922,10 @@ on its own: no code resolves the material, seeds the search or ranks what it rea
 
 **The roles.** `scout` (repo), `historian` (history) and `doc-researcher` (web) are short roles:
 find what the charge names, record each finding with `hit` the moment a tool shows it (a finding only
-in the summary is lost), cite only lines a tool showed, stop when what was asked is found or there
-is nothing more to look at, and return a one-paragraph summary. Each returns the `search` schema,
+in the summary is lost), cite only lines a tool showed, end only after paging every result listing it opened to its last
+page and recording with `hit` everything its summary names (a search that ends early leaves the
+listings' later pages unread and its summary's paths unrecorded), then stop when what was asked is
+found or there is nothing more to look at, and return a one-paragraph summary. Each returns the `search` schema,
 `{summary}`, which holds no ruling field (L3). Each role's tools hold `mcp__search__hit`; the
 doc-researcher also holds the host's `WebSearch`.
 

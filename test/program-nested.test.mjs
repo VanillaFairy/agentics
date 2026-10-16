@@ -23,7 +23,7 @@ import { review } from '../lib/programs/review.mjs'
 import { survey } from '../lib/programs/survey.mjs'
 import { evidenceItemsPath, evidenceSnapshotsDir, posix, sessionOf } from '../lib/store.mjs'
 import { hitTurn } from './fast/harness/scout.mjs'
-import { closedSearch } from './harness/navigator.mjs'
+import { closedSearch } from './fast/harness/scout.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', windowsHide: true })

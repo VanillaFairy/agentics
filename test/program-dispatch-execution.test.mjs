@@ -46,7 +46,7 @@ const THREE = [{ output: scoutOut() }, { output: scoutOut() }, { output: scoutOu
 const K = (node, thread) => 'scout|' + node + '|' + thread
 
 /** A call with no `brief`: the dispatch composes its prompt. */
-const target = (over = {}) => ({ role: 'scout', schema: 'search_repo', thread: 'plan', node: 'a', threadBrief: TB, ...over })
+const target = (over = {}) => ({ role: 'scout', schema: 'search', thread: 'plan', node: 'a', threadBrief: TB, ...over })
 const spec = (over = {}) => ({ ...target(), brief: BRIEF, ...over })
 
 // --- worlds ----------------------------------------------------------------------------------

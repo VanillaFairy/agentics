@@ -17,12 +17,10 @@ import { PassThrough, Writable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 
 import { fnv1a } from '../lib/plan-digest.mjs'
-import * as query from '../lib/search/query.mjs'
-import * as ledger from '../lib/search/ledger.mjs'
+import { canonicalUrl } from '../lib/search/query.mjs'
 import * as server from '../lib/search/server.mjs'
 
 const { SERVER_NAME, TOOLS_BY_DOMAIN, handle, mcpConfigFor, searchDir, serve, toolDefs } = server
-const canonicalUrl = query.canonicalUrl ?? ledger.canonicalUrl
 
 const SERVER = fileURLToPath(new URL('../lib/search/server.mjs', import.meta.url))
 const ENV = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' }

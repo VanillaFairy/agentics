@@ -505,7 +505,7 @@ test('a stopped run started again with the same arguments is resumed under its o
   const repo = makeRepo(t)
   const got = []
   const { mod } = program(async (ctx) => {
-    got.push(await dispatch(ctx, { role: 'scout', schema: 'search_repo', thread: 'plan', brief: 'Find the store.' }))
+    got.push(await dispatch(ctx, { role: 'scout', schema: 'search', thread: 'plan', brief: 'Find the store.' }))
     return {}
   }, { ARGS: TEXT_ARGS })
   const output = { hits: [{ ask: ['plan'], path: 'lib/store.mjs', line: 12, note: 'there' }], dismissed: [], leads: [], asks: [] }

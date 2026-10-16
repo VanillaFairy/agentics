@@ -1,8 +1,8 @@
 ---
 name: doc-researcher
 kind: searcher
-tools: WebSearch, mcp__search__fetch
-schemas: search_web
+tools: WebSearch, mcp__search__fetch, mcp__search__hit
+schemas: search_web, search
 model: sonnet
 effort: medium
 ---

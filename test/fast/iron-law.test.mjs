@@ -20,7 +20,7 @@ test('the Laws section matches its pinned hash', () => {
   //   node -e "const f=require('fs'),c=require('crypto');const r=f.readFileSync('docs/DESIGN.md','utf8').replace(/\r\n/g,'\n');
   //   console.log(c.createHash('sha256').update(r.slice(r.indexOf('## Laws'),r.indexOf('## Principles'))).digest('hex'))"
   const laws = design.slice(design.indexOf('## Laws'), design.indexOf('## Principles'))
-  assert.equal(createHash('sha256').update(laws).digest('hex'), 'f5f7f28cc00c3735b0b1b824c4e52cad98214692d07e0e8edb2135baf0e61444')
+  assert.equal(createHash('sha256').update(laws).digest('hex'), 'dd5b8074ae66e7c8918f82a0f6620ed3c49cb301c90469e77f10b09e3fcef61d')
 })
 
 test('each law names its enforcement', () => {

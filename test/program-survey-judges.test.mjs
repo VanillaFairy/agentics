@@ -26,7 +26,7 @@ import {
   Q, GUIDE, FILES, FILE, TOPIC, plan, behaviour, anchoredUnit, judgeOut, ARGS, CLAIM,
   basicScript, COMMON, fullScript, rigFor, runSurvey, on, pool, roleOf, cov, pathHits,
 } from './harness/survey-world.mjs'
-import { hitTurn, stalledRecord } from './fast/harness/scout.mjs'
+import { closingRound, hitTurn, stalledRecord } from './fast/harness/scout.mjs'
 
 /** A line of a file as an excerpt shows it, not mistaken for a longer line number. */
 const lineRe = (word, n) => new RegExp(`${word} line ${n}(?!\\d)`)
@@ -47,10 +47,10 @@ test("a judge is the analyst's at the dial, base high", async (t) => {
 })
 
 test("a judge's brief holds its topics' search excerpts and the shared ground inline", async (t) => {
-  const loaderTurn = hitTurn(pathHits([[FILE.loader, 7, 'NOTE-a1 resolves'], [FILE.loader, 40, 'NOTE-a2 falls back']]), { summary: 'SUMMARY-the loader resolves in one place' })
+  const loaderTurn = hitTurn(pathHits([[FILE.loader, 7, 'NOTE-a1 resolves'], [FILE.loader, 40, 'NOTE-a2 falls back']]))
   const { rig } = await runSurvey(t, fullScript({
     'analyst||plan': [{ output: plan({ topics: [TOPIC.loader], common_ground: COMMON }) }],
-    'scout||scout:loader': [loaderTurn],
+    'scout||scout:loader': [loaderTurn, closingRound('SUMMARY-the loader resolves in one place')],
     'analyst||judge:1': [{ output: judgeOut({ items: [behaviour('loader', CLAIM)], units: [anchoredUnit('loader')] }) }],
   }))
   const brief = on(rig, 'judge:1')[0].brief

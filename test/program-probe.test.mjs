@@ -28,7 +28,7 @@ import { schemaOf } from '../lib/schemas.mjs'
 import { treeOf } from '../lib/search/pin.mjs'
 import { evidenceReturnsDir, posix } from '../lib/store.mjs'
 import { programRig } from './harness/program-rig.mjs'
-import { closedSearch, grepRecord, hitRecord, hitTurn, scoutStep, stalledRecord } from './fast/harness/scout.mjs'
+import { closedSearch, closingRound, grepRecord, hitRecord, hitTurn, scoutStep, stalledRecord } from './fast/harness/scout.mjs'
 import { scriptedRunner } from './fast/harness/scripted-runner.mjs'
 
 const STANDING = ['ambiguity', 'invariants', 'yagni', 'reinvention']
@@ -66,7 +66,7 @@ const linesOf = (text) => text.trim().split('\n')
 /** A hit the locating search journals. */
 const hitOf = (path, line, label, note = 'bears on it') => ({ path, line, note, label })
 /** scriptFor's options for a locate whose scout journals `hits` and returns. */
-const located = (hits) => ({ locate: [hitTurn(hits)] })
+const located = (hits) => ({ locate: [hitTurn(hits), closingRound()] })
 const NOTHING_LOCATED = closedSearch({ name: 'locate' })['scout||locate']
 const axis = (key, charge = 'attack the design on ' + key, source = 'docs/REVIEW.md') => ({ key, charge, source })
 const axesOut = (axes = [], over = {}) => ({ axes, guidance_read: ['docs/REVIEW.md'], notes: '', stop_reason: 'completed', ...over })
@@ -305,7 +305,7 @@ test('a failed locate leaves the ground not located and the probe incomplete', a
 })
 
 test('a stalled locate is complete and keeps what it found', async (t) => {
-  const locate = [scoutStep({ calls: [grepRecord([[GROUND_HIT.path, GROUND_HIT.line]]), stalledRecord()], hits: [GROUND_HIT] })]
+  const locate = [scoutStep({ calls: [grepRecord([[GROUND_HIT.path, GROUND_HIT.line]]), stalledRecord()], hits: [GROUND_HIT] }), scoutStep({ calls: [stalledRecord()] })]
   const { rig, result } = await probeIn(t, { files: { [ART]: DOC, ...GROUND_FILES }, script: scriptFor(DOC, STANDING, { locate }).script })
   assert.deepEqual(result.coverage.incomplete, [])
   assert.ok(result.coverage.declared.some((l) => l.startsWith('locate: stalled')), JSON.stringify(result.coverage))

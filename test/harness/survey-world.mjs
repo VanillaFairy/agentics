@@ -5,7 +5,7 @@
 import { liveItems } from '../../lib/evidence.mjs'
 import { survey } from '../../lib/programs/survey.mjs'
 import { loadRole } from '../../lib/roles.mjs'
-import { hitTurn, scoutStep } from '../fast/harness/scout.mjs'
+import { closingRound, hitTurn, scoutStep } from '../fast/harness/scout.mjs'
 import { programRig } from './program-rig.mjs'
 
 // --- the world --------------------------------------------------------------------------------
@@ -41,7 +41,7 @@ export const behaviour = (topic, claim, line = 7) =>
 /** `[path, line, note?]` locations as path hits. */
 export const pathHits = (locations) => locations.map(([path, line, note = 'NOTE-' + path + ':' + line]) => ({ path, line, note }))
 /** A topic search's script: the scout on topic `key` finds `locations`. */
-export const topicSearch = (key, locations) => ({ ['scout||scout:' + key]: [hitTurn(pathHits(locations))] })
+export const topicSearch = (key, locations) => ({ ['scout||scout:' + key]: [hitTurn(pathHits(locations)), closingRound()] })
 
 export const anchoredUnit = (topic) => ({ unit: topic, ruling: 'anchored', ids: [], why: 'every claim is anchored' })
 export const judgeOut = ({ items = [], risks = [], units = [] } = {}) => ({ items, risks, units })
@@ -66,8 +66,8 @@ export const fullScript = (over = {}) => ({
   'analyst||plan': [{ output: plan({ topics: [TOPIC.loader, TOPIC.store], common_ground: COMMON, history_question: HQ, docs_question: DQ }) }],
   ...topicSearch('loader', [[FILE.loader, 7]]),
   ...topicSearch('store', [[FILE.store, 9]]),
-  'historian||history': [historyTurn('HIST-FINDINGS-8a1b')],
-  'doc-researcher||docs': [docsTurn('DOCS-FINDINGS-9b2c')],
+  'historian||history': [historyTurn('HIST-FINDINGS-8a1b'), closingRound()],
+  'doc-researcher||docs': [docsTurn('DOCS-FINDINGS-9b2c'), closingRound()],
   'analyst||judge:1': [{
     output: judgeOut({
       items: [behaviour('loader', CLAIM), behaviour('store', 'CLAIM-store writes at line 9', 9)],

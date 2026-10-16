@@ -90,7 +90,7 @@ test('a re-judged item that fails is searched again', async (t) => {
   const { rig, result, id } = await rejudged(t, { topic: 'loader', steps: (id) => rulings([rule(id, 'fails')]), searched: ['loader'] })
   assert.ok(!result.reused.includes(id))
   assert.deepEqual(topicTriples(result), [{ key: 'loader', subtree: 'src', forced: true }])
-  assert.equal(on(rig, 'scout:loader').length, 1, 'its one search')
+  assert.equal(on(rig, 'scout:loader').length, 2, 'a round that found and one that found nothing new')
 })
 
 test('an id the re-judge left unruled is unsure, and its topic searched again', async (t) => {
@@ -98,7 +98,7 @@ test('an id the re-judge left unruled is unsure, and its topic searched again', 
   const lines = judgedLines(rig.repo, id)
   assert.equal(lines.length, 1, JSON.stringify(lines))
   assert.equal(lines[0].ruling, 'unsure')
-  assert.equal(on(rig, 'scout:loader').length, 1, 'its one search')
+  assert.equal(on(rig, 'scout:loader').length, 2, 'a round that found and one that found nothing new')
   assert.ok(!result.reused.includes(id))
 })
 
@@ -106,6 +106,6 @@ test("a failed re-judge records nothing, and its items' topics are searched agai
   const { rig, result } = await rejudged(t, { topic: 'loader', steps: () => [{ status: 'failed', cause: 'host_error' }], searched: ['loader'] })
   assert.equal(on(rig, 'rejudge:1').length, 1)
   assert.deepEqual(judgedLines(rig.repo), [])
-  assert.equal(on(rig, 'scout:loader').length, 1, 'its one search')
+  assert.equal(on(rig, 'scout:loader').length, 2, 'a round that found and one that found nothing new')
   assert.equal(cov(result).complete, true, JSON.stringify(cov(result)))
 })

@@ -34,12 +34,12 @@ function callLogOf(call, key) {
   return JSON.parse(readFileSync(args[args.indexOf('--spec') + 1], 'utf8')).calls
 }
 
-/** Append a step's records to the call log as the server does, each numbered after the log's last. */
-function appendCalls(path, records) {
+/** Append a step's records to the call log as the server does, each numbered after the log's last and tagged with the session. */
+function appendCalls(path, records, session) {
   const rows = existsSync(path) ? readFileSync(path, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l)) : []
   let seq = rows.reduce((n, r) => Math.max(n, r.seq || 0), 0)
   mkdirState(dirname(path))
-  for (const r of records) appendFileSync(path, JSON.stringify({ seq: ++seq, ...r }) + '\n')
+  for (const r of records) appendFileSync(path, JSON.stringify({ seq: ++seq, session, ...r }) + '\n')
 }
 
 /** One CLI start as the host plays a step: the stream's lines, the stderr and the exit code. */
@@ -84,7 +84,7 @@ export function scriptedRunner(script, { log, now = () => '2026-01-01T00:00:00.0
     starts.push({ key, round: call.round, session, resume: args.includes('--resume'), stdin, args })
     const out = play(steps[i], session, key)
     onSpawn(++pid)
-    if (steps[i].calls) appendCalls(callLogOf(call, key), steps[i].calls)
+    if (steps[i].calls) appendCalls(callLogOf(call, key), steps[i].calls, session)
     for (const l of out.lines) onLine(l)
     return { code: out.code, stdout: out.lines.map((l) => l + '\n').join(''), stderr: out.stderr }
   }

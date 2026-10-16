@@ -1,6 +1,7 @@
-// test/migrate-search-ledger.test.mjs — the one-shot move of a store whose searches ran in rounds.
-// A round search is a searcher's dispatch on a thread the round machinery named (scout:*, common,
-// locate, history, docs, research:*, repo) with no `<thread>/ground` step beside it. A stopped
+// test/migrate-v56.test.mjs — the one-shot move of a store whose searches ran in an old shape.
+// An old search is a searcher's dispatch on a search thread (scout:*, common, locate, history, docs,
+// research:*, repo, under any scope) whose `searchDir(<run dir>, <thread>)` holds no `server-*.json`
+// spec without an `asks` key: a 5.4.1 round search or a 5.5.0 navigator search. A stopped
 // program run holding one is faulted and ended; a folder of an open execution holding one is
 // replanned by the migration wherever the dry-applied replan changes no derived status, no ruling's
 // answer and no review's standing, and is listed with the user's options everywhere else; a live
@@ -21,11 +22,12 @@ import { append, appendRun, readLog, readRunLog, runLog, runState } from '../lib
 import { ROLE_NAMES, loadRole } from '../lib/roles.mjs'
 import { effortStateDir, executionDir, executionRunId, mainCheckout, posix, runDir, runJsonPath, runLogPath } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
-import { apply, plan } from '../tools/migrate-search-ledger.mjs'
+import { searchDir } from '../lib/search/server.mjs'
+import { apply, plan } from '../tools/migrate-v56.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 import { DEAD_PID } from './harness/dead-pid.mjs'
 
-const TOOL = join(dirname(fileURLToPath(import.meta.url)), '..', 'tools', 'migrate-search-ledger.mjs')
+const TOOL = join(dirname(fileURLToPath(import.meta.url)), '..', 'tools', 'migrate-v56.mjs')
 const E = 'e1'
 const OPEN = '20261013-100000'
 const CLOSED = '20261012-100000'
@@ -83,7 +85,7 @@ function seed(dir) {
 
 /** A fresh store holding effort e1's tree, in no git repository. */
 function store(t) {
-  const dir = mkdtempSync(join(tmpdir(), 'agentics-migrate-search-'))
+  const dir = mkdtempSync(join(tmpdir(), 'agentics-migrate-v56-'))
   t.after(() => rmSync(dir, { recursive: true, force: true }))
   seed(dir)
   return dir
@@ -95,12 +97,31 @@ const runMeta = (run, program, live) => JSON.stringify({
   pid: live ? process.pid : DEAD_PID, heartbeat_at: live ? new Date().toISOString() : OLD,
 })
 
-/** A program run outside an execution holding `threads` ([thread, role]); `ground` names threads the search loop opened. */
-function programRun(dir, run = RUN, { program = 'probe', threads = [['locate', 'scout']], live = false, ended = false, ground = [], meta = true } = {}) {
+/** A 5.6.0 server spec: what a lean search writes beside its dispatch. */
+const leanSpecBody = (dir, home, thread) => ({
+  tree: { root: dir }, scope: ['.'], labels: [], tools: [], calls: join(searchDir(home, thread), 'calls.jsonl'),
+  pages: join(home, 'pages'), session: 's-' + dispatchOf(thread),
+})
+/** Write a lean search's spec for `thread` under run home `home`. */
+const leanSearch = (dir, home, thread, name = 'server-x.json') =>
+  put(join(searchDir(home, thread), name), JSON.stringify(leanSpecBody(dir, home, thread)))
+/** Write a 5.5.0 navigator search's spec for `thread` under run home `home`: the same, with `asks`. */
+const navigatorSearch = (dir, home, thread, name = 'server-n.json') =>
+  put(join(searchDir(home, thread), name), JSON.stringify({ ...leanSpecBody(dir, home, thread), asks: [{ ask: 'where is x', label: 'guidance' }] }))
+/** The run home of execution `stamp` of e1. */
+const execHome = (dir, stamp = OPEN) => runDir(dir, executionRunId(E, stamp))
+
+/**
+ * A program run outside an execution holding `threads` ([thread, role]); `ground` names threads the
+ * 5.5.0 navigator loop opened (a ground step); `lean` and `navigator` name threads given a spec.
+ */
+function programRun(dir, run = RUN, { program = 'probe', threads = [['locate', 'scout']], live = false, ended = false, ground = [], lean = [], navigator = [], meta = true } = {}) {
   mkdirSync(runDir(dir, run), { recursive: true })
   if (meta) put(runJsonPath(dir, run), runMeta(run, program, live))
   ok(appendRun(dir, run, { kind: 'run', program, scope: {}, pid: live ? process.pid : DEAD_PID }))
   for (const thread of ground) ok(appendRun(dir, run, { kind: 'step', key: thread + '/ground', value: { rows: 0 } }))
+  for (const thread of lean) leanSearch(dir, runDir(dir, run), thread)
+  for (const thread of navigator) navigatorSearch(dir, runDir(dir, run), thread)
   for (const [thread, role] of threads) ok(appendRun(dir, run, dispatched(thread, role)))
   if (ended) ok(appendRun(dir, run, { kind: 'ended', result: { status: 'done', file: '', complete: true } }))
 }
@@ -190,10 +211,156 @@ test("a run's round searches are listed once each, sorted", (t) => {
   assert.deepEqual(plan(dir).runs, [{ run: RUN, program: 'survey', threads: ['scout:a', 'scout:b'] }])
 })
 
-test('a thread the search loop opened, its ground step beside it, is no round search', (t) => {
+test('a ground step beside a search no longer makes it migrated: with no spec it is old', (t) => {
   const dir = store(t)
   programRun(dir, RUN, { threads: [['locate', 'scout']], ground: ['locate'] })
+  assert.deepEqual(plan(dir).runs, [{ run: RUN, program: 'probe', threads: ['locate'] }])
+})
+
+// ------------------------------------------------------------------ old shape against new shape
+
+test('a finished round search is faulted, so its run searches afresh', (t) => {
+  const dir = store(t)
+  programRun(dir)
+  ok(appendRun(dir, RUN, { kind: 'returned', dispatch: dispatchOf('locate'), status: 'done', output: {} }))
+  assert.equal(existsSync(searchDir(runDir(dir, RUN), 'locate')), false)
+  assert.deepEqual(plan(dir).runs, [{ run: RUN, program: 'probe', threads: ['locate'] }])
+  assert.equal(apply(plan(dir)).error, '')
+  const since = sinceRun(dir)
+  assert.ok(since.some((e) => e.kind === 'fault' && e.channel === 'program' && /^migrate-v56:/.test(e.detail)))
+  assert.deepEqual(since.filter((e) => e.kind === 'ended').map((e) => e.result.status), ['failed'])
+  assert.equal(runState(dir, RUN).state, 'ended')
+})
+
+test('an unfinished round search is faulted', (t) => {
+  const dir = store(t)
+  programRun(dir)
+  assert.equal(readRunLog(dir, RUN).entries.some((e) => e.kind === 'returned'), false)
+  assert.deepEqual(plan(dir).runs.map((r) => r.run), [RUN])
+  assert.deepEqual(apply(plan(dir)), { applied: 2, error: '' })
+  const since = sinceRun(dir)
+  assert.equal(since.filter((e) => e.kind === 'fault' && /^migrate-v56:/.test(e.detail)).length, 1)
+  assert.equal(runState(dir, RUN).state, 'ended')
+})
+
+test('a navigator search is faulted', (t) => {
+  const dir = store(t)
+  programRun(dir, RUN, { threads: [['locate', 'scout']], ground: ['locate'], navigator: ['locate'] })
+  assert.deepEqual(plan(dir).runs, [{ run: RUN, program: 'probe', threads: ['locate'] }])
+  assert.deepEqual(apply(plan(dir)), { applied: 2, error: '' })
+  assert.ok(sinceRun(dir).some((e) => e.kind === 'fault' && /^migrate-v56:/.test(e.detail)))
+  assert.equal(runState(dir, RUN).state, 'ended')
+})
+
+test('a navigator spec with an empty asks list is still old', (t) => {
+  const dir = store(t)
+  programRun(dir)
+  put(join(searchDir(runDir(dir, RUN), 'locate'), 'server-n.json'), JSON.stringify({ ...leanSpecBody(dir, runDir(dir, RUN), 'locate'), asks: [] }))
+  assert.deepEqual(plan(dir).runs.map((r) => r.threads), [['locate']])
+})
+
+test('a run mixing old and new searches counts as old', (t) => {
+  const dir = store(t)
+  programRun(dir, RUN, { threads: [['locate', 'scout'], ['common', 'scout']], lean: ['locate'] })
+  const p = plan(dir)
+  assert.deepEqual(p.runs.map((r) => r.run), [RUN])
+  assert.ok(p.runs[0].threads.includes('common'), JSON.stringify(p.runs[0].threads))
+  assert.equal(apply(p).error, '')
+  assert.equal(runState(dir, RUN).state, 'ended')
+})
+
+test('a run of lean searches is left alone', (t) => {
+  const dir = store(t)
+  programRun(dir, RUN, {
+    threads: [['locate', 'scout'], ['history', 'historian'], ['scout:core-exports', 'scout'], ['outer:1/research:npm', 'doc-researcher']],
+    lean: ['locate', 'history', 'scout:core-exports', 'outer:1/research:npm'],
+  })
+  const before = hexed(snapshot(dir))
+  const p = plan(dir)
+  assert.deepEqual([p.runs, p.refused], [[], []])
+  assert.deepEqual(apply(p), { applied: 0, error: '' })
+  assert.deepEqual(hexed(snapshot(dir)), before)
+  assert.equal(runState(dir, RUN).state, 'stopped')
+})
+
+test('a lean spec beside a navigator spec makes the search new', (t) => {
+  const dir = store(t)
+  programRun(dir, RUN, { lean: ['locate'], navigator: ['locate'] })
   assert.deepEqual(plan(dir).runs, [])
+})
+
+test('a lean spec by any server-*.json name counts, and a file of another name does not', (t) => {
+  const dir = store(t)
+  programRun(dir, RUN, { threads: [['locate', 'scout'], ['common', 'scout']] })
+  leanSearch(dir, runDir(dir, RUN), 'locate', 'server-0123abcd.json')
+  leanSearch(dir, runDir(dir, RUN), 'common', 'spec.json')
+  assert.deepEqual(plan(dir).runs.map((r) => r.threads), [['common']])
+})
+
+test('a malformed server spec counts as an old search', (t) => {
+  const dir = store(t)
+  programRun(dir, RUN, { threads: [['locate', 'scout'], ['common', 'scout']], lean: ['common'] })
+  put(join(searchDir(runDir(dir, RUN), 'locate'), 'server-x.json'), '{"tree": {"root": ')
+  let p
+  assert.doesNotThrow(() => { p = plan(dir) })
+  assert.deepEqual(p.runs, [{ run: RUN, program: 'probe', threads: ['locate'] }])
+})
+
+test('a search with no directory counts as old', (t) => {
+  const dir = store(t)
+  programRun(dir, RUN, { threads: [['locate', 'scout'], ['common', 'scout']], lean: ['locate', 'common'] })
+  rmSync(searchDir(runDir(dir, RUN), 'common'), { recursive: true, force: true })
+  assert.deepEqual(plan(dir).runs, [{ run: RUN, program: 'probe', threads: ['common'] }])
+})
+
+test('a search directory holding no spec counts as old', (t) => {
+  const dir = store(t)
+  programRun(dir)
+  mkdirSync(searchDir(runDir(dir, RUN), 'locate'), { recursive: true })
+  put(join(searchDir(runDir(dir, RUN), 'locate'), 'calls.jsonl'), '')
+  assert.deepEqual(plan(dir).runs.map((r) => r.threads), [['locate']])
+})
+
+test("a lean spec under another run's home does not make this run's search new", (t) => {
+  const dir = store(t)
+  programRun(dir, RUN_A, { threads: [['plan', 'analyst']], lean: ['locate'] })
+  programRun(dir)
+  assert.deepEqual(plan(dir).runs.map((r) => r.run), [RUN])
+})
+
+test('a run the 5.4.1 migration faulted is not faulted again', (t) => {
+  const dir = store(t)
+  programRun(dir)
+  ok(appendRun(dir, RUN, { kind: 'fault', node: '', channel: 'program', detail: 'migrate-search-ledger: 1 of its searches ran in rounds' }))
+  assert.equal(runState(dir, RUN).state, 'stopped')
+  const p = plan(dir)
+  assert.deepEqual([p.runs, p.refused], [[], []])
+  const before = readFileSync(runLogPath(dir, RUN))
+  assert.deepEqual(apply(p), { applied: 0, error: '' })
+  assert.deepEqual(readFileSync(runLogPath(dir, RUN)), before)
+})
+
+test('a 5.4.1 migration fault from before the latest run does not stand for that run', (t) => {
+  const dir = store(t)
+  mkdirSync(runDir(dir, RUN), { recursive: true })
+  put(runJsonPath(dir, RUN), runMeta(RUN, 'probe', false))
+  ok(appendRun(dir, RUN, { kind: 'run', program: 'probe', scope: {}, pid: DEAD_PID }))
+  ok(appendRun(dir, RUN, { kind: 'fault', node: '', channel: 'program', detail: 'migrate-search-ledger: earlier' }))
+  ok(appendRun(dir, RUN, { kind: 'run', program: 'probe', scope: {}, pid: DEAD_PID }))
+  ok(appendRun(dir, RUN, dispatched('locate', 'scout')))
+  assert.deepEqual(plan(dir).runs.map((r) => r.run), [RUN])
+})
+
+test('a finished program keeps its result', (t) => {
+  const dir = store(t)
+  programRun(dir, RUN, { ended: true, navigator: ['locate'] })
+  programRun(dir, RUN_B, { program: 'survey', threads: [['common', 'scout']] })
+  ok(appendRun(dir, RUN_B, { kind: 'ended', result: { status: 'done', file: '', complete: true } }))
+  const before = [readFileSync(runLogPath(dir, RUN)), readFileSync(runLogPath(dir, RUN_B))]
+  const p = plan(dir)
+  assert.deepEqual([p.runs, p.refused], [[], []])
+  apply(p)
+  assert.deepEqual([readFileSync(runLogPath(dir, RUN)), readFileSync(runLogPath(dir, RUN_B))], before)
 })
 
 test('a dispatch by a role that is no searcher is no round search', (t) => {
@@ -222,7 +389,7 @@ test('apply gives a stopped run a program fault, then a failed end, after which 
   assert.equal(faults.length, 1)
   assert.equal(faults[0].node, '')
   assert.equal(faults[0].channel, 'program')
-  assert.match(faults[0].detail, /^migrate-search-ledger:/)
+  assert.match(faults[0].detail, /^migrate-v56:/)
   assert.deepEqual(since.filter((e) => e.kind === 'ended').map((e) => e.result), [{ status: 'failed', file: '', complete: false }])
   assert.ok(since.findIndex((e) => e.kind === 'fault') < since.findIndex((e) => e.kind === 'ended'), 'the fault comes first')
   assert.equal(runState(dir, RUN).state, 'ended')
@@ -361,11 +528,52 @@ test('an execution that went live after the plan is not written', (t) => {
   assert.deepEqual(replans(dir, 'f'), [])
 })
 
-test('a folder whose search the loop opened, its ground step beside it, is not planned', (t) => {
+test('a folder whose navigator search has a ground step beside it is planned: it is old', (t) => {
   const dir = store(t)
   execution(dir)
   searched(dir, 'probe:f:4/locate')
   stateLine(dir, { kind: 'step', key: 'probe:f:4/locate/ground', value: { rows: 0 } })
+  navigatorSearch(dir, execHome(dir), 'probe:f:4/locate')
+  assert.deepEqual(plan(dir).folders, [{ effort: E, execution: OPEN, folder: 'f', threads: ['probe:f:4/locate'] }])
+})
+
+test('a folder whose searches all have a lean spec in its execution home is not planned', (t) => {
+  const dir = store(t)
+  execution(dir)
+  searched(dir, 'probe:f:4/locate')
+  searched(dir, 'survey:c/scout:t')
+  leanSearch(dir, execHome(dir), 'probe:f:4/locate')
+  leanSearch(dir, execHome(dir), 'survey:c/scout:t')
+  const p = plan(dir)
+  assert.deepEqual([p.folders, p.excluded, p.left, p.refused], [[], [], [], []])
+})
+
+test("a folder survey's search under its basis is attributed to the folder", (t) => {
+  const dir = store(t)
+  execution(dir)
+  const thread = 'survey:f:answer:a/b:needs_context:4/scout:loader'
+  searched(dir, thread)
+  const p = plan(dir)
+  assert.deepEqual(p.folders, [{ effort: E, execution: OPEN, folder: 'f', threads: [thread] }])
+  assert.deepEqual(p.left, [])
+  assert.deepEqual(apply(p), { applied: 1, error: '' })
+  assert.equal(replans(dir, 'f').length, 1)
+})
+
+test("a nested folder survey's search under its basis is attributed to the nested folder", (t) => {
+  const dir = store(t)
+  execution(dir)
+  const thread = 'survey:f/x:answer:a/b:needs_context:4/scout:loader'
+  searched(dir, thread)
+  assert.deepEqual(byFolder(plan(dir), 'folders'), { 'f/x': [thread] })
+})
+
+test("a folder survey's search under its basis with a lean spec is left alone", (t) => {
+  const dir = store(t)
+  execution(dir)
+  const thread = 'survey:f:answer:a/b:needs_context:4/scout:loader'
+  searched(dir, thread)
+  leanSearch(dir, execHome(dir), thread)
   assert.deepEqual(plan(dir).folders, [])
 })
 
@@ -643,7 +851,7 @@ test('an apply the ledger refuses partway returns what it appended and why, and 
 test('a run whose migration fault landed and whose end tore gets only its end', (t) => {
   const dir = store(t)
   programRun(dir)
-  ok(appendRun(dir, RUN, { kind: 'fault', node: '', channel: 'program', detail: 'migrate-search-ledger: cut short' }))
+  ok(appendRun(dir, RUN, { kind: 'fault', node: '', channel: 'program', detail: 'migrate-v56: cut short' }))
   appendFileSync(runLogPath(dir, RUN), '{"kind":"ended","result":{"stat')
   assert.deepEqual(plan(dir).runs.map((r) => r.run), [RUN])
   assert.deepEqual(apply(plan(dir)), { applied: 1, error: '' })
@@ -701,7 +909,7 @@ function git(cwd, ...args) {
 
 /** A git repository with one commit, a linked worktree beside it, and e1's tree in the main checkout's store. */
 function checkouts(t) {
-  const base = mkdtempSync(join(tmpdir(), 'agentics-migrate-search-git-'))
+  const base = mkdtempSync(join(tmpdir(), 'agentics-migrate-v56-git-'))
   t.after(() => rmSync(base, { recursive: true, force: true }))
   const main = join(base, 'main')
   mkdirSync(main)
@@ -775,15 +983,15 @@ test('a round search under a scope prefix of several levels is a round search', 
   assert.deepEqual(plan(dir).runs.map((r) => r.threads), [['outer:1/inner:2/locate']])
 })
 
-test('a ground step opens one thread only: a round search on another thread beside it is still listed', (t) => {
+test('a lean spec opens one thread only: an old search on another thread beside it is still listed', (t) => {
   const dir = store(t)
-  programRun(dir, RUN, { threads: [['locate', 'scout'], ['common', 'scout']], ground: ['locate'] })
+  programRun(dir, RUN, { threads: [['locate', 'scout'], ['common', 'scout']], lean: ['locate'] })
   assert.deepEqual(plan(dir).runs, [{ run: RUN, program: 'probe', threads: ['common'] }])
 })
 
-test('the ground step of an unscoped thread does not open the same name under a scope prefix', (t) => {
+test('the lean spec of an unscoped thread does not open the same name under a scope prefix', (t) => {
   const dir = store(t)
-  programRun(dir, RUN, { threads: [['outer:1/locate', 'scout']], ground: ['locate'] })
+  programRun(dir, RUN, { threads: [['outer:1/locate', 'scout']], lean: ['locate'] })
   assert.deepEqual(plan(dir).runs.map((r) => r.threads), [['outer:1/locate']])
 })
 
@@ -839,7 +1047,7 @@ test('a migration fault from before the latest run does not stand for that run',
   mkdirSync(runDir(dir, RUN), { recursive: true })
   put(runJsonPath(dir, RUN), runMeta(RUN, 'probe', false))
   ok(appendRun(dir, RUN, { kind: 'run', program: 'probe', scope: {}, pid: DEAD_PID }))
-  ok(appendRun(dir, RUN, { kind: 'fault', node: '', channel: 'program', detail: 'migrate-search-ledger: an earlier attempt' }))
+  ok(appendRun(dir, RUN, { kind: 'fault', node: '', channel: 'program', detail: 'migrate-v56: an earlier attempt' }))
   ok(appendRun(dir, RUN, { kind: 'run', program: 'probe', scope: {}, pid: DEAD_PID }))
   ok(appendRun(dir, RUN, dispatched('locate', 'scout')))
   assert.equal(runState(dir, RUN).state, 'stopped')
@@ -921,12 +1129,12 @@ test('folders are listed by execution, then by folder', (t) => {
   assert.deepEqual(plan(dir).folders.map((f) => [f.execution, f.folder]), [[OPEN, 'f'], [OPEN2, 'c']])
 })
 
-test('a ground step in another execution\'s home does not open this execution\'s search', (t) => {
+test('a lean spec in another execution\'s home does not open this execution\'s search', (t) => {
   const dir = store(t)
   execution(dir)
   execution(dir, OPEN2)
   searched(dir, 'probe:f:4/locate')
-  stateLine(dir, { kind: 'step', key: 'probe:f:4/locate/ground', value: { rows: 0 } }, OPEN2)
+  leanSearch(dir, execHome(dir, OPEN2), 'probe:f:4/locate')
   assert.deepEqual(folderIds(plan(dir)), ['f'])
 })
 
@@ -1170,7 +1378,7 @@ test('the plan root is the absolute posix main checkout, however the repo is nam
 })
 
 test('a repository with no store plans nothing, writes nothing and applies as zero', (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'agentics-migrate-search-empty-'))
+  const dir = mkdtempSync(join(tmpdir(), 'agentics-migrate-v56-empty-'))
   t.after(() => rmSync(dir, { recursive: true, force: true }))
   const p = plan(dir)
   assert.deepEqual([p.runs, p.folders, p.excluded, p.left, p.refused], [[], [], [], [], []])
@@ -1179,7 +1387,7 @@ test('a repository with no store plans nothing, writes nothing and applies as ze
 })
 
 test('the CLI on a repository with no store prints an empty plan, with and without --yes, and exits 0', { timeout: 90_000 }, (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'agentics-migrate-search-empty-'))
+  const dir = mkdtempSync(join(tmpdir(), 'agentics-migrate-v56-empty-'))
   t.after(() => rmSync(dir, { recursive: true, force: true }))
   for (const args of [[], ['--yes']]) {
     const r = cli(dir, ...args)

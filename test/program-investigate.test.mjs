@@ -16,7 +16,7 @@ import { fnv1a } from '../lib/plan-digest.mjs'
 import { investigate, scopeOf } from '../lib/programs/investigate.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
-import { endSearch, hitTurn, historyReturn, openTurn, repoReturn, showCall } from './harness/navigator.mjs'
+import { hitTurn, scoutStep } from './fast/harness/scout.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 const QUESTION = 'Can the config loader drop its cache?'
@@ -31,11 +31,8 @@ const judged = (items, risks = []) => ({ items, risks, units: [...new Set(items.
 const task = (n) => ({ ref: 't' + n, subject: 'Do step ' + n, description: 'src/a.js:' + n + ' needs step ' + n, activeForm: 'Doing step ' + n, blocked_by: n > 1 ? ['t' + (n - 1)] : [] })
 const argsOf = (over = {}) => ({ question: QUESTION, roots: ['.'], notes: '', as_tasks: false, intelligence: 'normal', pace: 'balanced', ...over })
 
-/** The scout script of topic `key` answered by `hits` on its first turn: the hit turn, the stall, and the ruling. */
-function answeredBy(key, hits) {
-  const end = endSearch({ name: 'scout:' + key, turn: 1, asks: key, ruling: 'answered' })
-  return { ['scout||scout:' + key]: [hitTurn(key, hits), ...end.navigator], [end.ruler.key]: end.ruler.steps }
-}
+/** The scout script of topic `key`, its search finding `hits` (`[path, line, note]`). */
+const answeredBy = (key, hits) => ({ ['scout||scout:' + key]: [hitTurn(hits.map(([path, line, note]) => ({ path, line, note })))] })
 
 /** A one-topic survey whose judge records one claim, then the synthesis step(s) given. */
 const script = (synthesis, over = {}) => ({
@@ -75,9 +72,9 @@ test("the investigation's scope is its question", () => {
 test('the survey runs inside this run, on its log', async (t) => {
   const r = rig(t, script(REPORT))
   await investigate(r.ctx, argsOf())
-  assert.deepEqual(r.calls.map((c) => c.thread.key), ['plan', 'scout:loader', 'scout:loader', 'ruler:search:scout:loader:2', 'judge:1', 'synthesis'])
+  assert.deepEqual(r.calls.map((c) => c.thread.key), ['plan', 'scout:loader', 'judge:1', 'synthesis'])
   const dispatched = r.log.entries().filter((e) => e.kind === 'dispatched').map((e) => e.thread)
-  assert.deepEqual(dispatched, ['plan', 'scout:loader', 'scout:loader', 'ruler:search:scout:loader:2', 'judge:1', 'synthesis'])
+  assert.deepEqual(dispatched, ['plan', 'scout:loader', 'judge:1', 'synthesis'])
 })
 
 test('the survey is asked the question, with the roots, notes, intelligence and pace', async (t) => {
@@ -120,15 +117,13 @@ test('the synthesis brief holds the context text inline and no context path', as
 })
 
 test("the synthesis brief names each gap in the survey's coverage", async (t) => {
-  const storeEnd = endSearch({ name: 'scout:store', turn: 1, asks: 'store', ruling: 'not_converging' })
   const s = {
     'analyst||plan': [{ output: plan([topic('parser'), topic('store'), topic('expiry')], { history_question: 'When?', docs_question: 'What?' }) }],
     ...answeredBy('parser', [['src/a.js', 3, 'x']]),
-    'scout||scout:store': [openTurn('store', [['src/b.js', 2, 'y']], 'src/b.js'), ...storeEnd.navigator],
-    [storeEnd.ruler.key]: storeEnd.ruler.steps,
-    'scout||scout:expiry': [{ status: 'failed', cause: 'host_error' }, { status: 'failed', cause: 'host_error' }],
-    'historian||history': [{ status: 'failed', cause: 'host_error' }, { status: 'failed', cause: 'host_error' }],
-    'doc-researcher||docs': [{ status: 'failed', cause: 'host_error' }, { status: 'failed', cause: 'host_error' }],
+    'scout||scout:store': [{ status: 'failed', cause: 'budget', calls: hitTurn([{ path: 'src/b.js', line: 2, note: 'y' }]).calls }],
+    'scout||scout:expiry': [{ status: 'failed', cause: 'host_error' }],
+    'historian||history': [{ status: 'failed', cause: 'host_error' }],
+    'doc-researcher||docs': [{ status: 'failed', cause: 'host_error' }],
     'analyst||judge:1': [{ output: judged([claim('store', 'src/b.js', 2, 'store claim')], [{ topic: 'expiry', text: 'nothing came back' }]) }],
     'analyst||synthesis': REPORT,
   }
@@ -137,7 +132,7 @@ test("the synthesis brief names each gap in the survey's coverage", async (t) =>
   const { brief } = on(r, 'synthesis')[0]
   assert.deepEqual(out.coverage.dropped, ['parser'])
   assert.deepEqual(out.coverage.incomplete, ['store', 'expiry'])
-  assert.deepEqual(out.coverage.failed_channels, ['history', 'docs'])
+  assert.deepEqual(out.coverage.failed_channels, ['scout:expiry', 'history', 'docs'])
   for (const part of ['parser', 'store, expiry', 'the history channel failed', 'the docs channel failed', ...out.coverage.unreached]) {
     assert.ok(brief.includes(part), part)
   }
@@ -172,17 +167,15 @@ test('a failed synthesis keeps the evidence and names the failure', async (t) =>
 })
 
 test("the evidence is the survey's: items, context, risks, history and docs", async (t) => {
-  const historyEnd = endSearch({ name: 'history', turn: 1, asks: 'history', ruling: 'answered' })
   const r = rig(t, script(REPORT, {
     'analyst||plan': [{ output: plan([topic('loader')], { history_question: 'When did the cache land?' }) }],
-    'historian||history': [{ calls: [showCall('history', SHA)], output: historyReturn({ hits: [['history', SHA, 'abc123 added the cache']], declare: { history: 'answered' } }) }, ...historyEnd.navigator],
-    [historyEnd.ruler.key]: historyEnd.ruler.steps,
+    'historian||history': [scoutStep({ hits: [{ commit: SHA, note: 'abc123 added the cache' }] })],
   }))
   const out = await investigate(r.ctx, argsOf())
   assert.deepEqual(out.evidence.items.map((i) => i.id), [...liveItems(r.repo).keys()])
   assert.ok(existsSync(out.evidence.context))
   assert.deepEqual(out.evidence.risks, [{ topic: 'loader', n: 1 }])
-  assert.deepEqual(out.evidence.history, { status: 'returned', end: 'done', hits: 1 })
+  assert.deepEqual(out.evidence.history, { status: 'done', hits: 1 })
   assert.equal(out.evidence.docs, null)
 })
 

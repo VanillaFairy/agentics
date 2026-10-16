@@ -114,7 +114,7 @@ test('a stale topic is searched again, its search told what it used to claim', a
   }, script({ planned: [LOADER], searched: ['cache', 'loader'] }))
   assert.deepEqual(topicTriples(result)[0], { key: 'cache', subtree: 'src/cache', forced: true })
   const scout = on(rig, 'scout:cache')
-  assert.equal(scout.length, 2, 'its turn and the stall the ruler ends it on')
+  assert.equal(scout.length, 1, 'its one search')
   const charge = readFileSync(scout[0].role.systemPromptFile, 'utf8')
   assert.ok(charge.includes(STALE), 'the claim')
   assert.ok(charge.includes(A + ':10-12'), 'the span')
@@ -155,7 +155,7 @@ test('a planned topic a stale topic forces is dropped, forced topics first', asy
     makeStale(repo, id)
   }, script({ planned, searched: ['cache', 'fresh'] }))
   assert.deepEqual(result.topics.map((x) => [x.key, x.forced]), [['cache', true], ['fresh', false]])
-  assert.equal(on(rig, 'scout:cache').length, 2, 'its turn and the stall the ruler ends it on')
+  assert.equal(on(rig, 'scout:cache').length, 1, 'its one search')
 })
 
 test('a stale item a newer standing item replaced is neither reused nor searched again', async (t) => {
@@ -229,7 +229,7 @@ test('an unreadable pool runs the survey in full and says so', async (t) => {
     appendProject(repo, 'items', [{ kind: 'item', item: { id: 'I0000abcd', ground: 'src' } }])
     assert.throws(() => itemsFor(repo, { ground: ['src'] }))
   }, script())
-  assert.equal(on(rig, 'scout:loader').length, 2, 'its turn and the stall the ruler ends it on')
+  assert.equal(on(rig, 'scout:loader').length, 1, 'its one search')
   assert.ok(poolIdOf(rig.repo, newClaim('loader')), "the planned topic's item is recorded")
   assert.deepEqual(cov(result).failed_channels, ['pool'])
   assert.ok(cov(result).unreached.some((l) => String(l).includes('pool')), JSON.stringify(cov(result).unreached))

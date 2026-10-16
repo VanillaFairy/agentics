@@ -6,7 +6,8 @@ import { liveItems } from '../../lib/evidence.mjs'
 import { askAfter } from '../../lib/programs/converge.mjs'
 import { survey } from '../../lib/programs/survey.mjs'
 import { loadRole } from '../../lib/roles.mjs'
-import { endSearch, fetchCall, hitTurn, historyReturn, showCall, webReturn } from './navigator.mjs'
+import { hitTurn, scoutStep } from '../fast/harness/scout.mjs'
+import { endSearch } from './navigator.mjs'
 import { programRig } from './program-rig.mjs'
 
 // --- the world --------------------------------------------------------------------------------
@@ -32,10 +33,10 @@ export const plan = ({ topics = [TOPIC.loader], common_ground = '', history_ques
   ({ topics, common_ground, history_question, docs_question })
 export const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 export const DOCS_URL = 'https://nodejs.org/api/modules.html'
-/** A history turn that showed SHA and returns it with `note`. */
-export const historyTurn = (note) => ({ calls: [showCall('history', SHA)], output: historyReturn({ hits: [['history', SHA, note]], declare: { history: 'answered' } }) })
-/** A docs turn that fetched DOCS_URL and returns it with `note`. */
-export const docsTurn = (note) => ({ calls: [fetchCall('docs', DOCS_URL)], output: webReturn({ hits: [['docs', DOCS_URL, note]], declare: { docs: 'answered' } }) })
+/** A history search's step: it found SHA, noting `note`. */
+export const historyTurn = (note) => scoutStep({ hits: [{ commit: SHA, note }] })
+/** A docs search's step: it found DOCS_URL, noting `note`. */
+export const docsTurn = (note) => scoutStep({ hits: [{ url: DOCS_URL, note }] })
 export const behaviour = (topic, claim, line = 7) =>
   ({ topic, kind: 'behaviour', claim, spans: [{ path: FILE[topic], start: line, end: line }], queries: [], sources: [], rests_on: [] })
 
@@ -75,7 +76,11 @@ const rulerAt = (thread, turn, asks, ruling) => {
   const { ruler } = endSearch({ name: thread, turn, asks, ruling })
   return { [ruler.key]: ruler.steps }
 }
-/** A topic search's script: the scout's `turns` on topic `key`, then the stall and the ruling of `key`. */
+/** `[path, line, note?]` locations as path hits. */
+export const pathHits = (locations) => locations.map(([path, line, note = 'NOTE-' + path + ':' + line]) => ({ path, line, note }))
+/** A topic search's script: the scout on topic `key` finds `locations`. */
+export const topicSearch = (key, locations) => ({ ['scout||scout:' + key]: [hitTurn(pathHits(locations))] })
+/** An asking search's script: the scout's `turns` on topic `key`, then the stall and the ruling of `key`. */
 export const scouted = (key, turns, ruling) => ended('scout', 'scout:' + key, turns, key, ruling)
 /** A topic search a want reopens: `first` ends ruled on `key`, then `wanted` on the want `want` (default `want:1`). */
 export const rescouted = (key, first, wanted, want = 'want:1') =>
@@ -91,7 +96,7 @@ export const ARGS = (over = {}) => ({
 export const CLAIM = 'CLAIM-loader resolves a path at line 7'
 export const basicScript = (over = {}) => ({
   'analyst||plan': [{ output: plan() }],
-  ...scouted('loader', [hitTurn('loader', [[FILE.loader, 7, 'NOTE-loader resolves here']])]),
+  ...topicSearch('loader', [[FILE.loader, 7, 'NOTE-loader resolves here']]),
   'analyst||judge:1': [{ output: judgeOut({ items: [behaviour('loader', CLAIM)], units: [anchoredUnit('loader')] }) }],
   ...over,
 })
@@ -102,10 +107,10 @@ export const HQ = 'HQ-1a2b when did the loader last change'
 export const DQ = 'DQ-3c4d what does node document about resolution'
 export const fullScript = (over = {}) => ({
   'analyst||plan': [{ output: plan({ topics: [TOPIC.loader, TOPIC.store], common_ground: COMMON, history_question: HQ, docs_question: DQ }) }],
-  ...scouted('loader', [hitTurn('loader', [[FILE.loader, 7]])]),
-  ...scouted('store', [hitTurn('store', [[FILE.store, 9]])]),
-  ...ended('historian', 'history', [historyTurn('HIST-FINDINGS-8a1b')], 'history'),
-  ...ended('doc-researcher', 'docs', [docsTurn('DOCS-FINDINGS-9b2c')], 'docs'),
+  ...topicSearch('loader', [[FILE.loader, 7]]),
+  ...topicSearch('store', [[FILE.store, 9]]),
+  'historian||history': [historyTurn('HIST-FINDINGS-8a1b')],
+  'doc-researcher||docs': [docsTurn('DOCS-FINDINGS-9b2c')],
   'analyst||judge:1': [{
     output: judgeOut({
       items: [behaviour('loader', CLAIM), behaviour('store', 'CLAIM-store writes at line 9', 9)],

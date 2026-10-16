@@ -8,7 +8,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { schemaOf } from '../lib/schemas.mjs'
-import { endSearch, fetchCall, webReturn } from './harness/navigator.mjs'
+import { stalledRecord } from './fast/harness/scout.mjs'
 import {
   Q, TOPIC, plan, CLAIM, COMMON, HQ, DQ, DOCS_URL, fullScript, runSurvey, on, pool, cov,
 } from './harness/survey-world.mjs'
@@ -18,14 +18,14 @@ const chargeOf = (call) => readFileSync(call.role.systemPromptFile, 'utf8')
 test('a history question runs the historian with it, and a docs question the doc-researcher', async (t) => {
   const { rig } = await runSurvey(t, fullScript())
   const [history] = on(rig, 'history')
-  assert.equal(on(rig, 'history').length, 2, 'its turn and the stall the ruler ends it on')
+  assert.equal(on(rig, 'history').length, 1)
   assert.equal(history.role.name, 'historian')
-  assert.deepEqual(history.schema, schemaOf('search_history'))
+  assert.deepEqual(history.schema, schemaOf('search'))
   for (const part of [HQ, Q]) assert.ok(chargeOf(history).includes(part), 'history charge holds ' + part)
   const [docs] = on(rig, 'docs')
-  assert.equal(on(rig, 'docs').length, 2, 'its turn and the stall the ruler ends it on')
+  assert.equal(on(rig, 'docs').length, 1)
   assert.equal(docs.role.name, 'doc-researcher')
-  assert.deepEqual(docs.schema, schemaOf('search_web'))
+  assert.deepEqual(docs.schema, schemaOf('search'))
   for (const part of [DQ, Q]) assert.ok(chargeOf(docs).includes(part), 'docs charge holds ' + part)
 })
 
@@ -39,33 +39,36 @@ test('no channel runs when the plan asks none', async (t) => {
   assert.equal(result.docs, null)
 })
 
-test('a channel that produced nothing fails alone', async (t) => {
-  const FAIL = { status: 'failed', cause: 'host_error' }
-  const { rig, result } = await runSurvey(t, fullScript({ 'historian||history': [FAIL, FAIL] }))
+test('a channel that failed fails alone', async (t) => {
+  const { rig, result } = await runSurvey(t, fullScript({ 'historian||history': [{ status: 'failed', cause: 'host_error' }] }))
   assert.deepEqual(cov(result).failed_channels, ['history'])
-  assert.ok(cov(result).unreached.some((l) => l.includes('history')), JSON.stringify(cov(result).unreached))
+  assert.ok(cov(result).unreached.some((l) => l.startsWith('history: failed')), JSON.stringify(cov(result).unreached))
   assert.ok(pool(rig).some((it) => it.claim === CLAIM), 'the topic item is recorded')
-  assert.equal(result.history.hits, 0)
+  assert.deepEqual(result.history, { status: 'failed', hits: 0 })
 })
 
-test('a channel whose state stops moving is incomplete', async (t) => {
-  const stuck = { calls: [fetchCall('docs', DOCS_URL)], output: webReturn({ leads: [{ ask: 'docs', path: DOCS_URL, why: 'read the rest' }] }) }
-  const end = endSearch({ name: 'docs', turn: 1, asks: 'docs', ruling: 'not_converging' })
-  const { result } = await runSurvey(t, fullScript({ 'doc-researcher||docs': [stuck, { output: webReturn({}) }], [end.ruler.key]: end.ruler.steps }))
+test('a channel stopped at its budget is incomplete', async (t) => {
+  const { result } = await runSurvey(t, fullScript({ 'doc-researcher||docs': [{ status: 'failed', cause: 'budget' }] }), { search_budget: 1 })
   assert.deepEqual(cov(result).incomplete, ['docs'])
-  assert.equal(result.docs.end, 'not_converging')
+  assert.equal(result.docs.status, 'budget')
   assert.deepEqual(cov(result).failed_channels, [])
 })
 
-test('declared holds each channel ask that the ruler ruled done, in its ruled form', async (t) => {
-  const { result } = await runSurvey(t, fullScript())
-  for (const name of ['history', 'docs']) assert.ok(cov(result).declared.some((l) => l.startsWith(name + ':') && l.includes(': ruled answered: ')), name + ': ' + JSON.stringify(cov(result).declared))
+test('a stalled channel is complete, its line declared', async (t) => {
+  const { result } = await runSurvey(t, fullScript({ 'doc-researcher||docs': [{ calls: [stalledRecord()], output: { summary: 'stalled' } }] }))
+  assert.deepEqual(cov(result).incomplete, [])
+  assert.ok(cov(result).declared.some((l) => l.startsWith('docs: stalled')), JSON.stringify(cov(result).declared))
 })
 
-test("the result names each channel's end and its hit count, and the context holds its findings", async (t) => {
+test("declared holds each channel search's coverage line", async (t) => {
   const { result } = await runSurvey(t, fullScript())
-  assert.deepEqual(result.history, { status: 'returned', end: 'done', hits: 1 })
-  assert.deepEqual(result.docs, { status: 'returned', end: 'done', hits: 1 })
+  for (const name of ['history', 'docs']) assert.ok(cov(result).declared.includes(name + ': done, 0 calls, 1 hit'), name + ': ' + JSON.stringify(cov(result).declared))
+})
+
+test("the result names each channel's status and its hit count, and the context holds its findings", async (t) => {
+  const { result } = await runSurvey(t, fullScript())
+  assert.deepEqual(result.history, { status: 'done', hits: 1 })
+  assert.deepEqual(result.docs, { status: 'done', hits: 1 })
   const context = readFileSync(result.context, 'utf8')
-  for (const part of ['GIT HISTORY:', 'HIST-FINDINGS-8a1b', 'EXTERNAL DOCUMENTATION:', 'DOCS-FINDINGS-9b2c']) assert.ok(context.includes(part), part)
+  for (const part of ['GIT HISTORY:', 'HIST-FINDINGS-8a1b', 'EXTERNAL DOCUMENTATION:', 'DOCS-FINDINGS-9b2c', DOCS_URL]) assert.ok(context.includes(part), part)
 })

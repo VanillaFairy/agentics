@@ -139,7 +139,7 @@ after it, and never as a footnote:
   short, or whose items went unrecorded or unruled, `history` or `docs` when that search ended short
 - `failed_channels` — a requested channel produced nothing at all, so any claim resting on it
   is unsupported: `plan` (planning failed, so nothing was searched), `history`, `docs`, a search
-  whose navigator was stopped, named by ask (`scout:<topic>:<topic>`), or `synthesis` (the
+  that failed, named `scout:<topic>`, or `synthesis` (the
   analyst who writes the answer failed: the evidence was gathered, is in `result.evidence.context`,
   and was never written up)
 - `unreached` — surface nobody covered, one line each: a search that produced nothing, or the keys

@@ -340,6 +340,25 @@ test('a run the 5.4.1 migration faulted is not faulted again', (t) => {
   assert.deepEqual(readFileSync(runLogPath(dir, RUN)), before)
 })
 
+test('a run the 5.4.1 migration faults between the plan and the apply gets nothing from the apply', (t) => {
+  const dir = store(t)
+  programRun(dir)
+  const p = plan(dir)
+  assert.deepEqual(p.runs.map((r) => r.run), [RUN])
+  ok(appendRun(dir, RUN, { kind: 'fault', node: '', channel: 'program', detail: 'migrate-search-ledger: 1 of its searches ran in rounds' }))
+  const before = readFileSync(runLogPath(dir, RUN))
+  assert.deepEqual(apply(p), { applied: 0, error: '' })
+  assert.deepEqual(readFileSync(runLogPath(dir, RUN)), before)
+})
+
+test('the migration fault names how many of the run searches are old', (t) => {
+  const dir = store(t)
+  programRun(dir, RUN, { threads: [['locate', 'scout'], ['common', 'scout'], ['history', 'historian']], lean: ['history'] })
+  assert.equal(apply(plan(dir)).error, '')
+  assert.deepEqual(sinceRun(dir).filter((e) => e.kind === 'fault').map((e) => e.detail),
+    ['migrate-v56: 2 of its searches are in a shape 5.6.0 does not read; start the program again'])
+})
+
 test('a 5.4.1 migration fault from before the latest run does not stand for that run', (t) => {
   const dir = store(t)
   mkdirSync(runDir(dir, RUN), { recursive: true })

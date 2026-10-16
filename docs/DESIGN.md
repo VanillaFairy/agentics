@@ -75,21 +75,17 @@ names none.
 ### L1 — Honest state
 
 Everything shows exactly how complete it is. A producer's or judge's return states what it covered
-and what it did not reach; a search's coverage is code's own record of what its tools showed and of
-the agenda left at its end ([Searches](#searches)); and "looked and found nothing" never merges
+and what it did not reach; a search's coverage is code's own record: its status from the runner and the
+loop guard, and its journal's calls and hits, never the scout's account ([Searches](#searches)); and "looked and found nothing" never merges
 with "never looked": a name that resolves to nothing, a return that is not there, a unit nobody
 ruled on reads as absent or open, never as empty or passed. Work is in one of three states: **in progress**; **escalated**, carrying
 what was established, what was tried, what remains and how to resume; or **done**, every unit of
 its intent traced to work and to a passing check ([Traceability](#traceability)). Nothing reads as
 more complete than it is, and what stays incomplete leads every report.
 
-*Enforced by:* `test/fast/schemas.test.mjs` (every navigator's return schema in `lib/schemas.mjs`
-carries hits, dismissals, leads and a declaration per ask, and none declares its own coverage or a
-stop reason); the `coverage-block` lint rule (every program result computes `complete` from its
-fields); `verifyReturn` in `lib/search/ledger.mjs`, which refuses a hit no tool call showed
-(`unobserved`), and the ledger's agenda, which every ask reports at its end as `unreached`, with
-`coverageLines` in the same file, which labels each end by the weakest source it rests on and names
-what each ruled `done` looked for;
+*Enforced by:* the `coverage-block` lint rule (every program result computes `complete` from its
+fields); `searchCoverage` and `coverageLine` in `lib/programs/search/consume.mjs`, which write each
+search's coverage line from its status, its journal's calls and hits and its why;
 `resolveHandle` in `lib/store.mjs`, the one way a CLI turns an argument into a thing, which refuses
 an unknown one as `unknown_<kind>`; status derived on read (P3); an integration branch holds no
 commit no record accounts for (`outside_work`: `unaccountedOf` in `lib/integration.mjs`, which
@@ -100,22 +96,20 @@ preflight reads before anything runs and the adopt check reports, [Outside work]
 Work escalates on a state, never on a count. The states are three: a decision only the user can
 make; a claim an independent ruling (L3) finds cannot be met as written; and no progress — the
 same state again, or an independent ruling that a loop is not converging. A count may decide when
-to ask; it never decides the answer. A search converges while its turns change what its asks'
-evidence establishes; exhausting the agenda is a means, not the target. An external stop — a usage
-limit, a host error, a crash, the user — leaves work in progress, resumed from the records.
+to ask; it never decides the answer. A search ends when its scout returns, on its loop guard, or on
+a dollar budget the user set. The guard's window is the one count in a search: a stall detector the
+tool server owns, never a cap on calls that find something new. An external stop — a usage limit, a host error, a crash, the user — leaves work in progress, resumed from the records.
 
 *Enforced by:* the `no-turn-caps` lint rule (no turn or spend cap on a dispatch, over the programs,
-the execute program's units, the search loop in `lib/programs/search/`, `lib/run.mjs`, skills and
-roles); the `no-loop-bounds` lint rule (no loop in a program or `lib/run.mjs` that a counter ends — a
-condition, or an `if` that leaves the loop, comparing a counter the loop increments to a number, a
-SCREAMING_CASE name or a `max`/`limit`/`cap` name); the convergence predicates in `lib/verdict.mjs`,
-which compare states; `foldLedger` in `lib/search/ledger.mjs`, which ends each ask of a search on
-a state equality or a ruling (`no_progress` when a stall finds the ask in a state a ruling already
-saw, `done` and `not_converging` only on a ruling), and `stateOf` in the same file, which reports
-those ends and the asks a stall or a check-in owes the ruler; `askAfter` in
-`lib/programs/converge.mjs`, which schedules a convergence ruling — at a search's check-in, the
-`ruler_search` ruling of each ask that moved; the runner's classification of host failures as
-stops ([Host stops](#host-stops)).
+the execute program's units, `lib/search/`, `lib/run.mjs`, skills and roles); the `no-loop-bounds`
+lint rule (no loop in a program, `lib/search/` or `lib/run.mjs` that a counter ends — a condition, or
+an `if` that leaves the loop, comparing a counter the loop increments to a number, a SCREAMING_CASE
+name or a `max`/`limit`/`cap` name), the guard's `STALL_WINDOW` its one named exemption; the
+convergence predicates in `lib/verdict.mjs`, which compare states; `handle` in
+`lib/search/server.mjs`, whose loop guard refuses a session's tools once `STALL_WINDOW` calls in a
+row showed nothing new; `askAfter` in `lib/programs/converge.mjs`, which schedules a convergence
+ruling; the runner's classification of host failures as stops, and its terminal `budget` class,
+which `dispatch` does not wait out ([Host stops](#host-stops)).
 
 ### L3 — Separate judges
 
@@ -134,10 +128,10 @@ judge, and `dispatchJudge` in `lib/programs/common.mjs`, which refuses to put a 
 session that produced it or any session of its thread; the `no-self-verdict` lint rule over
 `lib/schemas.mjs` (producer and searcher schemas carry no ruling fields, and a judge's schema rules
 per unit); `verdictOf` in `lib/verdict.mjs`, where approval is every unit ruled and none ruled
-blocking; the search loop (`lib/programs/search/loop.mjs`), where the navigator declares,
-each ask's end is ruled by `ruler_search` through `dispatchJudge` with every navigator session of the
-search as producer, and sufficiency is ruled by the consumers through wants
-([Searches](#searches)).
+blocking; a search, the one place a producer ends its own work: the scout's return is a
+declaration that ends the search and can make a program's coverage complete, and never enters a
+verdict; its hits are judged where they are consumed — by the probers, the survey judges, the
+assessor and the reviews ([Searches](#searches)).
 
 **Why:** an agent that certifies its own work is the examinee marking the exam, and an empty list
 of findings from a reader who looked at nothing is not a pass.

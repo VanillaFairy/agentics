@@ -115,11 +115,11 @@ So, **binding**:
 - You may not report "nothing exists, build it" while `coverage.complete === false`. Say what
   was not reached, and say plainly that the sweep did not finish.
 - Two lists carry the two halves, and they mean opposite things. `declared` says how each search
-  ended and what it rests on: *"find:crates: ruled absent: no crate parses it — looked grep
-  parser@crates→0"* is **evidence for building**. `unreached` says what a search never reached:
-  *"find:crates: seed crates.io (…)"* is **evidence of nothing at all**. Present them apart.
+  ended: *"research:crates: done, 9 calls, no hits"* is **evidence for building**. `unreached` says
+  what a search never reached: *"research:crates: budget, 4 calls, 1 hit: spent $1.02 of its $1
+  budget"* is **evidence of nothing at all**. Present them apart.
 - `dropped` names the angles the frame gave beyond `--max-angles` (4 unless passed): nobody
-  searched them. `incomplete` naming `find:<angle>` or `repo` is a search that stopped short, and
+  searched them. `incomplete` naming `research:<angle>` or `repo` is a search that stopped short, and
   `assess:<candidate>` a candidate the assessment did not rule on.
 - `failed_channels` naming `frame` means nothing was searched at all.
 - `failed_channels` naming `repo` means nobody checked what you already depend on. Any claim

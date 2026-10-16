@@ -140,12 +140,14 @@ const jsonl = (p) => (existsSync(p) ? readFileSync(p, 'utf8').split('\n').filter
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 const list = (v) => (Array.isArray(v) ? v : [])
 
-/** Every search result inside a run's result.json: an object whose `asks` maps keys to `{end, …}`. */
-function searchesIn(v, out = []) {
-  if (Array.isArray(v)) v.forEach((x) => searchesIn(x, out))
+/** Every coverage line in a run's result.json: the strings under each `coverage` object in it. */
+function coverageIn(v, out = []) {
+  if (Array.isArray(v)) v.forEach((x) => coverageIn(x, out))
   else if (isObject(v)) {
-    if (isObject(v.asks) && Object.values(v.asks).every((a) => isObject(a) && 'end' in a)) out.push(v)
-    else Object.values(v).forEach((x) => searchesIn(x, out))
+    for (const [k, x] of Object.entries(v)) {
+      if (k === 'coverage' && isObject(x)) out.push(...Object.values(x).flatMap(list).filter((l) => typeof l === 'string'))
+      else coverageIn(x, out)
+    }
   }
   return out
 }
@@ -156,15 +158,11 @@ const searchDirs = (runDir) => {
 }
 const callsOf = (runDir) => searchDirs(runDir).flatMap((d) => jsonl(join(d, 'calls.jsonl')))
 const rulingFiles = (runDir) => searchDirs(runDir).flatMap((d) => (existsSync(join(d, 'rulings')) ? readdirSync(join(d, 'rulings')) : []))
-const linesOf = (s) => Object.values(s.coverage || {}).flatMap(list)
-
 const ORACLES = {
   orphans(result, runDir) {
-    const searches = searchesIn(result)
-    const asks = searches.flatMap((s) => Object.entries(s.asks))
-    const lines = searches.flatMap(linesOf)
+    const lines = coverageIn(result)
     const fails = []
-    const done = asks.filter(([, a]) => a.end === 'done').map(([k]) => k)
+    const done = lines.filter((l) => /: ruled \w+: /.test(l)).map((l) => l.slice(0, l.indexOf(': ruled ')))
     if (done.length && !rulingFiles(runDir).length) fails.push('done without a ruling file: ' + done.join(', '))
     for (const d of DIRS) {
       if (!lines.some((l) => l.includes('src/' + d + '/ (') && l.includes('rests on'))) fails.push('src/' + d + '/ has no coverage line naming what it rests on')
@@ -174,10 +172,10 @@ const ORACLES = {
     return { fails, notes: ['orphans reached: ' + reached + ' of ' + ORPHANS.length] }
   },
   brackets(result, runDir) {
-    const searches = searchesIn(result)
-    const text = JSON.stringify(searches)
+    const lines = coverageIn(result)
+    const text = lines.join('\n')
     const files = ['app/[id]/page.tsx', 'app/[slug]/layout.tsx']
-    const refused = [...searches.flatMap((s) => list(s.refusals)), ...callsOf(runDir).filter((c) => c.ok === false)].map((r) => JSON.stringify(r))
+    const refused = [...lines.filter((l) => l.includes(': refused ')), ...callsOf(runDir).filter((c) => c.ok === false).map((c) => JSON.stringify(c))]
     const fails = []
     for (const f of files) {
       if (!text.includes(f)) fails.push(f + ' neither hit nor listed')
@@ -195,7 +193,7 @@ const ORACLES = {
       return existsSync(pages) ? readdirSync(pages).map((f) => readJson(join(pages, f))).filter((p) => p && String(p.key).includes('/release-notes')) : []
     })
     const fetches = callsOf(runDir).filter((c) => c.tool === 'fetch' && c.ok !== false && String(c.args && c.args.url).includes('/release-notes'))
-    const seen = [...snaps.flatMap((p) => list(p.lines)), JSON.stringify(searchesIn(result))].join('\n')
+    const seen = [...snaps.flatMap((p) => list(p.lines)), ...coverageIn(result)].join('\n')
     const versions = new Set([...seen.matchAll(/version (\d+)/g)].map((m) => m[1]))
     const fails = []
     if (!snaps.length) fails.push('no snapshot of ' + PAGE)

@@ -50,45 +50,47 @@ function runDir({ result, calls = [], rulings = false, pages = [] }) {
   })
   return dir
 }
-const searchOf = (asks, coverage = {}, refusals = []) => ({ topics: [{ search: { name: 'navigator', asks, coverage, refusals } }] })
+const resultOf = (coverage = {}) => ({ question: 'q', coverage: { complete: false, ...coverage } })
 const DIRS = ['api', 'auth', 'billing', 'cache', 'config', 'jobs', 'store', 'util']
 const restsOn = DIRS.map((d) => 'navigator:t1: src/' + d + '/ (5 files) rests on grep import')
+const ruled = 'navigator:t1: ruled answered: six modules are orphans — looked grep import'
 
-test('check reads the oracle', () => {
-  const done = { t1: { end: 'done', hits: [] } }
-  const good = { declared: restsOn }
-  assert.equal(check('orphans', runDir({ result: searchOf(done, good), rulings: true })).ok, true)
-  assert.equal(check('orphans', runDir({ result: searchOf(done, good) })).ok, false, 'done without a ruling file')
-  assert.equal(check('orphans', runDir({ result: searchOf(done, { declared: restsOn.slice(1) }), rulings: true })).ok, false, 'a directory without rests on')
-  assert.match(check('orphans', runDir({ result: searchOf(done, good), rulings: true })).notes[0], /orphans reached: 0 of 6/)
+test('check reads the oracle off the coverage lines', () => {
+  const good = { declared: [ruled, ...restsOn] }
+  assert.equal(check('orphans', runDir({ result: resultOf(good), rulings: true })).ok, true)
+  assert.equal(check('orphans', runDir({ result: resultOf(good) })).ok, false, 'done without a ruling file')
+  assert.equal(check('orphans', runDir({ result: resultOf({ declared: [ruled, ...restsOn.slice(1)] }), rulings: true })).ok, false, 'a directory without rests on')
+  assert.equal(check('orphans', runDir({ result: { topics: [{ coverage: good }] }, rulings: true })).ok, true, 'a nested coverage counts')
+  assert.match(check('orphans', runDir({ result: resultOf(good), rulings: true })).notes[0], /orphans reached: 0 of 6/)
 
-  const listed = { declared: ['r: app/[id]/page.tsx', 'r: app/[slug]/layout.tsx'] }
-  assert.equal(check('brackets', runDir({ result: searchOf(done, listed) })).ok, true)
-  assert.equal(check('brackets', runDir({ result: searchOf(done, { declared: ['r: app/[id]/page.tsx'] }) })).ok, false, 'a file missed')
-  const refused = [{ item: { kind: 'read', path: 'app/[slug]/layout.tsx' }, class: 'not_canonical', asks: ['t1'] }]
-  assert.equal(check('brackets', runDir({ result: searchOf(done, listed, refused) })).ok, false, 'a refusal on a file')
+  const listed = { declared: ['r: app/[id]/page.tsx'], unreached: ['r: lead app/[slug]/layout.tsx'] }
+  assert.equal(check('brackets', runDir({ result: resultOf(listed) })).ok, true)
+  assert.equal(check('brackets', runDir({ result: { question: 'app/[id]/page.tsx app/[slug]/layout.tsx', coverage: { declared: [] } } })).ok, false, 'named only outside coverage')
+  assert.equal(check('brackets', runDir({ result: resultOf({ declared: ['r: app/[id]/page.tsx'] }) })).ok, false, 'a file missed')
+  const refused = { ...listed, unreached: [...listed.unreached, 'r: refused read app/[slug]/layout.tsx (not_canonical: not a canonical key)'] }
+  assert.equal(check('brackets', runDir({ result: resultOf(refused) })).ok, false, 'a refusal on a file')
   const refusedCall = { seq: 3, tool: 'read', ok: false, refusal: 'outside_scope', args: { path: 'app/[id]/page.tsx' }, keys: [] }
-  assert.equal(check('brackets', runDir({ result: searchOf(done, listed), calls: [refusedCall] })).ok, false, 'a refused call on a file')
+  assert.equal(check('brackets', runDir({ result: resultOf(listed), calls: [refusedCall] })).ok, false, 'a refused call on a file')
 
   const clean = [{ seq: 1, tool: 'grep', ok: true, keys: ['src/name.mjs'] }]
-  assert.equal(check('fence', runDir({ result: searchOf(done), calls: clean })).ok, true)
+  assert.equal(check('fence', runDir({ result: resultOf(), calls: clean })).ok, true)
   const leaked = [...clean, { seq: 2, tool: 'read', ok: true, keys: ['.agentics/x/.state/returns/a.json'] }]
-  assert.equal(check('fence', runDir({ result: searchOf(done), calls: leaked })).ok, false, 'a .agentics/ key')
+  assert.equal(check('fence', runDir({ result: resultOf(), calls: leaked })).ok, false, 'a .agentics/ key')
 
   const page = (v) => ({ key: 'http://127.0.0.1:47816/release-notes', status: 200, bytes: 9, lines: ['Release notes', 'version ' + v, 'Changes in version ' + v] })
   const fetchCall = (seq, p) => ({ seq, tool: 'fetch', ok: true, args: { url: 'http://127.0.0.1:47816/release-notes', page: p }, keys: ['http://127.0.0.1:47816/release-notes'] })
   const twice = [fetchCall(1, 1), fetchCall(2, 2)]
-  const notes = (...v) => searchOf({ t1: { end: 'done', hits: v.map((n, i) => ({ key: 'http://127.0.0.1:47816/release-notes', line: i + 2, text: 'version ' + n })) } })
+  const notes = (...v) => resultOf({ declared: v.map((n) => 'navigator:t1: ruled answered: the notes say version ' + n + ' — looked fetch') })
   assert.equal(check('web-shift', runDir({ result: notes(1, 1), pages: [page(1)], calls: twice })).ok, true)
-  assert.equal(check('web-shift', runDir({ result: notes(1, 2), pages: [page(1)], calls: twice })).ok, false, 'two versions in the fetched lines')
+  assert.equal(check('web-shift', runDir({ result: notes(1, 2), pages: [page(1)], calls: twice })).ok, false, 'two versions in the ruled lines')
   assert.equal(check('web-shift', runDir({ result: notes(1), pages: [page(1)], calls: [fetchCall(1, 1)] })).ok, false, 'fetched once')
-  assert.equal(check('web-shift', runDir({ result: searchOf(done), pages: [page(1), page(2)], calls: twice })).ok, false, 'two snapshots')
-  assert.equal(check('web-shift', runDir({ result: searchOf(done), calls: twice })).ok, false, 'no snapshot')
+  assert.equal(check('web-shift', runDir({ result: resultOf(), pages: [page(1), page(2)], calls: twice })).ok, false, 'two snapshots')
+  assert.equal(check('web-shift', runDir({ result: resultOf(), calls: twice })).ok, false, 'no snapshot')
   assert.equal(check('fence', join(root, 'nowhere')).ok, false, 'no result.json')
 })
 
 test('the CLI exits 1 on a missed oracle', () => {
-  const dir = runDir({ result: searchOf({ t1: { end: 'done' } }) })
+  const dir = runDir({ result: resultOf() })
   const r = spawnSync(process.execPath, [join(dirname(new URL(import.meta.url).pathname.replace(/^\/(\w:)/, '$1')), '..', 'tools', 'field.mjs'), 'check', 'orphans', dir], { encoding: 'utf8' })
   assert.equal(r.status, 1)
   assert.match(r.stdout, /FAILED orphans/)

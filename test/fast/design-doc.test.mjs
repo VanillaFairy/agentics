@@ -117,3 +117,34 @@ test('the parts that keep judgment honest are named', () => {
   assert.match(design, /where the record and git agree/)
   assert.match(design, /No agent rules on its own work/)
 })
+
+/** The *Enforced by:* paragraph of a law's section, its hard wraps joined. */
+function enforcedBy(law) {
+  const at = design.search(new RegExp('^### ' + law + ' — ', 'm'))
+  assert.ok(at !== -1, `### ${law} is gone`)
+  const from = design.indexOf('*Enforced by:*', at)
+  const end = design.indexOf('\n\n', from)
+  return design.slice(from, end === -1 ? undefined : end).replace(/\s+/g, ' ')
+}
+
+/** Whether `file` exports `name`, by its source text. */
+function exports(file, name) {
+  const source = readFileSync(join(ROOT, file), 'utf8')
+  return new RegExp('^export\\s+(?:async\\s+)?(?:function\\*?|const|let|class)\\s+' + name + '\\b', 'm').test(source) ||
+    [...source.matchAll(/^export\s*\{([^}]*)\}/gm)].some(([, list]) => new RegExp('\\b' + name + '\\b').test(list))
+}
+
+test('enforced-by names exported functions', () => {
+  // A law's mechanism named in a file that no longer has it is enforcement on paper only.
+  let named = 0
+  for (const law of ['L1', 'L2', 'L3']) {
+    const text = enforcedBy(law)
+    for (const [, names, file] of text.matchAll(/((?:`\w+`(?:, | and ))*`\w+`) in `(lib\/[\w/.-]+\.mjs)`/g)) {
+      for (const [, name] of names.matchAll(/`(\w+)`/g)) {
+        named++
+        assert.ok(exports(file, name), `${law}'s Enforced by places \`${name}\` in ${file}, which does not export it`)
+      }
+    }
+  }
+  assert.ok(named > 5, 'the Enforced by scan found too few names — the pattern is broken')
+})

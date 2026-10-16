@@ -16,8 +16,8 @@ test('its id is no-loop-bounds', () => {
   assert.equal(id, 'no-loop-bounds')
 })
 
-test('it applies to the programs, the execute units and lib/run.mjs, and nothing else', () => {
-  for (const path of ['lib/programs/survey.mjs', 'lib/programs/common.mjs', 'lib/programs/execute/leaf.mjs', 'lib/run.mjs']) {
+test('it applies to the programs, the execute units, lib/search and lib/run.mjs, and nothing else', () => {
+  for (const path of ['lib/programs/survey.mjs', 'lib/programs/common.mjs', 'lib/programs/execute/leaf.mjs', 'lib/search/server.mjs', 'lib/run.mjs']) {
     assert.ok(applies.test(path), path)
   }
   for (const path of ['lib/runner.mjs', 'lib/boundaries/merge.mjs', 'lib/brief.mjs', 'tools/lint.mjs', 'skills/develop/SKILL.md',

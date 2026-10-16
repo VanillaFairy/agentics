@@ -295,21 +295,9 @@ test('a returned record carries its context, null when none was measured', () =>
 
 const COMPACT = readFileSync(join(fixtures, 'stream-compact.jsonl'), 'utf8')
 
-test('parseStream sees a compaction', () => {
-  assert.equal(parseStream(COMPACT).compacted, true)
-  assert.equal(parseStream(SUCCESS).compacted, false)
-  assert.equal(parseStream('').compacted, false)
-})
-
 test('parseStream lists WebSearch inputs', () => {
   assert.deepEqual(parseStream(COMPACT).webSearches, [{ query: 'a' }, { query: 'b' }])
   assert.deepEqual(parseStream(SUCCESS).webSearches, [])
-})
-
-test('a returned record carries whether the call compacted', () => {
-  const c = { dispatch: 'd' }
-  assert.equal(returnedEntry(c, { session: 's', status: 'returned' }).compacted, false)
-  assert.equal(returnedEntry(c, { session: 's', status: 'returned', compacted: true }).compacted, true)
 })
 
 const ROLE_FILE = 'C:/run/roles/doc-researcher-0a1b2c3d.md'

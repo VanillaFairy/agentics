@@ -21,7 +21,7 @@ const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 const PROGRAM = 'lib/programs/survey.mjs'
 const SKILL = 'skills/investigate/SKILL.md'
 
-test('it applies to SKILL.md, the role files, the programs and lib/run.mjs — not to workflows, tools or the rest of lib', () => {
+test('it applies to SKILL.md, the role files, the programs, lib/search and lib/run.mjs — not to workflows, tools or the rest of lib', () => {
   // A cap written into a role file reaches every dispatch of that role, and CLAUDE.md's clause
   // table assigns IL1 to this rule alone. The programs and lib/run.mjs start every dispatch, so
   // they are in scope too.
@@ -37,6 +37,7 @@ test('it applies to SKILL.md, the role files, the programs and lib/run.mjs — n
   assert.ok(applies.test('lib/programs/search/loop.mjs'))
   assert.ok(applies.test('lib/programs/execute/leaf.mjs'))
   assert.ok(!applies.test('lib/programs/search/nested/x.mjs'))
+  assert.ok(applies.test('lib/search/server.mjs'))
   assert.ok(applies.test('lib/run.mjs'))
   assert.ok(!applies.test('lib/store.mjs'))
   assert.ok(!applies.test('lib/briefs/survey.mjs'))

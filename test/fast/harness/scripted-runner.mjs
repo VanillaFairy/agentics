@@ -47,11 +47,10 @@ function play(step, session, key) {
   const line = (event) => JSON.stringify({ ...event, session_id: session })
   const result = (over) => line({ type: 'result', usage: step.usage ?? null, total_cost_usd: step.cost_total, permission_denials: step.denials || [], ...over })
   const init = line({ type: 'system', subtype: 'init' })
-  // `context` is what the model turn read; `compacted` plays the host's compact_boundary; `webSearches` its WebSearch tool_uses
+  // `context` is what the model turn read; `webSearches` its WebSearch tool_uses
   const usage = typeof step.context === 'number' ? { usage: { input_tokens: step.context } } : {}
   const turn = line({ type: 'assistant', message: { content: [{ type: 'text', text: 'Working on it.' }], ...usage } })
   const searched = (step.webSearches || []).map((input) => line({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'WebSearch', input }] } }))
-  const compact = step.compacted ? [line({ type: 'system', subtype: 'compact_boundary' })] : []
   if (step.status === 'stopped') {
     if (!STOPS[step.cause]) throw new Error(key + ': no host stop is named ' + JSON.stringify(step.cause))
     return { code: 1, lines: [init], stderr: STOPS[step.cause](step.until || '') }
@@ -63,7 +62,7 @@ function play(step, session, key) {
   }
   if (!step.output || typeof step.output !== 'object') throw new Error(key + ': a step needs an output or a status')
   const output = step.more ? { ...step.output, more: true } : step.output
-  return { code: 0, lines: [init, ...searched, ...compact, turn, result({ subtype: 'success', is_error: false, structured_output: output })], stderr: '' }
+  return { code: 0, lines: [init, ...searched, turn, result({ subtype: 'success', is_error: false, structured_output: output })], stderr: '' }
 }
 
 export function scriptedRunner(script, { log, now = () => '2026-01-01T00:00:00.000Z' }) {

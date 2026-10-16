@@ -24,9 +24,9 @@ import { treeOf } from '../lib/search/pin.mjs'
 import { runLogPath } from '../lib/store.mjs'
 import {
   Q, GUIDE, FILES, FILE, TOPIC, plan, behaviour, anchoredUnit, judgeOut, ARGS, CLAIM,
-  basicScript, COMMON, fullScript, rigFor, runSurvey, on, pool, roleOf, cov, scouted, rescouted,
+  basicScript, COMMON, fullScript, rigFor, runSurvey, on, pool, roleOf, cov, pathHits,
 } from './harness/survey-world.mjs'
-import { hitTurn, openTurn, repoReturn } from './harness/navigator.mjs'
+import { hitTurn, stalledRecord } from './fast/harness/scout.mjs'
 
 /** A line of a file as an excerpt shows it, not mistaken for a longer line number. */
 const lineRe = (word, n) => new RegExp(`${word} line ${n}(?!\\d)`)
@@ -47,28 +47,32 @@ test("a judge is the analyst's at the dial, base high", async (t) => {
 })
 
 test("a judge's brief holds its topics' search excerpts and the shared ground inline", async (t) => {
-  const loaderTurn = hitTurn('loader', [[FILE.loader, 7, 'NOTE-a1 resolves'], [FILE.loader, 40, 'NOTE-a2 falls back']])
-  loaderTurn.output.dismissed.push({ ask: ['loader'], path: FILE.cache, why: 'DISMISSED-the cache is not the loader' })
+  const loaderTurn = hitTurn(pathHits([[FILE.loader, 7, 'NOTE-a1 resolves'], [FILE.loader, 40, 'NOTE-a2 falls back']]), { summary: 'SUMMARY-the loader resolves in one place' })
   const { rig } = await runSurvey(t, fullScript({
     'analyst||plan': [{ output: plan({ topics: [TOPIC.loader], common_ground: COMMON }) }],
-    ...scouted('loader', [loaderTurn]),
+    'scout||scout:loader': [loaderTurn],
     'analyst||judge:1': [{ output: judgeOut({ items: [behaviour('loader', CLAIM)], units: [anchoredUnit('loader')] }) }],
   }))
   const brief = on(rig, 'judge:1')[0].brief
   assert.match(brief, lineRe('alpha', 7))
   assert.match(brief, lineRe('alpha', 40))
-  for (const part of ['NOTE-a1 resolves', 'NOTE-a2 falls back', 'DISMISSED-the cache is not the loader', COMMON]) assert.ok(brief.includes(part), part)
+  for (const part of ['NOTE-a1 resolves', 'NOTE-a2 falls back', 'SUMMARY-the loader resolves in one place', COMMON]) assert.ok(brief.includes(part), part)
 })
 
 test("a judge's brief says how each topic's search ended", async (t) => {
-  const FAIL = { status: 'failed', cause: 'host_error' }
   const { rig } = await runSurvey(t, fullScript({
-    ...scouted('loader', [openTurn('loader', [[FILE.loader, 7]], FILE.loader)], 'not_converging'),
-    'scout||scout:store': [FAIL, FAIL],
-  }))
+    'scout||scout:loader': [{ calls: [stalledRecord()], output: { summary: 'stalled' } }],
+    'scout||scout:store': [{ status: 'failed', cause: 'host_error' }],
+    'scout||scout:cache': [{ status: 'failed', cause: 'budget' }],
+    'analyst||plan': [{ output: plan({ topics: [TOPIC.loader, TOPIC.store, TOPIC.cache] }) }],
+  }), { search_budget: 1 })
   const brief = on(rig, 'judge:1')[0].brief
-  assert.match(brief, /loader \([^\n]*\n  Its search: its search ended not_converging \(/)
-  assert.match(brief, /store \([^\n]*\n  Its search: its search failed \(host_error\)/)
+  const line = (key) => '- ' + key + ' (' + TOPIC[key].subtree + '): ' + TOPIC[key].find + '\n  Its search: its search '
+  assert.ok(brief.includes(line('loader') + 'stalled (nothing new in the last 12 calls): it stopped finding anything new.'), 'stalled')
+  assert.ok(brief.includes(line('store') + 'ended failed (host_error: exit 1). Say in risks what this lacks.'), 'failed')
+  assert.ok(brief.includes(line('cache') + 'ended budget (spent $0.00 of its $1 budget). Say in risks what this lacks.'), 'budget')
+  const { rig: done } = await runSurvey(t, basicScript())
+  assert.ok(on(done, 'judge:1')[0].brief.includes(line('loader') + 'ended done.'), 'done')
 })
 
 test("a judge's brief names each kind's anchor and the units it rules", async (t) => {
@@ -80,9 +84,8 @@ test("a judge's brief names each kind's anchor and the units it rules", async (t
   assert.deepEqual(unitsLine.split(': ').at(-1).split(', '), ['loader', 'store'])
 })
 
-/** Every port and every kind of later round: a continued topic search and a refusals round. */
+/** Every port and every kind of later round: a refusals round. */
 const everyRoundScript = () => fullScript({
-  ...scouted('loader', [openTurn('loader', [[FILE.loader, 7]], FILE.loader), hitTurn('loader', [[FILE.loader, 9]])]),
   'analyst||judge:1': [
     { output: judgeOut({ items: [unanchored('loader', CLAIM)], units: [anchoredUnit('loader'), anchoredUnit('store')] }) },
     { output: judgeOut({ items: [behaviour('loader', CLAIM)], units: [anchoredUnit('loader'), anchoredUnit('store')] }) },
@@ -353,26 +356,6 @@ test("a survey given a root reads its excerpts and guidance there and records in
   const item = pool(rig).find((it) => it.claim === CLAIM)
   assert.ok(item, 'the item is in the main checkout\'s pool')
   assert.equal(item.spans[0].at, wtHead)
-})
-
-test("the context file holds a reopened topic's latest risks, not its first return's", async (t) => {
-  const first = { output: {
-    items: [behaviour('store', 'CLAIM-store writes at line 9', 9)],
-    risks: [{ topic: 'loader', text: 'RISK-OLD-loader' }, { topic: 'store', text: 'RISK-KEPT-store' }],
-    units: [{ unit: 'loader', ruling: 'unanchored', ids: [], why: 'not located' }, anchoredUnit('store')],
-    wants: [{ unit: 'loader', want: 'WANT-the fallback' }],
-  } }
-  const second = { output: { items: [behaviour('loader', CLAIM, 30)], risks: [{ topic: 'loader', text: 'RISK-NEW-loader' }], units: [anchoredUnit('loader')], wants: [] } }
-  const { result } = await runSurvey(t, {
-    'analyst||plan': [{ output: plan({ topics: [TOPIC.loader, TOPIC.store] }) }],
-    ...rescouted('loader', [hitTurn('loader', [[FILE.loader, 7]])], [hitTurn('want:1', [[FILE.loader, 30, 'NOTE-the fallback']])]),
-    ...scouted('store', [hitTurn('store', [[FILE.store, 9]])]),
-    'analyst||judge:1': [first, second],
-  })
-  const text = readFileSync(result.context, 'utf8')
-  assert.ok(text.includes('RISK-NEW-loader'), 'the latest risk')
-  assert.ok(text.includes('RISK-KEPT-store'), "the other topic's risk stands")
-  assert.ok(!text.includes('RISK-OLD-loader'), 'the replaced risk is gone')
 })
 
 test('guidance from the pinned tree', async (t) => {

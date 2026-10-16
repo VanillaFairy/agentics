@@ -30,7 +30,8 @@ import { schemaOf } from '../lib/schemas.mjs'
 import { checkFolder, hashSpec } from '../lib/spec.mjs'
 import { dispatchKey, mainCheckout, posix, readConfig, readJson, sessionOf, specPath } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
-import { closedSearch, endSearch, hitTurn } from './harness/navigator.mjs'
+import { hitTurn } from './fast/harness/scout.mjs'
+import { closedSearch } from './harness/navigator.mjs'
 import { executionRig } from './harness/program-rig.mjs'
 
 const E = 'e1'
@@ -138,18 +139,14 @@ const GAP = found(S1, { section: 'design', needle: DESIGN_A, claim: 'x hides sta
 const GAP_INTENT = found(S1, { section: 'intent', needle: INTENT_NEEDLE, claim: 'who the root is stays open' })
 const AMBIGUITY = found(S1, { axis: 'ambiguity', severity: 'ambiguity', section: 'intent', needle: INTENT_NEEDLE, claim: 'plans it could mean two things' })
 
-const surveying = (prefix) => {
-  const end = endSearch({ name: prefix + 'scout:adder', turn: 1, asks: ['adder'], ruling: 'answered' })
-  return {
+const surveying = (prefix) => ({
   ['analyst||' + prefix + 'plan']: [{ output: { topics: [{ key: 'adder', find: 'FIND-adder', subtree: 'src' }], common_ground: '', history_question: '', docs_question: '' } }],
-  ['scout||' + prefix + 'scout:adder']: [hitTurn('adder', [['src/add.mjs', 1]]), ...end.navigator],
-  [end.ruler.key]: end.ruler.steps,
+  ['scout||' + prefix + 'scout:adder']: [hitTurn([{ path: 'src/add.mjs', line: 1, note: 'NOTE-adder' }])],
   ['analyst||' + prefix + 'judge:1']: [{ output: {
     items: [{ topic: 'adder', kind: 'behaviour', claim: 'SURVEYED-a9 add sums its two arguments', spans: [{ path: 'src/add.mjs', start: 1, end: 1 }], queries: [], sources: [], rests_on: [] }],
     risks: [], units: [{ unit: 'adder', ruling: 'anchored', ids: [], why: 'anchored' }],
   } }],
-  }
-}
+})
 
 /** The common script: the planner writes at round 1 and the first probe round is clean. */
 const clean = (text = S1) => ({ ...planner(written), ...probing(1, text) })
@@ -169,7 +166,8 @@ const under = (rig, prefix) => rig.calls.filter((c) => c.thread.key.startsWith(p
 const nodeOf = (rig, id) => readTree(rig.repo, E).nodes.get(id)
 /** The tree roots the search servers of the calls under `prefix` were started over. */
 const searchedUnder = (rig, prefix) => new Set(under(rig, prefix).filter((c) => c.mcpConfig).map((c) => {
-  const args = JSON.parse(readFileSync(c.mcpConfig, 'utf8')).mcpServers.search.args
+  const config = typeof c.mcpConfig === 'function' ? c.mcpConfig(c.thread.session) : c.mcpConfig
+  const args = JSON.parse(readFileSync(config, 'utf8')).mcpServers.search.args
   return JSON.parse(readFileSync(args[args.indexOf('--spec') + 1], 'utf8')).tree.root
 }))
 /** The basis of p's first plan, as `planFolder` names it. */
@@ -366,6 +364,19 @@ test('a folder whose ground is unknown is surveyed first, nested under survey:<f
   assert.ok(first > lastSurvey, 'the planner\'s first call follows the survey')
 })
 
+test("a folder's changed files are material for the survey's searches", async (t) => {
+  const w = world(t, { known: false, steps: (rig) => ({ ...surveying('survey:p:' + basisOf(rig) + '/'), ...clean() }), writes: { 1: S1 } })
+  const root = w.rig.worktreeOf('.')
+  writeFileSync(join(root, 'changed-a9.txt'), 'a change since the base\n')
+  w.rig.git('-C', root, 'add', '-A')
+  w.rig.git('-C', root, 'commit', '-qm', 'a change since the base')
+  const prefix = 'survey:p:' + basisOf(w.rig) + '/'
+  const out = await w.run()
+  assert.equal(out.outcome, 'prepared')
+  const [scout] = under(w.rig, prefix + 'scout:adder')
+  assert.ok(readFileSync(scout.role.systemPromptFile, 'utf8').includes('changed-a9.txt'), 'the changed file is in the search charge')
+})
+
 test("the planner's write brief carries the survey's context text whole", async (t) => {
   const w = world(t, { known: false, steps: (rig) => ({ ...surveying('survey:p:' + basisOf(rig) + '/'), ...clean() }), writes: { 1: S1 } })
   const out = await w.run()
@@ -387,8 +398,7 @@ test('the survey and the probe search a tree pinned at the nearest integration h
   const head = w.rig.git('rev-parse', w.rig.branchOf('.'))
   const basis = basisOf(w.rig)
   assert.equal((await w.run()).outcome, 'prepared')
-  const ground = stepValue(w.rig, 'survey:p:' + basis + '/ground')
-  assert.deepEqual(ground.rows.filter((r) => r.kind === 'change').map((r) => r.key), ['changed.txt'], 'the survey was handed the change from the base to the pinned head')
+  assert.deepEqual(stepValue(w.rig, 'changed:p:' + basis), ['changed.txt'],'the survey was handed the change from the base to the pinned head')
   assert.equal(stepValue(w.rig, 'tree:p:' + basis), head, "p has no branch yet, so the root's head is pinned")
   assert.equal(w.rig.git('-C', pinOf(w.rig, head), 'rev-parse', 'HEAD'), head)
   for (const prefix of ['survey:p:' + basis + '/', 'probe:p:1/']) {

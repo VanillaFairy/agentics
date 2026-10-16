@@ -30,7 +30,7 @@ test("the integration reviewer is told which commits a person made: an adopted l
   rig.log.append('merged', { node: 'a', into: rig.branchOf('.'), merged_sha: leafWork, head_sha: leafWork, by: 'user', commits: [leafWork] })
   append(rig.repo, rig.effort, 'events', { kind: 'outside', node: '.', execution: '', commits: [stray], by: 'user' })
   rig.script({ 'reviewer|.|integration:.:1': [{ output: { units: [], findings: [], fix_rulings: [], claims: [], notes: '' } }] })
-  const out = await reviewUnit(rig.ctx, rig.xc, { id: '.', where: { base: rig.base_sha, worktree: wt }, unreviewed: ['a'] })
+  const out = await reviewUnit(rig.ctx, rig.xc, { id: '.', where: { base: rig.base_sha, worktree: wt }, unreviewed: ['a'], intelligence: 'normal' })
   assert.equal(out.outcome, 'reviewed', JSON.stringify(out))
   const brief = rig.calls[0].brief
   assert.ok(brief.includes('## Work agentics did not produce'))

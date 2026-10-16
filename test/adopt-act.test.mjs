@@ -571,7 +571,7 @@ test("an act handing a green over, its red adopted done, also creates the red's 
 test('after that act the green opens: cut from the red, on the green branch past it', async (t) => {
   const c = handedCycle(t)
   assert.equal(adopt(c.r, E, '.', c.map, 'act', { by: 'user' }).ok, true)
-  const opened = await leafOpen(c.xc, { node: 'g' })
+  const opened = await leafOpen(c.xc, { node: 'g', intelligence: 'normal' })
   assert.equal(opened.status, 'opened', JSON.stringify(opened))
   assert.equal(spawnSync('git', ['-C', c.r, 'merge-base', '--is-ancestor', c.red, opened.base_sha]).status, 0, 'the base is the red head or past it')
   assert.ok(git(c.r, 'rev-list', '--first-parent', branchOf(E, 'g')).split('\n').includes(opened.base_sha), 'the base is on the green first-parent line')

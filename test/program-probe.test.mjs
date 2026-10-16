@@ -229,7 +229,7 @@ test("a probe in a linked worktree reads and anchors the worktree's text", async
   const { script } = scriptFor(WT_DOC, STANDING, {
     probers: { 1: (units) => [{ output: proberOut(units, { findings: WT_FINDINGS }) }] },
   })
-  const ctx = programContext({ ...rig.ctx, repo: wt, root: wt, runAgent: scriptedRunner(script, { log: rig.log }).runAgent })
+  const ctx = programContext({ intelligence: 'normal', ...rig.ctx, repo: wt, root: wt, runAgent: scriptedRunner(script, { log: rig.log }).runAgent })
   const args = argsFor(wt, ART)
   const result = await probe(ctx, args)
 
@@ -615,8 +615,8 @@ test("every dispatch runs as its role at that role's tier", async (t) => {
   const { rig } = await probeIn(t, {
     files: { [ART]: DOC, ...GROUND_FILES }, script: withGuidance([{ output: axesOut([]) }], STANDING, { perAxis: true }).script, over: { per_axis: true },
   })
-  const scout = tierFor(loadRole('scout').role)
-  const analyst = tierFor(loadRole('analyst').role)
+  const scout = tierFor(loadRole('scout').role, { intelligence: 'normal' })
+  const analyst = tierFor(loadRole('analyst').role, { intelligence: 'normal' })
   const [locate] = callsOf(rig, 'locate')
   assert.deepEqual([locate.role.name, locate.schema, locate.tier], ['scout', schemaOf('search_repo'), scout])
   const [axesCall] = callsOf(rig, 'axes')

@@ -346,7 +346,7 @@ test("a survey given a root reads its excerpts and guidance there and records in
   const wtHead = git(wt, 'rev-parse', 'HEAD')
   assert.notEqual(wtHead, git(rig.repo, 'rev-parse', 'HEAD'))
 
-  await survey(programContext({ ...rig.ctx, root: wt }), ARGS())
+  await survey(programContext({ intelligence: 'normal', ...rig.ctx, root: wt }), ARGS())
   const brief = on(rig, 'judge:1')[0].brief
   assert.ok(brief.includes('ROOT-ONLY line 7'), 'the root\'s line')
   assert.ok(brief.includes(ROOT_GUIDE), 'the root\'s guidance')

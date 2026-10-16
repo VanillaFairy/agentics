@@ -327,7 +327,7 @@ test('survey judges keep their own pace', async (t) => {
     if (call.thread.key === 'scout:loader' && call.brief.includes('want:1')) await judge2Again
     return rig.ctx.runAgent(call)
   }
-  await survey(programContext({ ...rig.ctx, runAgent }), ARGS({ pace: 'fast' }))
+  await survey(programContext({ intelligence: 'normal', ...rig.ctx, runAgent }), ARGS({ pace: 'fast' }))
   assert.ok(order.includes('judge:2#2'), 'judge 2 was dispatched for its want: ' + order.join(' '))
   assert.ok(on(rig, 'scout:loader').some((c) => c.brief.includes('want:1')), "judge 1's want was searched")
   assert.ok(order.indexOf('judge:2#2') < order.lastIndexOf('judge:1#2'), "judge 2's re-dispatch does not wait for judge 1's topic search: " + order.join(' '))

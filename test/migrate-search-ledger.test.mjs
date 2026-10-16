@@ -237,7 +237,7 @@ async function loopRun(dir, run, prefix = '') {
   const end = endSearch({ name: thread, turn: 1, asks: ['A'], ruling: 'answered' })
   const runner = scriptedRunner({ ['scout||' + thread]: [turn, ...end.navigator], [end.ruler.key]: end.ruler.steps }, { log, now: () => OLD })
   const base = {
-    ...programContext({ repo: dir, root: dir, run, log, runAgent: runner.runAgent, now: () => OLD, sleep: () => Promise.resolve(), dir: runDir(dir, run) }),
+    ...programContext({ intelligence: 'normal', repo: dir, root: dir, run, log, runAgent: runner.runAgent, now: () => OLD, sleep: () => Promise.resolve(), dir: runDir(dir, run) }),
     groundOf: async () => ({ rows: [], seeds: [] }),
   }
   const result = await search(prefix ? scoped(base, prefix) : base, {

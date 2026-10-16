@@ -1330,7 +1330,7 @@ for (const [what, findings, role, thread, redToo] of CYCLE_CASES) {
     const dir = executionDir(rig.repo, E, next)
     put(join(dir, 'execution.json'), JSON.stringify(rig.envelope))
     const xc = executionContext({ repo: rig.repo, effort: E, execution: next, log: executionLog(rig.repo, E, next) })
-    const opened = await leafOpen(xc, { node: 'g' })
+    const opened = await leafOpen(xc, { node: 'g', intelligence: 'normal' })
     assert.equal(opened.status, 'opened')
     assert.deepEqual([opened.round, opened.role, opened.thread], [1, role, thread])
   })

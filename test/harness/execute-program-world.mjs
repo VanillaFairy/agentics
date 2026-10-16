@@ -153,7 +153,7 @@ export function world(t, { spec, leaves, files = {}, commands, config } = {}) {
   }
   /** A direct leg: the program context over the current rig, its sleep and runner wrapped. */
   w.leg = ({ sleep = YIELD } = {}) => {
-    const ctx = programContext({
+    const ctx = programContext({ intelligence: 'normal',
       ...w.rig.ctx,
       sleep: (ms) => { w.sleeps.push(ms); return sleep(ms) },
       runAgent: w.agent(w.rig.ctx.runAgent),

@@ -55,7 +55,7 @@ const spec = (over = {}) => ({ ...target(), brief: BRIEF, ...over })
 function bootAt(rig, script, over = {}) {
   const log = executionLog(rig.repo, E, STAMP)
   const runner = scriptedRunner(script, { log, now: rig.ctx.now })
-  const ctx = programContext({
+  const ctx = programContext({ intelligence: 'normal',
     ...rig.ctx, log, runAgent: runner.runAgent, dir: executionDir(rig.repo, E, STAMP), execution: STAMP, ...over,
   })
   return { rig, log, ctx, runner, calls: runner.calls, relaunch: (next = {}, more = {}) => bootAt(rig, next, more) }
@@ -68,7 +68,7 @@ function world(t, { script = {} } = {}) {
 }
 
 /** The same context with another runner: a call that dies before or after it started. */
-const withAgent = (w, runAgent) => programContext({ ...w.ctx, runAgent })
+const withAgent = (w, runAgent) => programContext({ intelligence: 'normal', ...w.ctx, runAgent })
 const dies = () => { throw new Error('killed before the call started') }
 const diesStarted = (log, pid = 4242) => async (call) => {
   log.append('dispatched', dispatchedEntry(call, { pid, session: call.thread.session }))
@@ -158,7 +158,7 @@ test('a context given no dir or execution runs in the run directory and mints se
   t.after(() => rig.cleanup())
   const log = runLog(rig.repo, rig.run)
   const runner = scriptedRunner({ [K('a', 'plan')]: ONE }, { log, now: rig.ctx.now })
-  const ctx = programContext({
+  const ctx = programContext({ intelligence: 'normal',
     repo: rig.repo, run: rig.run, effort: E, log, runAgent: runner.runAgent, now: rig.ctx.now, sleep: rig.ctx.sleep, env: {},
   })
   assert.equal(ctx.dir, runDir(rig.repo, rig.run))
@@ -308,7 +308,7 @@ test("a resumed call runs at the tier of the thread's latest dispatched, whateve
 
 test('a first call and a raised call run at the tier they are given', async (t) => {
   const w = world(t, { script: { [K('a', 'plan')]: THREE, [K('a', 'other')]: ONE } })
-  const base = tierFor(loadRole('scout').role)
+  const base = tierFor(loadRole('scout').role, { intelligence: 'normal' })
   for (const given of [T_FIRST, T_RAISED]) assert.notDeepEqual(tierPair(base), tierPair(given), 'the role\'s own tier must differ from a given one')
 
   await dispatch(w.ctx, spec({ round: 1, tier: T_FIRST }))
@@ -781,7 +781,7 @@ test('scoped inside scoped prefixes both', async (t) => {
 test('a scoped context shares the slots', { timeout: 60_000 }, async (t) => {
   const w = world(t, { script: { [K('a', 't1')]: ONE, [K('a', 's/t2')]: ONE } })
   const g = gated(w.runner.runAgent)
-  const parent = programContext({ ...w.ctx, runAgent: g.runAgent, maxAgents: 1 })
+  const parent = programContext({ intelligence: 'normal', ...w.ctx, runAgent: g.runAgent, maxAgents: 1 })
   let settled = false
   const both = Promise.all([dispatch(parent, spec({ thread: 't1' })), dispatch(scoped(parent, 's'), spec({ thread: 't2' }))])
   both.then(() => { settled = true }, () => { settled = true })

@@ -19,7 +19,7 @@ test("a leaf's first round carries the notes left on it, in a notes message to i
   const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
   note(r, 'a', 'handed over from hand/a at abc123')
   note(r, 'a', 'the cache is warm')
-  const opened = await leafOpen(xc, { node: 'a' })
+  const opened = await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   assert.equal(opened.status, 'opened')
   const msgs = notesOf(r)
   assert.equal(msgs.length, 1)
@@ -32,14 +32,14 @@ test("a leaf's first round carries the notes left on it, in a notes message to i
 test('opening the same round again records the notes message once', async (t) => {
   const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
   note(r, 'a', 'one note')
-  await leafOpen(xc, { node: 'a' })
-  await leafOpen(xc, { node: 'a' })
+  await leafOpen(xc, { node: 'a', intelligence: 'normal' })
+  await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   assert.equal(notesOf(r).length, 1)
 })
 
 test('no note, no message', async (t) => {
   const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
-  await leafOpen(xc, { node: 'a' })
+  await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   assert.equal(notesOf(r).length, 0)
 })
 
@@ -48,7 +48,7 @@ test('a note a session of the leaf already started after is not carried again', 
   note(r, 'a', 'old news')
   ran(xc, { node: 'a', round: 1, role: 'implementer', thread: 'producer:a', log: executionLog(r, E, OTHER) })
   note(r, 'a', 'new news')
-  await leafOpen(xc, { node: 'a' })
+  await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   assert.deepEqual(notesOf(r).map((m) => m.payload.notes), [['new news']])
 })
 
@@ -56,6 +56,6 @@ test('a thread this execution dispatched gets no notes message', async (t) => {
   const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
   ran(xc, { node: 'a', round: 1, role: 'implementer', thread: 'producer:a', ret: { status: 'done', text: 'did it' } })
   note(r, 'a', 'after the round')
-  await leafOpen(xc, { node: 'a' })
+  await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   assert.equal(notesOf(r).length, 0)
 })

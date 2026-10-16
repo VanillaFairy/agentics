@@ -36,7 +36,7 @@ test('the gates are every judge role and the planner', () => {
 })
 
 test('a gate runs opus at medium effort at the normal dial', () => {
-  for (const name of GATES) assert.deepEqual(tierOf(tierFor(role(name))), { model: 'opus', effort: 'medium' }, name)
+  for (const name of GATES) assert.deepEqual(tierOf(tierFor(role(name), { intelligence: 'normal' })), { model: 'opus', effort: 'medium' }, name)
 })
 
 test('a gate runs opus at high effort at the max dial', () => {
@@ -44,7 +44,7 @@ test('a gate runs opus at high effort at the max dial', () => {
 })
 
 test('a gate on opus ignores the call site\'s base', () => {
-  for (const name of GATES) assert.deepEqual(tierOf(tierFor(role(name), { base: 'low' })), { model: 'opus', effort: 'medium' }, name)
+  for (const name of GATES) assert.deepEqual(tierOf(tierFor(role(name), { intelligence: 'normal', base: 'low' })), { model: 'opus', effort: 'medium' }, name)
 })
 
 test('a gate runs sonnet one effort step above its role\'s default at the low dial', () => {
@@ -72,13 +72,13 @@ test('any other role keeps its own tier at every dial', () => {
 
 test('any other role takes the call site\'s base as its effort', () => {
   for (const name of OTHERS) {
-    assert.deepEqual(tierOf(tierFor(role(name), { base: 'high' })), { model: role(name).tier.model, effort: 'high' }, name)
+    assert.deepEqual(tierOf(tierFor(role(name), { intelligence: 'normal', base: 'high' })), { model: role(name).tier.model, effort: 'high' }, name)
   }
 })
 
 test('an unknown intelligence reads as normal', () => {
   for (const name of ROLE_NAMES) {
-    assert.deepEqual(tierOf(tierFor(role(name), { intelligence: 'extreme' })), tierOf(tierFor(role(name))), name)
+    assert.deepEqual(tierOf(tierFor(role(name), { intelligence: 'extreme' })), tierOf(tierFor(role(name), { intelligence: 'normal' })), name)
   }
 })
 

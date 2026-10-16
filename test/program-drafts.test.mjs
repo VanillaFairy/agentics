@@ -66,7 +66,7 @@ test('every stance is dispatched at once', async (t) => {
       open--
     }
   }
-  await drafts(programContext({ ...rig.ctx, runAgent }), argsOf())
+  await drafts(programContext({ intelligence: 'normal', ...rig.ctx, runAgent }), argsOf())
   assert.equal(most, 2)
 })
 

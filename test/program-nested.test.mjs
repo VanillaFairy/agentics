@@ -206,7 +206,7 @@ test('a pool unreadable after the re-judge is reported, and its suspect items se
       return out
     },
   }
-  const result = await survey(programContext({ ...rig.ctx, log }), surveyArgs({ ground: ['src'] }))
+  const result = await survey(programContext({ intelligence: 'normal', ...rig.ctx, log }), surveyArgs({ ground: ['src'] }))
   assert.ok(saved !== null, 'the fixture: the rulings were journaled')
   assert.equal(rig.calls.filter((c) => c.thread.key === 'scout:loader').length, 2, 'one search: its turn and the stall')
   assert.ok(result.coverage.failed_channels.includes('pool'), JSON.stringify(result.coverage))
@@ -310,7 +310,7 @@ test('a reviewer whose renewed thread shares the producing session is refused', 
   const first = sessionOf({ effort: rig.ctx.effort, execution: rig.run, node: '', role: 'reviewer', thread: 'reviewer', gen: 0 })
   assert.notEqual(own, first, 'the fixture: the renewed session is not the first one')
   const base = git(rig.repo, 'rev-parse', 'HEAD').trim()
-  const out = await review(programContext({ ...rig.ctx, env: { CLAUDE_CODE_SESSION_ID: own } }),
+  const out = await review(programContext({ intelligence: 'normal', ...rig.ctx, env: { CLAUDE_CODE_SESSION_ID: own } }),
     { base, criteria_file: join(dir, 'criteria.md'), criteria, prior: '' })
   assert.equal(rig.calls.length, 0)
   assert.deepEqual(out.coverage.failed_channels, ['reviewer'])

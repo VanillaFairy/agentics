@@ -31,20 +31,20 @@ test('the models and efforts a tier may name are listed weakest first', () => {
 
 test("producerTier takes the author's producer dispatch", () => {
   const given = { model: 'haiku', effort: 'low' }
-  assert.deepEqual(producerTier(leaf({ dispatch: { producer: given } }), IMPLEMENTER), given)
+  assert.deepEqual(producerTier(leaf({ dispatch: { producer: given } }), IMPLEMENTER, { intelligence: 'normal' }), given)
 })
 
 test("producerTier runs a yardstick leaf's producer on opus at the role's effort", () => {
   const yardsticks = [leaf({ role: 'red' }), leaf({ role: 'audit' }), leaf({ provides: [{ name: 'store-paths', paths: ['lib/store.mjs'] }] })]
   for (const l of yardsticks) {
     assert.equal(isYardstick(l), true)
-    assert.deepEqual(producerTier(l, IMPLEMENTER), { model: 'opus', effort: IMPLEMENTER.tier.effort }, l.role)
+    assert.deepEqual(producerTier(l, IMPLEMENTER, { intelligence: 'normal' }), { model: 'opus', effort: IMPLEMENTER.tier.effort }, l.role)
   }
 })
 
 test("producerTier runs any other leaf's producer at the role's own tier", () => {
   assert.equal(isYardstick(leaf()), false)
-  assert.deepEqual(producerTier(leaf(), IMPLEMENTER), IMPLEMENTER.tier)
+  assert.deepEqual(producerTier(leaf(), IMPLEMENTER, { intelligence: 'normal' }), IMPLEMENTER.tier)
 })
 
 test("the low dial caps a producer's model at sonnet", () => {
@@ -82,7 +82,7 @@ test('reviewerTier without a reviewer dispatch is the role tier under the dial',
     assert.deepEqual(reviewerTier(leaf(), REVIEWER, { intelligence }), tierFor(REVIEWER, { intelligence }), intelligence)
     assert.deepEqual(reviewerTier(producerOnly, REVIEWER, { intelligence }), tierFor(REVIEWER, { intelligence }), intelligence)
   }
-  assert.deepEqual(reviewerTier(leaf(), REVIEWER), tierFor(REVIEWER))
+  assert.deepEqual(reviewerTier(leaf(), REVIEWER, { intelligence: 'normal' }), tierFor(REVIEWER, { intelligence: 'normal' }))
 })
 
 // ------------------------------------------------------------------ raiseTier
@@ -121,12 +121,12 @@ test('tierFor throws on a base effort outside EFFORTS', () => {
 
 test("tierFor throws on a role's effort outside EFFORTS", () => {
   for (const r of [IMPLEMENTER, REVIEWER]) {
-    assert.throws(() => tierFor({ ...r, tier: { model: r.tier.model, effort: 'max' } }), /max/, r.name)
+    assert.throws(() => tierFor({ ...r, tier: { model: r.tier.model, effort: 'max' } }, { intelligence: 'normal' }), /max/, r.name)
   }
 })
 
 test('tierFor takes every effort in EFFORTS as a base', () => {
-  for (const effort of EFFORTS) assert.equal(tierFor(IMPLEMENTER, { base: effort }).effort, effort)
+  for (const effort of EFFORTS) assert.equal(tierFor(IMPLEMENTER, { intelligence: 'normal', base: effort }).effort, effort)
 })
 
 // ------------------------------------------------------------------ roleCommands
@@ -182,4 +182,14 @@ test("the implementer's role file gets the repository's commands for its placeho
   for (const c of [COMMANDS.build, COMMANDS.typecheck, COMMANDS.suite, COMMANDS.suite_fast, 'npx vitest run', 'node --test test/parse.test.mjs']) {
     assert.ok(out.includes(c), c)
   }
+})
+
+// ------------------------------------------------------------------ the dial has no default below program entry
+
+test('a tier without the dial is refused, never read as normal', () => {
+  assert.throws(() => tierFor(IMPLEMENTER), /intelligence/, 'tierFor')
+  assert.throws(() => tierFor(IMPLEMENTER, { base: 'high' }), /intelligence/, 'tierFor with a base')
+  assert.throws(() => producerTier(leaf(), IMPLEMENTER), /intelligence/, 'producerTier')
+  assert.throws(() => reviewerTier(leaf(), REVIEWER), /intelligence/, 'reviewerTier')
+  assert.throws(() => reviewerTier(leaf({ dispatch: { reviewer: { model: 'opus', effort: 'high' } } }), REVIEWER), /intelligence/, 'reviewerTier with a given tier')
 })

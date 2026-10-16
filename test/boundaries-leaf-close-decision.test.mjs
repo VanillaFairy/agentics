@@ -86,7 +86,7 @@ describe('leaf-close and the decision', { concurrency: 4 }, () => {
     assert.ok(decision.failures.every((f) => String(f.check).startsWith('series-')), JSON.stringify(decision.failures))
     const sent = msgs(c.w, 'failures', 'g')
     assert.equal(sent.length, 1)
-    const opened = await leafOpen(c.w.xc, { node: 'g' })
+    const opened = await leafOpen(c.w.xc, { node: 'g', intelligence: 'normal' })
     assert.equal(opened.status, 'opened', JSON.stringify(opened))
     assert.equal(opened.thread, sent[0].thread, 'leaf-close and leaf-open read the same close record')
   })

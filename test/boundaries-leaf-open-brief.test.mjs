@@ -33,7 +33,7 @@ const established = (r, value) => writeGotcha(r, E, {
 test('a round\'s permissions come from its leaf\'s locus, with its role\'s commands', async (t) => {
   const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
   established(r, 'node --test --test-reporter=spec')
-  const { permissions } = await leafOpen(xc, { node: 'a' })
+  const { permissions } = await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   const commands = roleCommands(roleOf('implementer'), commandsOf(r, E), nodeOf(r, 'a'))
   assert.ok(commands.includes('node --test --test-reporter=spec'), 'the established suite is the role\'s <test>')
   for (const c of commands) assert.ok(permissions.allowed.includes('Bash(' + c + ':*)'), c)
@@ -45,10 +45,10 @@ test('a round\'s permissions come from its leaf\'s locus, with its role\'s comma
 test('paths another unmerged leaf holds are denied, and freed once it merged', async (t) => {
   const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] }), leaf('b', { locus: ['src/b.mjs'] })])
   assert.equal((await acquireAsync(r, { effort: E, execution: STAMP, node: 'b', locus: ['src/b.mjs'], waitMs: 0 })).ok, true)
-  const held = await leafOpen(xc, { node: 'a' })
+  const held = await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   for (const rule of editWrite('src/b.mjs')) assert.ok(held.permissions.disallowed.includes(rule), rule)
   xc.log.append('merged', { node: 'b', merged_sha: git(r, 'rev-parse', 'main') })
-  const freed = await leafOpen(xc, { node: 'a' })
+  const freed = await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   for (const rule of editWrite('src/b.mjs')) assert.ok(!freed.permissions.disallowed.includes(rule), rule)
 })
 
@@ -57,7 +57,7 @@ test('an unordered leaf\'s locus is denied before it ever opens, and a leaf orde
     leaf('a', { locus: ['src/a.mjs'] }), leaf('b', { locus: ['src/b.mjs'] }),
     leaf('c', { locus: ['src/a.mjs', 'src/c.mjs'], deps: ['a'] }),
   ])
-  const { permissions } = await leafOpen(xc, { node: 'a' })
+  const { permissions } = await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   for (const rule of editWrite('src/b.mjs')) assert.ok(permissions.disallowed.includes(rule), 'b holds no lock and is still held: ' + rule)
   for (const rule of [...editWrite('src/a.mjs'), ...editWrite('src/c.mjs')]) assert.ok(!permissions.disallowed.includes(rule), rule)
   for (const rule of editWrite('src/a.mjs')) assert.ok(permissions.allowed.includes(rule), rule)
@@ -74,7 +74,7 @@ test('a green\'s implementer may write no test file', async (t) => {
 test('a test round writes the cycle\'s tests: the red\'s test files and new tests beside every member\'s locus', async (t) => {
   const { xc } = await cycle(t)
   askedForTests(xc)
-  const { permissions } = await leafOpen(xc, { node: 'g' })
+  const { permissions } = await leafOpen(xc, { node: 'g', intelligence: 'normal' })
   for (const rule of editWrite('test/r.test.mjs')) assert.ok(permissions.allowed.includes(rule), rule)
   for (const folder of ['test', 'src']) {
     for (const g of TEST_GLOBS) for (const rule of editWrite(folder + '/' + g)) assert.ok(permissions.allowed.includes(rule), rule)
@@ -89,7 +89,7 @@ test('the cycle\'s test session may not read what the green\'s own commits chang
   commitIn(green.cwd, { 'src/r.mjs': 'export const r = () => 1\n', 'src/r-help.mjs': 'export const h = 1\n' }, 'Implement r')
   commitIn(green.cwd, { 'test/r.test.mjs': RED + "test('more', () => {})\n" }, 'Pin more')
   askedForTests(xc)
-  const { permissions } = await leafOpen(xc, { node: 'g' })
+  const { permissions } = await leafOpen(xc, { node: 'g', intelligence: 'normal' })
   const denied = permissionsFor({ locus: [], denyRead: ['src/r.mjs', 'src/r-help.mjs'] }).disallowed.filter((p) => p.startsWith('Read('))
   for (const rule of denied) assert.ok(permissions.disallowed.includes(rule), rule)
   const tests = permissionsFor({ locus: [], denyRead: ['test/r.test.mjs'] }).disallowed.filter((p) => p.startsWith('Read('))
@@ -101,7 +101,7 @@ test('the cycle\'s test session may not read what the green\'s own commits chang
 test('the brief and its parts are the round\'s leaf brief over the established commands', async (t) => {
   const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
   established(r, 'node --test --test-reporter=spec')
-  const out = await leafOpen(xc, { node: 'a' })
+  const out = await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   const expected = leafBrief(r, E, 'a', { role: 'implementer', worktree: out.cwd, commands: commandsOf(r, E) })
   assert.equal(out.brief, expected.text)
   assert.deepEqual(out.brief_parts, expected.parts)
@@ -111,7 +111,7 @@ test('the brief and its parts are the round\'s leaf brief over the established c
 test('the cycle\'s test session is briefed with the red\'s leaf brief on a green\'s round', async (t) => {
   const { r, xc } = await cycle(t)
   askedForTests(xc)
-  const out = await leafOpen(xc, { node: 'g' })
+  const out = await leafOpen(xc, { node: 'g', intelligence: 'normal' })
   const commands = commandsOf(r, E)
   const red = leafBrief(r, E, 'r', { role: 'test-author', worktree: out.cwd, commands })
   assert.equal(out.brief, red.text)
@@ -124,7 +124,7 @@ test('a green is cut from its red\'s head, and opened again names the same base'
   const { xc, green, redHead } = await cycle(t)
   assert.equal(green.base_sha, redHead)
   assert.equal(green.head_sha, redHead)
-  assert.equal((await leafOpen(xc, { node: 'g' })).base_sha, green.base_sha)
+  assert.equal((await leafOpen(xc, { node: 'g', intelligence: 'normal' })).base_sha, green.base_sha)
 })
 
 test('a green is cut from its red and brought up to the parent\'s head, so its other dependencies are there', async (t) => {
@@ -132,10 +132,10 @@ test('a green is cut from its red and brought up to the parent\'s head, so its o
     leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'] }),
     leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], locus: ['src/r.mjs'] }),
   ])
-  const red = await leafOpen(xc, { node: 'r' })
+  const red = await leafOpen(xc, { node: 'r', intelligence: 'normal' })
   const redHead = commitIn(red.cwd, { 'test/r.test.mjs': RED }, 'Pin r')
   commitIn(resolve(worktreeOf(r, E, '.')), { 'src/l.mjs': 'export const l = 1\n' }, 'Merge l')
-  const green = await leafOpen(xc, { node: 'g' })
+  const green = await leafOpen(xc, { node: 'g', intelligence: 'normal' })
   assert.ok(existsSync(join(green.cwd, 'src', 'l.mjs')), 'what merged into the parent is there')
   assert.ok(existsSync(join(green.cwd, 'test', 'r.test.mjs')), 'and the red\'s tests')
   assert.equal(green.salvaged, false, 'a refresh merge is no work of an earlier round')
@@ -144,10 +144,10 @@ test('a green is cut from its red and brought up to the parent\'s head, so its o
 
 test('committed work on the branch no dispatch of this execution made is reported salvaged', async (t) => {
   const { xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
-  const first = await leafOpen(xc, { node: 'a' })
+  const first = await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   assert.equal(first.salvaged, false, 'a new branch holds nothing')
   commitIn(first.cwd, { 'src/a.mjs': 'export const a = () => 1\n' }, 'Add a')
-  assert.equal((await leafOpen(xc, { node: 'a' })).salvaged, true)
+  assert.equal((await leafOpen(xc, { node: 'a', intelligence: 'normal' })).salvaged, true)
   ran(xc, { node: 'a', round: 1, role: 'implementer', thread: 'producer:a' })
-  assert.equal((await leafOpen(xc, { node: 'a' })).salvaged, false, 'this execution\'s own round')
+  assert.equal((await leafOpen(xc, { node: 'a', intelligence: 'normal' })).salvaged, false, 'this execution\'s own round')
 })

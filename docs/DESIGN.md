@@ -4309,5 +4309,5 @@ literally bracketed file at HEAD, and each escaped-bracket part (`\[`) with the 
 - `test/fast/design-doc.test.mjs` pins that every section has a body and every pointer into this
   document resolves; `test/fast/verbatim-blocks.test.mjs` pins the `severity-ladder` block above
   against its copy in `roles/reviewer.md`.
-- Planning sessions keep gitignored local scratch under `docs/`. Nothing in the repository may
-  point into it.
+- `docs/superpowers/` is gitignored local scratch for planning sessions. Nothing in the repository
+  may point into it.

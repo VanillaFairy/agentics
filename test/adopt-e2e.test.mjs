@@ -110,7 +110,7 @@ test('half-done work handed over: the canonical branch continues the series, sal
   assert.equal(row.next_action, 'continue-series')
   const xc = ctxOf(w.r, STAMP2)
   assert.equal((await preflight(xc, { folder: 'c', commands_file: commandsFile(t, undefined, 'b.json') })).ok, true)
-  const opened = await leafOpen(xc, { node: 'c/b' })
+  const opened = await leafOpen(xc, { node: 'c/b', intelligence: 'normal' })
   assert.equal(opened.status, 'opened', JSON.stringify(opened))
   assert.equal(opened.salvaged, true)
   const notes = readLog(w.r, E, 'events').entries.filter((e) => e.kind === 'message' && e.msg === 'notes' && e.node === 'c/b')

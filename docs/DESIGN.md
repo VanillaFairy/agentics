@@ -61,7 +61,8 @@ The runtime artifacts are prompts and code, so they are checked in layers — de
 runner, an opt-in contract test runs the real host, real-git tests run every boundary, and pins
 keep restated contracts, allowlists and design pointers from drifting. Run everything with
 `node tools/lint.mjs && node tools/suite.mjs`, or just the spawn-free tier with
-`node tools/suite.mjs --fast` (see [Self-checks](#self-checks)).
+`node tools/suite.mjs --fast` (see [Self-checks](#self-checks)). The search navigator also has field checks on
+synthetic repositories (`tools/field.mjs`), run by hand before a release.
 
 ---
 
@@ -75,7 +76,7 @@ names none.
 
 Everything shows exactly how complete it is. A producer's or judge's return states what it covered
 and what it did not reach; a search's coverage is code's own record of what its tools showed and of
-the frontier left at its end ([Searches](#searches)); and "looked and found nothing" never merges
+the agenda left at its end ([Searches](#searches)); and "looked and found nothing" never merges
 with "never looked": a name that resolves to nothing, a return that is not there, a unit nobody
 ruled on reads as absent or open, never as empty or passed. Work is in one of three states: **in progress**; **escalated**, carrying
 what was established, what was tried, what remains and how to resume; or **done**, every unit of
@@ -86,8 +87,9 @@ more complete than it is, and what stays incomplete leads every report.
 carries hits, dismissals, leads and a declaration per ask, and none declares its own coverage or a
 stop reason); the `coverage-block` lint rule (every program result computes `complete` from its
 fields); `verifyReturn` in `lib/search/ledger.mjs`, which refuses a hit no tool call showed
-(`unobserved`), and the ledger's frontier, which every ask reports at its end as `unreached`, with
-`coverageLines` in the same file, which labels each end by the weakest source it rests on;
+(`unobserved`), and the ledger's agenda, which every ask reports at its end as `unreached`, with
+`coverageLines` in the same file, which labels each end by the weakest source it rests on and names
+what each ruled `done` looked for;
 `resolveHandle` in `lib/store.mjs`, the one way a CLI turns an argument into a thing, which refuses
 an unknown one as `unknown_<kind>`; status derived on read (P3); an integration branch holds no
 commit no record accounts for (`outside_work`: `unaccountedOf` in `lib/integration.mjs`, which
@@ -99,7 +101,7 @@ Work escalates on a state, never on a count. The states are three: a decision on
 make; a claim an independent ruling (L3) finds cannot be met as written; and no progress — the
 same state again, or an independent ruling that a loop is not converging. A count may decide when
 to ask; it never decides the answer. A search converges while its turns change what its asks'
-evidence establishes; exhausting the frontier is a means, not the target. An external stop — a usage
+evidence establishes; exhausting the agenda is a means, not the target. An external stop — a usage
 limit, a host error, a crash, the user — leaves work in progress, resumed from the records.
 
 *Enforced by:* the `no-turn-caps` lint rule (no turn or spend cap on a dispatch, over the programs,
@@ -107,10 +109,12 @@ the execute program's units, the search loop in `lib/programs/search/`, `lib/run
 roles); the `no-loop-bounds` lint rule (no loop in a program or `lib/run.mjs` that a counter ends — a
 condition, or an `if` that leaves the loop, comparing a counter the loop increments to a number, a
 SCREAMING_CASE name or a `max`/`limit`/`cap` name); the convergence predicates in `lib/verdict.mjs`,
-which compare states; `stateOf` in `lib/search/ledger.mjs`, which ends each ask of a search on its
-state (`done`, or `no_progress` when the turn answers for the ask and its state equals one it had
-before); `askAfter` in `lib/programs/converge.mjs`, which schedules a convergence ruling — at a
-search's check-in, the `ruler_search` ruling per ask; the runner's classification of host failures as
+which compare states; `foldLedger` in `lib/search/ledger.mjs`, which ends each ask of a search on
+a state equality or a ruling (`no_progress` when a stall finds the ask in a state a ruling already
+saw, `done` and `not_converging` only on a ruling), and `stateOf` in the same file, which reports
+those ends and the asks a stall or a check-in owes the ruler; `askAfter` in
+`lib/programs/converge.mjs`, which schedules a convergence ruling — at a search's check-in, the
+`ruler_search` ruling of each ask that moved; the runner's classification of host failures as
 stops ([Host stops](#host-stops)).
 
 ### L3 — Separate judges
@@ -131,7 +135,7 @@ session that produced it or any session of its thread; the `no-self-verdict` lin
 `lib/schemas.mjs` (producer and searcher schemas carry no ruling fields, and a judge's schema rules
 per unit); `verdictOf` in `lib/verdict.mjs`, where approval is every unit ruled and none ruled
 blocking; the search loop (`lib/programs/search/loop.mjs`), where the navigator declares,
-convergence is ruled by `ruler_search` through `dispatchJudge` with every navigator session of the
+each ask's end is ruled by `ruler_search` through `dispatchJudge` with every navigator session of the
 search as producer, and sufficiency is ruled by the consumers through wants
 ([Searches](#searches)).
 
@@ -493,7 +497,7 @@ exits 1.
 `lib/runner.mjs` is the one way anything in agentics starts an agent:
 
 `runAgent({dispatch, node, round, thread, role, cwd, brief, freshBrief, briefDigest, briefParts,
-tier: {model, effort}, permissions, schema, carries, dir, resume, mcpConfig}) → {status: returned | stopped |
+tier: {model, effort}, permissions, schema, carries, dir, resume, mcpConfig, refits}) → {status: returned | stopped |
 failed, cause, until, output, usage, cost_usd, denials[], session, checkout, message}`
 
 It spawns the host's CLI, `claude -p`, without a shell, and owns every flag:
@@ -520,16 +524,19 @@ file refuses (`host_missing`) without looking further; otherwise it is the first
 (`host_missing`).
 
 **The runner records as it goes.** `dispatched {dispatch, node, thread, round, role, model, effort,
-session, brief_digest, brief_parts, carries[], pid}` is appended when the CLI starts — with `pid` 0
+session, brief_digest, brief_parts, carries[], prompt, cwd, pid}` is appended when the CLI starts — with `pid` 0
 when no CLI started (its spawn failed, or the watch's read before the call failed), so every call
 reads as started — `carries` naming the messages the call delivers
 ([Conversations](#conversations)), `brief_digest` the digest of the thread's brief on every call of
 the dispatch (its first, a schema retry, each continuation part and a renewal), and `brief_parts`
 the digest of each section of that brief by its heading, which only an execution's leaf rounds
-give (`{}` on every other call).
+give (`{}` on every other call), `prompt` the digest of the system prompt it ran under and `cwd`
+where it ran. While the call streams, each host `WebSearch` call is appended as `tool_used
+{dispatch, thread, tool, input}`, so a search can journal what its navigator searched for.
 When it ends, the runner appends `returned {dispatch, session, status, cause, usage, context,
-opened, cost_total, cost_usd, denials}` — a host stop records `host_stop` instead ([Host stops](#host-stops)) —
-`status` `returned`, `part`, `failed` or `cut_off`, and `cause` naming why a call that did not
+opened, compacted, cost_total, cost_usd, denials}`, `compacted` whether the host compacted the
+session during the call (a `compact_boundary` event in the stream) — a host stop records
+`host_stop` instead ([Host stops](#host-stops)) — `status` `returned`, `part`, `failed` or `cut_off`, and `cause` naming why a call that did not
 return failed or was cut off. A call that returned has its output written whole to
 `returns/<dispatch>.json` first, so a `returned` line with status `returned` always has its whole
 return on disk. `usage` is the host's own figure summed over every model turn of the call, which
@@ -564,8 +571,16 @@ thread's brief and every message recorded on it, the open findings among them, i
 execution alike. So a renewal always sheds turns: a charge that alone fills more than half the window is no reason
 to renew. A session whose first measured call recorded no `opened` has floor 0, and a session no
 call measured is resumed; the cumulative `usage` never decides it.
-Either way the runner records `thread_renewed {thread, gen, why}`, `why` being `too_large` or
-`session_missing`, and the thread's next session id is minted from its new generation.
+**A prompt the host refuses as too long** fails the call `context_exceeded`. A call may carry
+`refits`, more-folded fresh briefs; on `context_exceeded` the runner renews the session with the
+next refit, until none is left.
+Either way the runner records `thread_renewed {thread, gen, why}`, `why` being `too_large`,
+`session_missing` or `context_exceeded`, and the thread's next session id is minted from its new
+generation. `dispatch` records it too when it starts a thread's next session itself: on a `fresh`
+call, and, for a call with `renewOnChange` (a search's navigator), when the thread's last
+`dispatched` entry ran under another system prompt or cwd (`prompt_changed`, `cwd_changed`) — even
+over a started call, which then gets `cut_off` and its brief. A call with `resendOnCutOff` that
+resumes a started call sends `cut_off` followed by its brief.
 
 **A return too large for one response** says so (`more: true`); the runner resumes the same
 session for the rest and stores the parts as one return. Each part is recorded `returned {status:
@@ -686,17 +701,14 @@ A search's navigator is briefed by `lib/briefs/search.mjs`. Its **charge** (`cha
 domain's protocol, the asks with their scopes, the program's material fenced as data (each item
 marked as the material of its asks, or as context) and the ground table (`groundText`) with its
 guidance files — is its system prompt, beside the role's text (`promptFile(role, dir, charge)`), and
-depends on nothing a turn changes, so the host reads it back from cache on every turn. Each turn's
-standard input is `turnBrief`: the asks that joined since the last turn with what they ask, per open
-ask its declaration and frontier (a call always named by its seq), the last turn's refusals with
-their reasons, and each ended ask on one line. A renewed session starts from the charge and
-`digestOf`: every call code ran, every refusal, and per ask its hits, dismissals and frontier
-(and, for an ask that joined after the charge was written, what it asks),
-folded only to fit its budget (`BRIEF_BUDGET_CHARS`, half the searcher's window in characters) —
-keys closed by a hit or a dismissal first, then frontier keys, deepest directory first, each fold
-one line per directory with its count; calls, refusals, and glob or call dismissals are never
-folded. The convergence ruler is briefed by `rulerBrief`: per ask its declaration, what each turn
-added (observed lines and hits), its hits' notes, its frontier and the turn of its last new hit.
+depends on nothing a turn changes, so the host reads it back from cache on every turn; the ground
+table in it holds only the rows no ask owns. Each turn's standard input is `briefOf(ledger, base)`:
+what changed since the ledger the session last saw — the asks that joined with what they ask, per
+open ask its declaration, standing ruling and what its agenda gained and lost (a call always named
+by its seq, owed files one line per directory), the calls, the refusals with their reasons, and each
+ended ask on one line. A fresh, renewed or compacted session gets `briefOf(ledger, null)`, the whole
+state, and a prompt the host refuses as too long is sent again at fold levels 2–4
+([Searches](#searches)). The search ruler is briefed by `rulerBrief` ([Searches](#searches)).
 Probers and survey judges get the same ground table (`groundText`). The `prompt-origin` lint rule
 treats `charge` as a prompt key beside `brief`, `threadBrief` and `prompt`.
 
@@ -1748,11 +1760,13 @@ included. Its asks are `guidance` and one `ground:<section>` per section in scop
 narrowing computed first, each ground ask naming its section's lines. Code resolves what the
 artefact names into a ground table once (the step `ground`): the artefact is the search's material
 once, each section in scope as its own ground ask's and the rest as context, so what a section
-names — the paths it cites among them — is on that section's ground ask's frontier alone. The
-resolver's guidance keys, less the artefact itself, are open seeds of `guidance`. An ask that ended
-`done` on a declaration is a `declared` line; an ask that ended any other way leaves `locate`
-incomplete, with its end and its unreached keys as `unreached` lines, and what each prober declared
-it never attacked (`not_reached`) is an `unreached` line too. A locating search that produced
+names — the paths it cites among them — is on that section's ground ask's agenda alone. The
+resolver's guidance keys, less the artefact itself, are open seeds of `guidance`. The probe consumes
+its search through `lib/programs/search/consume.mjs` (`outcomeOf`, `wantsRounds`, `judgeLines`):
+an ask the ruler ended `done` gives its `declared` lines; an ask that ended any other way leaves
+`locate` incomplete, with its end and its unreached keys as `unreached` lines. The ground, the axes
+and `repo_ground.located` are the view the probers were handed (the first search); the coverage
+reads the search as the last wants pass left it. What each prober declared it never attacked (`not_reached`) is an `unreached` line too. A locating search that produced
 nothing — it failed, or every ask paused `stopped` with no hit — fails `repo-axes` and
 `repo-ground`, and the standing axes probe the artefact and its own citations alone; the axes
 analyst is bought only when the `guidance` ask holds a hit, and one that failed or could not read
@@ -1902,11 +1916,11 @@ A consumer's wants add asks `want:<n>` to the program's own search (**Wants**, b
 | principle | what it says |
 |---|---|
 | State | The search ledger is the only memory that decides anything, and it only grows: one call-log line per tool call, written by the tool server before it answers, and one journaled step per navigator return, folded by a pure function (`foldLedger`). |
-| Identity | Every key is canonical by construction: git's own output for the pinned tree (a repo-relative posix path, a full commit sha), or `canonicalUrl` and `candidateKey` on the web. One query dialect, `queryOf`, serves search and the evidence pool ([Items and anchors](#items-and-anchors)): it transpiles `\d \s \w` and their negations into POSIX classes and refuses what `git grep -E` would read otherwise. A refusal is a persisted fact, shown in the next turn's brief. |
-| Labels | Every fact and every end carries the weakest source it rests on: *observed* only when every fact under it is code's, *ruled* when it rests on a ruling, otherwise *declared*. |
-| Progress | A return progresses for an ask when it moves the ask's stamp (its observed set, hits, dismissal targets, reads to the end, closed seeds, followed symbols, covered roots, declaration and absence) to a value the ask never had before. A turn answers only for the open asks it worked — a call or a return item named them — and a turn that named no open ask answers for every open ask, so an ask the turn left alone is not ended by it. For a pinned tree the observable `(key, line)` pairs are finite, a closure closes once and an exact repeat adds nothing, so a search ends without any count. |
-| Ending | Each ask ends on its state — `done`, `no_progress` (only an ask the turn answers for), `not_converging` — or pauses `stopped`, resumable; a missing outcome pauses an ask and never ends one. |
-| Scheduling | The navigator chooses each next step. Code reports each open ask's frontier in the turn's brief, and folds the ledger to a budget only for a renewed session's digest. |
+| Identity | Every key is canonical by construction: git's own output for the pinned tree (a repo-relative posix path, a full commit sha), or `canonicalUrl` and `candidateKey` on the web. One query dialect, `queryOf`, serves search and the evidence pool ([Items and anchors](#items-and-anchors)): it transpiles `\d \s \w` and their negations into POSIX classes and refuses what `git grep -E` would read otherwise. Paths, globs and the fence share that module (`lib/search/query.mjs`): `pathKey` spells a path as a key, `globOf` reads a glob in the search dialect (`GLOB_RULES`: `*` within a segment, `**` across segments, `?` one character, everything else literal, brackets included), and `fenced` refuses a key under `.agentics/` or `.claude/worktrees/` (`not_canonical`). The `files` tool, `read`, grep's `paths`, the ledger's dismissals and the resolver's scoped globs all go through them. A refusal is a persisted fact, shown in the next brief. |
+| Labels | Every fact and every end carries the weakest source it rests on: *observed* when every fact under it is code's, *ruled* when it rests on a ruling. An end is never *declared*: a declaration ends nothing. |
+| Progress | An ask's stamp is a digest of its observed `(key, line)` pairs and keys, its accepted hits, the keys and agenda items its dismissals closed, the keys read to their end, its closed seeds, the distinct queries that ran ok under it (tool and arguments without the page) and its declaration. A turn progresses for an ask when it moves that stamp. The observed sets are finite on a pinned tree; a fresh query is new evidence — a grep of a new pattern that matches nothing is an absence of that pattern — so queries are in the stamp, and a navigator that rewords forever is braked by the ruler's `not_converging`, as are refusals. No count ends a search. |
+| Ending | Code ends nothing on a declaration. A turn that leaves every open ask where it stood after an earlier returned turn is a stall: the ruler rules each stalled ask, and an ask a ruling already saw in that same state ends `no_progress`. Only a ruling ends an ask `done` or `not_converging`; `stopped` pauses it, resumable; a missing outcome pauses an ask and never ends one. |
+| Scheduling | The navigator chooses each next step. Code reports each open ask's agenda in the brief; the agenda steers and reports, and decides no end. |
 
 **The tree.** Every search runs over one `{root, sha}`. A standalone program's is the checkout it
 reads and its `HEAD`, uncommitted files included. An execution's folder gets a framework-owned
@@ -1924,32 +1938,43 @@ directory-qualified file path (or a file name in backticks), an identifier in co
 backticks, CamelCase, SCREAMING_CASE or snake_case of two parts or more — or a document name. For
 each, the table records whether the path exists on this tree, an identifier's definition sites (one
 `git grep -E` per language) and its references by file with tests apart, and how many files mention
-it; when the program hands it an effort's diff, each changed file and each identifier the diff adds
-or removes. Rows that exist come first, identifiers by how few files mention them, so `ITEM_STAND`
+it; when the program hands it an effort's diff, each changed file. Rows that exist come first, identifiers by how few files mention them, so `ITEM_STAND`
 rises and `config` sinks; what the tree lacks is kept, last, because a design often names what it
 will create. The table's seeds are the repository's guidance: every `CLAUDE.md` and `AGENTS.md`, the
 files `.agentics/config.json` lists under `guidance`, every `docs/**/*.md`, and the `INDEX.md` or
 module `.md` beside each resolved path; with a diff the table adds the change itself. Every row is
-observed, and carries the asks whose own material named it: a row named only by shared context opens
-no frontier. The table is resolved once per search, and a survey's topics share one run. The
-navigator gets it in its charge, an identifier's definitions grouped by file and the seeds less
-those an ask holds as its own (an open seed is on its ask's frontier in every turn brief), and the
-probers and judges get it as ground.
+observed, and carries the asks whose own material named it: a row named only by shared context puts
+nothing on an agenda. The table is resolved once per search, and a survey's topics share one run;
+an ask that joins later gets rows of its own (**Wants**, below). The navigator gets in its charge
+only the rows no ask owns, inside the asks' scopes, identifiers by name (what an ask owns reaches it
+on its agenda in the brief), and the probers and judges get the table as ground. `scopeFiles(tree,
+scope)` in the same file lists the files of a scope, through the `files` tool, for an ask that owes
+them (**The search ledger**, below).
 
 **The navigator.** One long-lived session per search, on the searcher role for its domain (`scout`,
 `historian`, `doc-researcher`). A turn is one dispatch on the search's thread with `round` the
 turn's number, and every turn after the first resumes the same session. The charge (the asks open
 from the first turn, the material fenced as data, the ground table and the protocol for its
 domain) is the session's system prompt (`promptFile(role, dir, charge)`) and stays the same for the
-whole search, so it is cached once; the turn brief (per open ask its frontier and declaration,
-every ask that joined since the last turn with what it asks, and every refusal of the last turn)
-is its standard input. The thread's brief is the ledger's digest, so a session the runner renews
-(`too_large` on the last turn's context, `session_missing`) starts from the charge and the digest,
-never blind. A digest that still exceeds `BRIEF_BUDGET_CHARS` (less the charge) after every fold
-stops the open asks, by the navigator, `brief_over_budget`, before the turn is dispatched. A search
-thread carries no messages. The navigator returns `search_repo`, `search_history` or `search_web`:
-hits, dismissals, leads and a declaration per ask (`answered`, `absent`, `open`), and no ruling
-field.
+whole search, so it is cached once. Its standard input is one renderer, `briefOf(ledger, base)` in
+`lib/briefs/search.mjs`: what changed between `base` and the ledger now — the asks that joined, per
+open ask what its agenda gained and lost and its declaration, the calls, the refusals and the asks
+that ended. With `base` null it is the whole state, the fresh brief; a base and its delta together
+hold what the fresh brief holds. The base is the session's: the ledger folded through the turn
+before the latest turn whose dispatch returned in the session the thread holds now. It is null — the
+brief is the whole state — for a session no turn returned in, a turn the host compacted
+(`compacted` on its `returned` entry), a resume that opened below the context the session last read,
+and a session renewed for a changed prompt or cwd. The thread brief, which the runner sends to a
+session it renews for `too_large` or `session_missing`, is the whole state. The call also carries
+`refits`, the whole brief at fold levels 2–4 (`FOLD_LEVELS`: level 2 counts the calls by tool,
+level 3 also counts each agenda by kind and top directory, level 4 keeps only each open ask with its
+find and declaration, and the asks that ended); when the host refuses a prompt as too long
+(`context_exceeded`), the runner renews the session with each refit in turn. The search's thread is
+dispatched with `renewOnChange`, so a call whose system prompt or cwd differs from the thread's last
+starts the thread's next session (`prompt_changed`, `cwd_changed`), and with `resendOnCutOff`, so a
+cut-off turn is resumed with `cut_off` followed by its brief. A search thread carries no messages.
+The navigator returns `search_repo`, `search_history` or `search_web`: hits, dismissals, leads and a
+declaration per ask (`answered`, `absent`, `open`), and no ruling field.
 
 **The tools.** A navigator never touches the tree: code runs each step it asks for
 (`lib/search/tools.mjs`) on the search's tree, a directory (`tree.root`: the user's checkout for a
@@ -1960,26 +1985,29 @@ sha it was pinned at.
 |---|---|---|
 | `grep` | repo, history | `git grep` in the shared query dialect, `--untracked`, binaries skipped |
 | `read` | repo, history | a line range of one file from disk, saying where it stopped and how long the file is |
-| `files` | repo | a glob over tracked and untracked files |
+| `files` | repo | a glob over tracked and untracked files, in the search glob dialect (`GLOB_RULES`: `*` within a segment, `**` across segments, `?` one character, everything else literal) |
 | `refs` | repo | word-bounded references to a symbol by file, tests marked, `total` their sum |
 | `log` | history | `-G`, `-S` or `--grep` over the tree's history, each commit with the keys it touched |
 | `show` | history | a commit, or one path in it |
-| `fetch` | web | one web page, its lines paged; the web domain keeps the host's `WebSearch` |
+| `fetch` | web | one web page, its lines paged; the first body of a URL in a search is pinned under the search's `pages/` (`<fnv1a(key)>.json`, `{key, status, bytes, lines}`), so every page and every relaunch reads the same body; a body past `FETCH_BYTES` (8 MiB) is refused `too_large` with its size. The web domain keeps the host's `WebSearch` |
 
 Each tool keys every path as git prints it for that tree, so spellings, worktree copies and
 Windows case never split one file. A scope part git reports ignored is searched with the standard
 excludes off; `node_modules` only through a part that names it; each initialised submodule on its
 own, keyed under its path; a nested repository or another worktree never. Output comes in pages of
-`PAGE_LINES` (200); a page not fetched stays on the ask's frontier, so nothing is truncated
-silently. Every failure is a named refusal (`not_canonical`, `past_eof`, `unsupported_syntax`,
-`does_not_compile`, `expander_error`, `unknown_ask`, `outside_scope`), never an exception.
+`PAGE_LINES` (200); a page not fetched stays on the ask's agenda, so nothing is truncated
+silently. Every tool refuses a key under `.agentics/` or `.claude/worktrees/` (`not_canonical`).
+Every failure is a named refusal (`not_canonical`, `past_eof`, `unsupported_syntax`,
+`does_not_compile`, `expander_error`, `unknown_ask`, `outside_scope`, `too_large`), never an
+exception.
 
 **The tool server.** The tools come from one stdio MCP server per dispatch, `lib/search/server.mjs`,
 named `search`, so the host calls them `mcp__search__<tool>`, and no searcher holds the host's
-`Read`, `Grep`, `Glob`, `Bash` or `WebFetch`. The loop writes the dispatch's spec (the tree, the
+`Read`, `Grep`, `Glob`, `Bash` or `WebFetch`. The loop writes the server's spec (the tree, the
 asks and their scopes, the domain's tools — `repo`: grep, read, files, refs; `history`: log, show,
-grep, read; `web`: fetch — and the call log's path) and an MCP config naming it under `searchDir`,
-both named by the spec's digest, and the runner passes the config with `--mcp-config` beside
+grep, read; `web`: fetch — and the call log's path) and an MCP config naming it under `searchDir`
+once per call of `search`, both named by the spec's digest, and every turn of that call names the
+same config; the runner passes the config with `--mcp-config` beside
 `--strict-mcp-config`, so no other MCP server reaches the session. Every tool's input names the ask
 or asks it serves (`ask`); an unknown ask is refused `unknown_ask`, and a call runs inside the union
 of its asks' scopes (`outside_scope` otherwise). The server appends one record per call to the
@@ -1991,107 +2019,149 @@ JSON-RPC error `-32601`. What the navigator saw is therefore observed.
 
 **The search ledger.** A search's state is a pure fold of its facts (`foldLedger` in
 `lib/search/ledger.mjs`): its asks, its ground table, every tool call the tool server journaled,
-every navigator return and every convergence ruling. Each fact keeps its source: code **observed**
-the tree, the ground table, every call, the lines it returned and the pages not fetched; the
-navigator **declared** its hits, dismissals, leads and a declaration per ask; the ruler **ruled**
-convergence, and a consumer ruled sufficiency through wants. Nothing closed reopens, and an ended
-ask takes no new facts. An ask's stamp is kept incrementally and does not depend on the order facts
+every navigator return and every ruling. Each fact keeps its source: code **observed** the tree,
+the ground table, every call, the lines it returned and the pages not fetched; the navigator
+**declared** its hits, dismissals, leads and a declaration per ask; the ruler **ruled** each ask it
+was sent, and a consumer ruled sufficiency through wants. Nothing closed reopens, and an ended ask
+takes no new facts. An ask's stamp is kept incrementally and does not depend on the order facts
 arrive in.
 
 - **Verified hits.** A hit is accepted only on a line some call of the search returned under one of
   the hit's asks — in the history and web domains, a commit or a fetched URL it returned
-  (`verifyReturn`). Anything else is refused `unobserved`, shown in the next turn's brief and counted
+  (`verifyReturn`). Anything else is refused `unobserved`, shown in the next brief and counted
   nowhere. The other refusals are `unknown_ask` (an ask the search lacks, or one whose first turn is
-  ahead), `names_only_ended_asks`, and `contradicts_hit` for `absent` on an ask that has a hit. A
-  refusal never moves an ask's state. A refusal names the open asks its item named, and stands until
-  the asks hold the hit it refused (`standingRefusals`); the search carries every refusal still
-  standing in its result, and `coverageLines` reports each `unobserved` one as an `unreached` line
-  per ask: a citation that no call showed.
-- **Frontier.** An ask's frontier is its open seeds, its leads not yet read or dismissed, the pages
-  of its queries not fetched, and its own ground-table rows — the mentions of that ask's own
-  material: a path that exists, a symbol's definition files — that it has neither hit, read to their
-  end, nor dismissed — and, for a symbol the resolver found references to, the symbol itself
-  (`symbol:<mention>`) until a call under the ask follows it — a `refs` of it, or a `grep` whose
-  pattern names it, whose unfetched pages stay frontier — or a dismissal closes it. A repo ask with
-  no seed and no ground row of its own (its material named nothing on this tree, or it has none, as
-  a want) holds each root of its scope (kind `scope`) until a call under it covers the root — a
-  `grep` over all of it, or a `files` glob recursing from a directory that holds it — or a
-  dismissal closes it, so an ask nobody worked reports its scope `unreached`. Following a symbol and
-  covering a root move the ask's stamp.
-  A row only shared context named sits on no frontier. Each is per ask: a call or an item counts for
-  the asks it names. At an ask's end, its frontier is its `unreached`.
-- **Dismissals** name a path (a literal pathspec: a directory holds what is under it; in the web
-  domain, a path names one URL), a glob (git's `:(glob)` rules) or a call (every key it returned and
-  its unfetched pages), and record whether the file was read to its end.
+  ahead) and `contradicts_hit` for the navigator's `absent` on an ask that has a hit. An item that
+  names only ended asks is dropped and counted nowhere; the brief's Ended list says why. A refusal
+  never moves an ask's stamp. A refusal names the open asks its item named, and stands until the
+  asks hold the hit it refused (`standingRefusals`); the search carries every refusal still standing
+  in its result, and `coverageLines` reports each `unobserved` one as an `unreached` line per ask: a
+  citation that no call showed.
+- **Agenda.** An ask's agenda is what it has not yet worked: its open seeds (kind `seed`), its leads
+  not yet read or dismissed (`lead`), its own ground-table rows — a path, doc, change or definition
+  file of that ask's own material — that it has neither hit, read to their end, nor dismissed
+  (`ground`), for a symbol the resolver found references to, the symbol itself (`symbol:<mention>`,
+  kind `symbol`) until a call under the ask follows it — a `refs` of it, or a `grep` whose pattern
+  names it — or a dismissal closes it, the pages of its queries not fetched (`overflow`), and the
+  files it owes (`file`). The agenda steers (the navigator's brief) and reports (`unreached` at the
+  end); no ending rule reads it. A row only shared context named sits on no agenda. Each is per ask:
+  a call or an item counts for the asks it names.
+- **Scope-owing asks.** A `repo` ask open from the first turn with no seed and no ground row of its
+  own (its material named nothing on this tree) owes its scope file by file: the loop lists the
+  files once (`scopeFiles`, the step `<name>/owes:<ask>`) and hands them to the fold on the ask as
+  `owes`. A file leaves the agenda when an ok call under the ask covers it — a `read` of it, or a
+  `grep` whose paths (its `paths`, else the ask's scope) hold it — or a dismissal covers it. The
+  ledger keeps, per directory, how many files ok calls covered and the patterns that covered them
+  (`covered`). Every renderer and the coverage lines show a scope-owing agenda grouped by directory
+  (`fileGroups`), never file by file.
+- **Looked.** Per ask the ledger keeps `looked`: the ok calls that named it, in seq order, each
+  `{seq, tool, what, where, total, pages, pages_seen}` — `what` the pattern, glob, symbol,
+  `path:from-to`, commit or URL, `where` the paths it ran over. A call that names no ask (a host
+  `WebSearch` the loop journaled, below) goes to the search-wide `queries`, never to an ask.
+- **Dismissals** name a path (a literal: a directory holds what is under it; in the web domain, a
+  path names one URL), a glob in the search dialect, or a call (every key it returned and its
+  unfetched pages), and record whether the file was read to its end, how many agenda items and
+  observed keys it closed (`closes`), and the files it closed that no read has opened (`unopened`,
+  per directory). A dismissal that closes nothing is kept, with its why, as a declared dismissal
+  (`closes: 0`) and moves nothing.
 - **Declarations** stand until the navigator changes them; `open` withdraws one, and a hit accepted
-  later withdraws an `absent`. An `absent` is **checked** when a grep under the ask over its whole
-  scope matched nothing, otherwise declared.
-- **Labels** follow the weakest source: `no_progress` and `stopped` are observed, `not_converging`
-  ruled; `done` on `answered`, or on an absence that is declared or rests on a dismissal of a file
-  not read to its end, is declared, and a checked absence otherwise is observed. `coverageLines`
-  builds the coverage block from them: `declared` the asks done on a declaration, `incomplete` every
-  other end, `unreached` each ask's frontier at its end, `failed_channels` a navigator stop by ask
-  and a ruler stop as `converge:<search>`.
+  later withdraws an `absent`. A declaration steers the ruler and ends nothing.
+- **Labels** follow the weakest source: `no_progress` and `stopped` are observed; `done` and
+  `not_converging` are ruled. `coverageLines` builds the coverage block from the ledger
+  ([Coverage block](#coverage-block)):
+  - `declared`: for each ask ruled `done`, `<search>:<ask>: ruled <answer>: <why> — looked
+    <summary>`, the summary being its distinct queries as `tool what@where→total`, `; `-joined
+    (`lookedSummary`); for a scope-owing ask, one more line per directory, `<search>:<ask>: <dir>/
+    (<n> files) rests on <tool what>, …`; and per dismissal of files never opened, per directory,
+    `<search>:<ask>: dismissed unopened: <n> under <dir>/ (<why>)`;
+  - `incomplete`: `<search>:<ask>: <state>, <why>` for every end but `done`, and `<search>:<ask>: no
+    end`;
+  - `unreached`: `<search>:<ask>: <kind> <key> (<detail>)` per agenda item at the end, `file` items
+    folded to `<search>:<ask>: files <dir>/ (<n> not covered)`; `<search>:<ask>: no call ran under
+    it` when `looked` is empty; and each standing `unobserved` refusal;
+  - `failed_channels`: a navigator stop by ask, and a ruler stop as `converge:<search>`.
 
-**How a search ends.** After every navigator return, `stateOf` takes each open ask in order: `done`
-when it is declared `answered` or `absent` and its frontier is empty; `no_progress` when the turn
-answers for the ask (it worked the ask, or named no open ask at all: an item naming only ended
-asks works none) and the ask's stamp equals any
-earlier stamp in its history, which also ends an answered → open → answered flip-flop; an ask the
-turn did not work stays open. Neither ends an ask in the return that is first to cite, unobserved, an
-item the ask has not been refused before (the same citation, wording aside): the ask gets one more
-turn, with the refusal in its brief, so the navigator sees it before the ask ends. The same
-citation again does not hold it open, and the ruler's `not_converging` and the stops end it as
-ever. At a check-in (`askAfter(turn)`), each open ask whose state moved
-since its previous check-in goes to the ruler, `ruler_search`, on `ruler:search:<name>:<turn>`: one
-unit per ask, through `dispatchJudge` with every navigator session of the search as producer, and
-`not_converging` ends the ask, labelled ruled, with the ruler's why; otherwise the session is
-resumed. An ask the ruling leaves unruled, or a ruling that fails, is ruled again at once on the
-same state; unruled twice, the ask is `stopped`. A turn that ends without a return after the
-runner's host-stop waits is dispatched again at once as the next turn, on the same ledger and
-session; a second in a row stops every open ask, an ask that has not yet joined among them.
-`stopped` is a pause and never an answer: the program reports the ask incomplete, and a relaunch
-replays to the same stop with no new call. The next returned turn reopens an ask the navigator
-stopped, and a ruling that rules an ask the ruler stopped reopens it, so a stopped ask runs again
-only on a re-entry with more asks, a new run or a retry scope. The search returns when no ask is
-open, with each ask's end, label, why, declaration, hits, dismissals and `unreached` frontier, the
-navigator's sessions, `entries_n` and `kinds` (distinct keys with a hit, overall and per ask kind)
-its refusals still standing and its coverage lines; a `done` on a declaration is in the coverage block's `declared`, a checked
-absence is not. A relaunch replays every journaled turn and ruling and the ground with no new call; a turn cut off mid-way resumes in its session with
-`cut_off`, and the calls it made before the stop stay in the call log, each once. No count ends a
-search: the turn number only schedules check-ins (L2), and only the navigator's declarations, the
-state and the ruler end an ask.
+**How a search ends.** After every returned turn the fold records, for each open ask, a history
+entry `{turn, stamp, refused, observed_n, hits_n, calls_n}` (`refused` a digest of the refused
+citations standing against it), then looks for a stall: an earlier returned turn k, no earlier than
+the highest first turn (`from`) among the open asks, at which every open ask had the stamp it has
+now. A turn without a return is no comparison point, and an ask that joins is not compared before
+its first turn. At a stall (`stalled {turn, k}` in the view), each open ask that some `open` ruling
+saw in its current state — its stamp and its refused digest both equal to its entry at that ruling's
+turn — ends `no_progress`, labelled observed, its why naming turn k and the standing ruling; every
+other open ask is **due**, and stays due until a ruling rules it. Nothing else ends an ask on a
+return, and a declaration ends nothing.
+
+The loop then asks `stateOf(ledger, {turn, checkin})`, which reports the ends the fold applied at
+that turn and `toRuler`: the due asks and, at a check-in (`askAfter(turn)`), the open asks whose
+stamp moved since their latest ruling (`ruled_at`), else since the entry before their first turn.
+One step, `<name>/ruling:<turn>`, rules them all: `ruler_search`, one unit per ask, through
+`dispatchJudge` with every navigator session of the search as producer, on the thread
+`ruler:search:<search thread key>:<turn>` outside any scope prefix, with `cwd` the pinned tree. Each
+round's brief (`rulerBrief`) is kept at `<search dir>/rulings/<turn>-<round>.md`: per ask its find,
+scope and declaration, its earlier rulings, what it looked for (each call since its latest ruling
+whole, the earlier ones per tool and pattern), its hits with each hit's line read from the pinned
+tree, its dismissals, the refused citations standing against it and its agenda by group; then the
+search-wide queries once. The ruler rules each ask `answered`, `absent`, `open` or
+`not_converging`, each with a why: `answered` and `absent` end the ask `done` with that `answer`,
+labelled ruled; `not_converging` ends it `not_converging`, ruled; `open` sends it back and stands as
+the ask's `ruling {turn, why}`, the state it saw recorded so a later stall in that state ends the
+ask. A ruled `absent` on an ask with hits stands, and its hits are reported "ruled not an answer".
+An ask the ruling leaves unruled, or a ruling that fails, is ruled again at once on the same state;
+a ruling missed twice in a row stops the ask, by the ruler.
+
+A turn that ends without a return after the runner's host-stop waits is dispatched again at once as
+the next turn, on the same ledger and session; a second in a row stops every open ask, an ask that
+has not yet joined among them. `stopped` is a pause and never an answer: the program reports the
+ask incomplete, and a relaunch replays to the same stop with no new call. The next returned turn
+reopens an ask the navigator stopped, and a ruling that rules an ask the ruler stopped reopens it, so
+a stopped ask runs again only on a re-entry with more asks, a new run or a retry scope. After each
+dispatch the loop appends the host `WebSearch` calls of the thread (the runner's `tool_used`
+entries) not yet journaled to the call log as `websearch` records, `asks: []`, `from_log` the
+entry's seq. The search returns when no ask is open ([Search result](#search-result)). A relaunch
+replays every journaled turn and ruling and the ground with no new call; a turn cut off mid-way
+resumes in its session with `cut_off` and its brief, and the calls it made before the stop stay in
+the call log, each once. No count ends a search: the observed sets of a pinned tree are finite,
+queries and refusals are braked by the ruler's `not_converging`, and the turn number only schedules
+check-ins (L2). `foldLedger` applies every end; `stateOf` reports them and names who the ruler owes.
 
 **Wants.** A consumer that did not do the search can reopen it. A prober (`prober` schema) or a
 survey judge (`items` schema) may return `wants: [{unit, want}]`: ground it lacked to rule a unit it
-holds — a path, a symbol, a question. Code turns each want whose canonical text (trimmed, inner
-whitespace collapsed) its search has not asked into a new ask `want:<n>` on the program's own search
-(the probe's `locate`, the survey topic's `scout:<topic>`), scoped to the whole tree in the repo
-domain, with no ground rows, and runs the search again: the journaled turns replay, the loop sets
-the new ask's first turn (the step `<name>/asks:<n>`), and the navigator's session resumes with it
-open, each ask counted from the turn it joined. Then only the judges whose wants that pass asked are
-dispatched again, on their own threads, for those units alone, with what the want asks found; for
-those units their latest return's rulings, findings or items and risks take the place of the earlier
-return's. A want asked before adds nothing and re-dispatches nothing, so the loop ends when a pass
-asks nothing new — the same-state rule, not a count. A want on a unit its judge was not handed is
-ignored. A want is a ruling by an agent that did not do the search (L3). A want that ends short of
-`done` is a `declared` line (`want <n>: ended <state>: <why>`), written by the program, and reaches
-the re-dispatched judge; the program leaves the search's `<name>:want:` lines out of the incomplete,
-unreached and failed lists, because the judge's ruling of the unit is what counts.
+holds — a path, a symbol, a question. One mechanism serves every consumer, `wantsRounds` in
+`lib/programs/search/consume.mjs`: it turns each want whose canonical text (trimmed, inner
+whitespace collapsed) its search has not asked into a new ask `want:<n>` on the consumer's search
+(the probe's `locate`, a survey topic's `scout:<topic>`), scoped to the whole tree in the repo
+domain, and runs the search again: the journaled turns replay, the loop sets the new ask's first
+turn (the step `<name>/asks:<n>`), resolves its `find` under its scope into ground rows owned by
+that ask alone (the step `<name>/ground:<ask>`, added to the fold's ground; the charge is
+unchanged), and the navigator's session resumes with it open, each ask counted from the turn it
+joined. Then only the consumers whose wants that pass asked are dispatched again, on their own
+threads, for those units alone, with what the want asks found; for those units their latest
+return's rulings, findings or items and risks take the place of the earlier return's. Consumers of
+one search pass together; consumers of different searches run independently. The loop ends when a
+pass asks nothing new, adds no hit or call to the wanted asks, or gets back from every re-dispatched
+consumer the rulings it returned the pass before — the same-state rule, not a count. A want on a
+unit its consumer was not handed is ignored. A want is a ruling by an agent that did not do the
+search (L3). A want ask's lines are selected by its key: a want that ends short of `done` is a
+`declared` line (`want <n>: ended <state>: <why>`, `outcomeOf`), and reaches the re-dispatched
+consumer; the program leaves the search's `<name>:want:` lines out of the incomplete, unreached and
+failed lists, because the consumer's ruling of the unit is what counts. A lost round is one
+`unreached` line (`judgeLines`): `<label> <n> did not return for its wants (<cause>): its earlier
+items on <units> stand`, or what a returned consumer declared it did not reach.
 
 **Readers.** `searchExcerpts` (`lib/citations.mjs`) renders a search for the agents that read it: per
-ask its end and label, its hits with notes, its dismissals, its `unreached` and the refusals standing
+ask its end, label and answer, what it looked for, its hits with notes (marked "ruled not an
+answer" under a ruled absence), its dismissals, what it did not reach and the refusals standing
 against it (those that name no ask once, after the asks), then the lines the hits point at, read once
 from the tree.
 
-**The laws.** L1: reads, matches and absences are observed, overflow is frontier and the frontier at
-the end is `unreached`, a hit with no observed line is refused, every end carries its label, and
-every fact is about one pinned tree. L2: `done`, `no_progress` and `not_converging` are a state, a
-state equality and a ruling, and `askAfter` only schedules the ruling. L3: the navigator declares, a
-ruler that is not its session rules convergence, consumers rule sufficiency through wants. L4: the
-tools read the pinned tree and write nothing, and the user's checkout, index and stash are never
-touched. P2: resolution, enumeration, identity, the frontier, every brief and every ending
-condition are code.
+**The laws.** L1: reads, matches and absences are observed, an unfetched page is on the agenda and
+the agenda at the end is `unreached`, a hit with no observed line is refused, every end carries its
+label, and every fact is about one pinned tree. L2: `done`, `no_progress` and `not_converging` are a
+ruling, a state equality the ruler already saw, and a ruling; `askAfter` only schedules check-ins.
+L3: the navigator declares, a ruler that is not its session rules each ask, consumers rule
+sufficiency through wants. L4: the tools read the pinned tree and write nothing but the search's own
+files, and the user's checkout, index and stash are never touched. P2: resolution, enumeration,
+identity, the agenda, every brief and every stall are code.
 
 ### Items and anchors
 
@@ -2196,7 +2266,7 @@ The `survey` program gathers evidence for one question and never concludes.
 3. **Search.** Code resolves what the question, the common ground and every topic's find name into
    one ground table (the step `ground`; inside an execution, with the change from the execution's
    base to its pinned tree): the question and the common ground as context, each topic's find as its
-   own ask's material, so a topic's frontier is what its own find names. Each topic is one search
+   own ask's material, so a topic's agenda is what its own find names. Each topic is one search
    ([Searches](#searches)) named `scout:<topic>`, run by the scout over the survey's tree, its one
    ask keyed by the topic and scoped to its subtree; every topic search starts from the same table.
    History and docs run alongside when the plan asks, as searches named `history` (the historian,
@@ -2215,7 +2285,8 @@ The `survey` program gathers evidence for one question and never concludes.
 5. **Judge.** Each analyst, **without search tools**, returns items — one claim each, with the
    anchor its kind needs — risks, and a ruling per topic it holds, `anchored` or `unanchored`; a
    topic's latest ruling stands; a judge that lacked evidence for a topic may name it as a want, and
-   is judged again for that topic alone ([Searches](#searches)). A topic given neither items nor
+   is judged again for that topic alone ([Searches](#searches)). Each judge runs its own wants loop
+   over its topics' searches, so judges never wait on one another. A topic given neither items nor
    risks is dropped.
 6. **Record.** The program records each judge's items (`recordSurvey`), all or none: while the
    judge's latest answer holds an item the store refuses, nothing is recorded, and the refused items
@@ -2231,8 +2302,11 @@ The `survey` program gathers evidence for one question and never concludes.
    session, or the planner's brief, reads it; the result lists the reused items first, then this
    run's, by topic.
 
-Coverage is complete when every topic's search ended `done` and all its items stand; each ask a topic
-search ended `done` on a declaration is a `declared` line. A topic not dropped is incomplete when its
+Coverage is complete when every topic's search ended `done` and all its items stand. The survey
+reads each search's coverage from its asks by key (`outcomeOf` in
+`lib/programs/search/consume.mjs`), and guidance from the pinned tree (`pinnedOf`): each ask the
+ruler ended `done` gives its `declared` lines. A lost wants round has one wording, `judgeLines`'s.
+A topic not dropped is incomplete when its
 search produced nothing (it failed, or its ask paused `stopped` with no hit) or ended short of
 `done`, its items went unrecorded, or it was given items and its judge never ruled it or ruled it
 last as anything but `anchored`; `history` or `docs` is incomplete when that search ended short. A
@@ -2253,7 +2327,9 @@ the frame names, up to `max_angles`, the rest named as dropped — and the repos
 searches ([Searches](#searches)) over the sweep's tree: each angle one search named
 `research:<angle>` (the doc-researcher, the `web` domain, a candidate being a hit on the page it
 was fetched from, one per candidate key), and the scan one named `repo` (the scout, scoped to the
-roots). An ask a researcher ended `done` on an `absent` declaration is declared, never a loss. The
+roots). An ask the ruler ended `done` with answer `absent` is a `declared` line, never a loss. The
+sweep reads each search's coverage from its asks by key (`outcomeOf`), its guidance from the pinned
+tree (`pinnedOf`), and a lost wants round in `judgeLines`'s one wording. The
 assessor is a judge sharing no session or thread with any researcher, and its units are the
 candidate names the researchers reported, case aside: a name it did not rule `assessed` leaves the
 sweep incomplete (`assess:<name>`). A frame that fails or names no angle searches nothing and fails
@@ -2795,6 +2871,15 @@ resumed session keeps its thread's tier. A producer's tier is `producerTier` (th
 dial), a reviewer's `reviewerTier` (the author's `dispatch.reviewer`, else `tierFor`). An
 execution tiers every unit from its envelope's dial, set when the execution starts: a relaunch's
 `--intelligence` does not change it, and another dial is another execution.
+
+A program run's dial is set once, at entry: `lib/run.mjs` passes the program's `intelligence` arg
+(`normal` when it declares none) to `programContext` as `ctx.intelligence`, and a nested program
+gets its own through `scoped(ctx, prefix, {intelligence})`; a program called in-process with an
+`intelligence` arg takes it at entry (`dialed` in `lib/programs/common.mjs`), and nothing reads the
+arg past entry. Every dispatch and every search reads `ctx.intelligence`; a node's own tier and a
+call's explicit tier win. The probe takes an `intelligence` arg; the probe and solutions carry the
+dial to their searches and rulers, and an execution folder's survey and probe run at the folder's
+dial.
 
 ### Landing and drift
 
@@ -3497,9 +3582,10 @@ fix, answers?}]}`, one per unit of the brief.
   `batch-started`, `gate`, `checkpoint`, `checkpoint-confirmed`, `closed`, `merge-observed`,
   `series-done`, `authored`, `breach_reverted`); preflight in `lib/boundaries/execution.mjs` also owns
   the adopted drift record file; `lib/runner.mjs` (`dispatched`, `returned`,
-  `host_stop`, `checkout_changed`, `thread_renewed`); `deliver` and `step` in
+  `host_stop`, `checkout_changed`, `thread_renewed`, `tool_used`); `deliver` and `step` in
   `lib/programs/common.mjs` (`message`, `step`); `search` in `lib/programs/search/loop.mjs` (the
-  `step` keys `<name>/ground`, `<name>/asks:<n>`, `<name>/turn:<k>` and `<name>/ruling:<turn>`);
+  `step` keys `<name>/ground`, `<name>/asks:<n>`, `<name>/ground:<ask>`, `<name>/owes:<ask>`,
+  `<name>/turn:<k>` and `<name>/ruling:<turn>`);
   `lib/run.mjs` (`run`, `ended`, and `fault` on the
   `program` and `launch_failed` channels); the execute program (`fault` on a unit's node);
   `journalLine` in `lib/verify.mjs`; `measure` in `lib/measure.mjs` (`measure-done`); `executionLog`
@@ -3507,7 +3593,9 @@ fix, answers?}]}`, one per unit of the brief.
 - **Restated in:** `lib/resume.mjs` and `lib/status.mjs` (readers); `runState` in `lib/ledger.mjs`
   (reads a run's `ended`); `claim` and `callsOf` in `lib/run.mjs` (read `run`, and `returned`'s
   usage and cost, for a run's `costOf` and the effort's cost report in `lib/status.mjs`); `dispatch`
-  in `lib/programs/common.mjs` (reads `dispatched`, `returned`, `message` and `thread_renewed`);
+  in `lib/programs/common.mjs` (reads `dispatched`, `returned`, `message` and `thread_renewed`, and
+  writes `thread_renewed` for a call it starts in a fresh session); `search` in
+  `lib/programs/search/loop.mjs` (reads `tool_used`, `dispatched` and `returned`);
   `measure` in `lib/measure.mjs` (reads `verify-observed` by `key`); `tools/migrate-v5.mjs` (writes
   `closed`, `ended` and `message`).
 
@@ -3516,10 +3604,11 @@ rest, [Node record and events](#node-record-and-events)) to the effort's event l
 observations to `journal.jsonl` and everything else to `state.jsonl`, under the effort's `seq`.
 `state.jsonl` (what the execution decided and what its calls cost): `run {program, scope, pid}`,
 one per run of the execution; `returned {dispatch, session, status, cause, usage, context, opened,
-cost_total, cost_usd, denials[]}` (`usage` the host's own figure for the call, `context` its last
+compacted, cost_total, cost_usd, denials[]}` (`usage` the host's own figure for the call, `context` its last
 model turn's and `opened` its first's, `null` when unmeasured), one per call the runner made,
 written when the call ends; `host_stop {dispatch, cause, until}`; `checkout_changed {dispatch,
-paths[]}`; `thread_renewed {thread, gen, why: too_large | session_missing | raised}`; `step {key,
+paths[]}`; `thread_renewed {thread, gen, why: too_large | session_missing | context_exceeded |
+prompt_changed | cwd_changed | raised}`; `step {key,
 value}`; `batch {target, merged[], head_sha, verified, failed_alone[], combination[], conflict}`,
 landing before the batch's `merged` events; `gate {target, head_sha, passed}`, one per suite gate
 that ran; `checkpoint {reason, detail, executions?, gaps?, branches?}` (the lists the checkpoint found, `branches` the `[{branch, commits}]` of an `outside_work` one;
@@ -3555,14 +3644,17 @@ the series check of a green or an audit.
 A program run outside an execution keeps the same kind of log, `runs/<run>/state.jsonl`, with its
 own `seq` ([Programs](#programs)): `run {program, scope, pid}`, one per start or resume;
 `dispatched {dispatch, node, round, thread, role, model, effort, session, brief_digest, carries[],
-pid}`; `returned {dispatch, session, status: returned | part | failed | cut_off, cause, usage,
-context, opened, cost_total, cost_usd, denials[]}`; `host_stop {dispatch, cause, until}`; `checkout_changed
-{dispatch, paths[]}`; `thread_renewed {thread, gen, why}`; `message {thread, from, msg, payload,
-round}`; `step {key, value}`, a side effect the program journaled — a search's `<name>/ground`
-(its ground table), `<name>/asks:<n>` (the ask keys that joined after `n` turns), `<name>/turn:<k>`
-(`{calls_through, missing?, stop?}`, how far the call log reached when turn `k` ended and whether it
-returned) and `<name>/ruling:<turn>` (the check-in's Ruling records, `{turn, asks, units?,
-missing?}`); `fault {node, channel, detail}` with `node` empty; and `ended {result: {status: done | failed | launch_failed, file, complete}}`. No
+prompt, cwd, pid}`; `returned {dispatch, session, status: returned | part | failed | cut_off, cause,
+usage, context, opened, compacted, cost_total, cost_usd, denials[]}`; `host_stop {dispatch, cause,
+until}`; `checkout_changed {dispatch, paths[]}`; `thread_renewed {thread, gen, why}`; `tool_used
+{dispatch, thread, tool, input}`, one per host `WebSearch` call as the call streams; `message
+{thread, from, msg, payload, round}`; `step {key, value}`, a side effect the program journaled — a
+search's `<name>/ground` (its ground table), `<name>/asks:<n>` (the ask keys that joined after `n`
+turns), `<name>/ground:<ask>` (the rows a joined ask's find resolved to), `<name>/owes:<ask>` (the
+files a scope-owing ask owes), `<name>/turn:<k>` (`{calls_through, missing?, stop?}`, how far the
+call log reached when turn `k` ended and whether it returned) and `<name>/ruling:<turn>`, one per
+turn that sent asks to the ruler (its Ruling records, `{turn, asks, units?, missing?}`, one per
+round); `fault {node, channel, detail}` with `node` empty; and `ended {result: {status: done | failed | launch_failed, file, complete}}`. No
 field of a record is named `kind`: the log's port sets it, so a call's failure or stop class is its
 `cause`.
 
@@ -3730,7 +3822,10 @@ routes it. A return with no string `status` holds the leaf on a `role` fault. An
   `common.mjs` and `converge.mjs` to define `resultOf` and build its result with a `coverage` key
   that is not an empty object or null.
 - **Restated in:** the skills that walk a result; `coverageLines` in `lib/search/ledger.mjs`, which
-  builds a search's four lists from its ledger.
+  builds a search's four lists from its ledger in the line grammar under [Searches](#searches)
+  (owner of that grammar), quoted in the `investigate` and
+  `search-for-existing-solutions-before-building` skills (`test/fast/coverage-grammar.test.mjs`
+  pins their examples against the lines the code writes).
 
 `complete` (computed: false whenever `dropped`, `incomplete`, `failed_channels` or `unreached`
 holds anything, and per program besides — a survey also needs every item it returns standing, an
@@ -3746,7 +3841,9 @@ integration review or survey lost), `declared` (what rests on a navigator's decl
 - **Owner:** `lib/evidence.mjs` (`checkItem`, `recordItems`, `recordJudgement`, `recordRulings`,
   and the mappers from returns — objects in-process, or stored files — `recordSurvey`,
   `recordProbe`, `recordSolutions`), whose `runQuery` builds every query through `queryOf` in
-  `lib/search/query.mjs`, the dialect the search tools share; written through
+  `lib/search/query.mjs`, the dialect the search tools share, a query's `scope` parts read as globs
+  in the search glob dialect (`globOf`); `tools/migrate-glob-literal.mjs` reports the stored scopes
+  that dialect reads otherwise ([Migration from 4.x](#migration-from-4x)); written through
   `lib/ledger.mjs appendProject`, which mints a project-wide `seq` under `.agentics/.state/.lock`.
 - **Restated in:** the searcher and judge return schemas in `lib/schemas.mjs`; the `effort-store`
   block in the design, challenge-idea and develop skills (the `cite` call).
@@ -3786,7 +3883,8 @@ with `renamed_from`.
 - **Owner:** `serve` in `lib/search/server.mjs`, which appends each record before it answers.
 - **Restated in:** the scripted runner's seam (`test/fast/harness/scripted-runner.mjs`, which writes
   it in the spawn-free tier); `foldLedger` and `verifyReturn` in `lib/search/ledger.mjs` (readers);
-  `search` in `lib/programs/search/loop.mjs` (reads it after each turn).
+  `search` in `lib/programs/search/loop.mjs` (reads it after each turn, and appends the `websearch`
+  records).
 
 `<run dir>/searches/<search key, ':' as '~'>/calls.jsonl`, one `CallRecord` per line: `{seq, tool,
 args, asks, ok, refusal?, detail?, total?, page?, pages?, observed[{key, line}], keys[], ended?{key,
@@ -3796,7 +3894,10 @@ URLs it listed. A refused call carries `observed: []` and `keys: []`. A repeat c
 `refusal`, `detail`, `total`, `page`, `pages`, `observed`, `keys` and `ended` from the call it
 repeats, keeps its own `asks` and names that call in `repeat_of`; the ledger attributes the copied
 observations to the new asks and adds nothing else. `seq` numbers the records across every server
-process of the search.
+process of the search. Between dispatches the loop appends each host `WebSearch` call of the
+thread's `tool_used` entries not yet journaled as `{seq, tool: 'websearch', args: {query}, asks: [],
+ok: true, keys: [], observed: [], from_log}`, `from_log` the entry's seq, skipping a `from_log`
+already present; a record with no asks goes to the ledger's search-wide `queries`.
 
 ### Search tool server spec
 
@@ -3808,50 +3909,67 @@ process of the search.
 `server-<digest>.json` is `{tree{root, sha}, asks[{key, scope[], domain}], tools[], calls}`, `calls`
 the absolute path of the search's call log and `<digest>` the digest of the spec. `mcp-<digest>.json`
 is `{mcpServers: {search: {type: 'stdio', command, args: [<server.mjs>, '--spec',
-<server-digest.json>]}}}`, the file `--mcp-config` names. Both are rewritten whole on every
-dispatch.
+<server-digest.json>]}}}`, the file `--mcp-config` names. Both are written once per call of
+`search`, named by the spec's digest, and every turn of that call names them. `fetch` takes the
+search directory, the spec's call log's directory, where it pins pages (`pages/`).
 
 ### Search ledger
 
 - **Owner:** `foldLedger` in `lib/search/ledger.mjs`.
-- **Restated in:** `verifyReturn`, `stateOf`, `standingRefusals` and `coverageLines` in the same file (readers);
-  `lib/briefs/search.mjs` (`turnBrief`, `digestOf`, `rulerBrief`); `search` in
-  `lib/programs/search/loop.mjs` (journals the turn and ruling records it folds).
+- **Restated in:** `verifyReturn`, `stateOf`, `standingRefusals`, `coverageLines`, `fileGroups` and
+  `lookedSummary` in the same file (readers); `lib/briefs/search.mjs` (`briefOf`, `rulerBrief`);
+  `search` in `lib/programs/search/loop.mjs` (passes `owes`, journals the turn and ruling records it
+  folds, and builds the search result from the view).
 
-`foldLedger({asks, ground, calls, turns, rulings})` returns `{asks{<key>: {key, domain, scope[],
-find, from, observed[], hits[{key, line, note, turn, candidate?}], dismissed[{key?, glob?, call?,
-why, turn, read_to_end}], leads[{key, why, turn}], declared: '' | answered | absent | open, absence:
-'' | checked | declared, frontier[{kind: seed | lead | ground | scope | overflow, key (a path, a url, `symbol:<mention>`, a scope root or `call:<seq>`), detail}], end: null |
-{state: done | no_progress | not_converging | stopped, turn, label: observed | declared | ruled,
-why, by?}, stamp, history[{turn, stamp, observed_n, hits_n}]}}, refusals[{turn, item, class:
-unobserved | unknown_ask | names_only_ended_asks | contradicts_hit, asks[]}], calls[], calls_n,
-turns_n, rulings[{turn, asks[]}]}`; a refusal's `asks` are the open asks its item named. The turn records it folds are `{turn, calls_through, output?, missing?,
-stop?}` and the ruling records `{turn, asks[], units?[{unit, ruling, why}], missing?}`; `rulings`
-lists the rulings applied, which `stateOf` reads for the check-in rule.
+`foldLedger({asks, ground, calls, turns, rulings})` takes asks `{key, find, scope[], domain, from,
+seeds?, owes?[]}` and returns `{asks{<key>: {key, domain, scope[], find, from, observed[],
+hits[{key, line, note, turn, candidate?}], dismissed[{key?, glob?, call?, why, turn, read_to_end,
+closes, unopened[{dir, n}]}], leads[{key, why, turn}], declared: '' | answered | absent | open,
+owes, agenda[{kind: seed | lead | ground | symbol | file | overflow, key (a path, a url,
+`symbol:<mention>` or `call:<seq>`), detail, refs?}], covered{<dir>: {files, by[]}}, looked[{seq,
+tool, what, where[], total, pages, pages_seen}], end: null | {state: done | no_progress |
+not_converging | stopped, turn, label: observed | ruled, why, answer?: answered | absent, by?},
+ruling: null | {turn, why}, ruled_at[], due, stamp, refused, history[{turn, stamp, refused,
+observed_n, hits_n, calls_n}]}}, refusals[{turn, item, class: unobserved | unknown_ask |
+contradicts_hit, asks[]}], calls[], calls_n, turns_n, rulings[{turn, asks[]}], queries[],
+stalled: null | {turn, k}}`. A refusal's `asks` are the open asks its item named; `owes` is true
+when the ask owes files; `ruling` is the ask's standing `open` ruling and `ruled_at` the turns a
+ruling ruled it; `due` that a stall sent it to the ruler and no ruling has ruled it since; `queries`
+the ok calls that named no ask; `stalled` the last returned turn's stall. An ask's history starts
+with an entry at `from − 1`. The turn records it folds are `{turn, calls_through, output?,
+missing?, stop?}` and the ruling records `{turn, asks[], units?[{unit, ruling, why}], missing?}`;
+`rulings` lists the rulings applied.
 
 ### Search result
 
 - **Owner:** `search` in `lib/programs/search/loop.mjs`.
-- **Restated in:** `searchExcerpts` in `lib/citations.mjs`, and the `probe`, `survey` and
-  `solutions` programs (readers).
+- **Restated in:** `searchExcerpts` in `lib/citations.mjs`; `outcomeOf` and the wants loop in
+  `lib/programs/search/consume.mjs`; and the `probe`, `survey` and `solutions` programs (readers).
 
-`{name, status: returned | failed, cause, tree{root, sha}, ground, asks{<key>: {end, label, why,
-declared, absence, hits[], dismissed[], unreached[]}}, sessions[{session, thread}], entries_n, kinds,
-refusals[{turn, item, class, asks[]}], coverage{declared[], incomplete[], unreached[],
-failed_channels[]}}`; `refusals` are those of the ledger still standing. `status` is `failed` when turns
-ran and none returned, `cause` the last turn's missing cause or stop; `unreached` is the ask's
-frontier at its end; `entries_n` and `kinds` count the distinct keys with a hit, overall and per ask
-kind (the key's text before its first `:`).
+`{name, status: returned | failed, cause, tree{root, sha}, ground, asks{<key>: {end, answer, label,
+why, declared, hits[], dismissed[], looked[], unreached[], lines{declared[], incomplete[],
+unreached[], failed[]}}}, sessions[{session, thread}], entries_n, kinds, refusals[{turn, item,
+class, asks[]}], coverage{declared[], incomplete[], unreached[], failed_channels[]}, queries[]}`;
+`end` is the end's state or null, `answer` a ruled `done`'s answer ('' otherwise); `unreached` is
+the ask's agenda at its end, `file` items folded to one `files` item per directory (`{kind: files,
+key: <dir>/, detail: '<n> not covered'}`); `lines` the ask's own coverage lines; `coverage` the
+search's whole lists, `refusals` those of the ledger still standing, `queries` the search-wide
+calls. `status` is `failed` when turns ran and none returned, `cause` the last turn's missing cause
+or stop; `entries_n` and `kinds` count the distinct keys with a hit, overall and per ask kind (the
+key's text before its first `:`).
 
 ### Wants
 
 - **Owner:** the `prober` and `items` schemas in `lib/schemas.mjs`.
-- **Restated in:** `lib/programs/probe.mjs` and `lib/programs/survey.mjs` (turn a want into an ask);
+- **Restated in:** `wantsRounds` in `lib/programs/search/consume.mjs` (turns a want into an ask);
+  `lib/programs/probe.mjs` and `lib/programs/survey.mjs` (its consumers);
   `lib/briefs/probe.mjs` and `lib/briefs/survey.mjs` (the clause that offers a want).
 
 An optional `wants[{unit, want}]` in a prober's or a survey judge's return: `unit` a unit the judge
-holds, `want` the ground it lacked. Code asks each want whose canonical text is new as `want:<n>` on
-the program's own search ([Searches](#searches)).
+holds, `want` the ground it lacked. Code asks each want whose canonical text is new as `{key:
+'want:<n>', find: <canonical want>, scope: ['.'], domain: 'repo'}` on the consumer's search
+([Searches](#searches)), numbered from 1 per group of consumers that pass together (the probe's
+search; a survey's judge); a want ask's lines are selected by its key.
 
 ### Program results
 
@@ -3889,7 +4007,7 @@ the program's own search ([Searches](#searches)).
   channel search's status, its ask's end ('' when it failed) and its accepted hits — or null when
   the plan asked no such question.
 - **`probe`** — takes `artifact` (required), `roots` (default `.`), `context` (or `context_file`), `per_axis`,
-  `since`. Returns `{artifact, axes[{key, source}], analysts[[axis]], shared_ground{resolved, cited,
+  `since`, `intelligence` (`low | normal | max`, default `normal`). Returns `{artifact, axes[{key, source}], analysts[[axis]], shared_ground{resolved, cited,
   files, excerpts, unresolved}, guidance_read, repo_ground{located, unresolved}, units{total, ruled,
   open[]}, findings[{id, item, severity, axis, section, carried}], findings_file, ambiguities[],
   ratifiable, snapshot, scope{full, changed}, unrecorded[], review, coverage}`: `repo_ground.located`
@@ -3942,8 +4060,9 @@ scope_key, args, args_digest, raw, pid, started_at, heartbeat_at}`: `args` the r
 and `args_digest` the digests of `scope` and `args`. It is rewritten whole, `heartbeat_at` every 10
 seconds while the run's process lives. `result.json` is the program's result with `run` and `cost`.
 A search keeps its files in `searches/<search key>/` (the key's `:` written `~`): `calls.jsonl`, the
-call log; `server-<digest>.json`, a dispatch's server spec; and `mcp-<digest>.json`, its MCP
-config ([Call log](#call-log)).
+call log; `server-<digest>.json`, the tool server's spec; `mcp-<digest>.json`, its MCP config
+([Call log](#call-log)); `rulings/<turn>-<round>.md`, each ruler brief as it was dispatched; and
+`pages/<fnv1a(key)>.json`, each fetched page's pinned body.
 What `lib/run.mjs` prints: attached, `{ok: true, run, result_file, result}`; with `--detach`, at
 once, `{ok: true, run, pid, log, result_file}`; refused, `{ok: false, error: {kind, message, run?,
 pid?, log?}}`, a `run_live` naming the run already going; `{error}`, exiting 1, when the program
@@ -3983,16 +4102,18 @@ edit goes through the autonomous review before the asker runs again.
 ### Ruler and investigator returns
 
 - **Owner:** `rulingOutcome` in `lib/boundaries/integration.mjs` (the rulings); `convergenceRuling`
-  in `lib/boundaries/leaf-review.mjs` (the convergence ruling); the search loop's check-in in
-  `lib/programs/search/loop.mjs` (the search convergence rulings); `recordCommands` in
+  in `lib/boundaries/leaf-review.mjs` (the convergence ruling); the search loop's ruling step in
+  `lib/programs/search/loop.mjs` and `applyRuling` under `foldLedger` in `lib/search/ledger.mjs`
+  (the search rulings); `recordCommands` in
   `lib/boundaries/leaf-close.mjs` (the commands).
 - **Restated in:** `roles/ruler.md`; `roles/investigator.md`.
 
 The ruler returns `{rulings[{node, ruling: unaffected | affected, why, question, fix?}]}`
 (`ruler_premises`; a changed spec's ruling, `ruler_respec`, is under
 [Changed-spec results](#changed-spec-results)), or, asked whether a loop converges, `{ruling:
-converging | not_converging, why}`; or, at a search's check-in, `{units[{unit, ruling: converging |
-not_converging, why}]}` (`ruler_search`), one unit per ask the check-in sent, `unit` the ask's key.
+converging | not_converging, why}`; or, after a search's turn, `{units[{unit, ruling: answered |
+absent | open | not_converging, why}]}` (`ruler_search`), one unit per ask the ruling step sent,
+`unit` the ask's key.
 The investigator returns
 `{commands[], unresolved[], text}`, `commands` its `command` gotchas ([Gotcha file](#gotcha-file)),
 which `recordCommands` writes as the investigator's.
@@ -4074,6 +4195,15 @@ which `recordCommands` writes as the investigator's.
 - **Cost:** every call's usage and cost are the host's own figures, recorded by the runner on
   `returned`; `lib/status.mjs cost` aggregates them per node, folder and effort, so triage quotes
   measured figures. A call that never returned is reported as unmeasured, never as zero.
+- **Field checks** (`tools/field.mjs`), for the search navigator, run by hand before a release and
+  never in the suite: `tools/field.mjs` builds synthetic repositories (`build <check> <dir>`, every file
+  synthetic, one commit), prints the `lib/run.mjs` command to run on each (`command`, or `all` for
+  every check), and checks a finished run against the check's oracle (`check <check> <run dir>`, exit
+  0 or 1). `serve` starts the page server the web check's command fetches from. The tool spends
+  nothing: running the printed command is the session's act. In the suite,
+  `test/fast/search-replay.test.mjs` replays synthetic search fixtures on the fold: every prefix of
+  turns, with an oracle of how each ask ends, the coverage lines it owes and which asks go to the
+  ruler after each turn.
 
 ---
 
@@ -4160,6 +4290,14 @@ listed or a live run or execution is refused. It dry-runs by default, applies wi
 each part from disk again as it writes it, never deletes, and a second run appends nothing; a record
 the ledger refuses stops it there with `{applied, …, error}`, and the next run finishes the rest.
 
+`tools/migrate-glob-literal.mjs`, run once after upgrading to 5.5.0, reports on stored evidence
+scopes now that the search glob dialect reads brackets literally; it writes nothing. Stored query
+scopes are read in the new dialect as they stand. It lists each item whose stored query result
+differs from what its scope finds now (`checkAnchors` derives it `suspect` and it goes to its
+judge, whose `holds` records the fresh result through `recordJudgement`), each scope part naming a
+literally bracketed file at HEAD, and each escaped-bracket part (`\[`) with the files `git ls-files
+-- <part>` lists for it. It exits 1 only while a scope or a line is malformed.
+
 ---
 
 ## Keeping this document true
@@ -4171,5 +4309,5 @@ the ledger refuses stops it there with `{applied, …, error}`, and the next run
 - `test/fast/design-doc.test.mjs` pins that every section has a body and every pointer into this
   document resolves; `test/fast/verbatim-blocks.test.mjs` pins the `severity-ladder` block above
   against its copy in `roles/reviewer.md`.
-- `docs/superpowers/` is gitignored local scratch for planning sessions. Nothing in the repository
-  may point into it.
+- Planning sessions keep gitignored local scratch under `docs/`. Nothing in the repository may
+  point into it.

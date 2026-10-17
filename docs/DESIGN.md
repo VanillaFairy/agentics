@@ -97,8 +97,8 @@ preflight reads before anything runs and the adopt check reports, [Outside work]
 Work escalates on a state, never on a count. The states are three: a decision only the user can
 make; a claim an independent ruling (L3) finds cannot be met as written; and no progress — the
 same state again, or an independent ruling that a loop is not converging. A count may decide when
-to ask; it never decides the answer. A search ends when a round of its scout adds no new hit, or
-on a round the host or a dollar budget the user set stopped. The guard's window is the one count in a search: a stall detector the
+to ask; it never decides the answer. A search ends when a round of its scout hits no new place (a file, commit or URL no earlier round
+hit), or on a round the host or a dollar budget the user set stopped. The guard's window is the one count in a search: a stall detector the
 tool server owns, never a cap on calls that find something new. An external stop — a usage limit, a host error, a crash, the user — leaves work in progress, resumed from the records.
 
 *Enforced by:* the `no-turn-caps` lint rule (no turn or spend cap on a dispatch, over the programs,
@@ -129,7 +129,7 @@ judge, and `dispatchJudge` in `lib/programs/common.mjs`, which refuses to put a 
 session that produced it or any session of its thread; the `no-self-verdict` lint rule over
 `lib/schemas.mjs` (producer and searcher schemas carry no ruling fields, and a judge's schema rules
 per unit); `verdictOf` in `lib/verdict.mjs`, where approval is every unit ruled and none ruled
-blocking; a search, the one place a producer ends its own work: a scout round that adds no new hit is a
+blocking; a search, the one place a producer ends its own work: a scout round that hits no new place is a
 declaration that ends the search and can make a program's coverage complete, and never enters a
 verdict; its hits are judged where they are consumed — by the probers, the survey judges, the
 assessor and the reviews ([Searches](#searches)).
@@ -1884,7 +1884,7 @@ A search is how a program learns what a tree, its history or the web says about 
 cannot answer from what it holds: a probe's locate, a survey topic and its history and docs, a
 solutions sweep's repository scan and its researchers. Every one is one call of `search`
 (`lib/programs/search/search.mjs`): rounds of a scout, each a fresh session that finds what it was
-asked to find over code's tools on a pinned tree, until a round adds no new hit.
+asked to find over code's tools on a pinned tree, until a round hits no new place.
 
 ```
 program ──► search(ctx, {name, domain, find, material, scope, subject, labels, budget, tree})
@@ -1898,7 +1898,7 @@ program ──► search(ctx, {name, domain, find, material, scope, subject, lab
               │   every record goes to calls.jsonl, tagged with its session, before the answer
               │   loop guard: 12 tool calls in a row in this session that show nothing new → stalled
               ▼
-        return {summary}   →   new hits this round? ── yes ──► next round, a fresh session
+        return {summary}   →   a new place hit?    ── yes ──► next round, a fresh session
               │ no                                         briefed with the journal's hits and calls
               ▼
         result {name, status, why, summary, hits[], calls[], cost, rounds[], coverage, …}
@@ -2017,7 +2017,9 @@ spec](#search-tool-server-spec)) carrying its own `session`.
 in a way code can act on. So `search` runs rounds: round `n` is one dispatch, key round `n`, and a
 round after the first starts the thread's next session (`fresh`), briefed with `roundBrief`: the
 hits and calls every earlier round journaled, and the ask to find what they missed. The search
-ends on the first round whose sessions add no hit key the earlier rounds lacked. A round is more
+ends on the first round whose sessions hit no new place: a path hit's place is its file, any other
+hit's its key (`placesOf`). The files in the subject bound a search's places, so a scout
+re-checking files already hit, each re-check a new `path:line`, does not earn another round. A round is more
 searching, never a re-check of the hits before it: nothing rules on them (L3). No count ends the
 rounds (L2); a dollar budget caps every round's spend together. A round's hits are the journal's
 hits whose `session` is one of the round's.
@@ -2053,7 +2055,7 @@ a search can overrun its budget by that process's spend.
 **The result.** `{name, status, why, summary, hits[], calls[], cost, tree, pages, sessions[],
 rounds[], coverage}` ([Search result](#search-result)):
 
-- `done`: the last round's scout returned with no new hit and the guard never fired in that round.
+- `done`: the last round's scout returned with no new place hit and the guard never fired in that round.
   `stalled`: it returned after the guard fired in that round, `why` `nothing new in the last 12
   calls`. `budget`: the cap stopped it, `why` the
   spend against the budget. `failed`: the host failed past `dispatch`'s waits, `why` the cause.
@@ -2062,7 +2064,7 @@ rounds[], coverage}` ([Search result](#search-result)):
 - `calls` are the journal's call lines, the lines the resume brief holds.
 - `sessions` are the sessions the search's thread ran in: no judge of its hits may be one of them
   (`dispatchJudge`, L3).
-- `rounds` is each round's `{added, cost}`: the hits it added and the dollars recorded on it.
+- `rounds` is each round's `{added, cost}`: the new places it hit and the dollars recorded on it.
   `coverage` is `{rounds, last_added, skipped}`: how many rounds ran, what the last added, and the
   last returned scout's summary, its own word on where it did not look. `summary` is that text too.
 
@@ -2094,7 +2096,7 @@ pinned page. It also counts the hits and the unresolved ones.
 
 **The laws.** L1: a search's coverage is code's own record — its status from the runner and the
 guard, its calls, hits and rounds from the journal — with the scout's word on what it skipped
-carried as the scout's, never as code's. L2: a search ends when a round adds no new hit, or on a
+carried as the scout's, never as code's. L2: a search ends when a round hits no new place, or on a
 round the host or a budget the user set stopped; `STALL_WINDOW` is the
 one count, a stall detector the server owns, never a cap on calls that find something new. L3: a
 round that adds nothing is a declaration: it ends the search and can make a program's coverage complete, but
@@ -3860,7 +3862,7 @@ skipped}}` (`coverageLine` writes `coverage` into the line): `why` says how it e
 (`''`); `summary` the last returned round's scout's summary (`''` when none returned); `hits` the journal's ok hits,
 each once ([Call log](#call-log)); `calls` one line per journaled call, hits left out; `cost` the
 dollars recorded on every round's `returned` entries; `pages` the run's `pages/`
-directory; `sessions` every session the search's thread ran in; `rounds` each round's added hits and dollars;
+directory; `sessions` every session the search's thread ran in; `rounds` each round's new places and dollars;
 `coverage` the rounds run, the hits the last added, and `skipped`, the scout's summary.
 
 ### Program results

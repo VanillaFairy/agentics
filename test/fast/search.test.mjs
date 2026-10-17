@@ -230,6 +230,15 @@ test('the search ends on the first round that adds no new hit', async (t) => {
   assert.deepEqual(out.hits, [A])
 })
 
+test('a round whose hits all land in files earlier rounds hit ends the search', async (t) => {
+  const r = rig(t, { 'scout||locate': [hitTurn([A]), scoutStep({ hits: [{ ...A, line: 9, note: 'a re-check' }] }), scoutStep({ hits: [B] })] })
+  const out = await repo(r)
+  assert.equal(r.runner.starts.length, 2)
+  assert.equal(out.status, 'done')
+  assert.deepEqual(out.rounds.map((x) => x.added), [1, 0])
+  assert.deepEqual(out.hits, [A, { ...A, line: 9, note: 'a re-check' }])
+})
+
 test('a dollar budget stops the search in a later round', async (t) => {
   const r = rig(t, { 'scout||locate': [{ ...hitTurn([A]), cost_total: 0.6 }, { status: 'failed', cause: 'budget', cost_total: 0.5 }, closingRound()] })
   const out = await repo(r, { budget: 1 })

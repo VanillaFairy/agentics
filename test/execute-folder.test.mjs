@@ -890,3 +890,22 @@ test('a relaunch mid-review repeats no recorded round', async (t) => {
   assert.equal(prepared.length, 1)
   assert.equal(prepared[0].review, stepValue(again, 'probe:p:2/record').return)
 })
+
+// ================================================================== proportionality
+
+test("a folder whose design spent past its plan's build cost parks design_spend before the next probe round, naming the numbers", async (t) => {
+  const w = world(t, { steps: planner({ ...written, cost_total: 50 }), writes: { 1: S1 } })
+  assert.equal((await w.run()).outcome, 'stopped')
+  const park = parks(w.rig).find((p) => p.return === 'design_spend')
+  assert.ok(park, 'the folder parks design_spend')
+  assert.match(park.question, /\$50\.00/, 'the park names what the design spent')
+  assert.equal(under(w.rig, 'probe:').length, 0, 'no probe round runs past the allowance')
+})
+
+test('a go-on past an earlier design_spend park raises the allowance by one multiple', async (t) => {
+  const w = world(t, { steps: { ...planner({ ...written, cost_total: 15 }), ...probing(1, S1) }, writes: { 1: S1 } })
+  recordAll(w.rig.xc, [parked('p', 'design_spend', '')])
+  append(w.rig.repo, E, 'events', [{ kind: 'replanned', node: 'p', execution: w.rig.stamp, reason: 'retry_escalated', by: 'session' }])
+  assert.equal((await w.run()).outcome, 'prepared', 'one multiple past the first allowance, the second is not reached')
+  assert.equal(parks(w.rig).filter((p) => p.return === 'design_spend').length, 1)
+})

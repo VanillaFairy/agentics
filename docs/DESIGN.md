@@ -43,7 +43,7 @@ returns. No model carries another program's output, and no session starts an age
 |---|---|
 | `.agentics/<effort>/` | One effort: a `DESIGN.md` per folder, and its `.state/` — nodes, events, ledger, evidence, gotchas, executions and locks ([Storage](#storage)) |
 | `.agentics/.state/` | What every effort shares: the slot pool, the evidence pool and program runs outside an execution |
-| `.agentics/config.json` | The project's settings, edited by the user (`max_parallel`, `max_agents`, `claude_cli`, `guidance`) |
+| `.agentics/config.json` | The project's settings, edited by the user (`max_parallel`, `max_agents`, `claude_cli`, `guidance`, `design_spend_multiple`) |
 | `.claude/worktrees/` | Integration and leaf worktrees, the throwaway worktrees of an inline review and of an execution's investigator while they run, and the trees an execution's searches are pinned to (`search-<effort>-<sha8>`) |
 | `refs/agentics/review/<run>` | An inline review's snapshot of the working tree, kept as the record its result names ([The simple task](#the-simple-task)) |
 
@@ -999,7 +999,7 @@ nothing outside compile calls `addNodes`.
 ```
 .agentics/                        in the main checkout
   .gitignore                      `*`, written by mkdirState
-  config.json                     {max_parallel, max_agents, claude_cli, guidance},
+  config.json                     {max_parallel, max_agents, claude_cli, guidance, design_spend_multiple},
                                   edited by the user
   .state/
     seq, .lock                   the project-wide counter and mutex
@@ -1818,10 +1818,11 @@ execution journaled (`sweepTrees`); a dirty one is never forced, and preflight r
    ancestors' decisions in view. A Decisions row parks the folder `needs_decision`, because only
    the user states decisions; any other problem goes back to the planner's session as a `problems`
    message, and the same problems again escalate `spec_refused`.
-2. **Attack.** The `probe` program, nested as `probe:<folder>:<n>` (`n` the planner round it
-   follows), reviews the spec, with one standing axis beside the four: `entries` (`PLAN_AXIS` in
-   `lib/briefs/probe.mjs`), whether each entry's work does what the decisions it realises say, because
-   nobody else reads a planner-written spec before it is built. After the first round, `since` (the previous
+2. **Attack.** Before each round the folder's design spend is held to its allowance (below). The
+   `probe` program, nested as `probe:<folder>:<n>` (`n` the planner round it follows), reviews the
+   spec, with one standing axis beside the four: `entries` (`PLAN_AXIS` in `lib/briefs/probe.mjs`),
+   whether each entry's work does what the decisions it realises say, because nobody else reads a
+   planner-written spec before it is built. After the first round, `since` (the previous
    round's snapshot) narrows the review to the spans changed since. `spec-reviewed` reads the
    round's result and records every round as a `reviewed` ledger line with the settlement ids of
    its ambiguities; one that left a unit unruled escalates `review_incomplete`. A round a prober's
@@ -1856,6 +1857,16 @@ execution journaled (`sweepTrees`); a dirty one is never forced, and preflight r
    `replan_not_converging`. A leaf whose locus the compile widened onto paths another unmerged leaf
    holds escalates `locus_held` on that leaf, its new revision kept. A `spec_changed` park the
    compile raised on the folder itself is cleared at once (`replanned {reason: spec_rederived}`).
+
+**Proportionality.** Before each probe round, `planFolder` sums what this execution's dispatches for
+the folder's design cost — its planner, its surveys and its probe rounds (`designSpend`) — and parks
+the folder `design_spend` when that passes its allowance (`designAllowance`): `design_spend_multiple`
+(`.agentics/config.json`, 5 by default) × the plan's entries as first checked (the step
+`entries:<folder>`, so a plan that grows never raises its own allowance) × the effort's
+`leaf_mean_usd` ([Self-checks](#self-checks)), or a default while no merged leaf is measured — once
+more for every earlier `design_spend` park on the folder. The question names the numbers. The user
+goes on (`retry`), cuts the scope, or hands the work to a task. The count decides when to ask, never
+the answer (L2).
 
 A park or an escalation stops only that folder; develop keeps running whatever does not depend on
 it. A `spec_changed` park on a folder the planner wrote goes back to the planner, which re-derives
@@ -3305,7 +3316,7 @@ question, said?}` (`said` is the dispatch whose stored return holds the agent's 
 `detail` or `question` is a line the lib composed, or empty, and `saidOf` in `lib/store.mjs` reads
 either)
 (`return` is a replanning return, `needs_design`, `needs_respec`, `integration_critical`,
-`spec_defect`, `cant_tell` or `contract_drift`) ·
+`spec_defect`, `cant_tell`, `contract_drift` or `design_spend`) ·
 `landed {into, merged_sha, by}` (`by` who confirmed the word: `user` or `terminal`) · `claims
 {head_sha, review: done | not_earned, claims[{claim, ruling}], said?}` (each ruling's evidence is in
 the reviewer's stored return) · `noted {by, text}` (what a session learned about the node; no status
@@ -3657,7 +3668,7 @@ paths}`, and the ones it found no longer hold by id; leaf-close refuses a `comma
 - **Owner:** `lib/locks.mjs` (`acquireAsync`, `withBranchLockAsync`), `withLock` and `withLockAsync`
   in `lib/store.mjs`.
 
-`.agentics/config.json {max_parallel, max_agents, claude_cli, guidance}`; `slots/<n>.lock {effort,
+`.agentics/config.json {max_parallel, max_agents, claude_cli, guidance, design_spend_multiple}`; `slots/<n>.lock {effort,
 execution, node}`; `locks/locus/<fnv1a(path)>.lock {path, node, execution}`;
 `.agentics/.state/locks/tests.lock`, the project's full-suite lock;
 `.agentics/.state/runs/.claims/<program>-<scope digest>.lock`, a run's claim; `runs/<run>/.lock`, a

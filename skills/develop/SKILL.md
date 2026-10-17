@@ -430,12 +430,14 @@ fault, its parent, a child or a consumer whose text it decides), have each ruled
 | `spec_defect` | the spec the question names: the claim cannot be met as written; the user rules how it changes |
 | `cant_tell` | the folder's spec: make the claim decidable, a criterion with a check or a `HUMAN:` criterion the user judges at landing |
 | `contract_drift` | merged work touched a contract the node consumes, and the planner could not take it: no ruler could rule, work already stood on the node's plan when it was ruled affected, or its replan faulted. The consumer's entry: the user rules it unaffected (then clear it with `retry` (b) and edit nothing), re-designs it, or re-slices it |
+| `design_spend` | none: a folder develop's planner writes has spent on its design past its allowance, the question naming the numbers. The user goes on (clear it with `retry` (b); the next park comes one allowance later), cuts the scope or hands the work to a task (a re-spec of the entry in the parent spec) |
 | `spec_changed` | a folder you wrote was re-approved while work under it was under way, and no ruling found that work untouched: the user rules whether the dispatched work still stands, and re-specs what does not. A folder develop's planner wrote never reaches you with this return: the run hands it back to the planner, which re-derives it |
 
 **Each spec you edited is ruled against the user's answers**, a parent before its child, by the
 `rule` program: read `respec.md` beside this skill and follow it.
 
-A park no re-spec cleared (a `contract_drift` ruled unaffected) is cleared with `retry` (b). Then
+A park no re-spec cleared (a `contract_drift` ruled unaffected, a `design_spend` the user goes on
+past) is cleared with `retry` (b). Then
 relaunch (step 3).
 
 **d. Blocked** — `{blocked_by, leaves_n}`: how many tasks were never dispatched because a node they

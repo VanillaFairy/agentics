@@ -49,9 +49,9 @@ after(() => rmSync(base, { recursive: true, force: true }))
 
 let n = 0
 /** A fresh search over `on`: its own run directory, call log and pages directory. */
-function specOf({ tools = TOOLS_BY_DOMAIN.repo, labels = [], session = 's1', scope = ['.'], on = tree } = {}) {
+function specOf({ tools = TOOLS_BY_DOMAIN.repo, labels = [], session = 's1', scope = ['.'], subject = scope, on = tree } = {}) {
   const run = join(base, 'runs', String(++n))
-  return { run, spec: { tree: on, scope, labels, tools, calls: join(searchDir(run, 'probe:x'), 'calls.jsonl'), pages: join(run, 'pages'), session } }
+  return { run, spec: { tree: on, scope, subject, labels, tools, calls: join(searchDir(run, 'probe:x'), 'calls.jsonl'), pages: join(run, 'pages'), session } }
 }
 /** The same search under another session. */
 const renewed = (spec, session) => ({ ...spec, session })
@@ -403,6 +403,16 @@ test('a path hit outside the tree or without its line is refused bad_hit', async
     assert.equal(typeof text, 'string')
     assert.equal(text.trimEnd().endsWith('recorded'), false, text)
   }
+})
+
+test("a path hit outside the search's subject is refused while a read there is served", async () => {
+  const { spec } = specOf({ subject: ['src'] })
+  const read = await handle(spec, [], 'read', { path: 'docs/b.md' })
+  assert.equal(read.records[0].ok, true)
+  const outside = await handle(spec, [], 'hit', { path: 'docs/b.md', line: 1, note: 'n' })
+  assert.deepEqual([outside.records[0].ok, outside.records[0].refusal], [false, 'bad_hit'])
+  const inside = await handle(spec, [], 'hit', { path: 'src/a.mjs', line: 1, note: 'n' })
+  assert.equal(inside.records[0].ok, true)
 })
 
 test('a commit hit is stored by its full sha', async () => {

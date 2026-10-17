@@ -1887,7 +1887,7 @@ solutions sweep's repository scan and its researchers. Every one is one call of 
 asked to find over code's tools on a pinned tree, until a round adds no new hit.
 
 ```
-program ──► search(ctx, {name, domain, find, material, scope, labels, budget, tree})
+program ──► search(ctx, {name, domain, find, material, scope, subject, labels, budget, tree})
               │ writes the server spec; starts the scout's session, or resumes it
               ▼
         scout (role per domain) ⇄ tool server (one stdio process per CLI process)
@@ -1907,7 +1907,7 @@ program ──► search(ctx, {name, domain, find, material, scope, labels, budg
 | program | search (its thread) | role, domain | what it finds |
 |---|---|---|---|
 | `probe` | `locate` | scout, `repo` | the guidance and the code the artefact rests on, labels `guidance` and `ground` |
-| `survey` | `scout:<topic>`, one per topic | scout, `repo` | the topic, scoped to its subtree |
+| `survey` | `scout:<topic>`, one per topic | scout, `repo` | the topic: tools over the roots, hits in its subtree |
 | `survey` | `history` | historian, `history` | the plan's history question, when it has one |
 | `survey` | `docs` | doc-researcher, `web` | the plan's docs question, when it has one |
 | `solutions` | `repo` | scout, `repo` | the repository scan, scoped to the roots |
@@ -1917,13 +1917,16 @@ program ──► search(ctx, {name, domain, find, material, scope, labels, budg
 `web`) picks the role (`ROLE_OF`) and the tools (`TOOLS_BY_DOMAIN`). `find` says what to find in
 plain words, one text per search. `material` is text the find is about — an artefact, a question,
 the files a change touched — as `[{label, text}]`. `scope` is the paths the repo tools run over
-(default `.`; the web ignores it). `labels` is an optional enum a hit may carry; with none, a hit
+(default `.`; the web ignores it). `subject` is where a path hit may land (default the scope): `hit`
+refuses a path outside it `bad_hit`, so a search about one directory can still read the callers
+that decide it. `labels` is an optional enum a hit may carry; with none, a hit
 carries no label. `budget` is an optional dollar cap for the whole search (**Budget**, below).
 `tree` is the `{root, sha}` it runs over.
 
 **The charge.** The scout's system prompt is its role's text and the charge (`scoutCharge` in
 `lib/briefs/search.mjs`, through `promptFile(role, dir, charge)`): the domain's tool protocol in a
-sentence, the find, the scope, the labels and the material, each item fenced as data. It depends
+sentence, the find, the scope, the subject when it is narrower than the scope, the labels and the material,
+each item fenced as data. It depends
 on nothing a session changes, so the host caches it. The scout greps for what the material names
 on its own: no code resolves the material, seeds the search or ranks what it reads.
 
@@ -2201,7 +2204,7 @@ The `survey` program gathers evidence for one question and never concludes.
    channel, the topics due to be searched again named as dropped; the context still holds the
    standing items the run reused.
 3. **Search.** Each topic is one search ([Searches](#searches)) named `scout:<topic>`, run by the
-   scout over the survey's tree, its find the topic and its scope the topic's subtree (else the
+   scout over the survey's tree, its find the topic, its scope the roots and its subject the topic's subtree (else the
    roots). History and docs run alongside when the plan has a question for them, as searches named `history` (the
    historian, the `history` domain) and `docs` (the doc-researcher, the `web` domain), each failing
    alone. Every search shares one material: the question, the common ground as planned, and inside
@@ -3835,8 +3838,8 @@ numbering the records across every server process of the search and `session` th
   scripted runner's seam (`test/fast/harness/scripted-runner.mjs`, which reads the call log's path
   from it).
 
-`server-<digest>.json` is `{tree{root, sha}, scope[], labels[], tools[], calls, pages, session}`:
-`scope` the paths the repo tools run over, `labels` the enum a hit may carry, `tools` the domain's
+`server-<digest>.json` is `{tree{root, sha}, scope[], subject[], labels[], tools[], calls, pages, session}`:
+`scope` the paths the repo tools run over, `subject` the paths a path hit may name, `labels` the enum a hit may carry, `tools` the domain's
 (`TOOLS_BY_DOMAIN`), `calls` the absolute path of the search's call log, `pages` the run's
 `pages/` directory, where `fetch` pins pages, and `session` the session id of the CLI start it
 serves. `<digest>` is the digest of the spec. `mcp-<digest>.json` is `{mcpServers: {search: {type:

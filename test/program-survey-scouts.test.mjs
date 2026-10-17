@@ -165,6 +165,15 @@ test("a topic's search runs as the scout at the dial, its charge holding the que
   }
 })
 
+test("a topic's scout reads over the roots and lands its hits in the topic's subtree", async (t) => {
+  const { rig } = await runSurvey(t, fullScript())
+  const [call] = on(rig, 'scout:loader')
+  const args = JSON.parse(readFileSync(call.mcpConfig(call.thread.session), 'utf8')).mcpServers.search.args
+  const spec = JSON.parse(readFileSync(args[args.indexOf('--spec') + 1], 'utf8'))
+  assert.deepEqual([spec.scope, spec.subject], [ARGS().roots, [TOPIC.loader.subtree]])
+  assert.ok(chargeOf(call).includes('Subject: ' + TOPIC.loader.subtree), chargeOf(call))
+})
+
 test('the common ground is material for every topic search and reaches every judge', async (t) => {
   const { rig } = await runSurvey(t, fullScript())
   for (const thread of ['scout:loader', 'scout:store', 'history', 'docs']) {

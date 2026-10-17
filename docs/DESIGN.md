@@ -1360,6 +1360,22 @@ Mode (for an effort root, or any folder about to execute): **inline** or **dispa
 and "run it anyway" ends the discussion; inside the tree the planner applies the same questions
 to the entries of the specs it writes.
 
+### Removals
+
+A **removal** is an item that only deletes what nothing reads once it is gone: the code, with the
+tests, docs, imports and registrations that name it, and any guard whose target is deleted with
+it. It is planned as tasks, never as a sub-effort, however many files it spans: one `verify` task
+proving the premise, then `trivial` delete tasks, one per concern, each `after` it. The verify
+task's criteria run ``! git grep -nwF -e <name> -- . ':(exclude)<path>'`` for every name the
+deletions remove, over the tree outside the deleted paths, and the build and the suite. A name
+built at runtime escapes the grep, and the spec's Evidence says so. A deletion that takes away
+behaviour something still reaches, or a guard whose target stays, is not a removal.
+
+**Why:** a removal has no approach to discover. Whether anything still reads a name is a query (P2),
+so the grep, the build and the suite are its evidence, and a planner-written sub-effort would buy a
+survey and an autonomous review to answer it by judgment — and a review whose findings the planner
+must incorporate grows a plan that should only shrink.
+
 ### Atomicity: when to stop splitting
 
 A **leaf** is the smallest unit of work: one commit series, or — for a `verify` leaf, which writes

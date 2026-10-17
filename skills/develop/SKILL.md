@@ -154,6 +154,15 @@ Three questions decide what the root spec's plan holds (`docs/DESIGN.md#triage`)
 | Does each item satisfy atomicity (`docs/DESIGN.md#atomicity-when-to-stop-splitting`)? | its entry is a `sub-effort` with `author: planner`: develop's planner writes that spec |
 | Is the ground known — finding where the change goes is not part of the work? | its entry is a `sub-effort` with `author: planner` and no `ground`: a survey runs before its planner |
 
+**A removal is tasks, never a sub-effort**, however many files it spans (`docs/DESIGN.md#removals`).
+An item that only deletes what nothing reads once it is gone — with the tests, docs, imports and
+registrations that name it, and any guard whose target goes with it — is planned as one `verify`
+task proving the premise, then `trivial` delete tasks, one per concern, each `after` it. The verify
+task's criteria: for every name the deletions remove, ``! git grep -nwF -e <name> -- . ':(exclude)<path>'``
+over the tree outside the deleted paths, plus the build and the suite. A name built at runtime
+escapes the grep: say so in Evidence. A deletion that takes away behaviour something still reaches
+is not a removal.
+
 The mode: **inline** when every task would be `verify`, `trivial`, `tests-only` or `tdd`, the locus
 is known, the intent settled, nothing is irreversible, and the tasks' summed fit (the task skill's
 computation) is within this session's budget — then hand over:
@@ -254,8 +263,8 @@ No survey ran: the request named its ground.
   added. Every `Dn` is realised by an entry.
 - **Plan**: a `task` for each item triage found atomic with known ground, rigor per
   `docs/DESIGN.md#rigor`, every criterion naming its check (the tests the change clearly affects,
-  and from the gray area fast tests only, never big ones) or starting `HUMAN:`; otherwise one
-  `sub-effort` with `author: planner` realising the items it covers.
+  and from the gray area fast tests only, never big ones) or starting `HUMAN:`; a removal's tasks as
+  triage planned them; otherwise one `sub-effort` with `author: planner` realising the items it covers.
 - **Evidence**: when the ground is unknown, say so and name the sub-effort whose survey will find it.
 
 Check it until it prints no problems:

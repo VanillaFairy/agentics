@@ -11,6 +11,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 import { coverageLine } from '../../lib/programs/search/consume.mjs'
+import { coverageOf } from '../../lib/programs/common.mjs'
 
 const ROOT = new URL('../../', import.meta.url)
 const skill = (name) => readFileSync(new URL('skills/' + name + '/SKILL.md', ROOT), 'utf8').replace(/\r\n/g, '\n')
@@ -94,6 +95,12 @@ test('the skill quotes lines the code writes', () => {
   assert.ok(quotes.length > 0, 'the solutions skill quotes at least one coverage line as an example')
   const { regexes } = shapes()
   assert.deepEqual(unmatched(quotes, regexes), [], 'every quoted coverage line has the shape of one coverageLine writes:\n' + regexes.map((r) => r.line).join('\n'))
+})
+
+test('the solutions skill names every list its coverage carries', () => {
+  const text = skill('search-for-existing-solutions-before-building')
+  const lists = Object.entries(coverageOf()).filter(([, v]) => Array.isArray(v)).map(([k]) => k)
+  assert.deepEqual(lists.filter((k) => !text.includes('`' + k + '`')), [], 'the skill tells the caller what each coverage list means')
 })
 
 test('investigate quotes lines the code writes', () => {

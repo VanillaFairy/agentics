@@ -1698,6 +1698,12 @@ the disposition's wording are the verbatim blocks `design-severity-ladder` and `
 in the `design` and `challenge-idea` skills; every prober's brief carries the ladder word for word
 from `lib/briefs/probe.mjs`, which `test/program-probe.test.mjs` holds to the design skill's block.
 
+**A probe attacks what the artefact adds, reshapes or removes.** Every prober's brief says so: a
+finding whose claim holds of the repository with the artefact unapplied — a cost the code already
+carries that the artefact neither creates nor changes — is a `note`, however real, and an axis on
+which the artefact adds and reshapes nothing is ruled `clean` by the prober, its why saying so.
+Only a prober's ruling reads `clean`; code never rules a unit.
+
 **The units of a probe** are each axis it attacks against each section of the artefact in scope, the
 sections being its `##` headings outside fenced blocks (as CommonMark reads both: a backtick line
 whose info string holds a backtick opens no fence, and a heading's closing `#` run is not part of

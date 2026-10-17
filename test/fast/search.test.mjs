@@ -353,6 +353,17 @@ test('a coverage line names the search, its status, its counts and why', () => {
   assert.equal(coverageLine(result('repo', 'failed', 0, 0, 'host_error: exit 1')), 'repo: failed, 0 calls, no hits: host_error: exit 1')
 })
 
+const covered = (r, rounds, last_added, skipped) => ({ ...r, coverage: { rounds, last_added, skipped } })
+
+test('a coverage line carries its rounds, what the last added, and the scout\'s own word', () => {
+  assert.equal(coverageLine(covered(result('locate', 'done', 41, 23), 11, 0, 'did not open the vendored tree')),
+    "locate: done, 41 calls, 23 hits, 11 rounds (the last added 0); the scout's own word: did not open the vendored tree")
+  assert.equal(coverageLine(covered(result('research:crates', 'budget', 7, 1, 'spent $1.02 of its $1 budget'), 1, 1, '')),
+    'research:crates: budget, 7 calls, 1 hit, 1 round (the last added 1): spent $1.02 of its $1 budget')
+  assert.equal(coverageLine(covered(result('repo', 'done', 3, 0), 2, 0, 'skipped\n  the docs')),
+    "repo: done, 3 calls, no hits, 2 rounds (the last added 0); the scout's own word: skipped the docs")
+})
+
 test('search coverage files each status where it belongs', () => {
   const rs = [result('a', 'done', 1, 1), result('b', 'stalled', 2, 0, 'w'), result('c', 'budget', 3, 0, 'x'), result('d', 'failed', 0, 0, 'y'), null]
   assert.deepEqual(searchCoverage(rs), {

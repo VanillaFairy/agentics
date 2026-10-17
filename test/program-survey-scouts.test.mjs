@@ -210,7 +210,7 @@ test('a topic search that fails leaves its topic incomplete, names it, and the t
 
 test("declared holds each search's coverage line", async (t) => {
   const { result } = await runSurvey(t, fullScript())
-  assert.deepEqual(cov(result).declared, ['scout:loader: done, 1 call, 1 hit', 'scout:store: done, 1 call, 1 hit', 'history: done, 0 calls, 1 hit', 'docs: done, 0 calls, 1 hit'])
+  assert.deepEqual(cov(result).declared, ['scout:loader: done, 1 call, 1 hit', 'scout:store: done, 1 call, 1 hit', 'history: done, 0 calls, 1 hit', 'docs: done, 0 calls, 1 hit'].map((l) => l + ", 2 rounds (the last added 0); the scout's own word: nothing more"))
 })
 
 test("a tree handed in-process is searched, and the survey's items are anchored on it", async (t) => {

@@ -74,8 +74,8 @@ it.
   Never re-run the whole pass.
 <!-- /agentics:verbatim -->
 
-Where this plugin needs shared ground it is code — `lib/citations.mjs`, the resolver's ground table
-(`lib/search/resolve.mjs`), the brief assembled by `lib/brief.mjs` — never a sentence asking a model
+Where this plugin needs shared ground it is code — `lib/citations.mjs`, the search's per-round brief
+(`lib/briefs/search.mjs`), the brief assembled by `lib/brief.mjs` — never a sentence asking a model
 to arrange it.
 
 ## Versioning
@@ -140,8 +140,8 @@ rule fails it there, and a preload that makes process creation throw fails it at
 - `lib/boundaries/` — the boundaries an execution calls in-process: preflight, schedule and
   postflight, leaf-open, leaf-close, leaf-review, merge-batch and the suite gate, folder-review and
   rule-close, and the autonomous review's, over one records core (`lib/boundaries/INDEX.md`)
-- `lib/search/` — what a search is made of: the query dialect, the tree tools, the tool server, the
-  resolver, the search ledger and the pinned tree
+- `lib/search/` — what a search is made of: the query dialect, the tree tools, the tool server and the
+  pinned tree
 - `lib/programs/` — the programs that orchestrate, started by `lib/run.mjs`; the execute
   program's units (a leaf, a planner's folder, the integration units) in `lib/programs/execute/`,
   the search loop in `lib/programs/search/` (`lib/programs/INDEX.md`)

@@ -544,10 +544,10 @@ test('a test file is one under a test, tests or __tests__ segment, or named .tes
 
 test('a page is 200 lines and every refusal class is named', () => {
   assert.equal(PAGE_LINES, 200)
-  assert.deepEqual(REFUSALS, ['not_canonical', 'past_eof', 'unsupported_syntax', 'does_not_compile', 'expander_error', 'unknown_ask', 'outside_scope', 'too_large'])
+  assert.deepEqual(REFUSALS, ['not_canonical', 'past_eof', 'unsupported_syntax', 'does_not_compile', 'expander_error', 'outside_scope', 'too_large'])
 })
 
-// ------------------------------------------------------------------ what the navigator is told
+// ------------------------------------------------------------------ what the scout is told
 
 test('tool descriptions state the glob dialect', async () => {
   const { GLOB_RULES } = await import('../lib/search/query.mjs')

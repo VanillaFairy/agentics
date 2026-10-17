@@ -22,7 +22,7 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { STANDING_AXES } from '../lib/briefs/probe.mjs'
+import { PLAN_AXIS, STANDING_AXES } from '../lib/briefs/probe.mjs'
 import { sectionsOf, unitsOf } from '../lib/evidence.mjs'
 import { heldBy } from '../lib/locks.mjs'
 import { specPath } from '../lib/store.mjs'
@@ -55,7 +55,7 @@ const putSpec = (rig, folder, text) => {
   mkdirSync(dirname(specPath(rig.repo, E, folder)), { recursive: true })
   writeFileSync(specPath(rig.repo, E, folder), text)
 }
-const STANDING = STANDING_AXES.map((a) => a.key)
+const STANDING = [...STANDING_AXES, PLAN_AXIS].map((a) => a.key)
 const cleanProber = (units) => ({
   findings: [], units: units.map((unit) => ({ unit, ruling: 'clean', ids: [], why: 'why ' + unit })), notes: '', stop_reason: 'exhausted', not_reached: '',
 })

@@ -17,7 +17,7 @@ import { approvalState } from '../lib/approval.mjs'
 import { parked, recordAll } from '../lib/boundaries/records.mjs'
 import { guidanceOf, leafBrief } from '../lib/brief.mjs'
 import { plannerBrief } from '../lib/briefs/execute.mjs'
-import { STANDING_AXES } from '../lib/briefs/probe.mjs'
+import { PLAN_AXIS, STANDING_AXES } from '../lib/briefs/probe.mjs'
 import { renderMessage } from '../lib/conversation.mjs'
 import { sectionsOf, unitsOf } from '../lib/evidence.mjs'
 import { commandsOf } from '../lib/gotchas.mjs'
@@ -115,7 +115,7 @@ const settled = (...pairs) => ({ output: { status: 'settled', dispositions: pair
 const hostError = { status: 'failed', cause: 'host_error' }
 const schemaFailed = { status: 'failed', cause: 'schema_failed' }
 
-const STANDING = STANDING_AXES.map((a) => a.key)
+const STANDING = [...STANDING_AXES, PLAN_AXIS].map((a) => a.key)
 const unitsFor = (text) => unitsOf(STANDING, sectionsOf(text))
 const proberOut = (units, findings = []) => ({
   findings,

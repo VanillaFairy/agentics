@@ -1819,7 +1819,9 @@ execution journaled (`sweepTrees`); a dirty one is never forced, and preflight r
    the user states decisions; any other problem goes back to the planner's session as a `problems`
    message, and the same problems again escalate `spec_refused`.
 2. **Attack.** The `probe` program, nested as `probe:<folder>:<n>` (`n` the planner round it
-   follows), reviews the spec. After the first round, `since` (the previous
+   follows), reviews the spec, with one standing axis beside the four: `entries` (`PLAN_AXIS` in
+   `lib/briefs/probe.mjs`), whether each entry's work does what the decisions it realises say, because
+   nobody else reads a planner-written spec before it is built. After the first round, `since` (the previous
    round's snapshot) narrows the review to the spans changed since. `spec-reviewed` reads the
    round's result and records every round as a `reviewed` ledger line with the settlement ids of
    its ambiguities; one that left a unit unruled escalates `review_incomplete`. A round a prober's

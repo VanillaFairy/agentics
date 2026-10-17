@@ -184,6 +184,10 @@ naming the condition. Aim at commit series of dozens of lines.
 | `tdd-pair` | behaviour where a wrong reading would pass its author's own tests: edge-case rules, parsers, state machines, concurrency, contracts others consume | `red` (test files; where the typecheck covers tests, also the files green builds, as signatures that throw) then `green` (the implementation, `after: <red>`; its criteria are "every test <red> wrote passes" plus their check, never a new behaviour: each behaviour green's context states is pinned by a red criterion, in a test file red's locus holds) |
 | `tdd-triad` | as tdd-pair, and a miss ships silently into durable state or is costly: persistence formats, migrations, data loss, security, money | red, green, then `audit` (`after: <green>`, locus: its report only) |
 
+**Every entry does what the decisions it realises say.** Work no decision asks for — a test, guard
+or module standing on a decision about something else — belongs to no entry; the review reads every
+entry against its decisions' text.
+
 Unsure between trivial and tdd: tdd. Between tdd and tdd-pair: tdd when small. A cycle's tasks
 share one rigor and have disjoint loci; that disjointness is the whole separation.
 

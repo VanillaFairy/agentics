@@ -1818,13 +1818,14 @@ execution journaled (`sweepTrees`); a dirty one is never forced, and preflight r
    round's result and records every round as a `reviewed` ledger line with the settlement ids of
    its ambiguities; one that left a unit unruled escalates `review_incomplete`. A round a prober's
    role fault cut short records nothing and holds the folder on that fault. The findings still to
-   settle are the ones no disposition on the ledger has settled: a finding the probe carries from an
-   earlier round stays settled.
+   settle are the ambiguities and gaps no disposition on the ledger has settled: a finding the probe
+   carries from an earlier round stays settled. A note is advisory: it stays in the round's record
+   and never reaches the planner, because an edit made for it would void the review that raised
+   it, and a round whose findings are all notes would never let the gate open on the text it read.
 3. **Settle.** The planner's session, resumed with the findings, gives every finding still to
-   settle a disposition in its return: incorporated (the spec changed) or discarded. `spec-settle`
-   reads it: an `ambiguity` or a `gap` can only be incorporated, so a discard of one, or a finding
-   left out, is refused and goes back to the planner's session; the same discard refused again
-   escalates `review_not_converging`. An ambiguity counts as incorporated only when the edit touched
+   settle a disposition in its return, and that disposition is incorporated (the spec changed).
+   `spec-settle` reads it: a discard, or a finding left out, is refused and goes back to the
+   planner's session; the same discard refused again escalates `review_not_converging`. An ambiguity counts as incorporated only when the edit touched
    its anchored lines and the next round rules that section clean; until then it stays open,
    whatever its disposition says (L3). A finding
    whose fix would state a decision parks the folder `needs_decision`. `spec-settle` records each

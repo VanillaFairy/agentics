@@ -137,6 +137,7 @@ function found(text, { axis = 'yagni', severity = 'gap', section, needle, claim 
 const GAP = found(S1, { section: 'design', needle: DESIGN_A, claim: 'x hides state in a module global' })
 const GAP_INTENT = found(S1, { section: 'intent', needle: INTENT_NEEDLE, claim: 'who the root is stays open' })
 const AMBIGUITY = found(S1, { axis: 'ambiguity', severity: 'ambiguity', section: 'intent', needle: INTENT_NEEDLE, claim: 'plans it could mean two things' })
+const NOTE = found(S1, { severity: 'note', section: 'design', needle: DESIGN_A, claim: 'x could be named for what it returns' })
 
 const surveying = (prefix) => ({
   ['analyst||' + prefix + 'plan']: [{ output: { topics: [{ key: 'adder', find: 'FIND-adder', subtree: 'src' }], common_ground: '', history_question: '', docs_question: '' } }],
@@ -468,6 +469,29 @@ test("fresh findings go to the planner's own session as a findings message, and 
   assert.equal(dispositions[0].finding, record.findings[0].item)
   assert.equal(ledger(w.rig, 'reviewed').length, 2)
   assert.equal(ledger(w.rig, 'prepared').length, 1)
+})
+
+test('a round whose findings are all notes is prepared on the text it reviewed, the planner sent nothing', async (t) => {
+  const w = world(t, { steps: { ...planner(written), ...probing(1, S1, [NOTE]) }, writes: { 1: S1 } })
+  assert.deepEqual(await w.run(), { outcome: 'prepared', survey: null })
+  assert.equal(findingsIn(stepValue(w.rig, 'probe:p:1/record').findings_file).length, 1, 'the fixture: the round recorded the note')
+  assert.equal(plannerCalls(w.rig).length, 1)
+  assert.deepEqual(messages(w.rig, 'findings'), [])
+  assert.deepEqual(ledger(w.rig, 'disposition'), [])
+  const [reviewed] = ledger(w.rig, 'reviewed')
+  assert.equal(ledger(w.rig, 'prepared')[0].hash, reviewed.hash, 'prepared at the hash the round reviewed')
+})
+
+test('a round with a gap and a note sends the planner the gap alone', async (t) => {
+  const w = world(t, {
+    steps: { ...planner(written, settled(['P1', 'incorporated'])), ...probing(1, S1, [GAP, NOTE]), ...probing(2, S2) },
+    writes: { 1: S1, 2: S2 },
+  })
+  assert.equal((await w.run()).outcome, 'prepared')
+  const recorded = findingsIn(stepValue(w.rig, 'probe:p:1/record').findings_file)
+  const gap = recorded.find((f) => f.severity === 'gap')
+  assert.equal(recorded.length, 2, 'the fixture: the round recorded both')
+  assert.deepEqual(messages(w.rig, 'findings')[0].payload.findings.map((f) => f.id), [gap.id])
 })
 
 test("the re-review after an edit is narrowed to the round before's snapshot", async (t) => {

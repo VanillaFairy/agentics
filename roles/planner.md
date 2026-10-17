@@ -201,13 +201,13 @@ state or change a decision is not yours: return `needs_decision` with the questi
 
 ## Settling the review's findings
 
-The autonomous review's findings come back to you as a message, in full, with the ids to settle.
-Give each one disposition: **incorporated** (you changed the spec's Design, Plan or Open questions
-because of it) or **discarded**. An `ambiguity` or a `gap` can only be incorporated; a `note` may
-be discarded. A finding whose fix would state or change a decision is not yours: return
-`needs_decision` with the question. Edit the spec, then return `settled` with one disposition per
-finding id. A discard the program refuses comes back to you once; the same discard twice stops the
-folder.
+The autonomous review's ambiguities and gaps come back to you as a message, in full, with the ids
+to settle; its notes are advisory and never reach you. Incorporate each one: change the spec's
+Design, Plan or Open questions because of it, and give it the disposition **incorporated**. Change
+nothing the findings do not ask for: every edit is reviewed again. A finding whose fix would state
+or change a decision is not yours: return `needs_decision` with the question. Edit the spec, then
+return `settled` with one disposition per finding id. A discard the program refuses comes back to
+you once; the same discard twice stops the folder.
 
 ## Return
 

@@ -411,8 +411,8 @@ test('spec-check run twice on a refusal records it once', (t) => {
 test('spec-reviewed: a complete round is recorded, and its findings no disposition settled are fresh', (t) => {
   const xc = rig(t)
   const ambiguity = finding('P1', 'ambiguity', 'Two meanings of tick', { item: 'Ip1badc0de' })
-  const note = finding('P2', 'note', 'Name it', { section: 'plan' })
-  const out = specReviewed(xc, { folder: 'p', result: probeResult(xc, { findings: [ambiguity, note] }) })
+  const gap = finding('P2', 'gap', 'No retry', { section: 'plan' })
+  const out = specReviewed(xc, { folder: 'p', result: probeResult(xc, { findings: [ambiguity, gap] }) })
   assert.equal(out.status, 'recorded')
   assert.deepEqual(out.stops, [])
   assert.deepEqual([...out.fresh].sort(), ['P1', 'P2'])
@@ -518,12 +518,21 @@ test('spec-reviewed: an unanchored finding back unchanged is matched at the hash
   assert.ok(detailOf(xc).includes('P1'), detailOf(xc))
 })
 
+test('spec-reviewed: a note is no finding to settle', (t) => {
+  const xc = rig(t)
+  const out = specReviewed(xc, {
+    folder: 'p', result: probeResult(xc, { findings: [finding('P1', 'note', 'Name it better'), finding('P2', 'gap', 'No retry')] }),
+  })
+  assert.equal(out.status, 'recorded')
+  assert.deepEqual(out.fresh, ['P2'])
+})
+
 test('spec-reviewed: a finding back after it was discarded does not escalate', (t) => {
   const xc = rig(t)
-  const first = probeResult(xc, { findings: [finding('P1', 'note', 'Name it better', { item: 'Ip1badc0de' })] })
+  const first = probeResult(xc, { findings: [finding('P1', 'gap', 'No retry', { item: 'Ip1badc0de' })] })
   dispose(xc, 'Ip1badc0de', 'discarded')
   put(xc.repo, 'p', folderSpec({ design: 'One function, edited.' }))
-  const back = probeResult(xc, { findings: [finding('P2', 'note', 'name it  BETTER', { item: 'Inewbadc0de' })] })
+  const back = probeResult(xc, { findings: [finding('P2', 'gap', 'no  RETRY', { item: 'Inewbadc0de' })] })
   const out = specReviewed(xc, { folder: 'p', result: back, previous: first })
   assert.equal(out.status, 'recorded')
   assert.deepEqual(out.stops, [])
@@ -604,7 +613,7 @@ test('spec-settle: each disposition is recorded by the planner under its settlem
   reviewedLine(xc, [])
   put(xc.repo, 'p', folderSpec({ design: 'One function, edited.' }))
   const findings = [
-    finding('P1', 'ambiguity', 'Two meanings of tick', { item: 'Ip1badc0de' }), finding('P2', 'gap', 'No retry'), finding('P3', 'note', 'Name it'),
+    finding('P1', 'ambiguity', 'Two meanings of tick', { item: 'Ip1badc0de' }), finding('P2', 'gap', 'No retry'),
   ]
   reviewedLine(xc, findings)
   const h = hashNow(xc)
@@ -613,14 +622,14 @@ test('spec-settle: each disposition is recorded by the planner under its settlem
   assert.notEqual(hashNow(xc), h)
   const dispatch = planner(xc, 1, {
     status: 'settled',
-    dispositions: [{ finding: 'P1', outcome: 'incorporated' }, { finding: 'P2', outcome: 'incorporated' }, { finding: 'P3', outcome: 'discarded' }],
+    dispositions: [{ finding: 'P1', outcome: 'incorporated' }, { finding: 'P2', outcome: 'incorporated' }],
   })
   const out = specSettle(xc, { folder: 'p', dispatch, findings: findings.map(handleOf) })
   assert.equal(out.status, 'settled')
   assert.equal(out.incorporated_n, 2)
   assert.deepEqual(out.stops, [])
   assert.deepEqual(dispositionsOf(xc), [
-    ['Ip1badc0de', 'incorporated', 'planner'], [h + '#P2', 'incorporated', 'planner'], [h + '#P3', 'discarded', 'planner'],
+    ['Ip1badc0de', 'incorporated', 'planner'], [h + '#P2', 'incorporated', 'planner'],
   ].sort(), 'an unanchored finding is settled under the latest reviewed hash')
   assert.deepEqual(messages(xc), [])
 })
@@ -692,17 +701,6 @@ test('spec-settle: a finding the settlement leaves out is refused', (t) => {
   assert.deepEqual(ledger(xc, 'disposition'), [], 'not even the finding the planner did settle')
   const [refusal] = messages(xc, 'refusals')[0].payload.refusals
   assert.deepEqual([refusal.id, refusal.finding], ['P2', reviewedAt + '#P2'], 'named under the hash of the reviewed line')
-})
-
-test('spec-settle: a discarded note settles', (t) => {
-  const findings = [finding('P1', 'note', 'Name it', { item: 'Ip1badc0de' })]
-  const { xc, asked } = settling(t, findings)
-  const dispatch = planner(xc, 1, { status: 'settled', dispositions: [{ finding: 'P1', outcome: 'discarded' }] })
-  const out = specSettle(xc, { folder: 'p', dispatch, findings: asked })
-  assert.equal(out.status, 'settled')
-  assert.equal(out.incorporated_n, 0)
-  assert.deepEqual(out.stops, [])
-  assert.deepEqual(dispositionsOf(xc), [['Ip1badc0de', 'discarded', 'planner']])
 })
 
 test('spec-settle: a finding refused once and wrong again escalates review_not_converging', (t) => {

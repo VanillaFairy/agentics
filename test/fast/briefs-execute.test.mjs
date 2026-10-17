@@ -214,13 +214,13 @@ test('a planner rewriting a spec is handed its current text', () => {
 
 test('a planner settling a review is handed the spec and every finding by its id', () => {
   const spec = '# The api layer\n\n## Design\n\nThe loader reads files.\n'
-  const findings = [probeFinding('P1', 'ambiguity', 'Design', 'the loader\'s encoding is unstated'), probeFinding('P2', 'note', 'Plan', 'a name is long')]
+  const findings = [probeFinding('P1', 'ambiguity', 'Design', 'the loader\'s encoding is unstated'), probeFinding('P2', 'gap', 'Plan', 'no retry is planned')]
   const text = plannerBrief(planner({ mode: 'settle', spec, findings }))
   assert.ok(text.includes('planner_settle'))
   assert.ok(text.includes(spec.trim()))
   assert.ok(text.includes('[P1] (ambiguity, Design) the loader\'s encoding is unstated'))
-  assert.ok(text.includes('[P2] (note, Plan) a name is long'))
-  assert.ok(text.includes('incorporated') && text.includes('discarded'))
+  assert.ok(text.includes('[P2] (gap, Plan) no retry is planned'))
+  assert.ok(text.includes('incorporated'))
 })
 
 test("a planner answering a producer is handed the spec and the producer's request", () => {

@@ -24,7 +24,7 @@ import { treeOf } from '../lib/search/pin.mjs'
 import { runLogPath } from '../lib/store.mjs'
 import {
   Q, GUIDE, FILES, FILE, TOPIC, plan, behaviour, anchoredUnit, judgeOut, ARGS, CLAIM,
-  basicScript, COMMON, fullScript, rigFor, runSurvey, on, pool, roleOf, cov, pathHits,
+  basicScript, COMMON, COMMON_TEXT, fullScript, rigFor, runSurvey, on, pool, roleOf, cov, pathHits,
 } from './harness/survey-world.mjs'
 import { closingRound, hitTurn, stalledRecord } from './fast/harness/scout.mjs'
 
@@ -47,16 +47,16 @@ test("a judge is the analyst's at the dial, base high", async (t) => {
 })
 
 test("a judge's brief holds its topics' search excerpts and the shared ground inline", async (t) => {
-  const loaderTurn = hitTurn(pathHits([[FILE.loader, 7, 'NOTE-a1 resolves'], [FILE.loader, 40, 'NOTE-a2 falls back']]))
+  const loaderTurn = hitTurn(pathHits([[FILE.loader, 7, 'NOTE-a1 resolves'], [FILE.loader, 40, 'NOTE-a2 falls back']]), { summary: 'SUMMARY-the loader resolves in one place' })
   const { rig } = await runSurvey(t, fullScript({
     'analyst||plan': [{ output: plan({ topics: [TOPIC.loader], common_ground: COMMON }) }],
-    'scout||scout:loader': [loaderTurn, closingRound('SUMMARY-the loader resolves in one place')],
+    'scout||scout:loader': [loaderTurn],
     'analyst||judge:1': [{ output: judgeOut({ items: [behaviour('loader', CLAIM)], units: [anchoredUnit('loader')] }) }],
   }))
   const brief = on(rig, 'judge:1')[0].brief
   assert.match(brief, lineRe('alpha', 7))
   assert.match(brief, lineRe('alpha', 40))
-  for (const part of ['NOTE-a1 resolves', 'NOTE-a2 falls back', 'SUMMARY-the loader resolves in one place', COMMON]) assert.ok(brief.includes(part), part)
+  for (const part of ['NOTE-a1 resolves', 'NOTE-a2 falls back', 'SUMMARY-the loader resolves in one place', COMMON_TEXT]) assert.ok(brief.includes(part), part)
 })
 
 test("a judge's brief says how each topic's search ended", async (t) => {

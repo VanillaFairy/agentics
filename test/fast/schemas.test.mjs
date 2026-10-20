@@ -49,10 +49,17 @@ test('no schema carries a verdict-named boolean', () => {
   }
 })
 
-test('every searcher and judge may continue a long return', () => {
-  for (const [name, { schema }] of [...ofKind('searcher'), ...ofKind('judge')]) {
+test('a judge holding an array may continue a long return', () => {
+  for (const [name, { schema }] of ofKind('judge').filter(([, s]) => Object.values(s.schema.properties).some((p) => p.type === 'array'))) {
     assert.equal(schema.properties.more.type, 'boolean', name)
     assert.ok(!schema.required.includes('more'), name + ' requires more')
+  }
+})
+
+test('no schema offers more where a part could not progress: a searcher, or a return without an array', () => {
+  for (const [name, { schema }] of entries) {
+    const progressable = Object.entries(schema.properties).some(([k, p]) => k !== 'more' && p.type === 'array')
+    if (SCHEMAS[name].kind === 'searcher' || !progressable) assert.ok(!Object.hasOwn(schema.properties, 'more'), name + ' offers more')
   }
 })
 
@@ -90,7 +97,7 @@ test('schemaOf and kindOf answer for every name and refuse an unknown one', () =
   assert.equal(kindOf('nothing'), '')
 })
 
-test('the searcher return is a summary', () => {
+test('the searcher return is a summary and what it left unsearched', () => {
   assert.equal(SCHEMAS.search.kind, 'searcher')
-  assert.deepEqual(SCHEMAS.search.schema.required, ['summary'])
+  assert.deepEqual(SCHEMAS.search.schema.required, ['summary', 'unsearched'])
 })

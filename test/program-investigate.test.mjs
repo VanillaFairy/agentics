@@ -72,9 +72,9 @@ test("the investigation's scope is its question", () => {
 test('the survey runs inside this run, on its log', async (t) => {
   const r = rig(t, script(REPORT))
   await investigate(r.ctx, argsOf())
-  assert.deepEqual(r.calls.map((c) => c.thread.key), ['plan', 'scout:loader', 'scout:loader', 'judge:1', 'synthesis'])
+  assert.deepEqual(r.calls.map((c) => c.thread.key), ['plan', 'scout:loader', 'judge:1', 'synthesis'])
   const dispatched = r.log.entries().filter((e) => e.kind === 'dispatched').map((e) => e.thread)
-  assert.deepEqual(dispatched, ['plan', 'scout:loader', 'scout:loader', 'judge:1', 'synthesis'])
+  assert.deepEqual(dispatched, ['plan', 'scout:loader', 'judge:1', 'synthesis'])
 })
 
 test('the survey is asked the question, with the roots, notes, intelligence and pace', async (t) => {

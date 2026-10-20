@@ -18,7 +18,7 @@ import { treeOf } from '../lib/search/pin.mjs'
 import { stalledRecord } from './fast/harness/scout.mjs'
 import {
   Q, FILES, FILE, TOPIC, plan, historyTurn, behaviour, anchoredUnit, judgeOut, ARGS, CLAIM,
-  basicScript, COMMON, HQ, DQ, fullScript, rigFor, runSurvey, on, pool, roleOf, cov, topicSearch,
+  basicScript, COMMON_TEXT, HQ, DQ, fullScript, rigFor, runSurvey, on, pool, roleOf, cov, topicSearch,
 } from './harness/survey-world.mjs'
 
 /** `n` consecutive locations of `path`, as a hit turn takes them. */
@@ -117,13 +117,13 @@ test('topic keys are slugged, and a repeated key is numbered', async (t) => {
     ...emptyJudges(),
   })
   const expected = [
-    { key: 'loader-path', subtree: 'src/loader', forced: false },
-    { key: 'store-x', subtree: 'src/store', forced: false },
-    { key: 'loader-path-2', subtree: 'src/cache', forced: false },
-    { key: 'loader-path-3', subtree: 'src/shared', forced: false },
+    { key: 'loader-path', subtree: 'src/loader', again: false },
+    { key: 'store-x', subtree: 'src/store', again: false },
+    { key: 'loader-path-2', subtree: 'src/cache', again: false },
+    { key: 'loader-path-3', subtree: 'src/shared', again: false },
   ]
-  assert.deepEqual(result.topics.map(({ key, subtree, forced }) => ({ key, subtree, forced })), expected)
-  for (const { key } of expected) assert.equal(on(rig, 'scout:' + key).length, 2, key)
+  assert.deepEqual(result.topics.map(({ key, subtree, again }) => ({ key, subtree, again })), expected)
+  for (const { key } of expected) assert.equal(on(rig, 'scout:' + key).length, 1, key)
 })
 
 test('every planned topic is scouted, beyond max_topics', async (t) => {
@@ -134,7 +134,7 @@ test('every planned topic is scouted, beyond max_topics', async (t) => {
     ...topicSearch('cache', [[FILE.cache, 2]]),
     ...emptyJudges(),
   }, { max_topics: 1 })
-  for (const key of ['loader', 'store', 'cache']) assert.equal(on(rig, 'scout:' + key).length, 2, key)
+  for (const key of ['loader', 'store', 'cache']) assert.equal(on(rig, 'scout:' + key).length, 1, key)
   assert.deepEqual(result.topics.map((x) => x.key), ['loader', 'store', 'cache'])
 })
 
@@ -155,7 +155,7 @@ test("a topic's search runs as the scout at the dial, its charge holding the que
     const { rig } = await runSurvey(t, fullScript(), { intelligence })
     for (const key of ['loader', 'store']) {
       const calls = on(rig, 'scout:' + key)
-      assert.equal(calls.length, 2, key + ': two rounds')
+      assert.equal(calls.length, 1, key + ': one round, which hit one file')
       assert.equal(calls[0].role.name, 'scout')
       assert.deepEqual(calls[0].schema, schemaOf('search'))
       assert.deepEqual(calls[0].tier, tierFor(roleOf('scout'), { intelligence }), intelligence)
@@ -177,9 +177,9 @@ test("a topic's scout reads over the roots and lands its hits in the topic's sub
 test('the common ground is material for every topic search and reaches every judge', async (t) => {
   const { rig } = await runSurvey(t, fullScript())
   for (const thread of ['scout:loader', 'scout:store', 'history', 'docs']) {
-    assert.ok(chargeOf(on(rig, thread)[0]).includes(COMMON), thread + ' charge holds the common ground')
+    assert.ok(chargeOf(on(rig, thread)[0]).includes(COMMON_TEXT), thread + ' charge holds the common ground')
   }
-  assert.ok(on(rig, 'judge:1')[0].brief.includes(COMMON), 'the judge holds the common ground')
+  assert.ok(on(rig, 'judge:1')[0].brief.includes(COMMON_TEXT), 'the judge holds the common ground')
 })
 
 test('no judge is offered wants or a ground table', async (t) => {
@@ -219,7 +219,7 @@ test('a topic search that fails leaves its topic incomplete, names it, and the t
 
 test("declared holds each search's coverage line", async (t) => {
   const { result } = await runSurvey(t, fullScript())
-  assert.deepEqual(cov(result).declared, ['scout:loader: done, 1 call, 1 hit', 'scout:store: done, 1 call, 1 hit', 'history: done, 0 calls, 1 hit', 'docs: done, 0 calls, 1 hit'].map((l) => l + ", 2 rounds (the last added 0); the scout's own word: nothing more"))
+  assert.deepEqual(cov(result).declared, ['scout:loader: done, 1 call, 1 hit', 'scout:store: done, 1 call, 1 hit', 'history: done, 0 calls, 1 hit', 'docs: done, 0 calls, 1 hit'].map((l) => l + ', 1 round (the last added 1)'))
 })
 
 test("a tree handed in-process is searched, and the survey's items are anchored on it", async (t) => {
@@ -284,4 +284,20 @@ test('topics are dealt heaviest first onto the lightest judge, numbered in plan 
   assert.ok(holds(j1, 'loader') && holds(j1, 'cache') && !holds(j1, 'store'))
   assert.ok(j1.brief.indexOf(TOPIC.loader.find) < j1.brief.indexOf(TOPIC.cache.find))
   assert.ok(holds(j2, 'store') && !holds(j2, 'loader') && !holds(j2, 'cache'))
+})
+
+// --- what the asking session read, and the digest it reads back --------------------------------
+
+test("what the session already read reaches the planner, and coverage declares the plan left it to that reading", async (t) => {
+  const { rig, result } = await runSurvey(t, basicScript(), { read: 'READ-7d2 src/loader/index.mjs resolves through one table' })
+  assert.ok(on(rig, 'plan')[0].brief.includes('READ-7d2 src/loader/index.mjs resolves through one table'))
+  assert.ok(cov(result).declared.some((l) => l.includes("the session's own reading")), JSON.stringify(cov(result).declared))
+})
+
+test('the context leads with a digest of every topic in the plan order', async (t) => {
+  const { result } = await runSurvey(t, fullScript())
+  const context = readFileSync(result.context, 'utf8')
+  assert.ok(context.startsWith('DIGEST'), context.slice(0, 200))
+  assert.ok(context.indexOf('## loader') < context.indexOf('## store'), context.slice(0, 600))
+  assert.ok(context.indexOf('## store') < context.indexOf('EVIDENCE ITEMS'), context.slice(0, 600))
 })

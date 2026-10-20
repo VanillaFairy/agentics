@@ -201,6 +201,7 @@ test('a changed find starts a new session briefed with the journal', async (t) =
 // ------------------------------------------------------------------ rounds
 
 const C = { path: 'src/c.mjs', line: 1, note: 'the third' }
+const D = { path: 'src/d.mjs', line: 2, note: 'the fourth' }
 const callsIn = (r) => openCalls(join(searchDir(r.dir, 'locate'), 'calls.jsonl'))
 
 test('the opening and every search role carry one stop line, which says nothing of pages', () => {
@@ -211,46 +212,75 @@ test('the opening and every search role carry one stop line, which says nothing 
   assert.ok(STOP_LINE.includes('as soon as a tool shows it relevant'), STOP_LINE)
 })
 
-test('a round that added hits is followed by a fresh round briefed with the hits so far', async (t) => {
-  const r = rig(t, { 'scout||locate': [hitTurn([A]), scoutStep({ hits: [B] }), closingRound()] })
+test('a round that widened the search is followed by a fresh round briefed with the hits so far', async (t) => {
+  const r = rig(t, { 'scout||locate': [hitTurn([A, B]), scoutStep({ hits: [C] }), closingRound()] })
   const out = await repo(r)
   const [first, second] = r.runner.starts
   assert.equal(second.resume, false)
   assert.notEqual(second.session, first.session)
   assert.ok(second.stdin.endsWith(roundBrief(callsIn(r).filter((c) => c.session === first.session))), second.stdin)
   assert.ok(second.stdin.includes('- src/a.mjs:3 — the adder'), second.stdin)
-  assert.deepEqual(out.hits, [A, B])
+  assert.deepEqual(out.hits, [A, B, C])
 })
 
 test('the search ends on the first round that adds no new hit', async (t) => {
-  const r = rig(t, { 'scout||locate': [hitTurn([A]), scoutStep({ hits: [{ ...A, note: 'again' }] }), scoutStep({ hits: [B] })] })
+  const r = rig(t, { 'scout||locate': [hitTurn([A, B]), scoutStep({ hits: [{ ...A, note: 'again' }] }), scoutStep({ hits: [C] })] })
   const out = await repo(r)
   assert.equal(r.runner.starts.length, 2)
+  assert.equal(out.status, 'done')
+  assert.deepEqual(out.hits, [A, B])
+})
+
+test('a round whose hits all land in files earlier rounds hit ends the search', async (t) => {
+  const r = rig(t, { 'scout||locate': [hitTurn([A, B]), scoutStep({ hits: [{ ...A, line: 9, note: 'a re-check' }] }), scoutStep({ hits: [C] })] })
+  const out = await repo(r)
+  assert.equal(r.runner.starts.length, 2)
+  assert.equal(out.status, 'done')
+  assert.deepEqual(out.rounds.map((x) => x.added), [2, 0])
+  assert.deepEqual(out.hits, [A, B, { ...A, line: 9, note: 'a re-check' }])
+})
+
+test('a round that hits one new file ends the search', async (t) => {
+  const r = rig(t, { 'scout||locate': [hitTurn([A]), scoutStep({ hits: [B] })] })
+  const out = await repo(r)
+  assert.equal(r.runner.starts.length, 1)
   assert.equal(out.status, 'done')
   assert.deepEqual(out.hits, [A])
 })
 
-test('a round whose hits all land in files earlier rounds hit ends the search', async (t) => {
-  const r = rig(t, { 'scout||locate': [hitTurn([A]), scoutStep({ hits: [{ ...A, line: 9, note: 'a re-check' }] }), scoutStep({ hits: [B] })] })
+test('a round whose scout declares nothing unsearched ends the search', async (t) => {
+  const r = rig(t, { 'scout||locate': [hitTurn([A, B], { unsearched: [] }), scoutStep({ hits: [C, D] })] })
   const out = await repo(r)
-  assert.equal(r.runner.starts.length, 2)
+  assert.equal(r.runner.starts.length, 1)
   assert.equal(out.status, 'done')
-  assert.deepEqual(out.rounds.map((x) => x.added), [1, 0])
-  assert.deepEqual(out.hits, [A, { ...A, line: 9, note: 'a re-check' }])
+  assert.deepEqual(out.coverage, { rounds: 1, last_added: 2, skipped: '' })
+})
+
+test('a stalled round that declares nothing unsearched still earns another when it widened the search', async (t) => {
+  const r = rig(t, { 'scout||locate': [scoutStep({ calls: [grepRecord([[A.path, A.line], [B.path, B.line]]), stalledRecord()], hits: [A, B], unsearched: [] }), closingRound()] })
+  await repo(r)
+  assert.equal(r.runner.starts.length, 2)
+})
+
+test('a later round is briefed with where the last one did not look', async (t) => {
+  const r = rig(t, { 'scout||locate': [hitTurn([A, B], { unsearched: ['vendor/', 'the CLI entry'] }), closingRound()] })
+  await repo(r)
+  const second = r.runner.starts[1]
+  assert.ok(second.stdin.includes(['## Where the last round did not look', '', '- vendor/', '- the CLI entry'].join('\n')), second.stdin)
 })
 
 test('a dollar budget stops the search in a later round', async (t) => {
-  const r = rig(t, { 'scout||locate': [{ ...hitTurn([A]), cost_total: 0.6 }, { status: 'failed', cause: 'budget', cost_total: 0.5 }, closingRound()] })
+  const r = rig(t, { 'scout||locate': [{ ...hitTurn([A, B]), cost_total: 0.6 }, { status: 'failed', cause: 'budget', cost_total: 0.5 }, closingRound()] })
   const out = await repo(r, { budget: 1 })
   assert.equal(r.runner.starts.length, 2)
   assert.equal(valueAfter(r.runner.starts[1].args, '--max-budget-usd'), '0.4')
   assert.equal(out.status, 'budget')
   assert.equal(out.cost, 1.1)
-  assert.deepEqual(out.hits, [A])
+  assert.deepEqual(out.hits, [A, B])
 })
 
 test('a relaunch mid-round resumes that round with nothing re-sent, the finished rounds kept', async (t) => {
-  const r = rig(t, { 'scout||locate': [hitTurn([A]), { status: 'failed', cause: 'host_error', calls: [hitRecord(B)] }] })
+  const r = rig(t, { 'scout||locate': [hitTurn([A, B]), { status: 'failed', cause: 'host_error', calls: [hitRecord(C), hitRecord(D)] }] })
   await repo(r)
   const [first, second] = r.runner.starts
   const again = r.again({ 'scout||locate': [scoutStep(), closingRound()] })
@@ -258,22 +288,23 @@ test('a relaunch mid-round resumes that round with nothing re-sent, the finished
   const [resumed] = again.runner.starts
   assert.equal(valueAfter(resumed.args, '--resume'), second.session)
   assert.equal(resumed.stdin, CUT_OFF)
-  assert.deepEqual(callsIn(r).filter((c) => c.tool === 'hit').map((c) => [c.session, c.hit]), [[first.session, A], [second.session, B]])
-  assert.deepEqual(out.hits, [A, B])
+  assert.deepEqual(callsIn(r).filter((c) => c.tool === 'hit').map((c) => [c.session, c.hit]),
+    [[first.session, A], [first.session, B], [second.session, C], [second.session, D]])
+  assert.deepEqual(out.hits, [A, B, C, D])
   assert.equal(out.coverage.rounds, 3)
 })
 
-test('coverage carries the rounds run, what the last added and what the scout says it skipped', async (t) => {
-  const r = rig(t, { 'scout||locate': [{ ...hitTurn([A, B]), cost_total: 0.25 }, { ...scoutStep({ hits: [C] }), cost_total: 0.5 }, closingRound('did not read docs/')] })
+test('coverage carries the rounds run, what the last added and where the scout says it did not look', async (t) => {
+  const r = rig(t, { 'scout||locate': [{ ...hitTurn([A, B]), cost_total: 0.25 }, { ...scoutStep({ hits: [C, D] }), cost_total: 0.5 }, scoutStep({ unsearched: ['docs/', 'vendor/'] })] })
   const out = await repo(r)
-  assert.deepEqual(out.coverage, { rounds: 3, last_added: 0, skipped: 'did not read docs/' })
-  assert.deepEqual(out.rounds, [{ added: 2, cost: 0.25 }, { added: 1, cost: 0.5 }, { added: 0, cost: 0 }])
+  assert.deepEqual(out.coverage, { rounds: 3, last_added: 0, skipped: 'docs/; vendor/' })
+  assert.deepEqual(out.rounds, [{ added: 2, cost: 0.25 }, { added: 2, cost: 0.5 }, { added: 0, cost: 0 }])
 })
 
 test('coverage of a search the budget stopped names what its last round added', async (t) => {
-  const r = rig(t, { 'scout||locate': [{ ...hitTurn([A]), cost_total: 0.6 }, { status: 'failed', cause: 'budget', cost_total: 0.5, calls: [hitRecord(B)] }] })
+  const r = rig(t, { 'scout||locate': [{ ...hitTurn([A, B]), cost_total: 0.6 }, { status: 'failed', cause: 'budget', cost_total: 0.5, calls: [hitRecord(C)] }] })
   const out = await repo(r, { budget: 1 })
-  assert.deepEqual(out.coverage, { rounds: 2, last_added: 1, skipped: 'searched' })
+  assert.deepEqual(out.coverage, { rounds: 2, last_added: 1, skipped: '' })
 })
 
 // ------------------------------------------------------------------ server specs, WebSearch, pages

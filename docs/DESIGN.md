@@ -97,8 +97,9 @@ preflight reads before anything runs and the adopt check reports, [Outside work]
 Work escalates on a state, never on a count. The states are three: a decision only the user can
 make; a claim an independent ruling (L3) finds cannot be met as written; and no progress — the
 same state again, or an independent ruling that a loop is not converging. A count may decide when
-to ask; it never decides the answer. A search ends when a round of its scout hits no new place (a file, commit or URL no earlier round
-hit), or on a round the host or a dollar budget the user set stopped. The guard's window is the one count in a search: a stall detector the
+to ask; it never decides the answer. A search ends on a round of its scout that stops widening it — one that hits fewer than two new
+places (a file, commit or URL no earlier round hit) — on a round whose scout declares nothing left unsearched with its guard quiet,
+or on a round the host or a dollar budget the user set stopped. The guard's window is the one count in a search: a stall detector the
 tool server owns, never a cap on calls that find something new. An external stop — a usage limit, a host error, a crash, the user — leaves work in progress, resumed from the records.
 
 *Enforced by:* the `no-turn-caps` lint rule (no turn or spend cap on a dispatch, over the programs,
@@ -129,8 +130,8 @@ judge, and `dispatchJudge` in `lib/programs/common.mjs`, which refuses to put a 
 session that produced it or any session of its thread; the `no-self-verdict` lint rule over
 `lib/schemas.mjs` (producer and searcher schemas carry no ruling fields, and a judge's schema rules
 per unit); `verdictOf` in `lib/verdict.mjs`, where approval is every unit ruled and none ruled
-blocking; a search, the one place a producer ends its own work: a scout round that hits no new place is a
-declaration that ends the search and can make a program's coverage complete, and never enters a
+blocking; a search, the one place a producer ends its own work: a scout round that stops widening the
+search, or whose scout declares nothing left unsearched, is a declaration that ends the search and can make a program's coverage complete, and never enters a
 verdict; its hits are judged where they are consumed — by the probers, the survey judges, the
 assessor and the reviews ([Searches](#searches)).
 
@@ -207,7 +208,7 @@ anything, and an unknown flag with `unknown_flag` — except `run.mjs` and `boun
 refuse an unknown flag as `bad_arg` (below, and [Session calls](#session-calls)): `handleArgs`,
 `argProblem` and `textFlag` in `lib/store.mjs`, each CLI declaring its flags' kinds once. A
 conclusion or any other text a session hands a program beyond one line goes as a file
-(`survey --prior-file`, `--question-file`, `--criteria-file`, …), never as a flag's value.
+(`survey --prior-file`, `--read-file`, `--question-file`, `--criteria-file`, …), never as a flag's value.
 
 **Why:** a model that retypes bytes is slow, costly and lossy in proportion to their length, and
 a checksum over what it typed only turns the loss into a retry.
@@ -582,7 +583,9 @@ call, which then gets `cut_off` and its brief. A call's `mcpConfig` may be a fun
 session, which the runner calls with the session each CLI start runs under.
 
 **A return too large for one response** says so (`more: true`); the runner resumes the same
-session for the rest and stores the parts as one return. Each part is recorded `returned {status:
+session for the rest and stores the parts as one return. Only a judge's schema holding an array
+offers `more` (`long` in `lib/schemas.mjs`): a part progresses only by adding array elements, so a
+schema of strings alone, a searcher's included, has nothing a continuation could add. Each part is recorded `returned {status:
 part}` and stored nowhere; the call that completes the return stores the merged whole and only then
 records `returned`. A part that adds no array element the merged return lacks and fills no field
 the merged return holds empty ends the call failed, `no_progress`: a reworded field is not
@@ -713,8 +716,10 @@ and stored by the runner. A producer returns its status (`done`, `done_with_conc
 [replanning return](#replanning)) with what it established, tried and needs as text in the same
 return; with its gotchas, the mutations it declares and its concerns. A status is the only way a
 producer asks for anything ([Conversations](#conversations)). A searcher returns the `search`
-schema, `{summary}`: its findings are the `hit` records the tool server journaled as it went. It
-declares no coverage and no stop reason: code observes what its tools ran ([Searches](#searches)). A judge returns its
+schema, `{summary, unsearched}`: its findings are the `hit` records the tool server journaled as it
+went, and `unsearched` declares where the find pointed that it did not look. That declaration steers
+whether another round runs and is carried as the scout's own word; everything else in its coverage
+code observes from what its tools ran ([Searches](#searches)). A judge returns its
 rulings, one per unit, and its findings; an auditor, the mutations it declares and a ruling per
 unit, with no status. A program reads the stored return, and nothing reads an agent's word from
 anywhere else.
@@ -1920,7 +1925,7 @@ A search is how a program learns what a tree, its history or the web says about 
 cannot answer from what it holds: a probe's locate, a survey topic and its history and docs, a
 solutions sweep's repository scan and its researchers. Every one is one call of `search`
 (`lib/programs/search/search.mjs`): rounds of a scout, each a fresh session that finds what it was
-asked to find over code's tools on a pinned tree, until a round hits no new place.
+asked to find over code's tools on a pinned tree, until a round stops widening the search.
 
 ```
 program ──► search(ctx, {name, domain, find, material, scope, subject, labels, budget, tree})
@@ -1934,8 +1939,10 @@ program ──► search(ctx, {name, domain, find, material, scope, subject, lab
               │   every record goes to calls.jsonl, tagged with its session, before the answer
               │   loop guard: 12 tool calls in a row in this session that show nothing new → stalled
               ▼
-        return {summary}   →   a new place hit?    ── yes ──► next round, a fresh session
+        return {summary, unsearched}  →  two or more new places hit,
+              │                          and not "nothing unsearched"?  ── yes ──► next round, a fresh session
               │ no                                         briefed with the journal's hits and calls
+              │                                            and where the last round did not look
               ▼
         result {name, status, why, summary, hits[], calls[], cost, rounds[], coverage, …}
 ```
@@ -1970,9 +1977,10 @@ on its own: no code resolves the material, seeds the search or ranks what it rea
 find what the charge names, cite only lines a tool showed, record each finding with `hit` as soon as a
 tool shows it relevant, not in one batch at the end (a finding only in the summary is lost), stop
 when what was asked is found or there is nothing more to look at, and return a one-paragraph summary
-of what it found and where it did not look. Every role and the opening brief carry the same
+of what it found and `unsearched`, each place the find names that it did not look at — empty only
+when it looked at all of it. Every role and the opening brief carry the same
 stop line (`STOP_LINE` in `lib/briefs/search.mjs`). Each returns the `search` schema,
-`{summary}`, which holds no ruling field (L3). Each role's tools hold `mcp__search__hit`; the
+`{summary, unsearched}`, which holds no ruling field (L3) and offers no `more`. Each role's tools hold `mcp__search__hit`; the
 doc-researcher also holds the host's `WebSearch`.
 
 **The tree.** Every search runs over one `{root, sha}`. A standalone program's is the checkout it
@@ -2049,15 +2057,19 @@ spec](#search-tool-server-spec)) carrying its own `session`.
   the call log as a `websearch` record, with the session of the dispatch that ran it, so the calls
   and the resume brief show it.
 
-**Rounds.** One scout session decides when it is done, and what it leaves unread it does not say
-in a way code can act on. So `search` runs rounds: round `n` is one dispatch, key round `n`, and a
-round after the first starts the thread's next session (`fresh`), briefed with `roundBrief`: the
-hits and calls every earlier round journaled, and the ask to find what they missed. The search
-ends on the first round whose sessions hit no new place: a path hit's place is its file, any other
-hit's its key (`placesOf`). The files in the subject bound a search's places, so a scout
-re-checking files already hit, each re-check a new `path:line`, does not earn another round. A round is more
-searching, never a re-check of the hits before it: nothing rules on them (L3). No count ends the
-rounds (L2); a dollar budget caps every round's spend together. A round's hits are the journal's
+**Rounds.** One scout session decides when it is done and declares where it did not look. So
+`search` runs rounds: round `n` is one dispatch, key round `n`, and a round after the first starts
+the thread's next session (`fresh`), briefed with `roundBrief`: the hits and calls every earlier
+round journaled, where the last round's scout said it did not look, and the ask to find what they
+missed. A round earns the next only while it widens the search (`earnsAnother`): it hit two or more
+places no earlier round hit — a path hit's place is its file, any other hit's its key (`placesOf`) —
+and its scout did not declare nothing unsearched with its guard quiet. A round that lands on one new
+file deepens a place already found, and rounds buy breadth; a scout that returns clean claiming it
+looked everywhere the find names has nothing for a fresh session to cover. The files in the subject
+bound a search's places, so a scout re-checking files already hit, each re-check a new `path:line`,
+does not earn another round. A round is more searching, never a re-check of the hits before it:
+nothing rules on them (L3). No counter the loop keeps ends the rounds (L2); a dollar budget caps
+every round's spend together. A round's hits are the journal's
 hits whose `session` is one of the round's.
 
 **Resume.** The journal is the artifact. Each round runs one dispatch through `dispatch`, with
@@ -2091,7 +2103,7 @@ a search can overrun its budget by that process's spend.
 **The result.** `{name, status, why, summary, hits[], calls[], cost, tree, pages, sessions[],
 rounds[], coverage}` ([Search result](#search-result)):
 
-- `done`: the last round's scout returned with no new place hit and the guard never fired in that round.
+- `done`: the last round's scout returned, the guard quiet in that round, and the round did not earn another.
   `stalled`: it returned after the guard fired in that round, `why` `nothing new in the last 12
   calls`. `budget`: the cap stopped it, `why` the
   spend against the budget. `failed`: the host failed past `dispatch`'s waits, `why` the cause.
@@ -2102,17 +2114,18 @@ rounds[], coverage}` ([Search result](#search-result)):
   (`dispatchJudge`, L3).
 - `rounds` is each round's `{added, cost}`: the new places it hit and the dollars recorded on it.
   `coverage` is `{rounds, last_added, skipped}`: how many rounds ran, what the last added, and the
-  last returned scout's summary, its own word on where it did not look. `summary` is that text too.
+  last returned scout's `unsearched` joined by `; `, its own word on where it did not look. `summary`
+  is that scout's summary.
 
 **Coverage.** Each program builds its coverage (L1) from its searches' results, through
 `lib/programs/search/consume.mjs`. `coverageLine` names the search, its status, its counts of calls
 and hits (`no hits` for none), its rounds and what the last added (from `coverage`), its why, and,
-when the last returned scout said anything, that text labelled as the scout's own word, its
+when the last returned scout named anything unsearched, that labelled as the scout's own word, its
 whitespace folded to one line. A caller that reads only the line sees a search that ran many rounds,
 or one whose scout says it left something unlooked at:
 
 ```
-locate: done, 41 calls, 23 hits, 11 rounds (the last added 0); the scout's own word: did not open vendor/
+locate: done, 41 calls, 23 hits, 4 rounds (the last added 1); the scout's own word: vendor/
 scout:loader: done, 1 call, no hits, 1 round (the last added 0)
 history: stalled, 30 calls, 2 hits, 2 rounds (the last added 1): nothing new in the last 12 calls
 research:crates: budget, 7 calls, 1 hit, 1 round (the last added 1): spent $1.02 of its $1 budget
@@ -2132,10 +2145,10 @@ pinned page. It also counts the hits and the unresolved ones.
 
 **The laws.** L1: a search's coverage is code's own record — its status from the runner and the
 guard, its calls, hits and rounds from the journal — with the scout's word on what it skipped
-carried as the scout's, never as code's. L2: a search ends when a round hits no new place, or on a
-round the host or a budget the user set stopped; `STALL_WINDOW` is the
+carried as the scout's, never as code's. L2: a search ends on a round that stops widening it or
+whose scout declares nothing unsearched, or on a round the host or a budget the user set stopped; `STALL_WINDOW` is the
 one count, a stall detector the server owns, never a cap on calls that find something new. L3: a
-round that adds nothing is a declaration: it ends the search and can make a program's coverage complete, but
+round that ends the search is a declaration: it ends the search and can make a program's coverage complete, but
 it enters no verdict; the work that consumes the hits is judged where it always is. L4: the tools
 read the pinned tree and write nothing but the run's own files, and the user's checkout, index and
 stash are never touched. P2: the tools, the journal, the guard, every brief and every dedup are
@@ -2197,16 +2210,17 @@ stored:
    what it rests on is stale and suspect when it is suspect. Untouched anchors are **standing**; a
    changed one is **suspect**. A line that only gains or loses its final newline is no hunk under
    `--ignore-cr-at-eol`, so it changes nothing.
-2. **Re-judge.** Suspect items go, up to twenty per call, to an analyst on `haiku`, each claim and
+2. **Re-judge.** Suspect items whose anchors lie on the survey's ground (`bearsOn`) go, up to twenty per call, to an analyst on `haiku`, each claim and
    each changed anchor's old and new text in its prompt. It returns a ruling per id, and
    `recordRulings` records one per id it was handed: an id with no ruling, or one off the ladder, is
    `unsure`. `holds` re-anchors the item where the text now is; `fails` and `unsure` make it
    **stale**, because an unsure check is never a pass. This is the stated exception to the
-   intelligence tier: the question is narrow, and any doubt routes to the full-tier survey, so being
-   too cheap can cost money but never correctness. Whether text changed is always the diff's call;
+   intelligence tier: the question is narrow, and any doubt makes the item stale, never standing, so
+   being too cheap can cost money but never correctness. Whether text changed is always the diff's call;
    the model rules only on whether the change matters.
-3. **Narrowed re-survey.** The survey searches the stale items' topics again, with every standing
-   item handed in as known ground, and nothing else is bought again. Its new items make new claims,
+3. **Narrowed re-survey.** The survey offers the stale items' topics to its planner, which searches
+   again those that bear on its question, with every standing item handed in as known ground, and
+   nothing else is bought again. Its new items make new claims,
    so they take new ids and the stale items stay in the log; a stale item is **superseded** once a
    standing item of the same topic, sharing a ground path with it, was recorded at a higher `seq`.
    A superseded item is neither reused nor searched again.
@@ -2226,36 +2240,46 @@ itself is always the main checkout's `.agentics/.state/evidence/`.
 The `survey` program gathers evidence for one question and never concludes.
 
 1. **Reuse.** When the caller names its `ground`, the program reads the items of earlier surveys
-   whose ground overlaps it (`itemsFor`) into its own log as a `step` (`pool`), and again after the
-   re-judge (`pool:after`) when any was suspect, so a relaunch sees what the run saw. Standing
-   items become known ground; suspect ones are re-judged, twenty to a call, the calls side by side;
-   stale ones, and any not standing after the re-judge, send their topic to be searched again,
-   with what the topic used to claim in its scout's prompt — unless a newer standing item
-   superseded them. A re-judge that fails records nothing, so its items' topics are searched again.
+   whose ground overlaps it (`itemsFor`) and whose anchors lie on it (`bearsOn`: a span's path or
+   a query's scope overlapping a ground path; an item with neither, by its own ground) into its own
+   log as a `step` (`pool`), and again after the re-judge (`pool:after`) when any was suspect, so
+   a relaunch sees what the run saw. An item grounded broadly whose anchors all lie elsewhere is
+   neither re-judged nor reused. Standing items become known ground; suspect ones are re-judged,
+   twenty to a call, the calls side by side; stale ones, and any not standing after the re-judge,
+   make their topic a **stale candidate**, carrying what it used to claim — unless a newer standing
+   item superseded them. A re-judge that fails records nothing, so its items' topics are candidates.
    A pool that cannot be read fails the `pool` channel, and nothing is reused; one that cannot be
-   read again after the re-judge fails it too, and every item that was suspect has its topic
-   searched again.
-2. **Plan.** One analyst decomposes the question into topics, names each topic's subtree and the
-   common ground, and is told what the pool already establishes and which topics are searched
-   again regardless; it plans only what the pool leaves open, and returns the plan. A pool that
-   answers the question buys no search. A plan that fails searches nothing and fails the `plan`
-   channel, the topics due to be searched again named as dropped; the context still holds the
-   standing items the run reused.
+   read again after the re-judge fails it too, and every item that was suspect makes a candidate.
+2. **Plan.** One analyst decomposes the question into topics, listed in the order the question
+   raises them, names each topic's subtree and the common ground's lines, and is told what the pool
+   already establishes, what the asking session has already read (`--read-file`), and each stale
+   candidate with what it claimed. It plans only what the pool and the session's reading leave open,
+   and adopts a stale candidate only when it bears on the question, by planning a topic under its
+   key; that topic is searched again (`again`), its find carrying what it used to claim. A candidate
+   the plan leaves out is not searched: the result lists it in `passed`, and a `declared` line names
+   it. A plan given the session's reading declares that it left that reading to the session. A pool
+   that answers the question buys no search. A plan that fails searches nothing and fails the `plan`
+   channel, the stale candidates named as dropped; the context still holds the standing items the
+   run reused.
 3. **Search.** Each topic is one search ([Searches](#searches)) named `scout:<topic>`, run by the
    scout over the survey's tree, its find the topic, its scope the roots and its subject the topic's subtree (else the
    roots). History and docs run alongside when the plan has a question for them, as searches named `history` (the
    historian, the `history` domain) and `docs` (the doc-researcher, the `web` domain), each failing
-   alone. Every search shares one material: the question, the common ground as planned, and inside
-   an execution the files changed between the execution's base and its pinned tree (`changed`).
+   alone. Every search shares one material: the question, the common ground, and inside an
+   execution the files changed between the execution's base and its pinned tree (`changed`). The
+   common ground is the plan's `{path, start?, end?}` ranges read once by code from the searched
+   tree (`rangeExcerpts` in `lib/citations.mjs`, journaled as the step `common`) — numbered lines
+   under each path, a path alone read whole, ranges of one file merged, what cannot be read named —
+   and labelled as already read, so no scout or judge reads those lines again.
 4. **Excerpts.** Judges are dealt first: one analyst per 60 path hits the topic searches
    recorded, at least one and never more than one per topic; `pace: fast` buys one per topic. A
    topic weighs its search's path hits, none when it has none, and topics go
    heaviest first to the lightest judge, a tie to the judge holding fewer topics. Each judge holds
-   its topics in topic order (the topics searched again first, then the plan's), and the judges are
+   its topics in the plan's order, and the judges are
    numbered (`judge:<n>`, from 1) in the order of each one's first topic. Each judge's prompt holds
    every one of its topics' searches as `hitExcerpts` renders it ([Searches](#searches)) — its
    status and why, its summary, its hits with their notes and the lines they point at, read from
-   the searched tree's root — with each topic's search status and the common ground as planned.
+   the searched tree's root — with each topic's search status and the common ground's lines.
 5. **Judge.** Each analyst, **without search tools**, returns items — one claim each, with the
    anchor its kind needs — risks, and a ruling per topic it holds, `anchored` or `unanchored`; a
    topic's latest ruling stands. A judge that lacked evidence says so in its own return; judges
@@ -2268,9 +2292,13 @@ The `survey` program gathers evidence for one question and never concludes.
    than the one before records nothing, so every topic the judge was given items for is listed in
    `unrecorded`. A judge is never continued as a searcher is: beyond the runner's own resumes
    within a dispatch, its session is resumed for its refusals alone.
-7. **Context.** The program writes the survey's one file: every item it returns — the standing
-   items over the caller's ground, this run's own among them where they overlap it, then every other
-   item its records stored — with the judges' risks and the history and docs searches' findings. The
+7. **Context.** The program writes the survey's one file. It opens with a **digest** of at most
+   `DIGEST_BYTES` (10 KB, `digestOf` in `lib/evidence.mjs`): every topic in the plan's order, then
+   any other an item names, each with its counts and as many of its claims, one line each with its
+   first anchor, as its equal share holds, every claim left out counted under its topic. Then every
+   item it returns — the standing items over the caller's ground that bear on it, this run's own
+   among them where they overlap it, then every other item its records stored — with the judges'
+   risks and the history and docs searches' findings. The digest lands in the file's first part. The
    session, or the planner's brief, reads it; the result lists the reused items first, then this
    run's, by topic.
 
@@ -3899,7 +3927,7 @@ skipped}}` (`coverageLine` writes `coverage` into the line): `why` says how it e
 each once ([Call log](#call-log)); `calls` one line per journaled call, hits left out; `cost` the
 dollars recorded on every round's `returned` entries; `pages` the run's `pages/`
 directory; `sessions` every session the search's thread ran in; `rounds` each round's new places and dollars;
-`coverage` the rounds run, the hits the last added, and `skipped`, the scout's summary.
+`coverage` the rounds run, the hits the last added, and `skipped`, the last returned scout's `unsearched` joined by `; ` (`''` when it named none).
 
 ### Program results
 
@@ -3928,12 +3956,14 @@ directory; `sessions` every session the search's thread ran in; `rounds` each ro
 - **`survey`** — takes `question_file` (required), `roots` (default `.`), `notes` (or `notes_file`),
   `prior_file` (a
   file the session wrote: what an earlier pass concluded, which the planner reads and no searcher is
-  shown), `max_topics` (default 8), `intelligence` (`low | normal | max`, default `normal`), `pace`
+  shown), `read_file` (a file the session wrote: what it has already read itself, which the planner
+  plans around and no searcher is shown), `max_topics` (default 8), `intelligence` (`low | normal | max`, default `normal`), `pace`
   (`frugal | balanced | fast`, default `balanced`), `ground`, `search_budget` (`--search-budget`, dollars per search; 0 none). Returns `{question, topics[{key,
-  subtree, forced}], ground, items[{id, topic, kind, state}], reused[], unrecorded[], context,
-  risks[{topic, n}], history, docs, coverage}`: `context` is the path of the one file holding every
-  item it returns in full, the judges' risks and the history and docs searches' findings; a `forced`
-  topic is searched again for its stale items; `history` and `docs` are `{status, hits}` — the
+  subtree, again}], ground, items[{id, topic, kind, state}], reused[], unrecorded[], passed[], context,
+  risks[{topic, n}], history, docs, coverage}`: `context` is the path of the one file holding its
+  digest, then every item it returns in full, the judges' risks and the history and docs searches'
+  findings; an `again` topic is a stale candidate the plan adopted, searched again for its stale
+  items; `passed` the stale candidates the plan left out; `history` and `docs` are `{status, hits}` — the
   channel search's status and its count of hits — or null when the plan asked no such question.
 - **`probe`** — takes `artifact` (required), `roots` (default `.`), `context` (or `context_file`), `per_axis`,
   `since`, `intelligence` (`low | normal | max`, default `normal`), `search_budget` (as the survey's). Returns `{artifact, axes[{key, source}], analysts[[axis]], shared_ground{resolved, cited,

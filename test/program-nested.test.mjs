@@ -182,13 +182,13 @@ test('a scoped probe returns what the unscoped probe returns for the same script
 
 // --- M10: the pool read after the re-judge -----------------------------------------------------
 
-test('a pool unreadable after the re-judge is reported, and its suspect items searched again', async (t) => {
+test('a pool unreadable after the re-judge is reported, and its suspect items offered to the plan again', async (t) => {
   const base = rigFor(t, { files: SURVEY_FILES })
   const [id] = seed(base.repo, [seedItem('loader', 'SUSPECT-a77 the loader reads line eleven')])
   editLine(base.repo, 11, EDIT)
   const rig = base.relaunch({
     'analyst||rejudge:1': [{ output: { rulings: [{ id, ruling: 'holds', why: 'it holds' }] } }],
-    ...surveyScript({ planned: [], searched: ['loader'] }),
+    ...surveyScript({ planned: [topic('loader')] }),
   })
   // The pool turns unreadable once the rulings are journaled and readable again once the second read is.
   const file = evidenceItemsPath(rig.repo)
@@ -207,7 +207,7 @@ test('a pool unreadable after the re-judge is reported, and its suspect items se
   }
   const result = await survey(programContext({ intelligence: 'normal', ...rig.ctx, log }), surveyArgs({ ground: ['src'] }))
   assert.ok(saved !== null, 'the fixture: the rulings were journaled')
-  assert.equal(rig.calls.filter((c) => c.thread.key === 'scout:loader').length, 2, 'a round that found and one that found nothing new')
+  assert.deepEqual(result.topics.map((x) => [x.key, x.again]), [['loader', true]])
   assert.ok(result.coverage.failed_channels.includes('pool'), JSON.stringify(result.coverage))
   assert.ok(result.coverage.unreached.some((l) => l.includes('pool') && l.includes('re-judge')), JSON.stringify(result.coverage.unreached))
   assert.equal(result.coverage.complete, false)

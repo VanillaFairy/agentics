@@ -269,7 +269,7 @@ test('the repository scan is one scout call on thread repo, its brief holding th
   const roots = ['packages/parser', 'tools/cfg']
   const { rig } = await sweep(t, scriptOf({ assess: DEFAULT_ASSESS }), { args: { roots } })
   const on = callsOn(rig, 'repo')
-  assert.equal(on.length, 2, 'a round that found and one that found nothing new')
+  assert.equal(on.length, 1, 'one round: it hit one file')
   assert.equal(on[0].role.name, 'scout')
   assert.deepEqual(on[0].schema, schemaOf('search'))
   const f = frameOut()
@@ -279,7 +279,7 @@ test('the repository scan is one scout call on thread repo, its brief holding th
 
 test('the repository scan runs whatever the researchers return', async (t) => {
   const { rig, result } = await sweep(t, scriptOf({ research: { npm: [FAILED] } }))
-  assert.equal(callsOn(rig, 'repo').length, 2)
+  assert.equal(callsOn(rig, 'repo').length, 1)
   assert.equal(result.counts.present, 1)
 })
 

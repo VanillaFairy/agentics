@@ -325,7 +325,7 @@ test('a locate stopped at its budget keeps its hits and is incomplete', async (t
 
 test('a locate that found nothing says no hits', async (t) => {
   const { result } = await probeIn(t, { script: scriptFor(DOC, STANDING).script })
-  assert.ok(result.coverage.declared.includes("locate: done, 0 calls, no hits, 1 round (the last added 0); the scout's own word: nothing here bears on it"), JSON.stringify(result.coverage))
+  assert.ok(result.coverage.declared.includes('locate: done, 0 calls, no hits, 1 round (the last added 0)'), JSON.stringify(result.coverage))
   assert.deepEqual(result.repo_ground, { status: 'done', hits: 0, unresolved: 0 })
 })
 

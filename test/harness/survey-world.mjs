@@ -27,7 +27,7 @@ export const TOPIC = {
   cache: { key: 'cache', find: 'FIND-cache where results are kept', subtree: 'src/cache' },
 }
 
-export const plan = ({ topics = [TOPIC.loader], common_ground = '', history_question = '', docs_question = '' } = {}) =>
+export const plan = ({ topics = [TOPIC.loader], common_ground = [], history_question = '', docs_question = '' } = {}) =>
   ({ topics, common_ground, history_question, docs_question })
 export const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 export const DOCS_URL = 'https://nodejs.org/api/modules.html'
@@ -59,7 +59,9 @@ export const basicScript = (over = {}) => ({
 })
 
 /** Every port, every searcher: two topics, common ground, both channels, one judge. */
-export const COMMON = 'COMMON-4d2e the shared helpers'
+export const COMMON = [{ path: FILE.shared, start: 3, end: 5 }]
+/** A line of the common ground, which code reads once and hands to every scout and judge. */
+export const COMMON_TEXT = 'delta line 4'
 export const HQ = 'HQ-1a2b when did the loader last change'
 export const DQ = 'DQ-3c4d what does node document about resolution'
 export const fullScript = (over = {}) => ({

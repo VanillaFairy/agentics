@@ -18,12 +18,12 @@ const chargeOf = (call) => readFileSync(call.role.systemPromptFile, 'utf8')
 test('a history question runs the historian with it, and a docs question the doc-researcher', async (t) => {
   const { rig } = await runSurvey(t, fullScript())
   const [history] = on(rig, 'history')
-  assert.equal(on(rig, 'history').length, 2)
+  assert.equal(on(rig, 'history').length, 1)
   assert.equal(history.role.name, 'historian')
   assert.deepEqual(history.schema, schemaOf('search'))
   for (const part of [HQ, Q]) assert.ok(chargeOf(history).includes(part), 'history charge holds ' + part)
   const [docs] = on(rig, 'docs')
-  assert.equal(on(rig, 'docs').length, 2)
+  assert.equal(on(rig, 'docs').length, 1)
   assert.equal(docs.role.name, 'doc-researcher')
   assert.deepEqual(docs.schema, schemaOf('search'))
   for (const part of [DQ, Q]) assert.ok(chargeOf(docs).includes(part), 'docs charge holds ' + part)
@@ -62,7 +62,7 @@ test('a stalled channel is complete, its line declared', async (t) => {
 
 test("declared holds each channel search's coverage line", async (t) => {
   const { result } = await runSurvey(t, fullScript())
-  for (const name of ['history', 'docs']) assert.ok(cov(result).declared.includes(name + ": done, 0 calls, 1 hit, 2 rounds (the last added 0); the scout's own word: nothing more"), name + ': ' + JSON.stringify(cov(result).declared))
+  for (const name of ['history', 'docs']) assert.ok(cov(result).declared.includes(name + ': done, 0 calls, 1 hit, 1 round (the last added 1)'), name + ': ' + JSON.stringify(cov(result).declared))
 })
 
 test("the result names each channel's status and its hit count, and the context holds its findings", async (t) => {

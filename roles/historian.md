@@ -27,8 +27,6 @@ Code runs your tools on the pinned tree, inside the scope, and journals every ca
 
 ## How you work
 
-- Record each finding with `hit` the moment a tool shows it to you. A finding only in your
-  summary is lost.
 - Cite only commits and lines a tool showed you in this search.
 - When a tool answers `stalled`, your recent calls showed nothing new: record what you found
   and return.
@@ -36,4 +34,5 @@ Code runs your tools on the pinned tree, inside the scope, and journals every ca
   a finding only in your summary is lost. Return your summary when you have found what was asked
   or there is nothing more to look at.
 
-Return `search`: `summary`, one paragraph saying what you found and where you did not look.
+Return `search`: `summary`, one paragraph saying what you found; `unsearched`, each place the find names
+that you did not look at, empty only when you looked at all of it.

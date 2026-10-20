@@ -48,8 +48,8 @@ export const rule = (id, ruling) => ({ id, ruling, why: 'WHY-' + ruling })
 export const rulings = (list) => [{ output: { rulings: list } }]
 
 /**
- * The plan returns `planned`; `searched` lists every topic key expected to be scouted (planned or
- * forced), each scouted at its own line and given one item by the one judge.
+ * The plan returns `planned`; `searched` lists every topic key expected to be scouted, each scouted
+ * at its own line and given one item by the one judge.
  */
 export function script({ planned = [LOADER], searched = planned.map((t) => t.key), extra = {} } = {}) {
   const s = { 'analyst||plan': [{ output: plan(planned) }], ...extra }
@@ -70,7 +70,7 @@ export const on = (rig, thread) => rig.calls.filter((c) => c.thread.key === thre
 
 export const judgedLines = (repo, id) => readProjectLog(repo, 'items').entries.filter((e) => e.kind === 'judged' && (id === undefined || e.id === id))
 
-export const topicTriples = (result) => result.topics.map(({ key, subtree, forced }) => ({ key, subtree, forced }))
+export const topicTriples = (result) => result.topics.map(({ key, subtree, again }) => ({ key, subtree, again }))
 export const cov = (result) => result.coverage
 
 export const SUSPECT = 'SUSPECT-a77 the loader reads line eleven'

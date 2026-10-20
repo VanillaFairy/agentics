@@ -27,11 +27,11 @@ import {
 
 const PROBE = '20250101-000000-probe'
 
-/** A stale item that stays in the pool: cited first, then ruled fails. */
-function makeStale(repo, id) {
-  const cited = recordCites(repo, 'e1', 'f', { items: [id] })
+/** Stale items that stay in the pool: cited first, in one cite, then each ruled fails. */
+function makeStale(repo, ...ids) {
+  const cited = recordCites(repo, 'e1', 'f', { items: ids })
   assert.equal(cited.ok, true, JSON.stringify(cited))
-  assert.equal(recordJudgement(repo, id, 'fails').ok, true)
+  for (const id of ids) assert.equal(recordJudgement(repo, id, 'fails').ok, true)
 }
 
 /** A rig whose pool `setup` seeds, then the survey run over a relaunched context. */
@@ -106,56 +106,68 @@ test('an item off the ground is not reused', async (t) => {
 
 // --- stale topics -----------------------------------------------------------------------------
 
-test('a stale topic is searched again, its search told what it used to claim', async (t) => {
+const CACHE = { key: 'cache', find: 'FIND-cache what the cache keeps now', subtree: 'src/cache' }
+
+test('a stale topic the plan adopts is searched again, its search told what it used to claim', async (t) => {
   const { rig, result } = await surveyOver(t, (repo) => {
     const [id] = seed(repo, [seedItem({ topic: 'cache', claim: STALE, ground: ['src/cache'] })])
     makeStale(repo, id)
     assert.equal(stateOf(repo, id), 'stale')
-  }, script({ planned: [LOADER], searched: ['cache', 'loader'] }))
-  assert.deepEqual(topicTriples(result)[0], { key: 'cache', subtree: 'src/cache', forced: true })
-  const scout = on(rig, 'scout:cache')
-  assert.equal(scout.length, 2, 'a round that found and one that found nothing new')
-  const charge = readFileSync(scout[0].role.systemPromptFile, 'utf8')
-  assert.ok(charge.includes(STALE), 'the claim')
-  assert.ok(charge.includes(A + ':10-12'), 'the span')
+  }, script({ planned: [CACHE, LOADER] }))
+  assert.deepEqual(topicTriples(result)[0], { key: 'cache', subtree: 'src/cache', again: true })
+  const charge = readFileSync(on(rig, 'scout:cache')[0].role.systemPromptFile, 'utf8')
+  for (const part of [CACHE.find, STALE, A + ':10-12']) assert.ok(charge.includes(part), part)
   const judges = judgeCalls(rig).filter((c) => c.round === 1)
-  assert.ok(judges.length > 0)
   assert.ok(judges.some((c) => c.brief.includes(STALE)), 'a judge holds the claim')
+  assert.deepEqual(result.passed, [])
 })
 
-test('a stale item grounded at the repository is searched again repository-wide', async (t) => {
-  const { result } = await surveyOver(t, (repo) => {
-    const [id] = seed(repo, [seedItem({ topic: 'everywhere', claim: STALE, ground: ['.'] })])
+test('a stale topic the plan leaves out is not searched, and coverage names it', async (t) => {
+  const { rig, result } = await surveyOver(t, (repo) => {
+    const [id] = seed(repo, [seedItem({ topic: 'cache', claim: STALE, ground: ['src/cache'] })])
     makeStale(repo, id)
-    assert.equal(stateOf(repo, id), 'stale')
-  }, script({ planned: [], searched: ['everywhere'] }))
-  assert.deepEqual(topicTriples(result).find((x) => x.key === 'everywhere'), { key: 'everywhere', subtree: '', forced: true })
+  }, script({ planned: [LOADER] }))
+  assert.deepEqual(scoutThreads(rig), ['scout:loader'])
+  assert.deepEqual(result.passed, ['cache'])
+  assert.ok(cov(result).declared.some((l) => l.startsWith('stale topics the plan did not adopt') && l.endsWith(': cache')), JSON.stringify(cov(result).declared))
+  assert.equal(cov(result).complete, true, JSON.stringify(cov(result)))
 })
 
-test('the planner is told what the pool establishes and what is searched again', async (t) => {
-  const FORCED = 'cache-7c1d'
+test('the planner is told what the pool establishes and offered each stale topic with what it claimed', async (t) => {
+  const STALE_KEY = 'cache-7c1d'
   const { rig } = await surveyOver(t, (repo) => {
-    const [stale] = seed(repo, [seedItem({ topic: FORCED, claim: STALE, ground: ['src/cache'] })])
-    makeStale(repo, stale)
+    const [stale] = seed(repo, [seedItem({ topic: STALE_KEY, claim: STALE, ground: ['src/cache'] })])
+    const [wide] = seed(repo, [seedItem({ topic: 'everywhere', claim: 'WIDE-0b1 the loader is one file', ground: ['.'], start: 30, end: 30 })])
+    makeStale(repo, stale, wide)
     seed(repo, [seedItem({ topic: 'known', claim: KNOWN, start: 20, end: 20 })])
-  }, script({ planned: [], searched: [FORCED] }))
+  }, script({ planned: [] }))
   const brief = planBrief(rig)
-  assert.ok(brief.includes(KNOWN), 'the standing claim')
-  assert.ok(brief.includes(FORCED), 'the forced key')
-  assert.ok(!brief.includes(STALE), 'not the stale claim')
+  for (const part of [KNOWN, STALE_KEY + ' (src/cache)', STALE, 'everywhere (the whole repository)']) assert.ok(brief.includes(part), part)
 })
 
-test('a planned topic a stale topic forces is dropped, forced topics first', async (t) => {
+test('an item whose anchors all lie off the ground is neither reused nor offered', async (t) => {
+  const OFF = 'OFF-2a9 the beta module counts to twenty'
+  const { rig, result } = await surveyOver(t, (repo) => {
+    const off = (topic, claim) => ({ ...seedItem({ topic, claim, ground: ['.'] }), spans: [{ path: 'lib/b.js', start: 3, end: 4 }] })
+    const [stale] = seed(repo, [off('beta-old', OFF)])
+    makeStale(repo, stale)
+    seed(repo, [off('beta', KNOWN)])
+  }, script({ planned: [] }))
+  assert.deepEqual(result.reused, [])
+  for (const part of ['beta-old', OFF, KNOWN]) assert.ok(!planBrief(rig).includes(part), part)
+})
+
+test('a planned key spelled otherwise adopts the stale topic, in the plan\'s order', async (t) => {
   const planned = [
-    { key: 'Cache', find: 'FIND-cache planned again', subtree: 'src/cache' },
     { key: 'fresh', find: 'FIND-fresh something new', subtree: 'src' },
+    { key: 'Cache', find: 'FIND-cache planned again', subtree: 'src/cache' },
   ]
   const { rig, result } = await surveyOver(t, (repo) => {
     const [id] = seed(repo, [seedItem({ topic: 'cache', claim: STALE, ground: ['src/cache'] })])
     makeStale(repo, id)
-  }, script({ planned, searched: ['cache', 'fresh'] }))
-  assert.deepEqual(result.topics.map((x) => [x.key, x.forced]), [['cache', true], ['fresh', false]])
-  assert.equal(on(rig, 'scout:cache').length, 2, 'a round that found and one that found nothing new')
+  }, script({ planned, searched: ['fresh', 'cache'] }))
+  assert.deepEqual(result.topics.map((x) => [x.key, x.again]), [['fresh', false], ['cache', true]])
+  assert.equal(on(rig, 'scout:cache').length, 1)
 })
 
 test('a stale item a newer standing item replaced is neither reused nor searched again', async (t) => {
@@ -229,7 +241,7 @@ test('an unreadable pool runs the survey in full and says so', async (t) => {
     appendProject(repo, 'items', [{ kind: 'item', item: { id: 'I0000abcd', ground: 'src' } }])
     assert.throws(() => itemsFor(repo, { ground: ['src'] }))
   }, script())
-  assert.equal(on(rig, 'scout:loader').length, 2, 'a round that found and one that found nothing new')
+  assert.equal(on(rig, 'scout:loader').length, 1)
   assert.ok(poolIdOf(rig.repo, newClaim('loader')), "the planned topic's item is recorded")
   assert.deepEqual(cov(result).failed_channels, ['pool'])
   assert.ok(cov(result).unreached.some((l) => String(l).includes('pool')), JSON.stringify(cov(result).unreached))
@@ -246,7 +258,7 @@ async function heldAndFailed(t) {
   t.after(() => base.cleanup())
   const [held, failed] = seed(base.repo, [seedItem({ topic: 'held', claim: HELD }), seedItem({ topic: 'loader', claim: SUSPECT })])
   editLine(base.repo, 11, EDIT)
-  const full = script({ planned: [], searched: ['loader'] })
+  const full = script({ planned: [LOADER] })
   const rig = base.relaunch({ 'analyst||rejudge:1': rulings([rule(held, 'holds'), rule(failed, 'fails')]), ...full })
   const result = await survey(rig.ctx, ARGS())
   assert.equal(on(rig, 'rejudge:1').length, 1, 'the first run re-judged')

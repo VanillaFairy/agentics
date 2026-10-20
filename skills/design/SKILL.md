@@ -236,16 +236,15 @@ Analyze → Grill → Draft → Review → Approve → Move on. Leave a stage on
 
 Write the Intent back: what the user said, kept apart from what you assume. Then evidence for this
 layer's question: what it needs to know about the system as it is, never the design question
-itself, since the survey gathers and never concludes. Write the question to a file and start the
-`survey` program:
+itself, since the survey gathers and never concludes. Write the question to a file, and what you
+have already read toward it (each file or range and what it says) to another, then start `survey`:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" survey --repo . --detach --question-file <file> --roots . --ground <path,path> --intelligence <tier>
+node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" survey --repo . --detach --question-file <file> --read-file <file> --roots . --ground <path,path> --intelligence <tier>
 ```
 
-`--ground` is the paths this layer's work touches, as far as they are known: it is what lets the
-survey reuse standing items from any effort instead of buying them again, and re-judge or
-re-survey only what drifted. Leave it out when none are known.
+`--read-file` makes it plan only the gaps your reading leaves (omit it if you read nothing); `--ground`,
+the paths this layer touches (omit if unknown), lets it reuse standing items and re-judge only drift.
 
 When the layer would **build a capability** (a parser, a scheduler, a cache, a protocol client),
 write the capability to a file and start the `solutions` program in the same message, so both run
@@ -256,13 +255,14 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" solutions --repo . --detach --capabilit
 ```
 
 Skip it for wiring or reshaping what exists, and read what the repo already carries first. Watch
-both runs and read both results. The survey's `context` file holds every item in full, the risks,
-history and docs; its `items` are their ids and its `coverage` what it reached. The search's
-`summary` file holds every candidate with its facts, `counts` how many of each, and its `coverage`
-what it reached. Incomplete coverage on ground the design would build from scratch is a `blocking`
-question. Whatever the repository, its history or vendor documentation can answer is answered by
-evidence; the user is asked only what only the user knows: intent, priorities, taste, real-world
-limits.
+both runs and read both results. The survey's `context` file opens with a digest of at most 10 KB,
+every topic in the question's order: read it first, then only the parts of the full items, risks,
+history and docs below it that you need; its `items` are their ids, its `coverage` what it reached.
+The search's `summary` file holds every candidate with its facts, `counts` how many of each and
+`coverage` what it reached. Incomplete coverage on ground the design would build from scratch is a
+`blocking` question. Whatever the repository, its history or vendor documentation can answer is
+answered by evidence; the user is asked only what only the user knows: intent, priorities, taste,
+real-world limits.
 
 Once the user has confirmed the understanding, record what this folder rests on: one `cite`
 naming the survey's run and, when it ran, the search's, each as a `--from-run`, with every entry

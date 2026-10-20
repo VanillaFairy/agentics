@@ -189,6 +189,24 @@ test('run.json holds the run, its program, scope, arguments and pid', async (t) 
   assert.ok(Number.isFinite(Date.parse(meta.heartbeat_at)))
 })
 
+test('run.json names the session that last started the run, and none outside a session', async (t) => {
+  const repo = makeRepo(t)
+  const { mod } = program(async (ctx) => {
+    await dispatch(ctx, { role: 'scout', schema: 'search', thread: 'plan', brief: 'Find the store.' })
+    return {}
+  }, { ARGS: TEXT_ARGS })
+  const output = { hits: [], dismissed: [], leads: [], asks: [] }
+  const script = () => ({ 'scout||plan': [{ output }] })
+  const bare = await start(repo, ['survey', '--topic', 'y'], mod, { script: script() })
+  assert.equal(readJson(runJsonPath(repo, bare.run)).session, '')
+  const first = await start(repo, ['survey', '--topic', 'x'], mod, { script: script(), env: { CLAUDE_CODE_SESSION_ID: 'session-a' } })
+  assert.equal(readJson(runJsonPath(repo, first.run)).session, 'session-a')
+  stop(repo, first.run)
+  const again = await start(repo, ['survey', '--topic', 'x'], mod, { env: { CLAUDE_CODE_SESSION_ID: 'session-b' } })
+  assert.equal(again.run, first.run)
+  assert.equal(readJson(runJsonPath(repo, first.run)).session, 'session-b')
+})
+
 test('each program name is loaded by its name', async (t) => {
   const repo = makeRepo(t)
   for (const name of PROGRAM_NAMES) {

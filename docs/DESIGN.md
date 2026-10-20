@@ -4008,16 +4008,19 @@ directory; `sessions` every session the search's thread ran in; `rounds` each ro
 - **Owner:** `launch` in `lib/run.mjs` (the claim, `run.json`, `result.json` and what it prints),
   over the paths in `lib/store.mjs` (`runHome`, `runDir`, `runJsonPath`, `runLogPath`,
   `resultPath`, `runLogFile`), and `homeOf` in a program that names its home; read by `runState`
-  in `lib/ledger.mjs` and `lib/status.mjs watch --run`.
+  in `lib/ledger.mjs` and `lib/status.mjs watch --run`, and outside this repository by
+  agent-tree-viewer, which shows a run's sessions under its `session`.
 - **Restated in:** the skills that start a program (they keep `run`, follow it and read
   `result_file`).
 
 A run's home is `runs/<run>/`, or for an execution's run, `<effort>.<stamp>`, that execution's
 directory (`runHome`), whose log is its `state.jsonl`. Its `run.json` is `{run, program, scope,
-scope_key, args, args_digest, raw, pid, started_at, heartbeat_at}`: `args` the resolved arguments,
-`raw` the flags as given, `scope_key`
-and `args_digest` the digests of `scope` and `args`. It is rewritten whole, `heartbeat_at` every 10
-seconds while the run's process lives. `result.json` is the program's result with `run` and `cost`.
+scope_key, args, args_digest, raw, session, pid, started_at, heartbeat_at}`: `args` the resolved
+arguments, `raw` the flags as given, `scope_key` and `args_digest` the digests of `scope` and
+`args`, and `session` the `CLAUDE_CODE_SESSION_ID` of the session that last started the run, `''`
+when none did, which is what ties the run's headless sessions to the session that asked for them.
+It is rewritten whole, `heartbeat_at` every 10 seconds while the run's process lives.
+`result.json` is the program's result with `run` and `cost`.
 A search keeps its files in `searches/<search key>/` (the key's `:` written `~`): `calls.jsonl`, the
 call log; `server-<digest>.json`, the tool server's spec; `mcp-<digest>.json`, its MCP config
 ([Call log](#call-log)); `rulings/<turn>-<round>.md`, each ruler brief as it was dispatched; and

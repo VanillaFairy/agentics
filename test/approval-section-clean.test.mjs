@@ -301,7 +301,7 @@ test('a section with a unit no prober ruled is not clean', (t) => {
   const open = ['yagni@intent']
   const line = recorded(repo, round(repo, { open }))
   assert.deepEqual(sorted(line.clean), sorted(SECTIONS.filter((s) => s !== 'intent')), 'its other rulings are all clean')
-  assert.deepEqual([line.complete, line.remaining], [false, open])
+  assert.deepEqual([line.complete, line.remaining], [false, [...open, 'unreached:1 unit(s) no prober ruled']])
 })
 
 test('a section a finding of the round names is not clean, a carried finding included', (t) => {
@@ -354,18 +354,37 @@ test('a round with unrecorded findings is recorded incomplete, remaining naming 
   }
 })
 
-test('reviewedFromResult lists what remains: open units, failed channels, incomplete entries, then unrecorded findings', (t) => {
+test('reviewedFromResult lists what remains: open units, failed channels, incomplete and dropped entries, unreached lines, then unrecorded findings', (t) => {
   const repo = specRepo(t)
   const open = ['yagni@intent', 'invariants@growth']
   const failed = ['prober:2']
   const incomplete = ['the locating search never finished']
+  const dropped = ['a dropped channel']
+  const unreached = ['prober:1 did not reach: growth']
   const findings = [handle('P1', 'design', { severity: 'note' })]
   const result = round(repo, {
-    findings, open, over: { snapshot: '', unrecorded: ['P1'], coverage: coverage({ complete: false, failed_channels: failed, incomplete }) },
+    findings, open, over: { snapshot: '', unrecorded: ['P1'], coverage: coverage({ complete: false, failed_channels: failed, incomplete, dropped, unreached }) },
   })
   const line = recorded(repo, result)
-  assert.deepEqual(line.remaining, [...open, ...failed.map((c) => 'channel:' + c), ...incomplete, 'unrecorded:P1'])
+  assert.deepEqual(line.remaining, [
+    ...open, ...failed.map((c) => 'channel:' + c), ...incomplete, ...dropped, ...unreached.map((u) => 'unreached:' + u), 'unrecorded:P1',
+  ])
   assert.equal(line.complete, false)
+})
+
+test('a round partial only by what a prober did not reach is recorded, remaining naming it', (t) => {
+  const repo = specRepo(t)
+  const unreached = ['prober:2 did not reach: the root spec, which could not be read']
+  const result = round(repo, { over: { coverage: coverage({ complete: false, unreached }) } })
+  assert.equal(result.units.open.length, 0, 'every unit was ruled')
+  const line = recorded(repo, result)
+  assert.deepEqual([line.complete, line.remaining], [false, ['unreached:' + unreached[0]]])
+})
+
+test('a coverage partial with no loss named is recorded partial, never complete', (t) => {
+  const repo = specRepo(t)
+  const line = recorded(repo, round(repo, { over: { coverage: coverage({ complete: false }) } }))
+  assert.deepEqual([line.complete, line.remaining], [false, ['coverage: partial, naming no loss']])
 })
 
 test('a round recorded without a snapshot rules no section clean', (t) => {

@@ -846,8 +846,10 @@ batch carries `by`.
   with standard input redirected, so neither can take the terminal's path.
 
 **Answers.** Every other question the user is asked during an effort — a park, a conflict a
-change raised, a choice at the Grill that moves a spec compiled before — is answered once, in the
-user's own words, and kept. `lib/answers.mjs ask --effort <e> [--node <id>…]` opens it: an `asked`
+change raised, any question at the Grill once the effort has a tree, since its answer may move a
+spec compiled before — is opened before it is asked, answered once, in the user's own words, and
+kept. Nothing is ever asked a second time to confirm an answer or to carry a token: the session
+opens the question first, and `ask` refuses `no_tree` while nothing is compiled. `lib/answers.mjs ask --effort <e> [--node <id>…]` opens it: an `asked`
 ledger line naming the nodes whose stop it settles (a node not in the tree refuses `unknown_node`),
 and the token `answer <effort>#<seq>` every question of that one `AskUserQuestion` call carries in
 its text. `lib/answers.mjs record --effort <e> --asked <seq>` reads the answer back through
@@ -1718,6 +1720,14 @@ one loop is the [autonomous review](#autonomous-review) of a planner-written spe
 the disposition's wording are the verbatim blocks `design-severity-ladder` and `probe-disposition`
 in the `design` and `challenge-idea` skills; every prober's brief carries the ladder word for word
 from `lib/briefs/probe.mjs`, which `test/program-probe.test.mjs` holds to the design skill's block.
+
+**A folder's spec is probed against its settled context.** When the artefact is a folder's
+`DESIGN.md` under `.agentics/`, code reads every spec above it (`settledContext` in
+`lib/spec.mjs`, groups skipped, nearest first) and every prober's brief carries each one's Intent,
+Decisions and Design as excerpts: settled, never attacked, and governing over any other document
+in the repository that disagrees, such as a superseded draft. The probers are never asked to find
+them. The coverage declares the specs handed over; an ancestor whose spec cannot be read is an
+`unreached` line, so the round is partial and says why.
 
 **A probe attacks what the artefact adds, reshapes or removes.** Every prober's brief says so: a
 finding whose claim holds of the repository with the artefact unapplied — a cost the code already
@@ -3547,9 +3557,10 @@ typed refusal. `skip-review` takes its
 `reason` as `--reason <line>` or `--reason-file <path>`. A folder a planner wrote is
 prepared in-process, by the spec boundary (`recordPreparation`). `reviewed
 --from-run <run>` records a probe run's round from its result, so no list passes through a model:
-`complete` as its coverage says, and only with no finding the store refused; `remaining` its open
-units, then `channel:<c>` for each failed channel, then its coverage's incomplete entries, then
-`unrecorded:<id>` for each finding the store refused; `ambiguities` by settlement id; `clean` and
+`remaining` its open units, then `channel:<c>` for each failed channel, then its coverage's incomplete
+and dropped entries, then `unreached:<line>` for each unreached line, then `unrecorded:<id>` for
+each finding the store refused (a coverage partial with none of these names that), and `complete`
+exactly when `remaining` is empty, so a review is never partial without saying what it left; `ambiguities` by settlement id; `clean` and
 `sections` from its findings file, `clean` empty when the round kept no snapshot. It refuses a run
 that resolves to nothing (`unknown_run`) or left no result (`no_result`), a result that rules no
 units (`not_a_probe`), a probe of another artefact than the folder's spec (`not_this_spec`), an
@@ -3996,8 +4007,9 @@ directory; `sessions` every session the search's thread ran in; `rounds` each ro
   `source` is `''`; `findings_file` holds every finding and every unit's ruling in full;
   `ambiguities` lists every open ambiguity, carried ones included; `snapshot` is empty when the
   round was not recorded or a finding was refused, so the next round is whole; when
-  `coverage.complete` is false its loss is named in `units.open`, `coverage.failed_channels` or
-  `coverage.incomplete`, which `approval.mjs reviewed --from-run` reads.
+  `coverage.complete` is false its loss is named in `units.open`, `coverage.failed_channels`,
+  `coverage.incomplete`, `coverage.dropped` or `coverage.unreached`, which `approval.mjs reviewed
+  --from-run` reads.
 - **`solutions`** — takes `capability_file` (required), `roots` (default `.`), `constraints` (or
   `constraints_file`), `notes` (or `notes_file`), `max_angles` (default 4), `intelligence` (default `normal`), `search_budget` (as the survey's). Returns `{capability,
   constraints, summary, counts{present, candidates, viable, ruled_out, invented, lost, unanchored,

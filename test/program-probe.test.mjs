@@ -244,6 +244,45 @@ test('a citation that resolves to nothing is named to every prober', async (t) =
   for (const c of calls) assert.ok(c.brief.includes(resolved.unresolved[0].detail), c.thread.key + ' is told the citation resolves to nothing')
 })
 
+// --- settled context ---------------------------------------------------------------------------
+
+/** A spec whose Intent, Decisions and Design each carry `tag`. */
+const specText = (tag) => [
+  '# ' + tag, '', '## Intent', tag + '_INTENT', '', '## Decisions', '| D1 | ' + tag + '_DECISION | why |', '',
+  '## Design', tag + '_DESIGN', '', '## Plan', tag + '_PLAN', '',
+].join('\n')
+
+test("a folder spec's probers are handed every ancestor spec's Intent, Decisions and Design", async (t) => {
+  const child = '.agentics/e1/mid/child/DESIGN.md'
+  const files = { '.agentics/e1/DESIGN.md': specText('ROOT'), '.agentics/e1/mid/DESIGN.md': specText('MID'), [child]: DOC }
+  const { rig, result } = await probeIn(t, { files, path: child, script: scriptFor(DOC, STANDING).script })
+  const brief = proberBrief(rig, 1)
+  assert.ok(brief.includes('SETTLED CONTEXT'), 'the prober is told what is settled')
+  for (const tag of ['MID', 'ROOT']) {
+    for (const part of ['INTENT', 'DECISION', 'DESIGN']) assert.ok(brief.includes(tag + '_' + part), tag + '_' + part)
+    assert.ok(!brief.includes(tag + '_PLAN'), 'a plan is not settled context')
+  }
+  assert.ok(brief.indexOf('MID_INTENT') < brief.indexOf('ROOT_INTENT'), 'nearest first')
+  assert.ok(result.coverage.declared.includes('settled context: .agentics/e1/mid/DESIGN.md, .agentics/e1/DESIGN.md'), JSON.stringify(result.coverage))
+  assert.equal(result.coverage.complete, true)
+})
+
+test('an ancestor spec that cannot be read leaves the probe incomplete, naming it', async (t) => {
+  const child = '.agentics/e1/mid/child/DESIGN.md'
+  const { rig, result } = await probeIn(t, { files: { '.agentics/e1/DESIGN.md': specText('ROOT'), [child]: DOC }, path: child, script: scriptFor(DOC, STANDING).script })
+  assert.ok(proberBrief(rig, 1).includes('ROOT_INTENT'), 'what could be read is handed over')
+  assert.ok(result.coverage.unreached.some((l) => l.startsWith('settled context: the spec of mid ')), JSON.stringify(result.coverage))
+  assert.equal(result.coverage.complete, false)
+})
+
+test('a root spec and a document outside .agentics carry no settled context', async (t) => {
+  for (const path of ['.agentics/e1/DESIGN.md', ART]) {
+    const { rig, result } = await probeIn(t, { files: { [path]: DOC }, path, script: scriptFor(DOC, STANDING).script })
+    assert.ok(!proberBrief(rig, 1).includes('SETTLED CONTEXT'), path)
+    assert.ok(!result.coverage.declared.some((l) => l.startsWith('settled context')), path)
+  }
+})
+
 // --- locating ----------------------------------------------------------------------------------
 
 const GROUND_FILES = {

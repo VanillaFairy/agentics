@@ -427,7 +427,8 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/answers.mjs" record --repo . --effort <e> --aske
 ```
 
 The recorded answer is the user's word on every spec it reaches: never ask them to approve what
-they answered. **Every answer is a re-spec**: carry it into every spec it reaches (the owner of the
+they answered, and never ask a follow-up to confirm it or to get a token onto it. Any question you
+put to the user while the effort has a tree is opened first, this one or not. **Every answer is a re-spec**: carry it into every spec it reaches (the owner of the
 fault, its parent, a child or a consumer whose text it decides), have each ruled (below), relaunch.
 
 | `return` | the spec to edit |

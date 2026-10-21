@@ -376,9 +376,11 @@ never sees, does not count, nor does a re-ask that refers to one ("given those u
   `parked (reopens at <x>)`, `lookup` (go and look), `compost` (recorded, not pursued).
 - A changed decision is rewritten in place with its reason. A new answer contradicting a decision
   other entries lean on is shown beside it, with what depends on which, for the user to rule.
-- **An answer that changes a spec compiled before** (a parent's plan, a decision another folder
-  realises) is opened and recorded with `lib/answers.mjs`, as develop's step 4c does, and carried
-  into every spec it reaches. Those specs are ruled against it at Approve; never ask again for it.
+- **Once the effort has a tree, open every question before asking it** (`lib/answers.mjs ask`, then
+  `record --asked <asked>` right after, as develop's step 4c does; until something is compiled `ask`
+  refuses `no_tree` and the question goes without a token). An answer that reaches a compiled spec
+  is carried into every spec it reaches, ruled against it at Approve. The answer is the user's
+  ruling: never ask a follow-up to confirm it, approve it or get a token onto it.
 
 A spec with an open `blocking` question does not hand off: not to Draft, not to `develop`, not to
 "we can settle that during the build".
@@ -435,8 +437,8 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" gate --repo . --effort <e> --folde
 `ratifiable` is true once the latest review of the spec as it stands ruled every unit in scope and
 every ambiguity it returned is discarded, or incorporated with its section ruled clean by a later
 round, which incorporating one earns. `open` names the ambiguities still unsettled, `remaining`
-what a partial review left (unruled units, failed channels, short searches, unrecorded findings):
-probe the whole spec for those, no `--since`. An edit shuts the gate until a review reads it.
+what a partial review left (unruled units, failed channels, short searches, unreached ground,
+unrecorded findings): probe the whole spec for those, no `--since`. An edit shuts the gate until a review reads it.
 
 <!-- agentics:verbatim design-severity-ladder -->
 - **ambiguity** — a term, contract, or interface the design leaves readable two ways. Blocks

@@ -411,16 +411,16 @@ test('a round whose record kept no snapshot, its findings unrecorded, is recorde
   assert.deepEqual([line.hash, line.complete, line.remaining], [hashSpec(SPEC_TEXT), false, ['unrecorded:P1']])
 })
 
-test('a result whose coverage disagrees with what it names as left is refused, recording nothing', (t) => {
+test('a round is recorded partial exactly when it names something left, whatever its coverage claims', (t) => {
   const repo = specRepo(t)
-  const silent = result(repo, PROBE_RUN, probe(repo, { coverage: coverage({ complete: false, unreached: ['the rest'] }) }))
-  assert.equal(fromRun(repo, silent).ok, false, 'incomplete, yet no unit, channel or incomplete entry named')
+  const unreached = result(repo, PROBE_RUN, probe(repo, { coverage: coverage({ complete: false, unreached: ['the rest'] }) }))
   const open = result(repo, '20261004-130500-probe', probe(repo, { units: { total: 2, ruled: 1, open: ['yagni@design'] } }))
-  assert.equal(fromRun(repo, open).ok, false, 'complete, yet a unit is open')
   const coherent = result(repo, '20261004-131000-probe', probe(repo))
-  const out = fromRun(repo, coherent)
-  assert.equal(out.ok, true, 'the same spec\'s coherent round records')
-  assert.deepEqual(reviewedLines(repo).map((l) => l.seq), [out.seq])
+  const outs = [unreached, open, coherent].map((run) => fromRun(repo, run))
+  assert.ok(outs.every((o) => o.ok), JSON.stringify(outs))
+  assert.deepEqual(reviewedLines(repo).map((l) => [l.complete, l.remaining]), [
+    [false, ['unreached:the rest']], [false, ['yagni@design']], [true, []],
+  ])
 })
 
 test('--from-run with --complete, --remaining or --ambiguities refuses bad_args', (t) => {

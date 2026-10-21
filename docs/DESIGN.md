@@ -451,7 +451,7 @@ over:
 |---|---|---|
 | `execute` | the effort and the folder | `producer:<leaf>` (implementer or test-author; a cycle's test rounds on `producer:<red>`), `auditor:<leaf>` (auditor), `reviewer:<leaf>:<n>` and `integration:<folder>:<n>` (reviewer), `planner:<folder>` (planner), `ruler:drift:<target key>:<pre8>` and `ruler:stale:<base head>` (ruler), `ruler:converge:<leaf>:<n>` (ruler, the convergence ruling after a leaf's review round `n`), `investigator` (investigator), and its nested runs' own under `survey:<folder>:<basis>/` and `probe:<folder>:<n>/` |
 | `survey` | the question's digest, the roots, the ground | `plan` (analyst), `scout:<topic>` (scout), `history` (historian), `docs` (doc-researcher), `ruler:search:<name>:<turn>` (ruler, a search's convergence ruling), `judge:<n>` and `rejudge:<n>` (analyst) |
-| `probe` | the artefact, by its absolute path | `locate` (scout), `ruler:search:locate:<turn>` (ruler), `axes` (analyst), `prober:<n>` (analyst) |
+| `probe` | the artefact, by its absolute path | `locate` (scout), `ruler:search:locate:<turn>` (ruler), `axes` (analyst), `relocate` (analyst), `prober:<n>` (analyst) |
 | `solutions` | the capability's digest | `frame` (analyst), `research:<angle>` (doc-researcher), `repo` (scout), `ruler:search:<name>:<turn>` (ruler), `assess` (analyst) |
 | `investigate` | the question's digest | the survey's, and `synthesis` (analyst) |
 | `drafts` | the question's digest | `draft:<stance>` (analyst) |
@@ -647,7 +647,7 @@ committed; `lib/roles.mjs` refuses a bad one when a dispatch loads it.
 | scout | searcher | find what one search of the repository tree is charged with, one session a round, through code's tools | `mcp__search__grep`, `mcp__search__read`, `mcp__search__files`, `mcp__search__refs`, `mcp__search__hit` | — |
 | historian | searcher | find what one search of the repository's history is charged with, one session a round, through code's tools | `mcp__search__log`, `mcp__search__show`, `mcp__search__grep`, `mcp__search__read`, `mcp__search__hit` | — |
 | doc-researcher | searcher | find what one search of what vendors and specifications say is charged with; its fetches go through code | WebSearch, `mcp__search__fetch`, `mcp__search__hit` | — |
-| analyst | judge | judge what it is handed: plan a survey, judge evidence into items, re-judge suspect items, derive a review's axes, rule as a prober, frame and assess a solutions sweep, draft an approach from a stance, answer an investigation or turn it into tasks | Read | — |
+| analyst | judge | judge what it is handed: plan a survey, judge evidence into items, re-judge suspect items, derive a review's axes, name the ground a narrowed review has not located, rule as a prober, frame and assess a solutions sweep, draft an approach from a stance, answer an investigation or turn it into tasks | Read | — |
 | ruler | judge | rule whether a change moved a node's premise; rule whether a loop converges | Read | — |
 | reviewer | judge | rule every unit of a span: findings with severity, a ruling per criterion, per file, per claim | Read, Grep, Glob, Bash | read-only git |
 | auditor | judge | declare mutations an implementation's tests must catch | Read, Grep, Glob | — |
@@ -1796,6 +1796,19 @@ and its own citations alone. What each prober declared it never attacked (`not_r
 snapshotted fails `record`. A round whose findings the store refused fails no channel: its new
 findings are listed in `unrecorded`, and its snapshot is empty.
 
+**A recorded round keeps its ground** beside its snapshot (`<hash>.ground.json`): the repository axes
+it probed, the guidance they rest on, the places it located and their excerpts. A narrowed round
+whose `since` kept ground reuses it: it buys no axes analyst, and a locate only for what its changed
+lines name that the kept ground does not cover. That is a judgment, so an analyst on `haiku` makes
+it (thread `relocate`), handed the changed ranges and the kept places, and lists each term the
+places miss. An empty list buys no search: the round's `repo_ground.status` is `kept`. A non-empty
+list buys a `locate` over the changed ranges for `ground` alone, starting from those terms, its hits
+joined after the kept ones. A judge that failed buys that search too, from no terms, and says so in
+`declared`; any doubt routes to a search. Each recorded round whose locate finished and whose axes
+analyst did not fail keeps what it used (one that would hand on less keeps nothing), so the next
+narrowed round reads it in turn; a `since` with no kept ground narrows the units all the same and
+locates and derives its axes as a full round does.
+
 ### What a probe costs
 
 **The cost of a probe is turn count, not payload**: every turn re-sends the accumulated context,
@@ -1809,7 +1822,8 @@ probe's tree; the located ground, every `locate` hit with the lines it points at
 `lib/citations.mjs`, [Searches](#searches)); and the located guidance, the hits labelled
 `guidance`. The first two go into every prober's prompt and the guidance to the axes analyst
 alone. A hit whose file or line the searched tree does not have is marked, not excerpted, and
-counted in `repo_ground.unresolved`. The probers share one read of the ground. The snapshot, the narrowing and the record stay on the
+counted in `repo_ground.unresolved`. The probers share one read of the ground, and a narrowed round
+reads its last round's again rather than searching for it. The snapshot, the narrowing and the record stay on the
 checkout the probe was started in, where the artefact lives.
 
 ### Autonomous review
@@ -3974,7 +3988,8 @@ directory; `sessions` every session the search's thread ran in; `rounds` each ro
   files, excerpts, unresolved}, guidance_read, repo_ground{status, hits, unresolved}, units{total, ruled,
   open[]}, findings[{id, item, severity, axis, section, carried}], findings_file, ambiguities[],
   ratifiable, snapshot, scope{full, changed}, unrecorded[], review, coverage}`: `repo_ground.status`
-  is the `locate` search's status (`''` for an unchanged round, which searches nothing), `hits` its
+  is the `locate` search's status (`''` for an unchanged round, which searches nothing, and `kept` for a
+  narrowed round that searched nothing over its kept ground), `hits` its
   count of hits, and `unresolved` the path hits whose lines no file of the tree holds; `coverage.unreached` carries what each prober declared it never attacked
   (`not_reached`); `artifact` is the
   repo-relative path, or the absolute one for an artefact outside every checkout; a standing axis's

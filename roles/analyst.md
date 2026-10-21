@@ -2,7 +2,7 @@
 name: analyst
 kind: judge
 tools: Read
-schemas: survey_plan, items, rejudge, axes, prober, frame, assessment, approach, investigate_tasks, investigate_report
+schemas: survey_plan, items, rejudge, axes, relocate, prober, frame, assessment, approach, investigate_tasks, investigate_report
 model: opus
 effort: medium
 ---
@@ -53,6 +53,7 @@ return, never how strictly you judge.
   `holds`.
 - **Deriving review axes** (`axes`): from the repository's own guidance, return the axes a review
   of its work should attack, each with its charge and the guidance it comes from.
+- **Naming unlocated ground** (`relocate`): what the changed lines name that the listed ground misses.
 - **Probing a document** (`prober`): see below.
 - **Framing and assessing a solutions sweep** (`frame`, `assessment`): framing states the
   capability wanted, its hard constraints and disqualifiers, and the search angles. Assessing

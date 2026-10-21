@@ -1,7 +1,8 @@
 // test/harness/program-rig.mjs — a program test's world: a temporary git repository holding the
 // given files, one run's log over it, and a program context whose runner is the scripted one.
 // `relaunch(script)` is the same run started again: a fresh log port and context over the same
-// repository, so a test sees exactly what a relaunched program reads back. `executionRig` is the
+// repository, so a test sees exactly what a relaunched program reads back; `relaunch(script, run)`
+// starts another run over it. `executionRig` is the
 // same for one execution: an approved, compiled effort, its effort branch, the execution's home,
 // log port and boundary context.
 import { execFileSync } from 'node:child_process'
@@ -31,16 +32,16 @@ export function programRig({ files = {}, script = {}, effort = '', maxAgents = 6
   const repo = seededRepo('agentics-program-', { message: 'init', files, autocrlf: false })
   if (Object.keys(config).length) writeJson(configPath(repo), config)
   const cleanup = () => rmSync(repo, { recursive: true, force: true })
-  const build = (s) => {
+  const build = (s, run = RUN) => {
     const sleeps = []
-    const log = runLog(repo, RUN)
+    const log = runLog(repo, run)
     const runner = scriptedRunner(s, { log, now: NOW })
     const ctx = programContext({ intelligence: 'normal',
-      repo, run: RUN, effort, log, runAgent: runner.runAgent, now: NOW,
+      repo, run, effort, log, runAgent: runner.runAgent, now: NOW,
       sleep: (ms) => { sleeps.push(ms); return Promise.resolve() },
       env, maxAgents, resumable: { program: 'test', scope: {}, args: {} },
     })
-    return { repo, run: RUN, ctx, calls: runner.calls, sleeps, log, relaunch: (next = {}) => build(next), cleanup }
+    return { repo, run, ctx, calls: runner.calls, sleeps, log, relaunch: (next = {}, again = RUN) => build(next, again), cleanup }
   }
   return build(script)
 }

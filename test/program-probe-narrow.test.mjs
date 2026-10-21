@@ -17,7 +17,7 @@ import { carriedFindings, changedParts, liveItems, recordProbe, reviewScope, sec
 import { readLog } from '../lib/ledger.mjs'
 import { locateMaterial, probe } from '../lib/programs/probe.mjs'
 import { evidenceReturnsDir, evidenceSnapshotsDir } from '../lib/store.mjs'
-import { closedSearch } from './fast/harness/scout.mjs'
+import { closedSearch, closingRound, hitTurn } from './fast/harness/scout.mjs'
 import { programRig } from './harness/program-rig.mjs'
 
 const STANDING = ['ambiguity', 'invariants', 'yagni', 'reinvention']
@@ -303,6 +303,113 @@ test('the narrowed round records only its new findings, anchored to the new snap
   const item = liveItems(rig.repo).get(fresh.item)
   assert.ok(item, 'the new finding is in the store')
   assert.ok(item.spans.every((s) => s.at === snapshot))
+})
+
+// --- a narrowed round over the ground its last round kept ---------------------------------------
+
+const REPO_AXIS = { key: 'layering', charge: 'attack the layering', source: 'docs/REVIEW.md' }
+const KEYS = [...STANDING, REPO_AXIS.key]
+const KEPT_FILES = { [ART]: DOC, 'docs/REVIEW.md': 'Check the layering.\n', 'src/limiter.js': 'export const limit = 1\n' }
+const KEPT_HITS = [
+  { path: 'docs/REVIEW.md', line: 1, note: 'KEPT_GUIDANCE_NOTE', label: 'guidance' },
+  { path: 'src/limiter.js', line: 1, note: 'KEPT_GROUND_NOTE', label: 'ground' },
+]
+const relocated = (unlocated) => [{ output: { unlocated, notes: '' } }]
+const RELOCATE_TIER = { model: 'haiku', effort: 'low' }
+
+/** DOC probed in full by the program itself, which keeps its ground, then EDITED written on disk. */
+async function keptThenEdited(t) {
+  const rig = rigFor(t, KEPT_FILES)
+  const first = rig.relaunch({
+    'scout||locate': [hitTurn(KEPT_HITS), closingRound()],
+    'analyst||axes': [{ output: { axes: [REPO_AXIS], guidance_read: ['docs/REVIEW.md'], notes: '', stop_reason: 'completed' } }],
+    'analyst||prober:1': [{ output: proberOut(unitsOf(KEYS, sectionsOf(DOC))) }],
+  }, '20260101-000001-first')
+  const one = await probe(first.ctx, argsFor(rig.repo, ART))
+  assert.ok(one.snapshot, 'the fixture: the first round is recorded ' + JSON.stringify(one.coverage))
+  writeFileSync(native(rig.repo, ART), EDITED)
+  return { rig, since: one.snapshot, scope: reviewScope(rig.repo, native(rig.repo, ART), one.snapshot) }
+}
+
+/** The narrowed round after keptThenEdited: the relocate judge's steps, the locate's if any, one prober ruling every unit. */
+async function keptRound(t, relocate, locate = {}) {
+  const w = await keptThenEdited(t)
+  const units = unitsOf(KEYS, changedParts(sectionsOf(EDITED), w.scope.changed))
+  const run = w.rig.relaunch({ 'analyst||relocate': relocate, ...locate, 'analyst||prober:1': [{ output: proberOut(units) }] }, '20260101-000002-second')
+  const result = await probe(run.ctx, argsFor(w.rig.repo, ART, { since: w.since }))
+  return { ...w, run, units, result }
+}
+
+test('a narrowed round over kept ground that names nothing new searches nothing and derives no axes', async (t) => {
+  const { run, since, units, result } = await keptRound(t, relocated([]))
+  assert.deepEqual(run.calls.map((c) => c.thread.key), ['relocate', 'prober:1'])
+  assert.deepEqual(run.calls[0].tier, RELOCATE_TIER)
+  assert.ok(run.calls[0].brief.includes('KEPT_GROUND_NOTE'), 'the judge reads the kept places')
+  assert.ok(run.calls[0].brief.includes('the refill clock may drift under load'), 'the judge reads the changed lines')
+  assert.deepEqual(result.axes.map((a) => a.key), KEYS, 'the kept axes stand beside the standing four')
+  const brief = run.calls[1].brief
+  for (const note of ['KEPT_GUIDANCE_NOTE', 'KEPT_GROUND_NOTE']) assert.ok(brief.includes(note), 'the prober holds the kept ground: ' + note)
+  assert.equal(result.repo_ground.status, 'kept')
+  assert.equal(result.repo_ground.hits, KEPT_HITS.length)
+  assert.deepEqual(result.guidance_read, ['docs/REVIEW.md'])
+  assert.ok(result.coverage.declared.some((l) => l.includes(since)), JSON.stringify(result.coverage.declared))
+  assert.deepEqual(result.units, { total: units.length, ruled: units.length, open: [] })
+  assert.equal(result.coverage.complete, true, JSON.stringify(result.coverage))
+})
+
+test('a changed line naming unlocated ground is searched for that ground alone', async (t) => {
+  const located = { 'scout||locate': [hitTurn([{ path: 'src/limiter.js', line: 1, note: 'NEW_GROUND_NOTE', label: 'ground' }]), closingRound()] }
+  const { run, result } = await keptRound(t, relocated([{ term: 'UNLOCATED_TERM', lines: '9' }]), located)
+  assert.deepEqual(run.calls.map((c) => c.thread.key).filter((k) => k !== 'locate'), ['relocate', 'prober:1'], 'no axes analyst')
+  const charge = readFileSync(run.calls.find((c) => c.thread.key === 'locate').role.systemPromptFile, 'utf8')
+  assert.ok(charge.includes('UNLOCATED_TERM'), 'the search starts from the unlocated term')
+  assert.ok(!charge.includes('labelled `guidance`'), 'the search hunts no guidance')
+  const brief = proberCalls(run)[0].brief
+  for (const note of ['KEPT_GROUND_NOTE', 'NEW_GROUND_NOTE']) assert.ok(brief.includes(note), 'the prober holds the joined ground: ' + note)
+  assert.equal(result.repo_ground.hits, KEPT_HITS.length + 1)
+})
+
+test('a failed relocate judge searches the changed lines and says so', async (t) => {
+  const { run, result } = await keptRound(t, [FAIL], LOCATE())
+  assert.ok(run.calls.some((c) => c.thread.key === 'locate'), 'the changed lines are searched')
+  assert.ok(result.coverage.declared.some((l) => l.includes('relocate judge failed')), JSON.stringify(result.coverage.declared))
+  assert.equal(result.coverage.complete, true, JSON.stringify(result.coverage))
+})
+
+test('a round whose axes analyst failed keeps no ground, so the next round derives its axes again', async (t) => {
+  const rig = rigFor(t, KEPT_FILES)
+  const first = rig.relaunch({
+    'scout||locate': [hitTurn(KEPT_HITS), closingRound()],
+    'analyst||axes': [FAIL],
+    'analyst||prober:1': [{ output: proberOut(unitsOf(STANDING, sectionsOf(DOC))) }],
+  }, '20260101-000001-first')
+  const one = await probe(first.ctx, argsFor(rig.repo, ART))
+  assert.ok(one.snapshot, 'the fixture: the round is recorded')
+  assert.ok(one.coverage.failed_channels.includes('repo-axes'))
+  writeFileSync(native(rig.repo, ART), EDITED)
+  const scope = reviewScope(rig.repo, native(rig.repo, ART), one.snapshot)
+  const units = unitsOf(KEYS, changedParts(sectionsOf(EDITED), scope.changed))
+  const run = rig.relaunch({
+    'scout||locate': [hitTurn(KEPT_HITS), closingRound()],
+    'analyst||axes': [{ output: { axes: [REPO_AXIS], guidance_read: ['docs/REVIEW.md'], notes: '', stop_reason: 'completed' } }],
+    'analyst||prober:1': [{ output: proberOut(units) }],
+  }, '20260101-000002-second')
+  const second = await probe(run.ctx, argsFor(rig.repo, ART, { since: one.snapshot }))
+  assert.deepEqual(run.calls.map((c) => c.thread.key).filter((k) => k !== 'locate'), ['axes', 'prober:1'], 'no relocate judge')
+  assert.deepEqual(second.axes.map((a) => a.key), KEYS)
+})
+
+test('a narrowed round keeps its ground for the round after it', async (t) => {
+  const { rig, result } = await keptRound(t, relocated([]))
+  const again = editLine(EDITED, 4, 'limit inbound requests per tenant')
+  writeFileSync(native(rig.repo, ART), again)
+  const scope = reviewScope(rig.repo, native(rig.repo, ART), result.snapshot)
+  const units = unitsOf(KEYS, changedParts(sectionsOf(again), scope.changed))
+  const run = rig.relaunch({ 'analyst||relocate': relocated([]), 'analyst||prober:1': [{ output: proberOut(units) }] }, '20260101-000003-third')
+  const third = await probe(run.ctx, argsFor(rig.repo, ART, { since: result.snapshot }))
+  assert.deepEqual(run.calls.map((c) => c.thread.key), ['relocate', 'prober:1'])
+  assert.deepEqual(third.axes.map((a) => a.key), KEYS)
+  assert.ok(run.calls[1].brief.includes('KEPT_GROUND_NOTE'))
 })
 
 // --- an unchanged artefact ---------------------------------------------------------------------

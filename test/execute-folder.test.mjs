@@ -133,11 +133,14 @@ function changedRange(before, text) {
   return [{ start: head + 1, end: Math.max(head + 1, b.length - tail) }]
 }
 /**
- * Probe round `n` over `text`: a locate that finds nothing, and one prober holding the standing axes;
- * a re-review `after` the text the round before reviewed attacks the changed part alone.
+ * Probe round `n` over `text`: one prober holding the standing axes. A first round's locate finds
+ * nothing; a re-review `after` the text the round before reviewed reads that round's kept ground, its
+ * relocate judge naming nothing new, and attacks the changed part alone.
  */
 const probing = (n, text, findings = [], { units, after } = {}) => ({
-  ...closedSearch({ name: 'probe:p:' + n + '/locate' }),
+  ...(after
+    ? { ['analyst||probe:p:' + n + '/relocate']: [{ output: { unlocated: [], notes: '' } }] }
+    : closedSearch({ name: 'probe:p:' + n + '/locate' })),
   ['analyst||probe:p:' + n + '/prober:1']: [{
     output: proberOut(units || (after ? unitsOf(STANDING, changedParts(sectionsOf(text), changedRange(after, text))) : unitsFor(text)), findings),
   }],

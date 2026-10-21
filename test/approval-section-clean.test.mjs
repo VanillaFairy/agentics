@@ -13,7 +13,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { approvalGate, recordDisposition, recordReviewed, reviewedFromResult } from '../lib/approval.mjs'
-import { reviewScope, sectionsOf, unitsOf } from '../lib/evidence.mjs'
+import { changedParts, reviewScope, sectionsOf, unitsOf } from '../lib/evidence.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import { hashSpec } from '../lib/spec.mjs'
@@ -283,6 +283,17 @@ test('reviewedFromResult rules a section clean when every unit of it was ruled c
   const plain = recorded(repo, round(repo, {}))
   assert.deepEqual(sorted(plain.clean), sorted(SECTIONS), 'every ruling clean, no finding: every section is clean')
   assert.ok(SECTIONS.length >= 3)
+})
+
+test('a narrowed round rules a section clean by its changed parts', (t) => {
+  const repo = specRepo(t)
+  const design = sectionsOf(DOC).find((s) => s.slug === 'design')
+  const parts = changedParts(sectionsOf(DOC), [{ start: design.start, end: design.start }, { start: design.end, end: design.end }])
+  assert.equal(parts.length, design.start === design.end ? 1 : 2, 'the fixture: the changes fall in design alone')
+  const units = unitsOf(AXES, parts)
+  const findings_file = returnFile(repo, { findings: [], units: units.map((unit) => ({ unit, ruling: 'clean', why: 'why' })) })
+  const line = recorded(repo, round(repo, { units: { total: units.length, ruled: units.length, open: [] }, over: { findings_file } }))
+  assert.deepEqual(line.clean, ['design'])
 })
 
 test('a section with a unit no prober ruled is not clean', (t) => {

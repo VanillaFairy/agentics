@@ -1741,7 +1741,11 @@ skipped a section leaves the review unratifiable, never quietly passed (L1, L3).
 Findings are evidence items too. The program first snapshots the artefact (`reviewScope`), and
 each new finding is recorded as a `behaviour` item anchored to its lines in that snapshot. Given
 `since` — the snapshot the last review judged — the probe attacks only the lines changed since, its
-units narrowed to the sections those lines fall in, and carries forward every earlier finding whose
+units each axis against each changed part: every changed range cut at the bounds of the sections it
+falls in, keyed `<section>~<first line>-<last line>` (`changedParts`), the rest of the document handed
+over as context. Where a section is read off a unit or a finding (`partSection`), a part is its
+section, so a later round whose parts of a section are all ruled clean rules that section clean. It
+carries forward every earlier finding whose
 lines no hunk touched, in the probers' prompts and in the round's record: the same anchor check as
 all other evidence, with no mechanism of its own. An earlier `clean` ruling is not carried: the
 sections no hunk touched are out of the round's scope. An artefact unchanged since `since` buys no
@@ -1767,8 +1771,8 @@ stored returns, the round's `record` channel failed.
 Every axis the repository's guidance yields is probed, beside the standing four: an axis nobody ran
 and an axis that found nothing must not leave the same mark, and the per-unit rulings are what tell
 them apart. One analyst holds every axis as a checklist; more are bought when the lines attacked are
-many enough (one per 400; a narrowed round counts its changed lines alone) or the checklist is (one
-per 12 axes), whichever buys more, never more than one per axis, the axes dealt round-robin;
+many enough (one per 400) or, in a full round, the checklist is (one per 12 axes), whichever buys
+more; a narrowed round counts its changed lines alone and buys nothing for its checklist, never more than one per axis, the axes dealt round-robin;
 `--per-axis` buys one per axis. A second round is earned only by a resolution that reshaped the
 design.
 

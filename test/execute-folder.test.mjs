@@ -19,7 +19,7 @@ import { guidanceOf, leafBrief } from '../lib/brief.mjs'
 import { plannerBrief } from '../lib/briefs/execute.mjs'
 import { PLAN_AXIS, STANDING_AXES } from '../lib/briefs/probe.mjs'
 import { renderMessage } from '../lib/conversation.mjs'
-import { sectionsOf, unitsOf } from '../lib/evidence.mjs'
+import { changedParts, sectionsOf, unitsOf } from '../lib/evidence.mjs'
 import { commandsOf } from '../lib/gotchas.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
 import { permissionsFor } from '../lib/locus.mjs'
@@ -122,10 +122,25 @@ const proberOut = (units, findings = []) => ({
   units: units.map((unit) => ({ unit, ruling: findings.some((f) => f.axis + '@' + f.section === unit) ? 'findings' : 'clean', ids: [], why: 'why ' + unit })),
   notes: '', stop_reason: 'exhausted', not_reached: '',
 })
-/** Probe round `n` over `text`: a locate that finds nothing, and one prober holding the standing axes. */
-const probing = (n, text, findings = [], { units } = {}) => ({
+/** The one range of lines `text` changed since `before`, between their common head and tail; the fixtures edit one run of lines. */
+function changedRange(before, text) {
+  const a = before.replace(/\n$/, '').split('\n')
+  const b = text.replace(/\n$/, '').split('\n')
+  let head = 0
+  while (head < a.length && head < b.length && a[head] === b[head]) head++
+  let tail = 0
+  while (tail < a.length - head && tail < b.length - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++
+  return [{ start: head + 1, end: Math.max(head + 1, b.length - tail) }]
+}
+/**
+ * Probe round `n` over `text`: a locate that finds nothing, and one prober holding the standing axes;
+ * a re-review `after` the text the round before reviewed attacks the changed part alone.
+ */
+const probing = (n, text, findings = [], { units, after } = {}) => ({
   ...closedSearch({ name: 'probe:p:' + n + '/locate' }),
-  ['analyst||probe:p:' + n + '/prober:1']: [{ output: proberOut(units || unitsFor(text), findings) }],
+  ['analyst||probe:p:' + n + '/prober:1']: [{
+    output: proberOut(units || (after ? unitsOf(STANDING, changedParts(sectionsOf(text), changedRange(after, text))) : unitsFor(text)), findings),
+  }],
 })
 const lineOf = (text, needle) => text.split('\n').findIndex((l) => l.includes(needle)) + 1
 /** A prober's finding on the line of `text` holding `needle`. */
@@ -441,7 +456,7 @@ test('a retried folder pins the head it is planned on now', async (t) => {
 
 test("fresh findings go to the planner's own session as a findings message, and its dispositions are recorded", async (t) => {
   const w = world(t, {
-    steps: { ...planner(written, settled(['P1', 'incorporated'])), ...probing(1, S1, [GAP]), ...probing(2, S2) },
+    steps: { ...planner(written, settled(['P1', 'incorporated'])), ...probing(1, S1, [GAP]), ...probing(2, S2, [], { after: S1 }) },
     writes: { 1: S1, 2: S2 },
   })
   const out = await w.run()
@@ -484,7 +499,7 @@ test('a round whose findings are all notes is prepared on the text it reviewed, 
 
 test('a round with a gap and a note sends the planner the gap alone', async (t) => {
   const w = world(t, {
-    steps: { ...planner(written, settled(['P1', 'incorporated'])), ...probing(1, S1, [GAP, NOTE]), ...probing(2, S2) },
+    steps: { ...planner(written, settled(['P1', 'incorporated'])), ...probing(1, S1, [GAP, NOTE]), ...probing(2, S2, [], { after: S1 }) },
     writes: { 1: S1, 2: S2 },
   })
   assert.equal((await w.run()).outcome, 'prepared')
@@ -496,7 +511,7 @@ test('a round with a gap and a note sends the planner the gap alone', async (t) 
 
 test("the re-review after an edit is narrowed to the round before's snapshot", async (t) => {
   const w = world(t, {
-    steps: { ...planner(written, settled(['P1', 'incorporated'])), ...probing(1, S1, [GAP]), ...probing(2, S2) },
+    steps: { ...planner(written, settled(['P1', 'incorporated'])), ...probing(1, S1, [GAP]), ...probing(2, S2, [], { after: S1 }) },
     writes: { 1: S1, 2: S2 },
   })
   assert.equal((await w.run()).outcome, 'prepared')
@@ -516,7 +531,7 @@ test("the planner's session is resumed for every message on its folder", async (
   const w = world(t, {
     steps: {
       ...planner(written, written, settled(), settled(['P1', 'incorporated'])),
-      ...probing(2, S1, [GAP]), ...probing(4, S2),
+      ...probing(2, S1, [GAP]), ...probing(4, S2, [], { after: S1 }),
     },
     writes: { 1: BAD, 2: S1, 4: S2 },
   })
@@ -545,7 +560,7 @@ test('a discard refused once, then incorporated, is reviewed again and prepared'
   const w = world(t, {
     steps: {
       ...planner(written, settled(['P1', 'discarded']), settled(['P1', 'incorporated'])),
-      ...probing(1, S1, [GAP]), ...probing(3, S2),
+      ...probing(1, S1, [GAP]), ...probing(3, S2, [], { after: S1 }),
     },
     writes: { 1: S1, 3: S2 },
   })
@@ -579,7 +594,7 @@ test('a discarded ambiguity is refused once, and discarded again escalates revie
 test('a finding back unchanged after it was incorporated escalates review_not_converging', async (t) => {
   const again = { ...GAP, claim: GAP.claim.toUpperCase().replace(/ /g, '  '), start: lineOf(S2, DESIGN_B), end: lineOf(S2, DESIGN_B) }
   const w = world(t, {
-    steps: { ...planner(written, settled(['P1', 'incorporated'])), ...probing(1, S1, [GAP]), ...probing(2, S2, [again]) },
+    steps: { ...planner(written, settled(['P1', 'incorporated'])), ...probing(1, S1, [GAP]), ...probing(2, S2, [again], { after: S1 }) },
     writes: { 1: S1, 2: S2 },
   })
   const out = await w.run()
@@ -591,7 +606,7 @@ test('a finding back unchanged after it was incorporated escalates review_not_co
 
 test('an ambiguity incorporated by an edit elsewhere keeps the gate shut, and the round that edited nothing escalates review_not_converging naming it', async (t) => {
   const w = world(t, {
-    steps: { ...planner(written, settled(['P1', 'incorporated'])), ...probing(1, S1, [AMBIGUITY]), ...probing(2, S2) },
+    steps: { ...planner(written, settled(['P1', 'incorporated'])), ...probing(1, S1, [AMBIGUITY]), ...probing(2, S2, [], { after: S1 }) },
     writes: { 1: S1, 2: S2 },
   })
   const out = await w.run()
@@ -609,7 +624,7 @@ test('an ambiguity incorporated by an edit elsewhere keeps the gate shut, and th
 test('a settle whose edit states a decision parks the folder before another probe', async (t) => {
   const stating = folderSpec({ design: DESIGN_B, decisions: [['p.D1', 'keep it in memory']] })
   const w = world(t, {
-    steps: { ...planner(written, settled(['P1', 'incorporated'])), ...probing(1, S1, [GAP]), ...probing(2, stating) },
+    steps: { ...planner(written, settled(['P1', 'incorporated'])), ...probing(1, S1, [GAP]), ...probing(2, stating, [], { after: S1 }) },
     writes: { 1: S1, 2: stating },
   })
   const out = await w.run()
@@ -622,7 +637,7 @@ test('a settle whose edit states a decision parks the folder before another prob
 
 test('a carried finding a disposition settled is not settled again', async (t) => {
   const w = world(t, {
-    steps: { ...planner(written, settled(['P1', 'incorporated'])), ...probing(1, S1, [GAP_INTENT]), ...probing(2, S2) },
+    steps: { ...planner(written, settled(['P1', 'incorporated'])), ...probing(1, S1, [GAP_INTENT]), ...probing(2, S2, [], { after: S1 }) },
     writes: { 1: S1, 2: S2 },
   })
   const out = await w.run()
@@ -875,7 +890,7 @@ test('a boundary that refuses the round is a program fault on the folder', async
 
 test('a relaunch mid-review repeats no recorded round', async (t) => {
   const writes = { 1: S1, 2: S2 }
-  const steps = { ...planner(written, settled(['P1', 'incorporated'])), ...probing(1, S1, [GAP]), ...probing(2, S2) }
+  const steps = { ...planner(written, settled(['P1', 'incorporated'])), ...probing(1, S1, [GAP]), ...probing(2, S2, [], { after: S1 }) }
   const w = world(t, { steps, writes, trap: (call) => call.thread.key === 'probe:p:2/prober:1' })
   await assert.rejects(w.run(), /the runner was cut off at probe:p:2\/prober:1/)
   assert.equal(ledger(w.rig, 'reviewed').length, 1, 'the fixture: round 1 was recorded before the cut')

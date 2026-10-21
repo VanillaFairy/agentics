@@ -1,6 +1,6 @@
 // test/program-probe-narrow.test.mjs — pins the probe's narrowed round: given `since`, the snapshot the
-// last review judged, it attacks only the sections the changed lines touch, earns its head count from
-// those lines, tells each prober the changed ranges and the carried claims, lists the carried findings
+// last review judged, it attacks only the changed parts of the sections, earns its head count from
+// those lines alone, tells each prober the changed ranges and the carried claims, lists the carried findings
 // first and records only its new ones; an artefact unchanged since `since` buys no agent; a `since`
 // that names no intact snapshot probes in full; relaunches and the read-back through
 // `approval.mjs reviewed --from-run`.
@@ -13,7 +13,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { reviewedFromResult } from '../lib/approval.mjs'
-import { carriedFindings, liveItems, recordProbe, reviewScope, sectionsOf, unitsOf } from '../lib/evidence.mjs'
+import { carriedFindings, changedParts, liveItems, recordProbe, reviewScope, sectionsOf, unitsOf } from '../lib/evidence.mjs'
 import { readLog } from '../lib/ledger.mjs'
 import { locateMaterial, probe } from '../lib/programs/probe.mjs'
 import { evidenceReturnsDir, evidenceSnapshotsDir } from '../lib/store.mjs'
@@ -80,23 +80,22 @@ const NEW = finding('invariants', 'gap', 'risks', 9, 'NEW_FINDING_TOKEN load is 
 
 // --- what a round is expected to buy, by the rule ----------------------------------------------
 
-/** The head count: one per 400 lines, one per 12 axes, whichever is more; never more than the axes. */
-const headsFor = (keys, lines, perAxis) =>
-  (perAxis ? keys.length : Math.min(keys.length, Math.max(1, Math.ceil(lines / 400), Math.ceil(keys.length / 12))))
+/** The head count: one per 400 lines, and in a full round one per 12 axes, whichever is more; never more than the axes. */
+const headsFor = (keys, lines, perAxis, narrow = false) =>
+  (perAxis ? keys.length : Math.min(keys.length, Math.max(1, Math.ceil(lines / 400), narrow ? 1 : Math.ceil(keys.length / 12))))
 /** The axes dealt round-robin: group i holds the axes whose index is i mod n. */
 const deal = (keys, n) => Array.from({ length: n }, (_, i) => keys.filter((_, j) => j % n === i))
-const overlaps = (s, r) => r.start <= s.end && s.start <= r.end
 /** The changed lines a narrowed scope earns its head count by. */
 const changedLines = (changed) => changed.reduce((n, r) => n + r.end - r.start + 1, 0)
 
 /**
  * What a narrowed round of `text` over `keys` buys, given the scope `reviewScope(repo, file, since)`
- * returns: the sections a changed range touches, the probers' groups and units, and a script giving
+ * returns: the changed parts of the sections, the probers' groups and units, and a script giving
  * each prober's steps (`probers[n](units)`, default every unit ruled clean).
  */
 function narrowed(text, scope, { keys = STANDING, perAxis = false, probers = {}, locate = LOCATE() } = {}) {
-  const touched = sectionsOf(text).filter((s) => scope.changed.some((r) => overlaps(s, r)))
-  const groups = deal(keys, headsFor(keys, changedLines(scope.changed), perAxis))
+  const touched = changedParts(sectionsOf(text), scope.changed)
+  const groups = deal(keys, headsFor(keys, changedLines(scope.changed), perAxis, true))
   const unitsOfGroup = groups.map((g) => unitsOf(g, touched))
   const script = { ...locate }
   unitsOfGroup.forEach((units, i) => {
@@ -166,20 +165,20 @@ async function narrowRound(t, { findings = LAST, perAxis = false, probers = {}, 
 
 // --- a narrowed round --------------------------------------------------------------------------
 
-test('a probe given since attacks only the sections the changed lines touch', async (t) => {
+test('a probe given since attacks only the changed parts of the sections', async (t) => {
   const { run, touched, result } = await narrowRound(t)
-  assert.deepEqual(touched.map((s) => s.slug), ['risks'], 'the fixture: line 9 sits in Risks alone')
+  assert.deepEqual(touched.map((s) => s.slug), ['risks~9-9'], 'the fixture: line 9 sits in Risks alone')
   const expected = unitsOf(STANDING, touched)
   assert.equal(result.units.total, expected.length)
   assert.equal(result.units.ruled, expected.length)
   assert.deepEqual(result.units.open, [])
   const calls = proberCalls(run)
   assert.ok(calls.length > 0, 'a prober was called')
-  const others = unitsOf(STANDING, sectionsOf(EDITED).filter((s) => !touched.some((x) => x.slug === s.slug)))
+  const others = unitsOf(STANDING, sectionsOf(EDITED))
   assert.ok(others.length > 0)
   for (const c of calls) {
     for (const u of expected) assert.ok(c.brief.includes(u), c.thread.key + ' names the unit ' + u)
-    for (const u of others) assert.ok(!c.brief.includes(u), c.thread.key + ' names no unit of another section: ' + u)
+    for (const u of others) assert.ok(!c.brief.includes('- ' + u + ' —'), c.thread.key + ' names no whole-section unit: ' + u)
   }
 })
 

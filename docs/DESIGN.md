@@ -975,8 +975,11 @@ leaf's), and otherwise summarizes its children: once all have merged it is `revi
 integration review stands, then `integrated`. A review stands when the composite's latest `claims`
 event is newer than its last clearing (a replan or a revision) and than every `merged` event beneath
 it, since each merge moves the head the review judged, and than every `outside` event on the folder
-or beneath it, which moves it the same way (`standingReview` in `lib/tree.mjs`). The
-derived status also carries the composite's `review` — `pending` while `reviewing`, then the
+or beneath it, which moves it the same way (`standingReview` in `lib/tree.mjs`). A park an
+integration review raised — one whose `said` is the `said` of a `claims` event on the composite — is
+cleared by any later `claims` event on it: a new review, a re-rule or the session's acceptance
+supersedes the verdict the park came from, and a newer one that earns a park records its own after
+it. The derived status also carries the composite's `review` — `pending` while `reviewing`, then the
 standing event's `done` or `not_earned` — so the review is a step of its own wherever status is
 read: a todo and a snapshot entry after the composite's children. Merged children alone never read
 as integrated, so nothing lands, merges up or reports a folder finished before its review. A
@@ -2865,7 +2868,10 @@ other ([Merging](#merging)).
   (`integrationPark`) is by class, first match: any `spec_defect` parks the folder `spec_defect` on
   its spec (a re-spec); any critical, or any `under`, `over` or `deviates`, parks it
   `integration_critical` (the user routes the fix); any `cant_tell` parks it `cant_tell`, which
-  never counts as a pass. `equivalent` passes like `met`: the work does the claimed thing with the
+  never counts as a pass. A drift with no behaviour behind it is the orchestrating session's call:
+  `accept` ([Session calls](#session-calls)) records its acceptance of the `under`, `over` and
+  `deviates` claims it names, each with a reason, and the folder integrates unless something else
+  still parks it. `equivalent` passes like `met`: the work does the claimed thing with the
   same observable behaviour, only a name, a signature's shape or an internal structure differing,
   and nothing outside the folder relies on the difference.
 - **Establishing commands** is judgment: when no build or test command is established, leaf-close
@@ -3393,9 +3399,10 @@ either)
 (`return` is a replanning return, `needs_design`, `needs_respec`, `integration_critical`,
 `spec_defect`, `cant_tell`, `contract_drift` or `design_spend`) ·
 `landed {into, merged_sha, by}` (`by` who confirmed the word: `user` or `terminal`) · `claims
-{head_sha, review: done | not_earned, claims[{claim, ruling}], said?}` (`ruling` is the reviewer's
-`met`, `equivalent`, `under`, `over`, `deviates`, `spec_defect` or `cant_tell`; each ruling's evidence
-is in the reviewer's stored return) · `noted {by, text}` (what a session learned about the node; no status
+{head_sha, review: done | not_earned, claims[{claim, ruling}], said?, by?, accepted?[{claim, was,
+why}]}` (`ruling` is the reviewer's `met`, `equivalent`, `under`, `over`, `deviates`, `spec_defect` or
+`cant_tell`, or `accepted`, the session's on a drift claim, which `by: session` and `accepted` record
+with the ruling it had and its reason; each ruling's evidence is in the reviewer's stored return) · `noted {by, text}` (what a session learned about the node; no status
 is derived from it) · `message {thread, from, msg, payload, round}` (a message code delivers to a
 thread's session, [Conversations](#conversations); its `execution` is `''` only on one the migration
 recorded, and no status is derived from it). A boundary appends an event only while it is not
@@ -3761,13 +3768,13 @@ or still being released, is refused, and the taker waits.
 
 ### Session calls
 
-- **Owner:** `land`, `landAct`, `adoptAct`, `retry` and `note` in `lib/boundary.mjs`, which holds those
+- **Owner:** `land`, `landAct`, `adoptAct`, `acceptDrift`, `retry` and `note` in `lib/boundary.mjs`, which holds those
   and their CLI alone, and `adopt` in `lib/adopt.mjs`, which `adoptAct` and the CLI call: any other
   verb exits 1 with `{error: program_failed}`.
 - **Restated in:** `skills/develop/SKILL.md`, its landing reference and its `outside-work.md`.
 
 Every other boundary is a function the `execute` program calls in-process
-(`lib/boundaries/*.mjs`); its result is a value, and its shape lives in its own module. Four are
+(`lib/boundaries/*.mjs`); its result is a value, and its shape lives in its own module. Five are
 the session's, called as CLIs:
 
 - **land** — `check`: `into` (the user's checked-out branch), `effort_branch`, `effort_head` (the
@@ -3798,6 +3805,24 @@ the session's, called as CLIs:
   not be created; those already made are in `created`), `append_failed`, `bad_arg` (an action that
   is neither), or `confirmAct`'s refusal (`no_token`, `not_approved`, `answer_unverifiable`). The
   refusal kinds are listed under [Outside work](#outside-work).
+- **accept** — `accept --repo <r> --effort <e> --node <folder> --file <path>`: the session's verdict
+  on drift claims an integration review found, and the one thing that clears the park the review
+  earned without a re-spec. The file is JSON the session wrote, `{claims: [{claim, why}]}`, each
+  `claim` exactly as the folder's standing `claims` event records it. It prints `{ok, accepted_n,
+  park}` (`park` the class of the park what remains still earns, or `null`) or `{ok: false, error:
+  {kind, message}}`, writing nothing: `not_a_folder` (not a live composite), `no_review` (no
+  `claims` event stands, or it is `not_earned`), `not_a_drift_park` (the folder is not parked
+  `integration_critical` by that very review: its `said` is the park's), `no_return` or
+  `critical_finding` (the review's stored return is gone, or holds a `critical`, which is never
+  accepted), `not_acceptable` (a listed claim is not in the event, or was not ruled `under`, `over`
+  or `deviates`: a `spec_defect` needs a spec change and a `cant_tell` is never a pass), `no_reason`
+  (an empty `why`), `no_claims` (an empty list) and `bad_file` (not that shape, or a claim listed
+  twice); a file that does not resolve refuses `unknown_file`. Acceptance may be partial. On success
+  one `claims` event is appended under the review's execution: the same `head_sha`, `review: done`
+  and `said`, each accepted claim's ruling `accepted`, `accepted[{claim, was, why}]` (the earlier
+  acceptances kept) and `by: session`; then, if `integrationPark` over the claims as they now stand
+  still earns a park, that park with the same `said`. With no park left the newer event stands and
+  the folder reads `integrated`.
 - **retry** — `retry --node <id>…`: `{retried[], error}`; each `replanned {reason:
   retry_escalated}` names the open execution holding the node (the latest open one whose root is
   the node or above it), or `''`.

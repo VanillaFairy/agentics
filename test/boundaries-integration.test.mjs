@@ -13,6 +13,7 @@ import { executionContext } from '../lib/boundaries/records.mjs'
 import { folderReview, ruleClose } from '../lib/boundaries/integration.mjs'
 import { executionLog, readLog } from '../lib/ledger.mjs'
 import { dispatchKey, posix, returnPath, specPath, writeJson } from '../lib/store.mjs'
+import { readTree } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 import { leaf, repo, root, STAMP } from './harness/boundary-fixture.mjs'
 
@@ -95,7 +96,11 @@ test('a critical finding, or an under, over or deviates claim, parks integration
     const out = folderReview(xc, { target: '.', head: 'h' + i, dispatch: review(xc, value), spec_path: 'S' })
     assert.deepEqual(out.stops.map((s) => s.reason), ['integration_critical'], JSON.stringify(value))
   }
-  assert.equal(events(r, 'parked').length, 1, 'a park that stands is not recorded again')
+  const parks = events(r, 'parked')
+  assert.equal(parks.length, cases.length, 'each review records the park it earns after its claims, which clear the park before')
+  const tree = readTree(r, E)
+  assert.equal(tree.status.get('.').status, 'parked')
+  assert.ok(parks.at(-1).seq > events(r, 'claims').at(-1).seq && tree.status.get('.').last.seq === parks.at(-1).seq)
 })
 
 test('a cant_tell claim alone parks cant_tell: it never counts as a pass', (t) => {

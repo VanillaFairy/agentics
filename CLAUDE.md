@@ -136,7 +136,7 @@ rule fails it there, and a preload that makes process creation throw fails it at
 
 - `lib/` — deterministic modules and CLIs: the store, tree, ledger, compile, verify, measure,
   runner, host, locus and conversation modules, and the session's calls in `lib/boundary.mjs`
-  (land, adopt, retry, note) (`lib/INDEX.md`)
+  (land, adopt, retry, note, accept) (`lib/INDEX.md`)
 - `lib/boundaries/` — the boundaries an execution calls in-process: preflight, schedule and
   postflight, leaf-open, leaf-close, leaf-review, merge-batch and the suite gate, folder-review and
   rule-close, and the autonomous review's, over one records core (`lib/boundaries/INDEX.md`)

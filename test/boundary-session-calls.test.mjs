@@ -1,4 +1,5 @@
-// test/boundary-session-calls.test.mjs — the session's own calls against real git: retry and note
+// test/boundary-session-calls.test.mjs — the session's own calls against real git: accept records the
+// session's judgment of the drift an integration review found; retry and note
 // name the open execution that holds the node, take no --execution, and land records a second
 // landing killed before its record and refuses a check that names no commit.
 //
@@ -11,10 +12,10 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { land, landAct } from '../lib/boundary.mjs'
+import { acceptDrift, land, landAct } from '../lib/boundary.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
-import { executionDir, revParse } from '../lib/store.mjs'
-import { readTree } from '../lib/tree.mjs'
+import { dispatchKey, executionDir, returnPath, revParse, writeJson } from '../lib/store.mjs'
+import { readTree, standingReview } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 import { commitIn, git, leaf, repo, root } from './harness/boundary-fixture.mjs'
 
@@ -313,4 +314,130 @@ test('a note by --text and --text-file is refused bad_args, and by a file that i
   assert.equal(call(r, 'note', '--node', 'b', '--text', 'y', '--text-file', file).error.kind, 'bad_args')
   assert.equal(call(r, 'note', '--node', 'b', '--text-file', join(r, 'missing.txt')).error.kind, 'unknown_file')
   assert.equal(eventsOf(r, 'noted').length, 0)
+})
+
+// ================================================================== accept
+
+const REVIEW_THREAD = dispatchKey({ node: 'c', role: 'reviewer', thread: 'integration:c:1', round: 1 })
+const drift = (text, ruling = 'under') => ({ claim: text, ruling })
+const settle = (r, id) => readTree(r, E).status.get(id)
+const accepted = (r) => eventsOf(r, 'claims').filter((e) => e.by === 'session')
+
+/**
+ * Folder `c` with its only child merged, reviewed at head `h`: the review's `claims` event, its
+ * stored return and the park it earned, each said the reviewer's dispatch. `park: null` records none.
+ */
+function judged(t, { claims = [drift('names match'), drift('shape matches', 'deviates'), drift('it builds', 'met')], findings = [], park = 'integration_critical', review = 'done' } = {}) {
+  const r = seeded(t)
+  append(r, E, 'events', { kind: 'merged', node: 'c/a', execution: OLDER, into: 'agentics/e1/c', merged_sha: 'a'.repeat(40), head_sha: 'a'.repeat(40) })
+  writeJson(returnPath(executionDir(r, E, OLDER), REVIEW_THREAD), { units: [], findings, fix_rulings: [], claims, notes: '' })
+  append(r, E, 'events', { kind: 'claims', node: 'c', execution: OLDER, head_sha: 'h', review, claims, said: REVIEW_THREAD })
+  if (park) append(r, E, 'events', { kind: 'parked', node: 'c', execution: OLDER, return: park, question: 'q', said: REVIEW_THREAD })
+  return r
+}
+const take = (...texts) => ({ claims: texts.map((claim) => ({ claim, why: 'a name, no behaviour behind it' })) })
+
+test('accepting every drift claim records the acceptance with its reason and the folder reads integrated', (t) => {
+  const r = judged(t)
+  assert.equal(settle(r, 'c').status, 'parked')
+  const out = acceptDrift(r, E, 'c', take('names match', 'shape matches'))
+
+  assert.deepEqual(out, { ok: true, accepted_n: 2, park: null })
+  const [event] = accepted(r)
+  assert.deepEqual(event.claims.map((c) => [c.claim, c.ruling]), [['names match', 'accepted'], ['shape matches', 'accepted'], ['it builds', 'met']])
+  assert.deepEqual(event.accepted, [
+    { claim: 'names match', was: 'under', why: 'a name, no behaviour behind it' },
+    { claim: 'shape matches', was: 'deviates', why: 'a name, no behaviour behind it' },
+  ])
+  assert.equal(event.said, REVIEW_THREAD)
+  assert.equal(event.head_sha, 'h')
+  assert.equal(event.execution, OLDER)
+  assert.equal(settle(r, 'c').status, 'integrated', 'the park the review raised is cleared and the acceptance stands')
+  const tree = readTree(r, E)
+  assert.equal(standingReview(tree.nodes, tree.events, 'c').seq, event.seq)
+})
+
+test('accepting some drift claims leaves the folder parked, on a fresh park of the same review', (t) => {
+  const r = judged(t)
+  const out = acceptDrift(r, E, 'c', take('names match'))
+
+  assert.deepEqual(out, { ok: true, accepted_n: 1, park: 'integration_critical' })
+  const now = settle(r, 'c')
+  assert.equal(now.status, 'parked')
+  assert.ok(now.last.question.includes('shape matches') && !now.last.question.includes('names match'), now.last.question)
+  assert.equal(now.last.said, REVIEW_THREAD)
+  assert.ok(now.last.seq > accepted(r)[0].seq, 'the park follows the acceptance that earned it')
+
+  const rest = acceptDrift(r, E, 'c', take('shape matches'))
+  assert.equal(rest.park, null)
+  assert.equal(settle(r, 'c').status, 'integrated')
+  assert.deepEqual(accepted(r).at(-1).accepted.map((a) => a.claim), ['names match', 'shape matches'], 'the second acceptance keeps the first')
+})
+
+test('what the acceptance leaves undecided earns its own park, never a pass', (t) => {
+  const r = judged(t, { claims: [drift('names match'), { claim: 'latency stays flat', ruling: 'cant_tell' }] })
+  const out = acceptDrift(r, E, 'c', take('names match'))
+  assert.equal(out.park, 'cant_tell')
+  assert.equal(settle(r, 'c').last.return, 'cant_tell')
+})
+
+test("accept refuses where the verdict is not the session's, recording nothing", (t) => {
+  const outrun = () => {
+    const r = judged(t)
+    append(r, E, 'events', { kind: 'merged', node: 'c/a', execution: OLDER, merged_sha: 'b'.repeat(40) })
+    return r
+  }
+  const otherDispatch = () => {
+    const r = judged(t, { park: null })
+    append(r, E, 'events', { kind: 'parked', node: 'c', execution: OLDER, return: 'integration_critical', question: 'q', said: 'someone.else' })
+    return r
+  }
+  const returnGone = () => {
+    const r = judged(t)
+    rmSync(returnPath(executionDir(r, E, OLDER), REVIEW_THREAD))
+    return r
+  }
+  const critical = { id: 'F1', severity: 'critical', claim: 'broken', evidence: 'a:1', failure_scenario: 'x' }
+  const odd = (ruling) => judged(t, { claims: [{ claim: 'k', ruling }, drift('names match')] })
+  const cases = [
+    ['a leaf', judged(t), 'c/a', take('names match'), 'not_a_folder'],
+    ['a node that does not exist', judged(t), 'nope', take('names match'), 'not_a_folder'],
+    ['a folder never reviewed', seeded(t), 'c', take('names match'), 'no_review'],
+    ['a review not earned', judged(t, { claims: [], park: null, review: 'not_earned' }), 'c', take('names match'), 'no_review'],
+    ['a review the head outran', outrun(), 'c', take('names match'), 'no_review'],
+    ['a folder that is not parked', judged(t, { park: null }), 'c', take('names match'), 'not_a_drift_park'],
+    ['a park of another class', judged(t, { park: 'spec_defect' }), 'c', take('names match'), 'not_a_drift_park'],
+    ['a park of another dispatch', otherDispatch(), 'c', take('names match'), 'not_a_drift_park'],
+    ['a review with a critical finding', judged(t, { findings: [critical] }), 'c', take('names match'), 'critical_finding'],
+    ['a review whose return is gone', returnGone(), 'c', take('names match'), 'no_return'],
+    ['a claim the review did not make', judged(t), 'c', take('names are the same'), 'not_acceptable'],
+    ['a claim ruled met', judged(t), 'c', take('it builds'), 'not_acceptable'],
+    ['a claim ruled spec_defect', odd('spec_defect'), 'c', take('k'), 'not_acceptable'],
+    ['a claim ruled cant_tell', odd('cant_tell'), 'c', take('k'), 'not_acceptable'],
+    ['a reason that says nothing', judged(t), 'c', { claims: [{ claim: 'names match', why: '  ' }] }, 'no_reason'],
+    ['an empty list', judged(t), 'c', { claims: [] }, 'no_claims'],
+    ['a file with no list', judged(t), 'c', { nope: 1 }, 'bad_file'],
+    ['a claim listed twice', judged(t), 'c', take('names match', 'names match'), 'bad_file'],
+    ['a valid claim beside an unacceptable one', judged(t), 'c', take('names match', 'it builds'), 'not_acceptable'],
+  ]
+  for (const [what, r, node, input, kind] of cases) {
+    const before = readTree(r, E).events.length
+    const out = acceptDrift(r, E, node, input)
+    assert.equal(out.ok, false, what)
+    assert.equal(out.error.kind, kind, what + ': ' + out.error.message)
+    assert.equal(readTree(r, E).events.length, before, what + ' wrote nothing')
+  }
+})
+
+test('accept through the CLI reads the claims from the file the session wrote, and refuses an unknown flag and a missing file', (t) => {
+  const r = judged(t)
+  const file = join(r, 'accept.json')
+  writeFileSync(file, JSON.stringify(take('names match', 'shape matches')))
+  assert.equal(call(r, 'accept', '--node', 'c', '--file', file).ok, true)
+  assert.equal(settle(r, 'c').status, 'integrated')
+
+  const again = judged(t)
+  assert.equal(call(again, 'accept', '--node', 'c', '--file', join(again, 'nope.json')).error.kind, 'unknown_file')
+  assert.equal(call(again, 'accept', '--node', 'c', '--file', file, '--execution', OLDER).error.kind, 'bad_arg')
+  assert.equal(accepted(again).length, 0)
 })

@@ -1925,7 +1925,10 @@ execution journaled (`sweepTrees`); a dirty one is never forced, and preflight r
    `compile_refused`, a folder compiled with nothing beneath it `planner_wrote_nothing`, and a leaf
    the planner was asked to replan that the compile left at the revision it asked from
    `replan_not_converging`. A leaf whose locus the compile widened onto paths another unmerged leaf
-   holds escalates `locus_held` on that leaf, its new revision kept. A `spec_changed` park the
+   holds escalates `locus_held` on that leaf, its new revision kept. A holder that waits on the
+   widened leaf through its `after` chain (its own, its group's and its folders', `dependsOn` in
+   `lib/atomicity.mjs`) and has no commits on its branch holds nothing: it runs only after the
+   widened leaf merges. A `spec_changed` park the
    compile raised on the folder itself is cleared at once (`replanned {reason: spec_rederived}`).
 
 **Proportionality.** Before each probe round, `planFolder` sums what this execution's dispatches for

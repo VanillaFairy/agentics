@@ -9,6 +9,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -21,7 +22,7 @@ import { compileEffort } from '../lib/compile.mjs'
 import { renderMessage } from '../lib/conversation.mjs'
 import { executionLog, readLog } from '../lib/ledger.mjs'
 import { checkFolder, hashSpec } from '../lib/spec.mjs'
-import { dispatchKey, posix, returnPath, specPath } from '../lib/store.mjs'
+import { branchOf, dispatchKey, posix, returnPath, specPath } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
 import { STAMP, repo } from './harness/boundary-fixture.mjs'
 
@@ -1018,8 +1019,8 @@ test('spec-prepare clears a spec_changed park a cut-off call left standing', (t)
 })
 
 /** The sound spec prepared, then its locus widened by `path` and prepared again. */
-function widened(t, path, before = () => {}) {
-  const xc = prepared(t)
+function widened(t, path, before = () => {}, opts) {
+  const xc = prepared(t, opts)
   before(xc)
   put(xc.repo, 'p', folderSpec({ locus: 'src/x.mjs, test/x.test.mjs, ' + path }))
   return { xc, out: specPrepare(xc, { folder: 'p', review: REVIEW_2 }) }
@@ -1056,6 +1057,49 @@ test('spec-prepare: a widened locus a held leaf lists as a directory is held too
   const { xc, out } = widened(t, 'src/')
   assertStop(out, 'p/x', 'escalated', 'locus_held')
   assert.match(detailOf(xc, 'p/x'), /\bq\b/)
+})
+
+/** Folder p planning x and m, m after x and holding src/m.mjs; x's locus `locus`. */
+const pairSpec = (locus) => folderSpec({ plan: [
+  '- **x** — task · realises: D1 · rigor: tdd · locus: ' + locus, '  Add x.', '  Write x and its test.',
+  '  - [ ] x works — check: `node --test test/x.test.mjs`',
+  '- **m** — task · realises: D1 · rigor: tdd · after: x · locus: src/m.mjs, test/m.test.mjs', '  Add m.', '  Write m and its test.',
+  '  - [ ] m works — check: `node --test test/m.test.mjs`',
+] })
+
+/** Commit on `id`'s leaf branch, cut from main: the holder has work in git. */
+function workOn(xc, id) {
+  const g = (...args) => execFileSync('git', ['-C', xc.repo, ...args], { encoding: 'utf8' }).trim()
+  const branch = branchOf(E, id)
+  g('branch', branch, 'main')
+  const tree = g('rev-parse', 'main^{tree}')
+  const sha = g('commit-tree', tree, '-p', 'main', '-m', 'work on ' + id)
+  g('update-ref', 'refs/heads/' + branch, sha)
+}
+
+test('spec-prepare: a widened locus a leaf after it holds, with no work in git, is admitted', (t) => {
+  const xc = prepared(t, { spec: pairSpec('src/x.mjs, test/x.test.mjs') })
+  put(xc.repo, 'p', pairSpec('src/x.mjs, test/x.test.mjs, src/m.mjs'))
+  const out = specPrepare(xc, { folder: 'p', review: REVIEW_2 })
+  assert.equal(out.status, 'prepared', JSON.stringify(out.stops))
+  assert.deepEqual(escalations(xc, 'p/x'), [])
+  assert.ok(nodeOf(xc, 'p/x').locus.includes('src/m.mjs'))
+})
+
+test('spec-prepare: a widened locus a leaf after it holds is held once that leaf has work in git', (t) => {
+  const xc = prepared(t, { spec: pairSpec('src/x.mjs, test/x.test.mjs') })
+  workOn(xc, 'p/m')
+  put(xc.repo, 'p', pairSpec('src/x.mjs, test/x.test.mjs, src/m.mjs'))
+  assertStop(specPrepare(xc, { folder: 'p', review: REVIEW_2 }), 'p/x', 'escalated', 'locus_held')
+  assert.match(detailOf(xc, 'p/x'), /p\/m/)
+})
+
+test("spec-prepare: a widened locus a leaf holds that waits on the leaf's folder is admitted", (t) => {
+  const root = ROOT_SPEC.replace('- **q** — task · realises: D1 · rigor: tdd ·', '- **q** — task · realises: D1 · rigor: tdd · after: p ·')
+  assert.notEqual(root, ROOT_SPEC)
+  const { xc, out } = widened(t, 'src/q.mjs', () => {}, { root })
+  assert.equal(out.status, 'prepared', JSON.stringify(out.stops))
+  assert.deepEqual(escalations(xc, 'p/x'), [])
 })
 
 test('spec-prepare run twice on a held widening escalates once', (t) => {

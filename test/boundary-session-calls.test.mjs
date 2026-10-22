@@ -441,3 +441,14 @@ test('accept through the CLI reads the claims from the file the session wrote, a
   assert.equal(call(again, 'accept', '--node', 'c', '--file', file, '--execution', OLDER).error.kind, 'bad_arg')
   assert.equal(accepted(again).length, 0)
 })
+
+test('net through the CLI refuses a leaf not escalated discriminator_undecidable, an unknown flag and a missing file', (t) => {
+  const r = judged(t)
+  const file = join(r, 'nets.json')
+  writeFileSync(file, JSON.stringify({ nets: [{ file: 'test/x.test.mjs', why: 'a net' }] }))
+  const before = readTree(r, E).events.length
+  assert.equal(call(r, 'net', '--node', 'c', '--file', file).error.kind, 'not_a_leaf')
+  assert.equal(call(r, 'net', '--node', 'c', '--file', join(r, 'nope.json')).error.kind, 'unknown_file')
+  assert.equal(call(r, 'net', '--node', 'c', '--file', file, '--execution', OLDER).error.kind, 'bad_arg')
+  assert.equal(readTree(r, E).events.length, before, 'nothing written')
+})

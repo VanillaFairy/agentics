@@ -17,7 +17,7 @@ import assert from 'node:assert/strict'
 
 import {
   auditGap, closeDecision, fixNotConverging, fixWithoutProgress, greenRoundRole, heldMutations, integrationPark, measurementOk, ownFailing, profileOf, reviewExit,
-  suiteFailed,
+  netsAt, suiteFailed, undiscriminated,
 } from '../../lib/verdict.mjs'
 import { normalizeNode } from '../../lib/tree.mjs'
 
@@ -255,6 +255,33 @@ test('a lone discriminator on a tdd leaf escalates on round one as discriminator
   const d = closeDecision(m({ discriminator: [disc(false, true)] }), LEAVES.tdd)
   assert.deepEqual([d.next, d.reason], ['escalate', 'discriminator_undecidable'])
   assert.equal(d.failures.length, 1)
+})
+
+test('a file the user ruled a regression net is held to passes_now alone, beside a criterion check', () => {
+  const passed = [{ command: 'grep wired', status: 'passed' }]
+  const nets = ['test/x.test.mjs']
+  assert.equal(closeDecision(m({ discriminator: [disc(false, true)], checks: passed }), LEAVES.tdd, [], '', { nets }).next, 'approve')
+  assert.equal(measurementOk(m({ discriminator: [disc(false, false)], checks: passed }), LEAVES.tdd, '', { nets }).ok, false, 'a net must pass now')
+  const two = m({ discriminator: [disc(false, true), disc(false, true, 'test/z.test.mjs')], checks: passed })
+  assert.equal(closeDecision(two, LEAVES.tdd, [], '', { nets }).reason, 'discriminator_undecidable', 'a file not ruled is still undecidable')
+})
+
+test('with every changed test file ruled a net, a leaf with no criterion check that ran does not pass', () => {
+  const d = closeDecision(m({ discriminator: [disc(false, true)] }), LEAVES.tdd, [], '', { nets: ['test/x.test.mjs'] })
+  assert.equal(d.reason, 'discriminator_undecidable')
+  assert.ok(d.failures.some((f) => /no criterion check ran/.test(f.claim)))
+})
+
+test('a net ruling stands at its head alone, and a leaf approved there reads undiscriminated', () => {
+  const events = [
+    { kind: 'nets', node: 'x', head_sha: 'aaa', nets: [{ file: 'test/x.test.mjs', why: 'a net over what held' }], all: true, seq: 1 },
+    { kind: 'approved', node: 'x', head_sha: 'aaa', seq: 2 },
+  ]
+  assert.deepEqual(netsAt(events, 'x', 'aaa').files, ['test/x.test.mjs'])
+  assert.equal(netsAt(events, 'x', 'bbb'), null, 'a new commit voids the ruling')
+  const nodes = new Map([['x', normalizeNode({ id: 'x', kind: 'leaf' })]])
+  assert.deepEqual(undiscriminated(nodes, events, '.').map((l) => l.id), ['x'])
+  assert.deepEqual(undiscriminated(nodes, [...events, { kind: 'approved', node: 'x', head_sha: 'bbb', seq: 3 }], '.'), [])
 })
 
 test('...but not when a test does not pass now, which an implementer can move', () => {

@@ -16,7 +16,9 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { ruleNets } from '../lib/boundary.mjs'
 import { commandsOf, gotchaId, writeGotcha } from '../lib/gotchas.mjs'
+import { append } from '../lib/ledger.mjs'
 import { A_TEST, COMMANDS, git, root } from './harness/boundary-fixture.mjs'
 import {
   E, SLOW, PASS, world, open, commit, write, stored, close, run, recs, msgs, observed, rec, head, stopOf,
@@ -152,6 +154,29 @@ describe('leaf-close and the measurement', { concurrency: 4 }, () => {
     assert.equal(events.length, 1)
     assert.equal(events[0].reason, 'discriminator_undecidable')
     for (const claim of claimsOf(out)) assert.ok(events[0].detail.includes(claim), 'the detail holds ' + claim)
+  })
+
+  test('a net ruling on an undecidable leaf, retried, closes it at the ruled head; a commit after it voids the ruling', SLOW, async (t) => {
+    const w = world(t, [root(), lf('a', { locus: ['test/more.test.mjs'] })])
+    const o = open(w, 'a')
+    commit(o.worktree, { 'test/more.test.mjs': MORE_TEST }, 'Add a test of what exists')
+    const first = await run(w, { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
+    assert.equal(first.out.decision.reason, 'discriminator_undecidable')
+    const WHY = 'pins add over negatives, which already held at base'
+    assert.equal(ruleNets(w.r, E, 'a', { nets: [{ file: 'test/other.test.mjs', why: WHY }] }).error.kind, 'not_measured')
+    assert.equal(ruleNets(w.r, E, 'a', { nets: [{ file: 'test/more.test.mjs', why: '' }] }).error.kind, 'no_reason')
+    const ruled = ruleNets(w.r, E, 'a', { nets: [{ file: 'test/more.test.mjs', why: WHY }] })
+    assert.deepEqual([ruled.ok, ruled.all, ruled.head_sha], [true, true, head(o.worktree)])
+    const retry = () => assert.equal(append(w.r, E, 'events', [{ kind: 'replanned', node: 'a', execution: w.stamp, reason: 'retry_escalated', by: 'session' }]).ok, true)
+    retry()
+    const again = await close(w, { node: 'a', round: 1, dispatch: '', base_sha: o.base_sha, head_before: o.base_sha })
+    assert.ok(['approve', 'review'].includes(again.decision.next), JSON.stringify(again.decision))
+    assert.equal(ruleNets(w.r, E, 'a', { nets: [{ file: 'test/more.test.mjs', why: WHY }] }).error.kind, 'not_undecidable', 'nothing left to rule')
+
+    commit(o.worktree, { 'test/more.test.mjs': MORE_TEST + '// more\n' }, 'Touch the net')
+    retry()
+    const moved = await close(w, { node: 'a', round: 1, dispatch: '', base_sha: o.base_sha, head_before: o.base_sha })
+    assert.equal(moved.decision.reason, 'discriminator_undecidable', 'the ruling binds to the head it was made at')
   })
 
   test("uncommitted work left in a shell producer's worktree is put back to the head before measuring", SLOW, async (t) => {

@@ -402,6 +402,11 @@ them yourself. Once a cause is dealt with, clear the stop, then relaunch (step 3
 node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e> --node <id>
 ```
 
+`discriminator_undecidable`: a changed test file passes at base too. When the user rules it a regression
+net over behaviour that already held, write `{nets: [{file, why}]}` with Write (`why` one line) and run
+`node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" net --repo . --effort <e> --node <id> --file <file>` before `retry`. It binds to the
+measured head; with every file a net the leaf's criterion checks pin the change, and it lands `undiscriminated`.
+
 **Leave a note on the node** whenever you establish why it stopped, the user rules on it, or you
 touch its branch by hand, before you relaunch. One paragraph, plain words; the next session
 reads it on the card instead of finding it out again. Write it to a file with Write when it is
@@ -466,7 +471,8 @@ carries that caveat on every finding — say so.
 included.
 
 **g. What was built.** `implemented` per task: rigor and role (a `red` task's tests are required to
-fail), rounds, `salvaged` — adopted from an earlier run, not done now; say which.
+fail), rounds, `salvaged` — adopted from an earlier run, not done now; say which; `undiscriminated`
+— no test of it discriminates, its `nets` ruled by the user; say so.
 
 ### Reporting — binding
 

@@ -968,7 +968,7 @@ owns the record, its validation and every node's derived status.
 | `retired` | a replan removed it |
 
 Events: `planned`, `replanned`, `dispatched`, `approved`, `merged`, `escalated`, `parked`,
-`landed`, `claims`, `noted`, `message`, `outside`. A leaf's status is, first match: `merged`; `escalated` or
+`landed`, `claims`, `noted`, `message`, `outside`, `nets`. A leaf's status is, first match: `merged`; `escalated` or
 `parked` when newer than its last replan and last revision (a replan or the user's answer clears
 it); `approved` when newer than its last dispatch (a held cycle member is approved and not merged);
 `active` while a dispatch has nothing terminal after it; `planned`. A composite is `merged` on its
@@ -2802,7 +2802,11 @@ other ([Merging](#merging)).
   the next round. Two consecutive measurements failing
   identically escalate (`verify_not_converging`). lib/verdict.mjs escalates what no commit inside
   the locus can move — a discriminator that is the only failing fact on a `tdd` leaf
-  (`discriminator_undecidable`) — and any environment error by its kind.
+  (`discriminator_undecidable`) — and any environment error by its kind. The user may rule such a
+  file a regression net over behaviour that held at base (`net`, [Session calls](#session-calls)): at
+  the head that ruling names (`netsAt`), the file is held to `passes_now` alone, as upkeep is; when
+  every changed test file that adds a case is a net, at least one criterion check must have run, and
+  the leaf is reported `undiscriminated` in the result and named to its folder's integration review.
 - **Review** is a fresh reviewer each round (`reviewer:<leaf>:<n>`, `n` counting this execution's
   reviews of the leaf), handed its producer's leaf brief, the span, the producer's return (its
   concerns first), the units it must rule — each criterion (`criterion:<n>`), each changed file
@@ -2887,7 +2891,9 @@ other ([Merging](#merging)).
   at any rigor, or an `outside` event on the folder, earns it too, since nothing else would ever
   judge that work. Otherwise it is skipped, and the suite gate that found it unearned records so.
   The brief carries what a person did as its own section, "Work agentics did not produce": each
-  adopted leaf with its commits, and the commits that belong to no leaf. Besides findings it returns a
+  adopted leaf with its commits, and the commits that belong to no leaf; and "Leaves with no
+  discriminating test": each leaf `undiscriminated` names (`lib/verdict.mjs`), its nets and their
+  whys, for the reviewer to judge whether its criterion checks pin the change. Besides findings it returns a
   **claim ruling** for each
   claim the spec makes (a success criterion, a Design statement, a plan criterion): `met`,
   `equivalent`, `under`, `over`, `deviates`, `spec_defect` or `cant_tell`, recorded by `folder-review` as a `claims` event
@@ -3445,7 +3451,9 @@ question, said?}` (`said` is the dispatch whose stored return holds the agent's 
 either)
 (`return` is a replanning return, `needs_design`, `needs_respec`, `integration_critical`,
 `spec_defect`, `cant_tell`, `contract_drift` or `design_spend`) ·
-`landed {into, merged_sha, by}` (`by` who confirmed the word: `user` or `terminal`) · `claims
+`landed {into, merged_sha, by}` (`by` who confirmed the word: `user` or `terminal`) · `nets {head_sha,
+nets[{file, why}], all, by}` (the user's ruling that test files are regression nets, `net`
+under [Session calls](#session-calls)) · `claims
 {head_sha, review: done | not_earned, claims[{claim, ruling}], said?, by?, accepted?[{claim, was,
 why}], rerule?}` (`ruling` is the reviewer's `met`, `equivalent`, `under`, `over`, `deviates`, `spec_defect` or
 `cant_tell`, or `accepted`, the session's on a drift claim, which `by: session` and `accepted` record
@@ -3853,6 +3861,18 @@ the session's, called as CLIs:
   not be created; those already made are in `created`), `append_failed`, `bad_arg` (an action that
   is neither), or `confirmAct`'s refusal (`no_token`, `not_approved`, `answer_unverifiable`). The
   refusal kinds are listed under [Outside work](#outside-work).
+- **net** — `net --repo <r> --effort <e> --node <leaf> --file <path>`: the user's ruling, recorded
+  by the session, on a leaf escalated `discriminator_undecidable`. The file is JSON the session
+  wrote, `{nets: [{file, why}]}`, each `file` a changed test file of the measurement the escalation
+  stands on (its execution's latest `verify-observed` line of the leaf before it) that passes now
+  and passed at base, `why` one line. Returns `{ok: true, head_sha, nets_n, all}` or `{ok: false,
+  error: {kind, message}}`, writing nothing: `not_a_leaf`, `not_undecidable` (the leaf's standing
+  stop is not that escalation), `no_measurement`, `bad_file` (not that shape, or a file listed
+  twice), `no_nets`, `not_measured` (no such changed test file), `not_a_net` (it discriminates, or
+  does not pass now), `no_reason`; an unresolved file refuses `unknown_file`. On success one `nets`
+  event is appended under the escalation's execution, bound to that measurement's head, so a later
+  commit voids it; `all` when every changed file that adds a case is a net. `retry` then clears
+  the stop and the leaf's next close measures it under the ruling.
 - **accept** — `accept --repo <r> --effort <e> --node <folder> --file <path>`: the session's verdict
   on drift claims an integration review found, and the one thing that clears the park the review
   earned without a re-spec. The file is JSON the session wrote, `{claims: [{claim, why}]}`, each
@@ -4048,11 +4068,13 @@ directory; `sessions` every session the search's thread ran in; `rounds` each ro
   session's commands, `{build, typecheck, suite, suite_fast, test_one, absent}`); `intelligence`,
   `pace`, `base_ref` and `commands_file` shape a new execution only. Returns `{effort, root,
   execution, checkpoint {reason, detail, seq}, nodes_n, implemented[{id, rigor, role, rounds,
-  review_rounds, at_integration, salvaged}], escalations[{id, reason, said}], parked[{id, return,
+  review_rounds, at_integration, salvaged, nets, undiscriminated}], escalations[{id, reason, said}], parked[{id, return,
   said}], faults[{id, channel}], blocked[{blocked_by, leaves_n}], integration{branch, head_sha,
   reviews[{target, said}]}, drift[{node, contract}], cleanup_n, stopped: '' | budget | pause,
   notes, coverage}`: `root` is the folder it ran, `checkpoint` null when none stopped the run, and
-  `implemented[].role` the node's role (`none` outside a cycle). A preflight refusal returns the
+  `implemented[].role` the node's role (`none` outside a cycle), `nets` the test files ruled
+  regression nets at its approved head and `undiscriminated` whether no file of it is left to
+  discriminate. A preflight refusal returns the
   same shape with `error {kind, message}`, `checkpoint` null and the unreached line `preflight
   refused (<kind>): nothing was dispatched`. A stop's text is its `said` dispatch's return, or the
   node's card. `coverage.unreached` names every stopped node and counts the rest.

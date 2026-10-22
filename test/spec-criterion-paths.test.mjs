@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { checkFolder, criterionPathProblems } from '../lib/spec.mjs'
+import { checkFolder, criterionPathProblems, locusDirectoryProblems } from '../lib/spec.mjs'
 import { specPath } from '../lib/store.mjs'
 
 const spec = (entries) => ({ file: 'DESIGN.md', entries })
@@ -164,4 +164,22 @@ test('checkFolder in a repository git cannot list reports the listing, not each 
   assert.equal(out.problems.length, 1, JSON.stringify(out.problems))
   assert.match(out.problems[0].problem, /could not be listed/)
   assert.match(out.problems[0].problem, /ls-files/)
+})
+
+test('a locus entry naming a directory without its trailing slash is reported at its entry', () => {
+  const isDir = (p) => p === 'src/game/assets'
+  const out = locusDirectoryProblems(spec([task(['src/game/assets', 'src/game/assets/', 'src/a/X.ts'], '', { line: 3 })]), { isDir })
+  assert.equal(out.length, 1, JSON.stringify(out))
+  assert.equal(out[0].line, 3)
+  assert.match(out[0].problem, /src\/game\/assets names a directory; write it with a trailing \/: src\/game\/assets\//)
+})
+
+test('checkFolder reports a locus entry that names a directory of the repository without a trailing slash', (t) => {
+  const repo = effortWith(t, 'node src/a/X.ts', { git: true, files: { 'src/a/X.ts': 'x\n' } })
+  writeFileSync(specPath(repo, 'e1', '.'), SPEC('node src/a/X.ts').replace('locus: src/a/X.ts', 'locus: src/a'))
+  const out = checkFolder(repo, 'e1', '.')
+  assert.equal(out.problems.length, 1, JSON.stringify(out.problems))
+  assert.match(out.problems[0].problem, /src\/a names a directory/)
+  writeFileSync(specPath(repo, 'e1', '.'), SPEC('node src/a/X.ts').replace('locus: src/a/X.ts', 'locus: src/a/'))
+  assert.deepEqual(checkFolder(repo, 'e1', '.').problems, [])
 })

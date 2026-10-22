@@ -2693,7 +2693,9 @@ merge-batch. Coupled leaves run one at a time; everything else keeps running.
 
 A leaf's locus names the files it may change. What it admits (`admits` in `lib/locus.mjs`):
 
-- **A listed file**, existing or new, and every file under an entry ending in `/`.
+- **A listed file**, existing or new, and every file under an entry ending in `/`. An entry without
+  the `/` is one file, so `spec.mjs check` refuses one that names a directory of the repository
+  (`locusDirectoryProblems` in `lib/spec.mjs`): every file under it would be reverted as a breach.
 - **A new test file in the directory of a listed file**: a name the repository's test-file patterns
   match (`isTestPath`), absent at the leaf's base — `src/a/X.ts` admits a new `src/a/X.test.ts`,
   `pkg/foo.go` a new `pkg/foo_test.go`. An entry at the repository's root admits none, because what

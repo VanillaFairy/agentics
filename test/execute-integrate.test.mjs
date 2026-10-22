@@ -401,6 +401,63 @@ test('a second review of a folder is a fresh reviewer on the next integration th
   assert.equal(kinds(w.rig, 'claims').length, 2)
 })
 
+/**
+ * The root reviewed once, then its spec re-approved over the same head: the spec file edited and a
+ * `replanned` event on the folder, as a re-approval's compile leaves them.
+ */
+async function respecced(t, { first, findings = [], edit = true, moved = false }) {
+  const w = abWorld(t)
+  w.rig.script({ [reviewerKey()]: [reviewed(first, findings)] })
+  assert.equal((await review(w)).outcome, 'reviewed')
+  if (moved) commitIn(w.wt, { 'src/c.mjs': 'export const c = () => 3\n' }, 'More work')
+  const file = specPath(w.rig.repo, w.rig.effort, '.')
+  if (edit) writeFileSync(file, readFileSync(file, 'utf8').replace('As the plan says.', 'As the plan says, and the names are free.'))
+  w.rig.log.append('replanned', { node: '.', reason: 'answered' })
+  return w
+}
+const rerun = { output: { ...REVIEW_EMPTY, units: [{ unit: 'claim:2', ruling: 'clean', why: 'ruled' }, { unit: 'change', ruling: 'clean', why: 'ruled' }], claims: [claim('b is there')] } }
+const isRerule = (brief) => brief.includes('# Integration re-rule of folder .')
+const THREAD_SECOND = 'integration:.:2'
+
+test('a spec re-approved over an unchanged head is re-ruled: the edit and the claims not passed, the rest standing', SLOW, async (t) => {
+  const w = await respecced(t, { first: [claim('a is there'), claim('b is there', 'under')] })
+  w.rig.script({ [reviewerKey(THREAD_SECOND)]: [rerun] })
+  const out = await review(w)
+
+  assert.equal(out.outcome, 'reviewed')
+  const c = w.rig.calls.at(-1)
+  assert.equal(c.thread.key, THREAD_SECOND)
+  assert.equal(isRerule(c.brief), true)
+  assert.ok(c.brief.includes('and the names are free.'), 'the edit')
+  const units = c.brief.split('## The units you rule')[1].split('## Claims')[0].split('\n').filter((l) => l.startsWith('- '))
+  assert.deepEqual(units, ['- claim:2', '- change'])
+  assert.equal(c.brief.includes('decision:D1'), false, 'not the whole review')
+  const [, second] = kinds(w.rig, 'claims')
+  assert.equal(second.rerule, true)
+  assert.deepEqual(second.claims.map((x) => [x.claim, x.ruling]), [['a is there', 'met'], ['b is there', 'met']])
+  assert.equal(kinds(w.rig, 'parked').length, 1, 'the first review\'s park is the only one: the re-rule earned none')
+  assert.equal(statusOf(w.rig, '.'), 'integrated')
+})
+
+test('a re-approval is reviewed whole when the head moved, the last review found a critical, or the spec did not change', SLOW, async (t) => {
+  const cases = [
+    ['the head moved', { first: [claim('a is there')], moved: true }],
+    ['the last review found a critical', { first: [claim('a is there')], findings: [CRITICAL] }],
+    ['the spec is unchanged', { first: [claim('a is there')], edit: false }],
+  ]
+  for (const [what, setup] of cases) {
+    const w = await respecced(t, setup)
+    w.rig.script({ [reviewerKey(THREAD_SECOND)]: [reviewed([claim('a is there'), claim('b is there')])] })
+    const out = await review(w)
+
+    assert.equal(out.outcome, 'reviewed', what)
+    const c = w.rig.calls.at(-1)
+    assert.equal(isRerule(c.brief), false, what)
+    assert.ok(c.brief.includes('decision:D1'), what + ': the whole review\'s units')
+    assert.equal(kinds(w.rig, 'claims').at(-1).rerule, undefined, what)
+  }
+})
+
 test('an integration reviewer leaves an approved leaf approved: its dispatch names the folder', SLOW, async (t) => {
   const rig = executionRig(t, { spec: TRIVIAL_FOLDER })
   const y = readyLeaf(rig, 'y', { 'src/y.mjs': 'export const y = () => 1\n' }, 'Add y')

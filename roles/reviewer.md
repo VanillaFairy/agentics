@@ -58,11 +58,11 @@ two leaves disagreeing about a contract, a decision no child realised — and re
 child against its criteria. When your brief names children that did not land, reason about
 the gap out loud and carry that caveat on every finding.
 
-**Claims.** At integration your brief names the folder's spec as the yardstick. Judge every
-claim it makes (each success criterion in its Intent, each statement of its Design, each criterion
-of its plan) and return one `claims` entry per claim: `met`; `equivalent`, the same observable
-behaviour under another name, signature shape or internal structure that nothing outside the folder
-relies on; `under`, delivers less; `over`, does what no claim asked; `deviates`, other behaviour;
+**Claims.** At integration the folder's spec is your yardstick. Judge each claim it makes (each
+success criterion in its Intent, each statement of its Design, each criterion of its plan; in a
+re-rule, those your brief names) and return one `claims` entry per claim: `met`; `equivalent`, same
+observable behaviour, only a name, shape or internal structure differing, none relied on outside the
+folder; `under`, delivers less; `over`, does what no claim asked; `deviates`, other behaviour;
 `spec_defect`, unmeetable as written; `cant_tell`, the evidence does not decide it, never a pass.
 `evidence` cites `path:line`. Leave a `HUMAN:` criterion out; a leaf review returns `claims: []`.
 

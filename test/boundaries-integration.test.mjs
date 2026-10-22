@@ -139,6 +139,53 @@ test('a folder review of a node not in the tree throws', (t) => {
   assert.throws(() => folderReview(xc, { target: 'nope', head: 'h1', dispatch: review(xc, {}), spec_path: 'S' }), /no such node/)
 })
 
+// ---------------------------------------------------------------- a re-rule
+
+const unit = (name) => ({ unit: name, ruling: 'clean', why: 'ruled' })
+const PRIOR = {
+  claims: [
+    { claim: 'a', ruling: 'met' }, { claim: 'b', ruling: 'equivalent' }, { claim: 'c', ruling: 'accepted' },
+    { claim: 'd', ruling: 'under' }, { claim: 'e', ruling: 'cant_tell' },
+  ],
+}
+
+test('a re-rule keeps the prior claims it passed, replaces the ones the return restates and records rerule', (t) => {
+  const { r, xc } = setup(t, [A])
+  const dispatch = review(xc, {
+    units: [unit('claim:4'), unit('claim:5'), unit('change')],
+    claims: [claim('met', 'd as the spec now words it'), claim('met', 'e as the spec now words it'), claim('met', 'b'), claim('met', 'a new claim')],
+  })
+  const out = folderReview(xc, { target: '.', head: 'h1', dispatch, spec_path: 'S', prior: PRIOR })
+
+  assert.deepEqual(out.stops, [], 'every unit claim was ruled a pass')
+  const [c] = events(r, 'claims')
+  assert.equal(c.rerule, true)
+  assert.deepEqual(c.claims.map((x) => [x.claim, x.ruling]), [
+    ['a', 'met'], ['c', 'accepted'],
+    ['d as the spec now words it', 'met'], ['e as the spec now words it', 'met'], ['b', 'met'], ['a new claim', 'met'],
+  ])
+  assert.equal(out.claims_n, 6)
+})
+
+test('a re-rule carries a prior claim whose unit the return did not rule, so it still parks', (t) => {
+  const { r, xc } = setup(t, [A])
+  const dispatch = review(xc, { units: [unit('claim:5'), unit('change')], claims: [claim('met', 'e as the spec now words it')] })
+  const out = folderReview(xc, { target: '.', head: 'h1', dispatch, spec_path: 'S', prior: PRIOR })
+
+  assert.deepEqual(out.stops.map((s) => s.reason), ['integration_critical'])
+  const [c] = events(r, 'claims')
+  assert.deepEqual(c.claims.filter((x) => x.ruling === 'under').map((x) => x.claim), ['d'], 'd was not ruled again: its last ruling stands')
+  assert.ok(events(r, 'parked')[0].question.includes('[under] d'))
+})
+
+test('a review without a prior records the return as it is, and no rerule', (t) => {
+  const { r, xc } = setup(t, [A])
+  folderReview(xc, { target: '.', head: 'h1', dispatch: review(xc, { claims: [claim('met', 'only')] }), spec_path: 'S' })
+  const [c] = events(r, 'claims')
+  assert.deepEqual(c.claims.map((x) => x.claim), ['only'])
+  assert.equal(c.rerule, undefined)
+})
+
 // ---------------------------------------------------------------- rule close
 
 const TREE = [

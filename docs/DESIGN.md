@@ -2483,7 +2483,7 @@ attached).
 | **leaf-review** | read the reviewer's stored rulings over the units its brief listed; compute the review loop's exit (`reviewExit`) against what the round before left open; record the approval or the escalation, or the open findings as `findings` messages, one per thread, for the next round; write the review record; after a review round `askAfter` picks that ended in a fix, read the ruler's stored convergence ruling (`convergenceRuling`): `not_converging` escalates `review_not_converging`, `said` the ruler's dispatch, `converging` records nothing, and a return with no ruling holds the leaf on a `role` fault; and, once the session retried a leaf its review loop stopped, record the stopping review's open findings as the next round's `findings` messages (`reviewResumed`) |
 | **merge-batch** | under the branch lock, record `batch-started` with the head it starts from; merge every approved child into one integration branch in dependency order; verify the merged head with the fast suite; bisect a red one; append the `batch` state line first, then `merged` and `merge-observed` for each child not merged before, so a batch run again never resets the merges its outcome names; release locus locks; remove each merged leaf's clean worktree, keeping its branch; send each leaf that fails alone a `failures` message (`source: integration`); record what stops — a conflict, a combination failure, a composite or a cycle failing alone, a batch that moved nothing, a batch that could not run; write the drift record and the ruler's brief. A batch that started and never recorded its outcome is reset to where it started and done again, so an unverified merge is never recorded as landed; one during which the user's checkout moved is reset and decides nothing (a `checkout` fault) |
 | **suite-gate** | on a composite whose children have all merged, under its branch lock: run the full suite on its integration head, against the head it was cut from; record the measurement and a `gate` state line; escalate `fails_full_suite` or `suite_gate_failed`. It runs nothing where the repository does not split its tests, or where the full suite already passed at that head in this execution ([The suite gate](#the-suite-gate)). A gate that passes says whether the integration review is earned, and records one that is not as `claims` with `review: not_earned`; one during which the user's checkout moved decides nothing (a `checkout` fault) |
-| **folder-review** | read the integration reviewer's stored rulings; record its claim rulings as `claims` at the head it judged, `said` the reviewer's dispatch; record the one park they earn; a review that returned nothing holds the folder on a `role` fault |
+| **folder-review** | read the integration reviewer's stored rulings; record its claim rulings as `claims` at the head it judged, `said` the reviewer's dispatch (a re-rule, `rerule: true`, with the prior claims it left standing, [Executors and review](#executors-and-review)); record the one park they earn, a new record after the claims it follows even where an older park stood; a review that returned nothing holds the folder on a `role` fault |
 | **rule-close** | read a ruler's stored rulings on drift or a moved base; record `drift-ruled` or `stale-ruled` with the ruler's `why`; park what the user must answer and hand the program what the planner replans; park a drifted consumer no ruling reached (`contract_drift`), hold a moved leaf no ruling reached on a `role` fault |
 | **postflight** | release this execution's slots; summarize the subtree from the records (the nodes the user must act on, the leaves waiting behind each, cycle members held); append `closed {status: done}` when every leaf in scope merged; count the branches eligible for cleanup. The run's `ended` is `lib/run.mjs`'s |
 
@@ -2874,6 +2874,25 @@ other ([Merging](#merging)).
   still parks it. `equivalent` passes like `met`: the work does the claimed thing with the
   same observable behaviour, only a name, a signature's shape or an internal structure differing,
   and nothing outside the folder relies on the difference.
+
+  **A re-spec over an unchanged head re-rules only what the edit touched.** A review that stands no
+  more only because the folder itself changed, a revision or a `replanned` event on it, over a head
+  that did not move (no `merged` beneath it and no `outside` on or under it since: `rerulableReview`
+  in `lib/tree.mjs`, which shares its outdating predicate with `standingReview`) is not redone whole.
+  When the head is the one that review judged, its stored return holds no critical, and the spec text
+  it judged (the folder's latest `compiled` ledger line before it, the kept copy of that hash) differs
+  from the spec now, `reviewUnit` dispatches `integrationRerule` instead: the span, the edit as a
+  diff (`keptSpecDiff` in `lib/spec.mjs`, the diff `respec` shows), the last review's claims numbered
+  `claim:<n>`, the units (`claim:<n>` for each not ruled `met`, `equivalent` or `accepted`, and
+  `change`, every claim the changed lines make or alter) and the spec whole. The reviewer returns
+  only the claims it ruled; `folderReview` records `rerule: true` with the prior claims that passed
+  and were not restated, the returned claims, and each prior unit claim whose `claim:<n>` unit the
+  return did not rule, carried as it was so that it still parks. Otherwise the review is whole.
+
+  **Why:** a re-spec that only records what was built moves no code, so redoing the whole review
+  over the same head buys nothing but a fresh batch of nits, and the folder parks again on what the
+  user just settled. A drift with no behaviour behind it is the orchestrator's call, recorded with
+  its reason (`accept`); doubt still buys a review, a narrowed one.
 - **Establishing commands** is judgment: when no build or test command is established, leaf-close
   hands back `command_unknown`, and an investigator establishes them once for the execution — one
   call on thread `investigator`, in a throwaway worktree detached at the envelope's base, shared by
@@ -3400,9 +3419,10 @@ either)
 `spec_defect`, `cant_tell`, `contract_drift` or `design_spend`) ·
 `landed {into, merged_sha, by}` (`by` who confirmed the word: `user` or `terminal`) · `claims
 {head_sha, review: done | not_earned, claims[{claim, ruling}], said?, by?, accepted?[{claim, was,
-why}]}` (`ruling` is the reviewer's `met`, `equivalent`, `under`, `over`, `deviates`, `spec_defect` or
+why}], rerule?}` (`ruling` is the reviewer's `met`, `equivalent`, `under`, `over`, `deviates`, `spec_defect` or
 `cant_tell`, or `accepted`, the session's on a drift claim, which `by: session` and `accepted` record
-with the ruling it had and its reason; each ruling's evidence is in the reviewer's stored return) · `noted {by, text}` (what a session learned about the node; no status
+with the ruling it had and its reason, and `rerule: true` marks a review that ruled only what a spec
+edit touched; each ruling's evidence is in the reviewer's stored return) · `noted {by, text}` (what a session learned about the node; no status
 is derived from it) · `message {thread, from, msg, payload, round}` (a message code delivers to a
 thread's session, [Conversations](#conversations); its `execution` is `''` only on one the migration
 recorded, and no status is derived from it). A boundary appends an event only while it is not

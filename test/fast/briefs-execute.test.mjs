@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  driftBrief, integrationBrief, investigatorBrief, plannerBrief, reviewerBrief, staleBrief,
+  driftBrief, integrationBrief, integrationRerule, investigatorBrief, plannerBrief, reviewerBrief, staleBrief,
 } from '../../lib/briefs/execute.mjs'
 import { normalizeNode } from '../../lib/tree.mjs'
 
@@ -27,6 +27,20 @@ const review = (extra = {}) => ({
 })
 
 const blocker = { id: 'F1', severity: 'critical', claim: 'upper-case keys are dropped', evidence: 'src/api/parse.js:30', failure_scenario: 'a key "A" reads as missing', remedy: 'code' }
+
+const rerule = (extra = {}) => ({
+  folder: { id: 'api', title: 'The api layer', worktree: '/wt/api' },
+  spec: '# The api layer\n\n## Intent\n\nConfigs load from disk, case blind.\n',
+  diff: '@@ -3,3 +3,3 @@\n-Configs load from disk.\n+Configs load from disk, case blind.',
+  prior: [
+    { claim: 'configs load', ruling: 'met' }, { claim: 'keys are cased', ruling: 'under' },
+    { claim: 'parse is named read', ruling: 'equivalent' }, { claim: 'errors are typed', ruling: 'cant_tell' },
+    { claim: 'the key is shorter', ruling: 'accepted' },
+  ],
+  span: { base: 'a0a0a0a', head: 'd4d4d4d' },
+  guidance: '',
+  ...extra,
+})
 
 const integration = (extra = {}) => ({
   folder: { id: 'api', title: 'The api layer', worktree: '/wt/api' },
@@ -165,6 +179,18 @@ test("the repository's guidance closes a brief when given", () => {
   ]) assert.ok(text.trimEnd().endsWith(guidance), name)
 })
 
+test('the re-rule brief carries the edit, the last rulings numbered, a unit for each claim not passed and the spec whole', () => {
+  const input = rerule()
+  const text = integrationRerule(input)
+  assert.ok(text.includes(input.diff), 'the edit')
+  assert.ok(text.includes(input.spec.trim()), 'the spec as it now reads')
+  assert.ok(text.includes('git diff a0a0a0a d4d4d4d'), 'the span the last review judged')
+  input.prior.forEach((c, i) => assert.ok(text.includes('claim:' + (i + 1) + ' [' + c.ruling + '] ' + c.claim), 'ruling ' + (i + 1)))
+  const units = text.split('## The units you rule')[1].split('## Claims')[0].split('\n').filter((l) => l.startsWith('- '))
+  assert.deepEqual(units, ['- claim:2', '- claim:4', '- change'], 'a unit for each claim not met, equivalent or accepted, then the change')
+  assert.equal(text.includes('decision:'), false, "the whole review's units are not here")
+})
+
 // ------------------------------------------------------------------ driftBrief, staleBrief
 
 test("the drift brief carries each ruled node's entry and its diff", () => {
@@ -259,6 +285,7 @@ test('the same input gives the same text, and the input is left as it was', () =
   const calls = [
     [reviewerBrief, review({ prior: [blocker] })],
     [integrationBrief, integration({ caveat: 'c' })],
+    [integrationRerule, rerule()],
     [driftBrief, drift()],
     [staleBrief, stale()],
     [plannerBrief, planner({ mode: 'settle', spec: 's', findings: [probeFinding('P1', 'gap', 'Plan', 'x')] })],

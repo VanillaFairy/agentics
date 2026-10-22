@@ -412,6 +412,66 @@ test('a narrowed round keeps its ground for the round after it', async (t) => {
   assert.ok(run.calls[1].brief.includes('KEPT_GROUND_NOTE'))
 })
 
+// --- a narrowed round after a partial one -------------------------------------------------------
+
+/** DOC probed in full by the program, its prober leaving every unit of `left` unruled; then `edited` on disk. */
+async function partialThenEdited(t, { left = 'design', edited = EDITED } = {}) {
+  const rig = rigFor(t, { [ART]: DOC })
+  const ruled = unitsOf(STANDING, sectionsOf(DOC)).filter((u) => !u.endsWith('@' + left))
+  const first = rig.relaunch({ ...LOCATE(), 'analyst||prober:1': [{ output: proberOut(ruled) }] }, '20260101-000001-first')
+  const one = await probe(first.ctx, argsFor(rig.repo, ART))
+  assert.ok(one.snapshot, 'the fixture: the partial round is recorded')
+  assert.ok(one.units.open.length > 0 && one.units.open.every((u) => u.endsWith('@' + left)), JSON.stringify(one.units))
+  if (edited !== DOC) writeFileSync(native(rig.repo, ART), edited)
+  return { rig, since: one.snapshot, scope: reviewScope(rig.repo, native(rig.repo, ART), one.snapshot) }
+}
+
+/** The changed ranges widened by the whole of each section in `slugs`, as the next narrowed round attacks them. */
+const widened = (text, changed, slugs) => {
+  const ranges = [...changed, ...sectionsOf(text).filter((s) => slugs.includes(s.slug))].map((r) => [r.start, r.end]).sort((a, b) => a[0] - b[0])
+  return ranges.reduce((out, [start, end]) => {
+    const last = out.at(-1)
+    if (last && start <= last.end + 1) last.end = Math.max(last.end, end)
+    else out.push({ start, end })
+    return out
+  }, [])
+}
+
+async function afterPartial(t, edited) {
+  const w = await partialThenEdited(t, { edited })
+  const changed = widened(edited, w.scope.changed, ['design'])
+  const units = unitsOf(STANDING, changedParts(sectionsOf(edited), changed))
+  const run = w.rig.relaunch({ 'analyst||relocate': relocated([]), 'analyst||prober:1': [{ output: proberOut(units) }] }, '20260101-000002-second')
+  const result = await probe(run.ctx, argsFor(w.rig.repo, ART, { since: w.since }))
+  return { ...w, run, changed, units, result }
+}
+
+test('a narrowed round after a partial one attacks the changed lines and every section that round left open', async (t) => {
+  const { since, changed, units, result } = await afterPartial(t, EDITED)
+  assert.ok(units.some((u) => u.includes('@risks~')) && units.some((u) => u.includes('@design~')), 'the fixture: the edit and the open section ' + JSON.stringify(units))
+  assert.equal(result.scope.full, false)
+  assert.deepEqual(result.scope.changed, changed)
+  assert.deepEqual(result.units, { total: units.length, ruled: units.length, open: [] })
+  assert.ok(result.coverage.declared.some((l) => l.includes(since) && l.includes('design')), JSON.stringify(result.coverage.declared))
+  assert.equal(result.coverage.complete, true, JSON.stringify(result.coverage))
+})
+
+test('an artefact unchanged since a partial round is attacked where that round left units open', async (t) => {
+  const { run, units, result } = await afterPartial(t, DOC)
+  assert.ok(proberCalls(run).length > 0, 'the open section buys a prober')
+  assert.ok(units.length > 0 && units.every((u) => u.includes('@design~')), JSON.stringify(units))
+  assert.deepEqual(result.units.open, [])
+})
+
+test('a section a partial round left open that the text no longer has makes the round whole', async (t) => {
+  const renamed = editLine(EDITED, 11, '## Shape')
+  const w = await partialThenEdited(t, { edited: renamed })
+  const run = w.rig.relaunch({ 'analyst||relocate': relocated([]), ...fullScript(renamed) }, '20260101-000002-second')
+  const result = await probe(run.ctx, argsFor(w.rig.repo, ART, { since: w.since }))
+  assert.equal(result.scope.full, true)
+  assert.equal(result.units.total, unitsOf(STANDING, sectionsOf(renamed)).length)
+})
+
 // --- an unchanged artefact ---------------------------------------------------------------------
 
 async function unchangedRound(t, findings) {

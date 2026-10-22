@@ -1641,7 +1641,7 @@ at any depth, and each stage writes what it settles into the spec at once.
 | Analyze | write back the understanding; survey this layer's question, and search for existing solutions when it would build a capability, the two programs side by side; cite every item their runs returned in one `lib/evidence.mjs cite --from-run` | the user confirms or corrects the understanding |
 | Grill | one question at a time, recommendation first; each answer is a Decisions row at once; a cheap choice nothing consumes is defaulted and ruled with the rest at Review; approach drafts when the decision space is open, from the `drafts` program, each recorded as it returns | no `blocking` question is open |
 | Draft | Design and Plan at this layer's level of detail, shown section by section | `lib/spec.mjs check` passes; no decision is unrealised |
-| Review | the `probe` program when earned (by length, or a contract other entries consume); a second round, earned by a resolution that reshaped the design, narrowed by `--since`, the previous round's snapshot, and the whole spec probed again for what a partial round left; every round recorded from its run (`lib/approval.mjs reviewed --from-run`); its findings settled with the user, incorporated or discarded, each a recorded disposition; then the user reads the spec | `lib/approval.mjs gate` ratifiable, or the review not earned; and the user's answer chose `Approve` |
+| Review | the `probe` program when earned (by length, or a contract other entries consume); a second round, earned by a resolution that reshaped the design, narrowed by `--since`, the previous round's snapshot; a partial round that left only units open finished by the next narrowed round, and one that lost a channel, ground or a finding probed whole; every round recorded from its run (`lib/approval.mjs reviewed --from-run`); its findings settled with the user, incorporated or discarded, each a recorded disposition, an ambiguity discarded only on the user's ruling, each settled by one edit in one place; then the user reads the spec | `lib/approval.mjs gate` ratifiable, or the review not earned; and the user's answer chose `Approve` |
 | Approve | a spec never compiled: `lib/approval.mjs approve`, which confirms the user's answer, then `lib/compile.mjs`; a spec compiled before: the `rule` program, which approves the change by ruling or hands back the questions the user must answer ([A changed spec](#a-changed-spec)) | — |
 | Move on | `lib/next.mjs` offers: design a sub-effort, develop, or stop | the user picks |
 
@@ -1720,7 +1720,10 @@ The `probe` program attacks a written artefact — a design, a proposal, a spec 
 builds from it. The probers are not the author: each is an analyst handed the document and the
 repository's excerpts and nothing from the author. Findings sit on the design ladder
 (**ambiguity** blocks ratification; **gap** is designed away or accepted out loud; **note** is
-advisory). When a person drives it there is no fix loop: the probe reports and a human rules. The
+advisory). A question the artefact's level of detail leaves to its builder — a type, a call order,
+a timing, an edge a planned test's criterion pins — is a note, not an ambiguity: the layer below or
+the red test settles it, and a review that blocked on it would keep finding precision in the text
+written to answer the last round, never converging. When a person drives it there is no fix loop: the probe reports and a human rules. The
 one loop is the [autonomous review](#autonomous-review) of a planner-written spec. The ladder's and
 the disposition's wording are the verbatim blocks `design-severity-ladder` and `probe-disposition`
 in the `design` and `challenge-idea` skills; every prober's brief carries the ladder word for word
@@ -1810,6 +1813,14 @@ and its own citations alone. What each prober declared it never attacked (`not_r
 `repo-axes`; a failed prober fails `probe`, its units open; an artefact that cannot be
 snapshotted fails `record`. A round whose findings the store refused fails no channel: its new
 findings are listed in `unrecorded`, and its snapshot is empty.
+
+**A recorded round keeps the units it left open** beside its snapshot (`<hash>.open.json`). A
+narrowed round whose `since` kept open units widens its changed ranges by the whole of every section
+those units name (`reopened` in `lib/programs/probe.mjs`), says so in `declared`, and attacks them on
+every axis, so a partial round is finished by the next narrowed one instead of a whole round that
+would re-find, under new ids, what the user already settled; an artefact unchanged since such a
+round is attacked in those sections rather than taking the no-agent path. A section an open unit
+names that the text no longer has makes the round whole.
 
 **A recorded round keeps its ground** beside its snapshot (`<hash>.ground.json`): the repository axes
 it probed, the guidance they rest on, the places it located and their excerpts. A narrowed round

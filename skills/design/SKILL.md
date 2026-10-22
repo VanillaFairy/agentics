@@ -438,14 +438,18 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" gate --repo . --effort <e> --folde
 `ratifiable` is true once the latest review of the spec as it stands ruled every unit in scope and
 every ambiguity it returned is discarded, or incorporated with its section ruled clean by a later
 round, which incorporating one earns. `open` names the ambiguities still unsettled, `remaining`
-what a partial review left (unruled units, failed channels, short searches, unreached ground,
-unrecorded findings): probe the whole spec for those, no `--since`. An edit shuts the gate until a review reads it.
+what a partial review left. Open units alone (with the `unreached:` lines naming them): probe again
+with `--since` that round's `snapshot`, which attacks what changed and every section a unit was
+left open in. A failed channel, a short search, other unreached ground or an unrecorded finding:
+probe the whole spec, no `--since`. An edit shuts the gate until a review reads it.
 
 <!-- agentics:verbatim design-severity-ladder -->
 - **ambiguity** — a term, contract, or interface the design leaves readable two ways. Blocks
   ratification. The archetype is one name with two incompatible definitions in the same
   document: every consumer implements one of them, the mismatch is invisible until
-  integration, and it costs a rework round rather than a sentence.
+  integration, and it costs a rework round rather than a sentence. A question the document's
+  level of detail leaves to its builder — a type, a call order, a timing, an edge a planned
+  test's criterion pins — is a note, however precise the answer it lacks.
 - **gap** — a growth axis or requirement the design names but cannot absorb without rework.
   Resolved, or explicitly accepted by the user with the cost stated. Never silently carried.
 - **note** — advisory. Recorded in the design document, never blocks, never loops.
@@ -492,10 +496,12 @@ the table before the first question. One at a time is not care here, it is forty
 
 Put the Grill's defaults on the table in the same pass, as one set. **Settle every finding**:
 incorporated (the spec's Design, Plan, Decisions or Open questions change because of it; a
-resolution that is a decision is a Decisions row with an id) or discarded. Every `ambiguity` is
-incorporated before approval. A `gap` is designed away, or accepted out loud as a Decisions row in
-the user's words with the cost stated. A note is incorporated or discarded without asking. Record
-each disposition as it is ruled:
+resolution that is a decision is a Decisions row with an id) or discarded. An `ambiguity` is
+incorporated, or discarded on the user's ruling, never on yours. **Settle with the smallest edit,
+in one place**: drop the reading you do not keep; state a rule once and point to it elsewhere,
+never restate it, since a restatement is the next round's ambiguity. A `gap` is designed away, or
+accepted out loud as a Decisions row in the user's words with the cost stated. A note is
+incorporated or discarded without asking. Record each disposition as it is ruled:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" dispose --repo . --effort <e> --folder <id> --finding <finding id> --outcome incorporated|discarded --by user
@@ -511,7 +517,10 @@ Review leaves no document of its own: what the findings changed is in the spec, 
 gone. **A second round is earned** by an incorporated ambiguity, or a resolution that reshaped the
 design (a new interface, a data shape, which part owns a decision); name the one that earned it,
 and pass `--since <the first round's snapshot>` so only the changed lines are attacked (an empty
-`snapshot` means that round recorded nothing: probe the whole spec again). If the probe cannot
+`snapshot` means that round recorded nothing: probe the whole spec again). A narrowed round's
+ambiguities sit in text a settlement wrote; one that asks only for precision below this layer's
+level, or that a planned red criterion pins, is a misgraded note: recommend `discarded`, so the
+loop ends on the user's ruling rather than on another round. If the probe cannot
 run, say so, offer a self-review as the weaker instrument it is, and let the user decide. Never
 substitute one silently.
 

@@ -141,7 +141,9 @@ with it if they live nowhere else.
 - **ambiguity** — a term, contract, or interface the design leaves readable two ways. Blocks
   ratification. The archetype is one name with two incompatible definitions in the same
   document: every consumer implements one of them, the mismatch is invisible until
-  integration, and it costs a rework round rather than a sentence.
+  integration, and it costs a rework round rather than a sentence. A question the document's
+  level of detail leaves to its builder — a type, a call order, a timing, an edge a planned
+  test's criterion pins — is a note, however precise the answer it lacks.
 - **gap** — a growth axis or requirement the design names but cannot absorb without rework.
   Resolved, or explicitly accepted by the user with the cost stated. Never silently carried.
 - **note** — advisory. Recorded in the design document, never blocks, never loops.

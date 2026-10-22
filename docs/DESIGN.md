@@ -293,8 +293,9 @@ thing in every prompt.
 - **finding**: one result of a review, graded `ambiguity` (blocks until settled), `gap` (designed
   away or accepted out loud) or `note` (advisory). To **settle** a finding is to incorporate it
   into the spec or to discard it.
-- **claim ruling**: `met`; `under`, `over` or `deviates` (drift); `spec_defect` (the claim can't
-  be met as written); `cant_tell` (the evidence doesn't decide it, and it is never a pass).
+- **claim ruling**: `met`, `equivalent` (same behaviour, another name or shape) or `accepted` (the
+  session's call on a drift) pass; `under`, `over`, `deviates` (drift) park; `spec_defect` (can't
+  be met as written); `cant_tell` (the evidence doesn't decide it, never a pass).
 - **observation, ruling, declaration, verdict**: an observation is what code can recompute; a
   ruling is a judgment, made per unit by the user or by an agent that did not produce the work; a
   declaration is a producer's word about its own work, which may steer what runs next but never
@@ -2857,14 +2858,16 @@ other ([Merging](#merging)).
   The brief carries what a person did as its own section, "Work agentics did not produce": each
   adopted leaf with its commits, and the commits that belong to no leaf. Besides findings it returns a
   **claim ruling** for each
-  claim the spec makes (a success criterion, a Design statement, a plan criterion): `met`, `under`,
-  `over`, `deviates`, `spec_defect` or `cant_tell`, recorded by `folder-review` as a `claims` event
+  claim the spec makes (a success criterion, a Design statement, a plan criterion): `met`,
+  `equivalent`, `under`, `over`, `deviates`, `spec_defect` or `cant_tell`, recorded by `folder-review` as a `claims` event
   at the head it judged (`review: done`; a skipped review records `review: not_earned` and no
   rulings, and one that returned nothing is a plugin fault on the folder and a lost check). Routing
   (`integrationPark`) is by class, first match: any `spec_defect` parks the folder `spec_defect` on
   its spec (a re-spec); any critical, or any `under`, `over` or `deviates`, parks it
   `integration_critical` (the user routes the fix); any `cant_tell` parks it `cant_tell`, which
-  never counts as a pass.
+  never counts as a pass. `equivalent` passes like `met`: the work does the claimed thing with the
+  same observable behaviour, only a name, a signature's shape or an internal structure differing,
+  and nothing outside the folder relies on the difference.
 - **Establishing commands** is judgment: when no build or test command is established, leaf-close
   hands back `command_unknown`, and an investigator establishes them once for the execution — one
   call on thread `investigator`, in a throwaway worktree detached at the envelope's base, shared by
@@ -3390,8 +3393,9 @@ either)
 (`return` is a replanning return, `needs_design`, `needs_respec`, `integration_critical`,
 `spec_defect`, `cant_tell`, `contract_drift` or `design_spend`) ·
 `landed {into, merged_sha, by}` (`by` who confirmed the word: `user` or `terminal`) · `claims
-{head_sha, review: done | not_earned, claims[{claim, ruling}], said?}` (each ruling's evidence is in
-the reviewer's stored return) · `noted {by, text}` (what a session learned about the node; no status
+{head_sha, review: done | not_earned, claims[{claim, ruling}], said?}` (`ruling` is the reviewer's
+`met`, `equivalent`, `under`, `over`, `deviates`, `spec_defect` or `cant_tell`; each ruling's evidence
+is in the reviewer's stored return) · `noted {by, text}` (what a session learned about the node; no status
 is derived from it) · `message {thread, from, msg, payload, round}` (a message code delivers to a
 thread's session, [Conversations](#conversations); its `execution` is `''` only on one the migration
 recorded, and no status is derived from it). A boundary appends an event only while it is not
@@ -4066,13 +4070,14 @@ threw.
 - **Owner:** `REVIEW` in `lib/schemas.mjs`; read by `leafReview` in
   `lib/boundaries/leaf-review.mjs` and `folderReview` in `lib/boundaries/integration.mjs` over
   `reviewExit` and `integrationPark` in `lib/verdict.mjs`.
-- **Restated in:** `roles/reviewer.md`.
+- **Restated in:** `roles/reviewer.md`; `integrationBrief` in `lib/briefs/execute.mjs` (its Claims
+  line).
 
 `{units[{unit, ruling: clean | findings, ids[], why}], findings[{id, severity: critical | major |
 minor, claim, evidence, failure_scenario, remedy?: code | tests}], fix_rulings[{id, status: fixed |
-not_fixed | regressed, evidence}], claims[{claim, ruling: met | under | over | deviates |
-spec_defect | cant_tell, evidence}], notes}`. The units are those the brief lists — a leaf review's
-criteria, changed files and failing approved cases, an integration review's decisions, the
+not_fixed | regressed, evidence}], claims[{claim, ruling: met | equivalent | under | over |
+deviates | spec_defect | cant_tell, evidence}], notes}`. The units are those the brief lists — a
+leaf review's criteria, changed files and failing approved cases, an integration review's decisions, the
 criteria of its children with no review of their own, and its changed files — and a unit with no
 ruling is open. A leaf review returns `claims: []`. `remedy` is who must change to fix a finding
 — the implementation (`code`, read when absent) or the cycle's tests (`tests`); `remedyOf` in

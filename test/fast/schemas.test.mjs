@@ -80,7 +80,7 @@ test('a reviewer grades findings, rules fixes and rules claims on the fixed ladd
   const r = schemaOf('reviewer').properties
   assert.deepEqual(r.findings.items.properties.severity.enum, ['critical', 'major', 'minor'])
   assert.deepEqual(r.fix_rulings.items.properties.status.enum, ['fixed', 'not_fixed', 'regressed'])
-  assert.deepEqual(r.claims.items.properties.ruling.enum, ['met', 'under', 'over', 'deviates', 'spec_defect', 'cant_tell'])
+  assert.deepEqual(r.claims.items.properties.ruling.enum, ['met', 'equivalent', 'under', 'over', 'deviates', 'spec_defect', 'cant_tell'])
   assert.deepEqual(r.units.items.properties.ruling.enum, ['clean', 'findings'])
 })
 

@@ -47,7 +47,7 @@ const rowOf = (view, text) => view.split('\n').findIndex((l) => l.startsWith('|'
 
 // Loss first, as the spec orders the verdicts: what did not hold leads, what could not be decided
 // follows it, and `met` comes last.
-const LOSS_FIRST = ['under', 'over', 'deviates', 'spec_defect', 'cant_tell', 'met']
+const LOSS_FIRST = ['under', 'over', 'deviates', 'spec_defect', 'cant_tell', 'equivalent', 'accepted', 'met']
 
 test('the success criteria stand beside the verdicts, loss first', () => {
   const r = repo()
@@ -60,6 +60,8 @@ test('the success criteria stand beside the verdicts, loss first', () => {
     { claim: 'memory stays bounded', ruling: 'cant_tell', evidence: 'no load test' },
     { claim: 'logging is scoped', ruling: 'over', evidence: 'src/log.js:2' },
     { claim: 'retries are bounded', ruling: 'under', evidence: 'src/r.js:9' },
+    { claim: 'the parser is named Reader', ruling: 'equivalent', evidence: 'src/p.js:1' },
+    { claim: 'the cache key is shorter', ruling: 'accepted', evidence: 'src/c.js:3' },
   ]
   claims(r, list)
   const view = renderLanding(r, 'e1')
@@ -71,11 +73,12 @@ test('the success criteria stand beside the verdicts, loss first', () => {
   assert.deepEqual(rows.map((l) => l.split('|')[1].trim()), list.map((c) => c.ruling).sort((a, b) => rank(a) - rank(b)))
 
   const count = (pass) => list.filter((c) => pass(c.ruling)).length
-  const met = count((v) => v === 'met')
+  const passes = ['met', 'equivalent', 'accepted']
+  const met = count((v) => passes.includes(v))
   const undecided = count((v) => v === 'cant_tell')
-  const notMet = count((v) => v !== 'met' && v !== 'cant_tell')
+  const notMet = count((v) => !passes.includes(v) && v !== 'cant_tell')
   assert.ok(view.includes(list.length + ' claim(s): ' + met + ' met, ' + notMet + ' not met, ' + undecided + ' it could not decide.'),
-    'a cant_tell is counted as neither met nor not met')
+    'a cant_tell is counted as neither met nor not met; an equivalent or accepted claim is met')
 })
 
 test('no recorded verdicts: the criteria stand alone, with no table', () => {

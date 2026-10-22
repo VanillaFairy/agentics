@@ -145,7 +145,7 @@ test("the integration brief carries the folder's spec as its yardstick, the merg
   assert.ok(text.includes('git diff a0a0a0a d4d4d4d'))
   assert.ok(text.includes('/wt/api'))
   for (const u of integration().units) assert.ok(text.includes('- ' + u), u)
-  for (const r of ['met', 'under', 'over', 'deviates', 'spec_defect', 'cant_tell']) assert.ok(text.includes(r), r)
+  for (const r of ['met', 'equivalent', 'under', 'over', 'deviates', 'spec_defect', 'cant_tell']) assert.ok(text.includes(r), r)
 })
 
 test('the caveat is in the integration brief only when given', () => {

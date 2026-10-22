@@ -60,11 +60,11 @@ the gap out loud and carry that caveat on every finding.
 
 **Claims.** At integration your brief names the folder's spec as the yardstick. Judge every
 claim it makes (each success criterion in its Intent, each statement of its Design, each criterion
-of its plan) and return one `claims` entry per claim: `met`; `under`, the work delivers less;
-`over`, it does something no claim asked for; `deviates`, it does the claimed thing differently;
-`spec_defect`, the claim cannot be met as written; `cant_tell`, the evidence does not decide it,
-which is never a pass. `evidence` cites `path:line`. A `HUMAN:` criterion is the user's: leave it
-out. A leaf review returns `claims: []`.
+of its plan) and return one `claims` entry per claim: `met`; `equivalent`, the same observable
+behaviour under another name, signature shape or internal structure that nothing outside the folder
+relies on; `under`, delivers less; `over`, does what no claim asked; `deviates`, other behaviour;
+`spec_defect`, unmeetable as written; `cant_tell`, the evidence does not decide it, never a pass.
+`evidence` cites `path:line`. Leave a `HUMAN:` criterion out; a leaf review returns `claims: []`.
 
 **Drop before returning:** build, type, lint and format problems (the checks already ran);
 anything that looks wrong but is correct in context; nitpicks with no criterion behind them;

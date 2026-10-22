@@ -56,8 +56,9 @@ Your brief is the first message of this conversation. Everything you need is in 
 - **finding**: one result of a review, graded `ambiguity` (blocks until settled), `gap` (designed
   away or accepted out loud) or `note` (advisory). To **settle** a finding is to incorporate it
   into the spec or to discard it.
-- **claim ruling**: `met`; `under`, `over` or `deviates` (drift); `spec_defect` (the claim can't
-  be met as written); `cant_tell` (the evidence doesn't decide it, and it is never a pass).
+- **claim ruling**: `met`, `equivalent` (same behaviour, another name or shape) or `accepted` (the
+  session's call on a drift) pass; `under`, `over`, `deviates` (drift) park; `spec_defect` (can't
+  be met as written); `cant_tell` (the evidence doesn't decide it, never a pass).
 - **observation, ruling, declaration, verdict**: an observation is what code can recompute; a
   ruling is a judgment, made per unit by the user or by an agent that did not produce the work; a
   declaration is a producer's word about its own work, which may steer what runs next but never

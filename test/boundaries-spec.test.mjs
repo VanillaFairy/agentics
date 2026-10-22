@@ -22,7 +22,8 @@ import { compileEffort } from '../lib/compile.mjs'
 import { renderMessage } from '../lib/conversation.mjs'
 import { executionLog, readLog } from '../lib/ledger.mjs'
 import { checkFolder, hashSpec } from '../lib/spec.mjs'
-import { branchOf, dispatchKey, posix, returnPath, specPath } from '../lib/store.mjs'
+import { ROOT_ID, branchOf, dispatchKey, posix, returnPath, specPath } from '../lib/store.mjs'
+import { schedule } from '../lib/schedule.mjs'
 import { readTree } from '../lib/tree.mjs'
 import { STAMP, repo } from './harness/boundary-fixture.mjs'
 
@@ -1060,10 +1061,10 @@ test('spec-prepare: a widened locus a held leaf lists as a directory is held too
 })
 
 /** Folder p planning x and m, m after x and holding src/m.mjs; x's locus `locus`. */
-const pairSpec = (locus) => folderSpec({ plan: [
-  '- **x** — task · realises: D1 · rigor: tdd · locus: ' + locus, '  Add x.', '  Write x and its test.',
+const pairSpec = (locus, { xAfterM = false } = {}) => folderSpec({ plan: [
+  '- **x** — task · realises: D1 · rigor: tdd' + (xAfterM ? ' · after: m' : '') + ' · locus: ' + locus, '  Add x.', '  Write x and its test.',
   '  - [ ] x works — check: `node --test test/x.test.mjs`',
-  '- **m** — task · realises: D1 · rigor: tdd · after: x · locus: src/m.mjs, test/m.test.mjs', '  Add m.', '  Write m and its test.',
+  '- **m** — task · realises: D1 · rigor: tdd' + (xAfterM ? '' : ' · after: x') + ' · locus: src/m.mjs, test/m.test.mjs', '  Add m.', '  Write m and its test.',
   '  - [ ] m works — check: `node --test test/m.test.mjs`',
 ] })
 
@@ -1100,6 +1101,23 @@ test("spec-prepare: a widened locus a leaf holds that waits on the leaf's folder
   const { xc, out } = widened(t, 'src/q.mjs', () => {}, { root })
   assert.equal(out.status, 'prepared', JSON.stringify(out.stops))
   assert.deepEqual(escalations(xc, 'p/x'), [])
+})
+
+test('spec-prepare: a widened locus a leaf it waits on holds is admitted, and the leaf opens only once that leaf merged', (t) => {
+  const xc = prepared(t, { spec: pairSpec('src/x.mjs, test/x.test.mjs', { xAfterM: true }) })
+  workOn(xc, 'p/m')
+  put(xc.repo, 'p', pairSpec('src/x.mjs, test/x.test.mjs, src/m.mjs', { xAfterM: true }))
+  const out = specPrepare(xc, { folder: 'p', review: REVIEW_2 })
+  assert.equal(out.status, 'prepared', JSON.stringify(out.stops))
+  assert.deepEqual(escalations(xc, 'p/x'), [])
+  const tree = readTree(xc.repo, E)
+  const leaves = (status) => schedule({ nodes: tree.nodes, status, root: ROOT_ID, maxParallel: 8 }).launch
+    .filter((u) => u.unit === 'leaf').map((u) => u.id)
+  assert.ok(leaves(tree.status).includes('p/m'))
+  assert.ok(!leaves(tree.status).includes('p/x'), 'x waits while m is unmerged')
+  const merged = new Map(tree.status)
+  merged.set('p/m', { ...(merged.get('p/m') || {}), status: 'merged' })
+  assert.ok(leaves(merged).includes('p/x'), 'x opens once m merged')
 })
 
 test('spec-prepare run twice on a held widening escalates once', (t) => {

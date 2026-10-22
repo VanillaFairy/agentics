@@ -358,6 +358,23 @@ test('read still reads a key that only looks fenced', async () => {
   }
 })
 
+test('a worktree or nested repository a scope names is searched as its own tree, keyed under its path', async () => {
+  const w = '.claude/worktrees/w'
+  const key = w + '/src/a.mjs'
+  const scope = [w]
+  const text = linesOf(FILES['src/a.mjs'].text)
+  const all = await grep(tree, { pattern: 'NEEDLE_ID' }, { scope })
+  assert.equal(all.ok, true, JSON.stringify(all))
+  assert.ok(all.lines.length > 0 && all.lines.every((l) => l.key.startsWith(w + '/')), JSON.stringify(all.lines))
+  assert.deepEqual(all.lines.filter((l) => l.key === key), text.map((t, i) => ({ key, line: i + 1, text: t })).filter((l) => /NEEDLE_ID/.test(l.text)))
+  assert.deepEqual(keyOf(tree, key, scope), { ok: true, key })
+  assert.deepEqual((await read(tree, { path: key }, { scope })).lines.map((l) => l.text), text)
+  assert.ok((await files(tree, { glob: '**/*.mjs' }, { scope })).keys.includes(key))
+  assert.ok((await refs(tree, { symbol: 'NEEDLE_ID' }, { scope })).files.some((f) => f.key === key))
+  assert.deepEqual((await grep(tree, { pattern: 'NEEDLE_ID' }, { scope: ['nested'] })).lines, [{ key: 'nested/x.txt', line: 1, text: 'NEEDLE_ID nested 3' }])
+  for (const unnamed of [['.'], ['.claude/worktrees'], ['src']]) refusedAs(keyOf(tree, key, unnamed), 'not_canonical')
+})
+
 // ------------------------------------------------------------------ files
 
 test('files lists the keys a glob matches over the tree the tools reach', async () => {

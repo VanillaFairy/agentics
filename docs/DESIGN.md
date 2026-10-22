@@ -2045,10 +2045,13 @@ path, a full commit sha), or `canonicalUrl` on the web. One query dialect, `quer
 and the evidence pool ([Items and anchors](#items-and-anchors)); paths, globs and the fence share its
 module (`lib/search/query.mjs`): `pathKey` spells a path as a key, `globOf` reads a glob in the
 search dialect, and `fenced` refuses a key under `.agentics/` or `.claude/worktrees/`
-(`not_canonical`). Each tool keys every path as git prints it for that tree, so spellings, worktree
-copies and Windows case never split one file. A scope part git reports ignored is searched with the
-standard excludes off; `node_modules` only through a part that names it; each initialised submodule
-on its own, keyed under its path; a nested repository or another worktree never. Output comes in
+(`not_canonical`), save that `fencedFrom` opens a tree under `.claude/worktrees/` to a scope part
+that names it, and the store to nothing. Each tool keys every path as git prints it for that tree,
+so spellings, worktree copies and Windows case never split one file. A scope part git reports
+ignored is searched with the standard excludes off; `node_modules` only through a part that names
+it; each initialised submodule on its own, keyed under its path; a nested repository or another
+worktree only where a scope part names it (`--roots .claude/worktrees/<name>`), then on its own like
+a submodule, keyed under its path, with its own store and worktrees fenced. Output comes in
 pages of `PAGE_LINES` (200), each answer saying which page holds the next lines, so nothing is cut
 silently. Every failure is a named refusal (`not_canonical`, `past_eof`, `unsupported_syntax`,
 `does_not_compile`, `expander_error`, `outside_scope`, `too_large`), never an exception.

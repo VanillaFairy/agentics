@@ -977,8 +977,9 @@ event is newer than its last clearing (a replan or a revision) and than every `m
 it, since each merge moves the head the review judged, and than every `outside` event on the folder
 or beneath it, which moves it the same way (`standingReview` in `lib/tree.mjs`). A park an
 integration review raised — one whose `said` is the `said` of a `claims` event on the composite — is
-cleared by any later `claims` event on it: a new review, a re-rule or the session's acceptance
-supersedes the verdict the park came from, and a newer one that earns a park records its own after
+cleared by any later `claims` event on it with `review: done`: a new review, a re-rule or the
+session's acceptance supersedes the verdict the park came from (a `not_earned` one judged nothing
+and clears nothing), and a newer one that earns a park records its own after
 it. The derived status also carries the composite's `review` — `pending` while `reviewing`, then the
 standing event's `done` or `not_earned` — so the review is a step of its own wherever status is
 read: a todo and a snapshot entry after the composite's children. Merged children alone never read

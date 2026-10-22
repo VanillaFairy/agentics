@@ -85,6 +85,11 @@ test("a claims event leaves a park it did not raise: a spec_changed or a contrac
   assert.equal(statusOf([MERGED, review(11, 'r1'), park(12, 'contract_drift', 'ruler.r9'), review(13, 'r2')]).status, 'parked', 'a park of another dispatch')
 })
 
+test('a not_earned claims event judged nothing, so the drift park stays', () => {
+  const events = [MERGED, review(11, 'r1'), park(12, 'integration_critical', 'r1'), review(13, '', { review: 'not_earned', claims: [] })]
+  assert.equal(statusOf(events).status, 'parked')
+})
+
 test('the park a later review raises stands until a review after it', () => {
   const events = [MERGED, review(11, 'r1'), park(12, 'integration_critical', 'r1'), review(13, 'r2'), park(14, 'integration_critical', 'r2')]
   assert.equal(statusOf(events).status, 'parked')

@@ -102,6 +102,35 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.deepEqual(stopsOn(w.rig, 'f'), [], 'nor the folder')
   })
 
+  test("a relaunch routes a needs_locus round again while the leaf is unrevised, and opens the next round once a plan revised it", T, async (t) => {
+    const root = specText([['- **f** — sub-effort · realises: D1 · author: planner', '  Fold f', '']])
+    const sub = specText([leafEntry('b', { locus: ['src/b.txt'] })], { decisions: false })
+    const w = world(t, { spec: { '.': root, f: sub } })
+    const WHY = 'src/c.txt must change too'
+    w.job('implementer|f/b#1', (cwd) => work(cwd, { 'src/b.txt': 'ok\n' }, 'make b'))
+    w.rig.script({ 'implementer|f/b|producer:f/b': [{ output: { status: 'needs_locus', text: WHY, needs_locus: { paths: ['src/c.txt'], why: WHY } } }] })
+    const first = await w.run('f/b')
+    assert.equal(first.outcome, 'route')
+
+    const again = w.relaunch()
+    again.rig.script({})
+    const out = await again.run('f/b')
+    assert.deepEqual(faultsOf(again.rig, 'f/b'), [], 'no fault: the routed round is not resumed with nothing to say')
+    assert.equal(again.rig.calls.length, 0, 'no producer is dispatched')
+    assert.equal(out.outcome, 'route')
+    assert.deepEqual(out.route, first.route, 'the route the first run held in memory')
+
+    const b = readTree(again.rig.repo, E).nodes.get('f/b')
+    assert.equal(append(again.rig.repo, E, 'nodes', [{ kind: 'node', node: { ...b, locus: ['src/b.txt', 'src/c.txt'] } }]).ok, true)
+    const revised = w.relaunch()
+    revised.rig.script({ 'implementer|f/b|producer:f/b': [done()] })
+    const next = await revised.run('f/b')
+    assert.deepEqual(faultsOf(revised.rig, 'f/b'), [])
+    assert.equal(next.outcome, 'approved')
+    assert.equal(next.round, 2)
+    assert.equal(startsOf(revised.rig, 'implementer', 'f/b').length, 1, 'the revised leaf runs its next round')
+  })
+
   /** A dispatch that failed: the fault it records, the leaf it holds, and no question. */
   function assertFaulted(w, out, channel) {
     assert.equal(out.outcome, 'faulted')

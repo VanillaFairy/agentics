@@ -1451,7 +1451,10 @@ messages, any other request as a brief of its own. No planner writes a spec outs
 so a task is promoted only by a spec the user writes. The answer goes through the
 [autonomous review](#autonomous-review) and is compiled; a replan that leaves the asking leaf at
 the revision it asked from escalates `replan_not_converging`, and a request whose planning ends on
-a fault is a `program` fault on the asking leaf as well. A verify task's finding replans its folder
+a fault is a `program` fault on the asking leaf as well. The request stands while the asking leaf is
+at the revision its round was dispatched on and no retry cleared it: a relaunch rebuilds it from the
+round's close record and stored return (`routeOf` in `lib/boundaries/leaf-close.mjs`) and sends it
+to the planner again, never opening a round whose producer would have nothing to be told. A verify task's finding replans its folder
 the same way: the planner rewrites the folder's spec when the planner wrote it, and the folder
 parks `needs_respec` for the user when the user did. Under a planner's folder the finding is the
 route: leaf-close records no escalation of the leaf, so none outlives the planner's replan, and the

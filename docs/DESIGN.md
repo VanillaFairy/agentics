@@ -1169,7 +1169,8 @@ ruler that returned and one over a moved basis rules the spec as it now stands.
 
 What cannot be ruled is refused with what to do next (`next`): a spec never compiled, or whose
 compiled text was not kept or cannot be diffed, is the user's to approve; one with problems is
-edited; one whose parent spec is edited waits for the parent; a planner's spec is re-derived.
+edited; one whose parent spec is edited waits for the parent; a planner's spec is re-derived, or,
+edited by the session, reviewed and prepared by the next execution tick.
 
 **Why:** most edits to an approved spec move nothing built on it, and the ones that move a decision
 or a contract are the user's answer written into a spec. Asking the user to approve that edit asks
@@ -1946,8 +1947,13 @@ the answer (L2).
 
 A park or an escalation stops only that folder; develop keeps running whatever does not depend on
 it. A `spec_changed` park on a folder the planner wrote goes back to the planner, which re-derives
-it through these same steps; its preparation clears the park its own compile raises. The same
-park on a folder the user wrote waits for the user; a change ruled to move nothing never raises it
+it through these same steps; its preparation clears the park its own compile raises. A folder the
+planner wrote whose spec the session edited on the user's word, answering a park on it (an
+integration review's `spec_defect` or `integration_critical`, standing or retried), is not ruled:
+the next tick hands the edit to the planner's path with no planner write first. The edit is checked
+as the user's (its problems escalate `spec_refused`), reviewed, its findings settled by the planner,
+prepared and compiled, and its preparation clears the park it answers (`replanned {reason:
+spec_edited}`). The same park on a folder the user wrote waits for the user; a change ruled to move nothing never raises it
 ([A changed spec](#a-changed-spec)).
 
 **Why:** the parts the user lets go autonomously still get a reader that did not write them
@@ -2639,7 +2645,9 @@ A folder with nothing planned beneath it is planned, up to the pool less the pla
 the planner writes it; one the user writes is parked `needs_design` by the tick that finds it. A
 folder the planner wrote that its compile parked `spec_changed` (the park's `return`) is re-derived
 once per park: again only when this execution has no planner dispatch on that folder newer than
-that park.
+that park. One the planner wrote whose spec is edited past its last `prepared` line while it is
+parked, or since the session retried its park, is planned `spec_edited` once per edited text: the
+plan's first step is keyed by the text's hash (`editedPlanKey` in `lib/boundaries/execution.mjs`).
 
 A merge-batch runs whenever approved children wait on an integration branch nobody is merging into,
 at the heads their approvals named; a leaf still running (a fix round after it failed on the

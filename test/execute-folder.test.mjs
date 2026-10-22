@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join, relative } from 'node:path'
 
 import { approvalState } from '../lib/approval.mjs'
+import { schedule } from '../lib/boundaries/execution.mjs'
 import { parked, recordAll } from '../lib/boundaries/records.mjs'
 import { guidanceOf, leafBrief } from '../lib/brief.mjs'
 import { plannerBrief } from '../lib/briefs/execute.mjs'
@@ -926,4 +927,32 @@ test('a go-on past an earlier design_spend park raises the allowance by one mult
   append(w.rig.repo, E, 'events', [{ kind: 'replanned', node: 'p', execution: w.rig.stamp, reason: 'retry_escalated', by: 'session' }])
   assert.equal((await w.run()).outcome, 'prepared', 'one multiple past the first allowance, the second is not reached')
   assert.equal(parks(w.rig).filter((p) => p.return === 'design_spend').length, 1)
+})
+
+const EDITED_SPEC = folderSpec({ design: DESIGN_A, plan: [
+  '- **x** — task · realises: D1 · rigor: tdd · locus: src/x.mjs, test/x.test.mjs', '  Add x.', '  Write x and its test.',
+  '  - [ ] x works — check: `node --test test/x.test.mjs`',
+  '- **y** — task · realises: D1 · rigor: trivial · after: x · locus: src/y.mjs', '  Add y.', '  Write y.',
+  '  - [ ] y exists — check: `node -e "process.exit(0)"`',
+] })
+
+test("a session's edit of a planner-written folder over its park is scheduled, reviewed, prepared and compiled, and the park cleared", async (t) => {
+  const w = world(t, { steps: { ...clean(), ...probing(2, EDITED_SPEC) }, writes: { 1: S1 } })
+  assert.equal((await w.run()).outcome, 'prepared', 'the fixture: p is planned and compiled')
+  recordAll(w.rig.xc, [parked('p', 'integration_critical', 'the landed work lacks y')])
+  assert.equal(readTree(w.rig.repo, E).status.get('p').status, 'parked')
+  const plans = () => schedule(w.rig.xc, {}).launch.filter((l) => l.unit === 'plan' && l.id === 'p')
+  assert.deepEqual(plans(), [], 'an unedited park plans nothing')
+  putSpec(w.rig, EDITED_SPEC)
+  assert.equal(approvalState(w.rig.repo, E, 'p').state, 'edited')
+  assert.deepEqual(plans().map((l) => l.why), ['spec_edited'])
+
+  const out = await w.run({ why: 'spec_edited' })
+  assert.equal(out.outcome, 'prepared')
+  assert.equal(plannerCalls(w.rig).length, 1, 'the planner writes nothing over the edit')
+  assert.equal(readSpec(w.rig), EDITED_SPEC, 'the edit stands as written')
+  assert.ok(liveNode(w.rig, 'p/y'), 'the edit is compiled')
+  assert.equal(approvalState(w.rig.repo, E, 'p').state, 'prepared')
+  assert.notEqual(readTree(w.rig.repo, E).status.get('p').status, 'parked', 'the park the edit answers is cleared')
+  assert.deepEqual(plans(), [], 'and nothing plans it again')
 })

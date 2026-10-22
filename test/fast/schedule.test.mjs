@@ -94,6 +94,20 @@ test('a planner folder parked spec_changed is re-derived once per park', () => {
   assert.deepEqual(launched(effort([folder('.'), folder('x'), leaf('x/a')], [park]), 'plan'), [])
 })
 
+test("a planner folder whose spec the session edited over a park, standing or retried, plans the edit", () => {
+  const nodes = [folder('.'), folder('x', { author: 'planner' }), leaf('x/a')]
+  const park = { kind: 'parked', node: 'x', return: 'integration_critical' }
+  const retry = { kind: 'replanned', node: 'x', reason: 'retry_escalated' }
+  const edited = () => true
+  assert.deepEqual(launched(effort(nodes, [park], { edited }), 'plan').map((l) => [l.id, l.why]), [['x', 'spec_edited']])
+  assert.deepEqual(launched(effort(nodes, [park, retry], { edited }), 'plan').map((l) => l.why), ['spec_edited'], 'a retried park too')
+  assert.deepEqual(launched(effort(nodes, [park]), 'plan'), [], 'an unedited spec plans nothing')
+  assert.deepEqual(launched(effort(nodes, [], { edited }), 'plan'), [], 'nor an edit over no park: the plan that made it runs on')
+  const stop = { kind: 'escalated', node: 'x', reason: 'review_incomplete' }
+  assert.deepEqual(launched(effort(nodes, [stop, retry], { edited }), 'plan'), [], 'a retried escalation is not a park')
+  assert.deepEqual(launched(effort([folder('.'), folder('x'), leaf('x/a')], [park], { edited }), 'plan'), [], "the user's folder is the user's")
+})
+
 test('approved leaves merge into their parent at the head they were approved at, never while running', () => {
   const nodes = [folder('.'), leaf('a'), leaf('b')]
   const events = ['a', 'b'].flatMap((id) => [{ kind: 'dispatched', node: id }, { kind: 'approved', node: id }])

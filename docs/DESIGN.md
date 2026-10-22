@@ -601,7 +601,9 @@ report is still on the record, and leaf-close reads it.
 
 **The user's checkout is watched.** Before and after every call of a role that runs commands (one
 with `Bash`), and every check, the runner reads the main checkout's `HEAD`, its branch refs and its
-status. A moved `HEAD` or ref ends the call failed (`cause: checkout`), ahead of any host stop, and
+status. The framework's own `refs/heads/agentics/` are not the user's, nor is a branch checked out
+in another worktree of the repository (`git worktree list`), which another session works on: a ref
+either read names that way is left out of the comparison. A moved `HEAD` or ref ends the call failed (`cause: checkout`), ahead of any host stop, and
 is a fault naming the call ([Faults](#faults)); a changed working tree is recorded,
 `checkout_changed {dispatch, paths}`, and shown, not a fault, because the user may be working in it
 (a staged rename names its original path as well as its new one).

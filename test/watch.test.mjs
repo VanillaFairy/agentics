@@ -68,6 +68,25 @@ test("the framework's own branches are not the user's", (t) => {
   assert.deepEqual(compareCheckout(before, snapshotCheckout(dir)).moved, [])
 })
 
+test("a branch another worktree has checked out is that worktree's, created, committed or left", (t) => {
+  const { dir, g } = repo(t)
+  const other = mkdtempSync(join(tmpdir(), 'agentics-watch-other-'))
+  t.after(() => rmSync(other, { recursive: true, force: true }))
+  const before = snapshotCheckout(dir)
+  g('worktree', 'add', '-q', '-b', 'side', other)
+  writeFileSync(join(other, 's.txt'), 's\n')
+  execFileSync('git', ['-C', other, 'add', '.'], { encoding: 'utf8' })
+  execFileSync('git', ['-C', other, 'commit', '-q', '-m', 'side work'], { encoding: 'utf8' })
+  const during = snapshotCheckout(dir)
+  assert.deepEqual(compareCheckout(before, during).moved, [])
+  execFileSync('git', ['-C', other, 'switch', '-q', '-c', 'side2'], { encoding: 'utf8' })
+  assert.deepEqual(compareCheckout(during, snapshotCheckout(dir)).moved, [], 'the branch it left was its own in the snapshot before')
+  const left = snapshotCheckout(dir)
+  g('branch', 'mine')
+  execFileSync('git', ['-C', other, 'commit', '-q', '--allow-empty', '-m', 'more side work'], { encoding: 'utf8' })
+  assert.deepEqual(compareCheckout(left, snapshotCheckout(dir)).moved.map((m) => m.ref), ['refs/heads/mine'], "a branch no other worktree holds is the user's")
+})
+
 test("the framework's own folders are not the user's changes", (t) => {
   const { dir } = repo(t)
   const before = snapshotCheckout(dir)

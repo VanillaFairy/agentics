@@ -41,7 +41,8 @@ Executions, program runs and sessions share `.agentics/.state/` across processes
 `withLock` renames a staged holder onto the lock directory and branches on the `HELD` codes,
 because POSIX and Windows refuse that rename differently. `withLock` runs `fn` synchronously, so
 an async `fn` loses the lock before it settles: programs use `withLockAsync`. `locks.mjs` grants a
-leaf its slot and locus locks all or nothing, counting a `planned` holder as occupying. `max_parallel` bounds leaf slots across the machine; `max_agents` bounds
+leaf its slot, counting a `planned` holder as occupying; what two leaves expect only defers them in
+`schedule.mjs`, and `contention.mjs` decides what the judge at the merge is asked. `max_parallel` bounds leaf slots across the machine; `max_agents` bounds
 concurrent calls inside one run (`programs/common.mjs`).
 
 ## RESOURCE LIFECYCLE

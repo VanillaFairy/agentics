@@ -10,8 +10,9 @@ apply to every `roles/*.md`.
 
 ## INVARIANTS & GOTCHAS
 
-- Capability is `tools:` and `commands:` plus the permissions `lib/locus.mjs` computes:
-  `permissionsFor` for a leaf's producer, `readOnlyPermissions` for the rest. A change to either line
+- Capability is `tools:` and `commands:` plus the permissions `lib/permissions.mjs` computes:
+  `rolePermissions` by `writesOf` for a leaf's producer, `writePermissions` for the planner's spec,
+  `readOnlyPermissions` for the rest. A change to either line
   edits `test/fast/role-allowlists.test.mjs` in the same commit.
 - `roleCommands` replaces `<build>`, `<typecheck>` and `<test>` with the effort's established
   commands, and gives an implementer its leaf's criterion checks too. A literal command written in
@@ -31,7 +32,7 @@ apply to every `roles/*.md`.
 
 ## DEPENDENCIES
 
-- lib — `roles.mjs` (parse, tiers, commands), `schemas.mjs` (returns), `locus.mjs` (permissions),
+- lib — `roles.mjs` (parse, tiers, commands), `schemas.mjs` (returns), `permissions.mjs` (permissions),
   `runner.mjs` (the session).
 - lib/programs — the only dispatchers; a role's thread, round and owner are the program's choice.
 - tools — `role-frontmatter`, `size-budget` and `no-turn-caps` judge these files.

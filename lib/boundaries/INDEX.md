@@ -28,7 +28,7 @@ and the run's heartbeat.
 
 ## RESOURCE LIFECYCLE
 
-`leafOpen` takes a slot and the locus locks before it creates the leaf's branch and worktree;
+`leafOpen` takes a slot before it creates the leaf's branch and worktree;
 `recordAll` gives a node's slot back when it records a `fault`. Preflight's `clearWorktrees` removes
 clean leftover checkouts of the effort's branches and never forces a dirty one; `postflight` writes
 `closed`. A merge measured while the user's checkout moved is a `checkout` fault, and the batch is
@@ -48,9 +48,11 @@ put back where it started.
   integration branch must leave a record it reads (a `merged` event's `commits` or `merged_sha`, an
   `outside` event) or a head `accountingHeads` counts, or every later run stops at `outside_work`,
   which `--confirmed` never passes.
-- Leaf-close reverts what a producer wrote outside its locus with a commit of its own
-  (`REVERT_SUBJECT`), and `revertsOf` reads `breach_reverted` across every execution, so a revert
-  already made is not made again.
+- A rebase round's merge in progress is left in the leaf's worktree on purpose: `ensureLeaf` takes
+  it as the round's refresh, and leaf-close measures nothing until the producer concludes it. A
+  `git merge --abort` anywhere on a leaf worktree throws that round's work away.
+- The ruler at a merge is dispatched on the folder being merged into: a `dispatched` event on the
+  approved leaf would derive it `active` again and keep it out of merges.
 
 ## DEPENDENCIES
 

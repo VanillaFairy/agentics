@@ -20,7 +20,8 @@ import { worktreeOf } from '../lib/store.mjs'
 import { STAMP, commitIn, git, leaf } from './harness/boundary-fixture.mjs'
 import { E, RED, globRule, setup, ran, nodeOf, roleOf, cycle, askedForTests } from './harness/leaf-open-world.mjs'
 
-const editWrite = (target) => [`Edit(${target})`, `Write(${target})`]
+/** A path's edit and write rules, anchored at the call's root as `permissionsFor` writes them. */
+const editWrite = (target) => [`Edit(/${target})`, `Write(/${target})`]
 
 /** The suite command an investigator established, as `commandsOf` reads it. */
 const established = (r, value) => writeGotcha(r, E, {

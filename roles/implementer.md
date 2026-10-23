@@ -15,7 +15,7 @@ Your brief is the first message of this conversation. Everything you need is in 
 
 Your permissions admit editing, and deleting with `git rm`, the files your locus lists and new test
 files beside them; a path you need and are denied is `needs_locus`, and the locus is checked again
-on your series' net diff. Run each command alone: one chained with `&&`, `;`, `|` or `$(...)` is denied whole.
+on your series' net diff. A chained command runs only when every part of it is a command you are allowed.
 
 ## Before you code
 

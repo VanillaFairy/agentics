@@ -18,7 +18,9 @@ import assert from 'node:assert/strict'
 import { GIT_DENY, TEST_GLOBS, admits, permissionsFor } from '../../lib/locus.mjs'
 import { TEST_PATTERNS, isTestPath } from '../../lib/store.mjs'
 
-const editWrite = (target) => [`Edit(${target})`, `Write(${target})`]
+/** The rules a path pattern becomes: anchored at the call's root, as the host reads it after a `cd`. */
+const at = (target) => (target.startsWith('/') ? target : '/' + target)
+const editWrite = (target) => [`Edit(${at(target)})`, `Write(${at(target)})`]
 const dirOf = (path) => path.slice(0, path.lastIndexOf('/'))
 const count = (list, item) => list.filter((x) => x === item).length
 const sorted = (list) => [...list].sort()
@@ -119,12 +121,12 @@ test('a listed file becomes edit and write rules', () => {
 test('a root-level file is anchored to the root, so it never reaches a file of the same name deeper down', () => {
   const { allowed, disallowed } = permissionsFor({ locus: ['package.json', 'src/a/X.ts'], held: ['README.md'], denyRead: ['.env'] })
   for (const rule of editWrite('/package.json')) assert.ok(allowed.includes(rule), rule)
-  for (const rule of editWrite('package.json')) assert.ok(!allowed.includes(rule), `${rule} would match packages/x/package.json too`)
+  for (const rule of ['Edit(package.json)', 'Write(package.json)']) assert.ok(!allowed.includes(rule), `${rule} would match packages/x/package.json too`)
   for (const rule of editWrite('/README.md')) assert.ok(disallowed.includes(rule), rule)
   assert.ok(disallowed.includes('Read(/.env)'))
   const rules = [...allowed, ...disallowed]
-  const bare = rules.filter((r) => !r.slice(r.indexOf('(') + 1).includes('/') && /^(Edit|Write|Read)\(/.test(r))
-  assert.deepEqual(bare, [], 'no path rule is left without a slash')
+  const bare = rules.filter((r) => /^(Edit|Write|Read)\(/.test(r) && !r.slice(r.indexOf('(') + 1).startsWith('/'))
+  assert.deepEqual(bare, [], 'every path rule is anchored at the root: one read against the current directory stops matching after a cd')
 })
 
 test('glob characters in a listed path are escaped, so the rule names that path and no other', () => {
@@ -137,7 +139,7 @@ test('glob characters in a listed path are escaped, so the rule names that path 
   for (const rule of editWrite('app/\\(auth\\)/**')) assert.ok(allowed.includes(rule), rule)
   for (const rule of editWrite('lib/a\\*b/c\\?.ts')) assert.ok(allowed.includes(rule), rule)
   for (const rule of editWrite('app/\\[id\\]/x.ts')) assert.ok(disallowed.includes(rule), rule)
-  assert.ok(disallowed.includes('Read(data/\\[a\\]/k.json)'))
+  assert.ok(disallowed.includes('Read(/data/\\[a\\]/k.json)'))
   for (const rule of allowed) assert.ok(!rule.includes('[slug]') && !rule.includes('(auth)') && !rule.includes('a*b'), `unescaped: ${rule}`)
   const beside = permissionsFor({ locus: ['app/[slug]/page.tsx'] }).allowed
   for (const glob of TEST_GLOBS) {
@@ -261,9 +263,18 @@ test('paths a call must not read are denied', () => {
   const denyRead = ['secrets/.env', 'docs/answer.md']
   const { allowed, disallowed } = permissionsFor({ locus: ['src/a/X.ts'], denyRead })
   for (const path of denyRead) {
-    assert.ok(disallowed.includes(`Read(${path})`), path)
-    assert.ok(!allowed.includes(`Read(${path})`), path)
+    assert.ok(disallowed.includes(`Read(/${path})`), path)
+    assert.ok(!allowed.includes(`Read(/${path})`), path)
   }
+})
+
+test('a compound check becomes one bash rule per command it runs, so each part also runs alone', () => {
+  const check = 'git grep -nF "a && b" -- x.js && test "$(grep -c y x.js)" -ge 2 && ! git grep -n z -- x.js | head -1; npm run lint'
+  const { allowed } = permissionsFor({ locus: [], commands: [check] })
+  assert.deepEqual(allowed, [
+    'Bash(git grep -nF "a && b" -- x.js:*)', 'Bash(grep -c y x.js:*)', 'Bash(test "$(grep -c y x.js)" -ge 2:*)',
+    'Bash(git grep -n z -- x.js:*)', 'Bash(head -1:*)', 'Bash(npm run lint:*)',
+  ])
 })
 
 test('commands become bash rules', () => {
@@ -358,7 +369,7 @@ const globMatches = (pattern, path) => {
 }
 /** Whether an Edit rule among `rules` reaches `path`. */
 const ruled = (rules, path) =>
-  rules.filter((r) => r.startsWith('Edit(')).some((r) => globMatches(r.slice('Edit('.length, -1), path))
+  rules.filter((r) => r.startsWith('Edit(/')).some((r) => globMatches(r.slice('Edit(/'.length, -1), path))
 
 /** A name a glob matches: each `*` as `fill`, each letter set as its first member, or its last when `last`. */
 const nameOf = (glob, last = false, fill = '0') =>

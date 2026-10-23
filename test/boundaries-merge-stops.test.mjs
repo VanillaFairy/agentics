@@ -23,7 +23,7 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { driftOf, mergeBatch } from '../lib/boundaries/merge.mjs'
-import { executionLog, fileFor } from '../lib/ledger.mjs'
+import { append as appendTo, executionLog, fileFor } from '../lib/ledger.mjs'
 import { branchOf, readJson, worktreeOf } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
 import { STAMP, commitIn, git, leaf, repo, root } from './harness/boundary-fixture.mjs'
@@ -218,6 +218,44 @@ test('a merge under a contract a pending node consumes writes the drift record a
   assert.ok(brief.includes('- c works'), 'the criterion')
   assert.ok(brief.includes(branchOf(E, '.')), 'the integration branch')
   assert.match(brief, /^\+hello world$/m, 'the diff')
+})
+
+/**
+ * The user's ruling that c's contract is unaffected, as the records hold it: a ruler's affected
+ * ruling at `head`, the `contract_drift` park on it, the answer, and the retry that cleared the park.
+ */
+function userRuledUnaffected(w, head) {
+  w.xc.log.append('drift-ruled', { node: 'c', contract: 'docs', head_sha: head, ruling: 'affected', why: 'README now greets the world', said: 'r-drift' })
+  w.xc.log.append('parked', { node: 'c', return: 'contract_drift', question: 'Does c still read README as it did?', said: 'r-drift' })
+  appendTo(w.r, E, 'ledger', [{ kind: 'answered', asked: 1, nodes: ['c'], answers: [{ question: 'Does c still read README?', answer: 'USER_ANSWER_TOKEN: c never reads the greeting' }], by: 'user' }])
+  w.xc.log.append('replanned', { node: 'c', reason: 'retry_escalated', by: 'session' })
+}
+
+test("drift on a contract the user ruled unaffected, over files that read as they did then, stands: no ruler is asked", SLOW, async (t) => {
+  const w = driftWorld(t)
+  const p = await ready(w, 'p', { 'README.md': 'hello world\n' }, 'Greet the world')
+  userRuledUnaffected(w, p.head_sha)
+  const out = await batch(w, handed(p))
+
+  const retry = kindOf(eventsOf(w.r), 'replanned', 'c').at(-1)
+  assert.deepEqual(out.drift, [{ node: 'c', contract: 'docs', stopped: '', standing: retry.seq }])
+  assert.equal(out.drift_brief, '', 'no ruler brief')
+  assert.equal(readJson(out.drift_record).drift[0].standing.by, 'user')
+})
+
+test('drift on a contract ruled unaffected whose files moved since is ruled again, handed that ruling and the answer', SLOW, async (t) => {
+  const w = driftWorld(t)
+  const p = await ready(w, 'p', { 'README.md': 'hello world\n' }, 'Greet the world')
+  const before = headOf(w.r, '.')
+  userRuledUnaffected(w, before)
+  const out = await batch(w, handed(p))
+
+  assert.deepEqual(out.drift, [{ node: 'c', contract: 'docs', stopped: '' }])
+  const brief = readFileSync(out.drift_brief, 'utf8')
+  assert.ok(brief.includes('Ruled before: at ' + before), 'the earlier ruling, at its head')
+  assert.ok(brief.includes('USER_ANSWER_TOKEN: c never reads the greeting'), "the user's answer")
+  assert.ok(brief.includes('README now greets the world'), "the ruler's why")
+  assert.match(brief, /^\+hello world$/m, 'the change since the ruling')
 })
 
 test("a stopped consumer's drift is recorded and briefed to no ruler", SLOW, async (t) => {

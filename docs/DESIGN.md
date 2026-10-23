@@ -3070,6 +3070,21 @@ consumes. One ruler, handed it as its prompt, rules each consumer `unaffected` o
 the one question its owner must answer; either ruling is a `drift-ruled` state line. A consumer is
 not launched while it is being ruled on or replanned.
 
+**A ruling of unaffected stands for the change it ruled on.** The same change reaches a consumer
+again at every merge that carries it up the tree, so a ruling that did not stand would be asked
+again at each one, and the user's answer put to the ruler as if it had never been given. The
+standing ruling on a consumer's contract (`standingRulings` in `lib/boundaries/integration.mjs`, over
+the state lines of every execution of the effort) is the latest of: a ruler's `drift-ruled` line
+ruling it unaffected, at the head it ruled; and the user's ruling, a `contract_drift` park on an
+affected ruling that the session cleared with `retry` (which, on that park, means the user ruled it
+unaffected), at that ruling's head. A later affected ruling nobody cleared takes its place. Before
+a batch writes its ruler's brief, each drift item under a standing ruling is compared in git: when
+its files read at the merged head as they did at the ruled head, it is `standing` (the ruling's
+seq, head and author on the drift record), no ruler is asked, and the execute program notes it;
+when they changed, the ruler is asked, handed the earlier ruling — its head, the ruler's why, the
+park's question and the answers the user recorded on the node between the park and the retry — and
+only the change to those files since the ruled head. A head git cannot compare counts as changed.
+
 The same holds for a base branch that moved under a resumed execution. Preflight measures each
 unmerged, unstopped leaf from its own **anchor**: the base head the execution's branch already
 holds (the merge-base of the base branch with the root's integration branch, or with the nearest

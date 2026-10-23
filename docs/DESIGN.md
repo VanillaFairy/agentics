@@ -3422,7 +3422,7 @@ disagree about it.
 | `investigate` | answering a question from evidence (the `investigate` program) |
 | `search-for-existing-solutions-before-building` | service step, hidden (`user-invocable: false`) — the `solutions` program |
 | `next` | every effort, where it stands and its computed Next line; hands the pick on |
-| `self-improve` | the session driving a run: watches it, tells a plugin cause from a spec or code cause, and has the plugin itself fixed, released and installed before the work goes on |
+| `self-improve` | the session driving a run: watches it, tells a plugin cause from a spec or code cause, and has the plugin itself fixed, released and installed before the work goes on; treats spend the work did not earn as a plugin cause too, judged from the spend view ([Self-checks](#self-checks)) and corrected between runs rather than by stopping one; and at the effort's end reads that view, names each outlier's cause and has every dial or prompt behind one corrected |
 
 A service step carries `user-invocable: false`: it is gone from the `/` menu, and the model still
 runs it when asked in chat.

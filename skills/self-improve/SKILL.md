@@ -1,6 +1,6 @@
 ---
 name: self-improve
-description: Use while driving an agentics run (develop, design, task, investigate) whenever the run behaves against expectations — it loops, stalls, runs far longer than its work, raises many regressions, re-runs review rounds, or a fault or plugin defect is reported. Decides whether the agentics plugin itself is the cause rather than the spec or the code; if it is, stops the run, has the plugin fixed and released as a new version, resumes the work on that version, and summarises the plugin updates when the effort ends. Not for a spec or code defect, which the driving skill handles.
+description: Use while driving an agentics run (develop, design, task, investigate) whenever the run behaves against expectations — it loops, stalls, runs far longer than its work, raises many regressions, re-runs review rounds, a fault or plugin defect is reported — or spends more than its work earns, including when the user questions a dispatch's size or count. Decides whether the agentics plugin itself is the cause rather than the spec or the code; if it is, has the plugin fixed and released as a new version (stopping the run first for a fault) and resumes the work on that version. At the effort's end, reads its measured spend, names each outlier's cause, has the dial or prompt behind it corrected, and summarises the plugin updates. Not for a spec or code defect, which the driving skill handles.
 ---
 
 # self-improve
@@ -9,17 +9,24 @@ The user's rule for a session driving an agentics run:
 
 1. Monitor every execution step: each watch line, park, escalation, fault and end.
 2. When the run behaves against expectations, check whether the cause is the agentics plugin rather
-   than the spec or the code.
-3. If it is the plugin: stop the run at once, have the plugin fixed, released and installed as a new
-   version, and continue the work on that version.
-4. When the effort is done, give the user a summary of the plugin updates made during it, if any.
+   than the spec or the code. Spend the work did not earn is a plugin signal too, as a fault is.
+3. If it is the plugin: have the plugin fixed, released and installed as a new version, and continue
+   the work on that version. A fault stops the run at once; a spend signal waits for a natural stop.
+4. When the effort is done, reflect on its measured spend, have each unearned outlier's cause
+   corrected, and give the user a summary of the plugin updates and corrections made during it.
 
 ## Step 1 — Monitor
 
 Follow the run with the driving skill's watch (develop step 3) and act on every line it prints.
 Expect each node to move forward between lines: a stop names a cause someone can answer, an
-answered stop does not come back, a review round sees changed text, and the run ends. Measure
-against the work itself: a leaf runs a few rounds, a folder's design a few review rounds.
+answered stop does not come back, a review round sees changed text, and the run ends.
+
+Measure spend against the work with numbers code computes, never a guess. At every park, escalation
+and end, and whenever the user asks about cost, read the spend view:
+`node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" spend --repo . --effort <e>`. It lists each leaf, folder
+design and probe round with its dispatches, rounds and dollars beside the effort's mean and the
+earlier efforts', the spend per role and model, and the units it flagged with their reasons. You
+judge the flagged units; you do not compute outliers yourself.
 
 ## Step 2 — Plugin, spec or code
 
@@ -49,9 +56,26 @@ Gather the facts before you judge. Read them with Read and Grep, the node's id a
 | a finding or a failing criterion that names a real gap in the spec, a park asking a decision only the user can make | spec: the driving skill's re-spec |
 | a failing check whose output names the code, a reviewer's finding with a failure scenario in the code | code: the run's own fix rounds |
 
+Spend the work did not earn is its own class. Its cause is a dial (a constant, a tier, a config
+default) or a prompt (a role, a brief, a skill, the planner's habits), both the plugin's, unless the
+work itself is that large:
+
+| spend signal | where its cause lives |
+|---|---|
+| `probers_over_size`: more parallel judges on one artefact than its size earns | the dial that sizes the dispatch |
+| `axes_again`, or review rounds over text that did not change in substance (the spec `hash` moved by a wording edit, the findings the same claims) | what decides a round or a full re-derivation is earned |
+| a strong model in `by role` on work with nothing to judge: a search, a mechanical edit, a relocate | the role's tier |
+| `usd_over_…` or `rounds_over_…` on a unit | that unit's records: a dial, a prompt, a planner habit (entries split too fine, specs that restate each other), or the work being large |
+| the user questions a dispatch's size or count ("why three", "overkill") | read it as the signal it names, as you would a fault |
+
+Work that is genuinely large earns its spend: say so, with its numbers, and change nothing.
+
 Where the facts do not settle it, ask the user once, with the lines you read.
 
 ## Step 3 — Stop the run
+
+For a fault only. A spend signal does not stop a run doing real work: let what is in flight finish,
+and take the correction through step 4 at the next natural stop or between runs.
 
 There is no stop command. Read `pid` from `.agentics/<e>/.state/executions/<stamp>/run.json` and end
 its process tree: `taskkill /PID <pid> /T /F` on Windows, `pkill -TERM -P <pid>` and then
@@ -66,13 +90,15 @@ fix agent: start it with the host's `Agent` tool, general-purpose, in the backgr
 for its notification. Its brief holds, in this order:
 
 - the symptom as the facts of step 2 state it: the watch lines, each record's `seq`, node, reason
-  and detail, the files and lines you read;
+  and detail, the files and lines you read; for spend, the spend view's flagged rows, the threads
+  they count and the user's words when they raised it;
 - the live case is read-only: nothing under the user's repository may be written; it reproduces on
   a copy of the effort's `.state` in a scratch directory of its own;
 - read the plugin's `CLAUDE.md` and `docs/kb/BUILD.md` first, and follow them;
 - fix the class, not the instance: name the class as you see it, and say what the live case should
   do after the fix;
-- a regression test in the repository's test setup that fails without the fix;
+- a regression test in the repository's test setup that fails without the fix; for spend, one that
+  pins the corrected behaviour (the dispatches, tier or rounds the case now buys);
 - `node tools/lint.mjs && node tools/suite.mjs` and `claude plugin validate .` pass;
 - one commit per fix, in the repository's commit style, each ending with the commit attribution
   lines this session uses;
@@ -102,9 +128,16 @@ the same start command as before, which resumes the open execution. Arm the watc
 effort's `seq` read before the relaunch. Tell the user that restarting the session loads the new
 version everywhere.
 
-## Step 6 — The summary at the effort's end
+## Step 6 — Reflect at the effort's end
 
-When the effort lands or the user ends it, give the user the plugin updates made during it: each
-version, its commits and what each fixed in this run, taken from the fix agents' returns and
-`git log --oneline` of the plugin checkout over the commits pushed since the effort began. With
-none, say that no plugin update was needed.
+When the effort lands or the user ends it:
+
+1. Read the spend view for the effort. For each flagged unit, name its cause from its records, by
+   step 2's spend table: a dial, a prompt, a planner habit, or the work being large.
+2. Each cause in a dial or a prompt that no fix during the effort already corrected goes through
+   step 4: one fix agent for all of them, one commit and one test per correction, each test
+   pinning the corrected behaviour.
+3. Give the user one summary: each plugin version made during the effort, its commits and what each
+   fixed or corrected, from the fix agents' returns and `git log --oneline` of the plugin checkout
+   over the commits pushed since the effort began; then each outlier judged earned, with its
+   numbers. With neither, say that no plugin update was needed and every outlier was earned.

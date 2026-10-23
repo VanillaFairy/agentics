@@ -94,7 +94,7 @@ test('a planner folder parked spec_changed is re-derived once per park', () => {
   assert.deepEqual(launched(effort([folder('.'), folder('x'), leaf('x/a')], [park]), 'plan'), [])
 })
 
-test("a planner folder whose spec the session edited over a park, standing or retried, plans the edit", () => {
+test("a planner folder whose spec is edited past its preparation, under a park or a retried stop, plans the edit", () => {
   const nodes = [folder('.'), folder('x', { author: 'planner' }), leaf('x/a')]
   const park = { kind: 'parked', node: 'x', return: 'integration_critical' }
   const retry = { kind: 'replanned', node: 'x', reason: 'retry_escalated' }
@@ -104,8 +104,17 @@ test("a planner folder whose spec the session edited over a park, standing or re
   assert.deepEqual(launched(effort(nodes, [park]), 'plan'), [], 'an unedited spec plans nothing')
   assert.deepEqual(launched(effort(nodes, [], { edited }), 'plan'), [], 'nor an edit over no park: the plan that made it runs on')
   const stop = { kind: 'escalated', node: 'x', reason: 'review_incomplete' }
-  assert.deepEqual(launched(effort(nodes, [stop, retry], { edited }), 'plan'), [], 'a retried escalation is not a park')
+  assert.deepEqual(launched(effort(nodes, [stop], { edited }), 'plan'), [], 'an escalation waits for the session')
+  assert.deepEqual(launched(effort(nodes, [stop, retry], { edited }), 'plan').map((l) => l.why), ['spec_edited'], 'a retried one plans the edit')
   assert.deepEqual(launched(effort([folder('.'), folder('x'), leaf('x/a')], [park], { edited }), 'plan'), [], "the user's folder is the user's")
+})
+
+test("a planner folder whose spec is edited past its preparation is not integration-reviewed over the old graph", () => {
+  const nodes = [folder('.'), folder('x', { author: 'planner' }), leaf('x/a')]
+  const merged = [{ kind: 'dispatched', node: 'x/a' }, { kind: 'approved', node: 'x/a' }, { kind: 'merged', node: 'x/a' }]
+  const reviews = (extra) => launched(effort(nodes, merged, extra), 'review').map((l) => l.id)
+  assert.deepEqual(reviews({}), ['x'], 'the fixture: x is reviewing')
+  assert.deepEqual(reviews({ unprepared: (id) => id === 'x' }), [])
 })
 
 test('approved leaves merge into their parent at the head they were approved at, never while running', () => {

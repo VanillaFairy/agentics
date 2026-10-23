@@ -13,9 +13,9 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 
-import { approvalState } from '../lib/approval.mjs'
-import { schedule } from '../lib/boundaries/execution.mjs'
-import { parked, recordAll } from '../lib/boundaries/records.mjs'
+import { approvalState, recordReviewed } from '../lib/approval.mjs'
+import { editedPlanKey, schedule } from '../lib/boundaries/execution.mjs'
+import { escalated, parked, recordAll } from '../lib/boundaries/records.mjs'
 import { guidanceOf, leafBrief } from '../lib/brief.mjs'
 import { plannerBrief } from '../lib/briefs/execute.mjs'
 import { PLAN_AXIS, STANDING_AXES } from '../lib/briefs/probe.mjs'
@@ -955,4 +955,26 @@ test("a session's edit of a planner-written folder over its park is scheduled, r
   assert.equal(approvalState(w.rig.repo, E, 'p').state, 'prepared')
   assert.notEqual(readTree(w.rig.repo, E).status.get('p').status, 'parked', 'the park the edit answers is cleared')
   assert.deepEqual(plans(), [], 'and nothing plans it again')
+})
+
+test('an edited planner spec whose gate is open is prepared and compiled once its plan stop is retried, with no review again', async (t) => {
+  const w = world(t, { steps: clean(), writes: { 1: S1 } })
+  assert.equal((await w.run()).outcome, 'prepared', 'the fixture: p is planned and compiled')
+  putSpec(w.rig, EDITED_SPEC)
+  const { hash } = approvalState(w.rig.repo, E, 'p')
+  w.rig.xc.log.append('step', { key: editedPlanKey('p', hash), value: 2 })
+  assert.equal(recordReviewed(w.rig.repo, E, 'p', { complete: true }).ok, true)
+  recordAll(w.rig.xc, [escalated('p', 'review_not_converging', 'open I1')])
+  const plans = () => schedule(w.rig.xc, {}).launch.filter((l) => l.unit === 'plan' && l.id === 'p')
+  assert.deepEqual(plans(), [], 'the stop waits for the session, and that text was planned')
+  append(w.rig.repo, E, 'events', [{ kind: 'replanned', node: 'p', execution: w.rig.stamp, reason: 'retry_escalated', by: 'session' }])
+  assert.deepEqual(plans().map((l) => l.why), ['spec_edited'], 'the retry plans the edit again')
+
+  const probesBefore = under(w.rig, 'probe:').length
+  const out = await w.run({ why: 'spec_edited' })
+  assert.equal(out.outcome, 'prepared')
+  assert.equal(under(w.rig, 'probe:').length, probesBefore, 'the open gate is not reviewed again')
+  assert.equal(plannerCalls(w.rig).length, 1)
+  assert.ok(liveNode(w.rig, 'p/y'), 'the edit is compiled')
+  assert.equal(approvalState(w.rig.repo, E, 'p').state, 'prepared')
 })

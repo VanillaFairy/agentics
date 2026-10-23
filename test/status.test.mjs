@@ -8,6 +8,7 @@
 //             waiting on host, escalated: <reason>), and the ONGOING / DONE / NEEDS_INPUT header
 //   cost      the runner's returned lines joined to their dispatched: totals, per model, per leaf
 //             and per folder; unmeasured calls never read as zero; the measured cost per merged leaf
+//   spend     the units read from the store: a probe round's spec length, the earlier efforts' means
 //   CLI       --json prints the envelope; the default is for a person
 //
 // Design: docs/DESIGN.md#progress, docs/DESIGN.md#self-checks.
@@ -22,8 +23,8 @@ import { fileURLToPath } from 'node:url'
 
 import { append, seqMax } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
-import { checkpointOf, costOf, efforts, renderTodos, snapshotOf, todosOf } from '../lib/status.mjs'
-import { effortDir, effortStateDir, executionDir, executionRunId, posix, returnPath, runJsonPath, writeJson } from '../lib/store.mjs'
+import { checkpointOf, costOf, efforts, renderTodos, snapshotOf, spendOf, todosOf } from '../lib/status.mjs'
+import { effortDir, effortStateDir, executionDir, executionRunId, posix, returnPath, runJsonPath, specPath, writeJson } from '../lib/store.mjs'
 
 const CLI = fileURLToPath(new URL('../lib/status.mjs', import.meta.url))
 const fresh = () => mkdtempSync(join(tmpdir(), 'agentics-status-')).split('\\').join('/')
@@ -326,6 +327,40 @@ test('an execution reads checkpoint while its latest checkpoint has no later con
   assert.equal(status(), 'done')
 })
 
+// ------------------------------------------------------------------ spend
+
+/** One returned call on `thread` in `effort`'s execution `stamp`, at `usd`. */
+function threadCall(repo, effort, stamp, thread, usd, { node = '', role = 'analyst', round = 1 } = {}) {
+  const dispatch = 'd' + ++minted
+  append(repo, effort, 'events', { kind: 'dispatched', node, execution: stamp, dispatch, thread, role, round, model: 'opus', effort: 'medium' })
+  append(repo, effort, 'state:' + stamp, {
+    kind: 'returned', dispatch, session: 's', status: 'returned', cause: '', usage: usage(1, 1), cost_total: usd, cost_usd: usd, denials: [],
+  })
+}
+
+test("the spend view measures a probe round against its folder's spec and a leaf against the earlier efforts' mean", () => {
+  const repo = effortWith([composite('.'), composite('a'), leaf('a/x')])
+  const spec = specPath(repo, E, 'a')
+  mkdirSync(join(spec, '..'), { recursive: true })
+  writeFileSync(spec, Array.from({ length: 30 }, (_, i) => 'line ' + (i + 1)).join('\n') + '\n')
+  for (const sub of ['axes', 'prober:1', 'prober:2']) threadCall(repo, E, X1, 'probe:a:1/' + sub, 1)
+  threadCall(repo, E, X1, 'producer:a/x', 5, { node: 'a/x', role: 'implementer' })
+
+  const OLD = 'old'
+  const OLD_STAMP = '20260801-100000'
+  append(repo, OLD, 'nodes', [composite('.'), leaf('y')].map((node) => ({ kind: 'node', node })))
+  mkdirSync(executionDir(repo, OLD, OLD_STAMP), { recursive: true })
+  threadCall(repo, OLD, OLD_STAMP, 'producer:y', 1, { node: 'y', role: 'implementer' })
+
+  const view = spendOf(repo, E)
+  assert.deepEqual(view.earlier_efforts, [OLD])
+  const [round] = view.units.probe
+  assert.deepEqual([round.id, round.probers, round.axes, round.spec_lines], ['a:1', 2, true, 30])
+  const reasons = Object.fromEntries(view.flagged.map((f) => [f.kind + ' ' + f.id, f.reasons]))
+  assert.deepEqual(reasons['probe a:1'], ['probers_over_size'])
+  assert.deepEqual(reasons['leaf a/x'], ['usd_over_earlier_mean'])
+})
+
 const cli = (...args) => execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8' })
 
 test('the cost counts a call that never returned as unmeasured, at no dollars', () => {
@@ -341,7 +376,7 @@ test('the CLI prints an envelope with --json and a readable view without it', ()
   const repo = effortWith(TREE)
   call(repo, X1, 'a/impl', 'sonnet', { usage: usage(10, 10), cost_usd: 0.5 })
 
-  for (const verb of [['list'], ['show', '--effort', E], ['todos', '--effort', E, '--execution', X1], ['cost', '--effort', E]]) {
+  for (const verb of [['list'], ['show', '--effort', E], ['todos', '--effort', E, '--execution', X1], ['cost', '--effort', E], ['spend', '--effort', E]]) {
     const out = JSON.parse(cli(...verb, '--repo', repo, '--json'))
     assert.equal(out.payload_digest, fnv1a(canonical(out.payload)), verb[0] + ' prints under its digest')
   }
@@ -350,6 +385,7 @@ test('the CLI prints an envelope with --json and a readable view without it', ()
   assert.match(cli('show', '--repo', repo, '--effort', E), /impl \[trivial\] — active — do a\/impl/)
   assert.match(cli('todos', '--repo', repo, '--effort', E, '--execution', X1), /\[>\] a\/impl — do a\/impl — implementing/)
   assert.match(cli('cost', '--repo', repo, '--effort', E), /by model: sonnet 1 \(\$0\.50, 20 tokens\)/)
+  assert.match(cli('spend', '--repo', repo, '--effort', E), /^flagged +0 of 1 unit\(s\)$/m)
   assert.ok(cli('list', '--repo', repo).includes('seq ' + seqMax(repo, E)), 'list prints the seq a watch starts from')
   const lost = effortWith(TREE)
   call(lost, X1, 'a/impl', 'sonnet', null)

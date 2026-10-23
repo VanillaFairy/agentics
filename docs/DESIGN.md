@@ -3585,6 +3585,21 @@ its `cost` and every node's `live` read the same answer.
 `node lib/status.mjs list --repo <r> --json` also carries `store`, present whether or not the
 effort store exists.
 
+### Spend view
+
+- **Owner:** `spendOf`, `spendUnits` and `flagSpend` in `lib/status.mjs`.
+- **Restated in:** `skills/self-improve/SKILL.md` (a reader: the flag names it maps to causes).
+
+`node lib/status.mjs spend --repo <r> --effort <e> [--json]` prints `{effort, multiple,
+earlier_efforts, means: {effort, earlier}, by_role, units: {leaf, folder, probe}, flagged}`. Each
+mean is per kind (`leaf`, `folder`, `probe`) `{units, usd, rounds}`, or null when no unit of the kind
+is fully measured. `by_role` is role → model → `{dispatches, tokens, usd, unmeasured}`. A unit
+carries those four and its `id`; a leaf also `status` and `rounds` (the highest round its calls
+name), a folder `rounds` (its probe rounds), a probe round `folder`, `round`, `probers`, `axes` and
+`spec_lines` (its folder's spec as it stands). `flagged` lists the units with `kind` and `reasons`,
+each one of `usd_over_effort_mean`, `usd_over_earlier_mean`, `rounds_over_effort_mean`,
+`rounds_over_earlier_mean`, `probers_over_size`, `axes_again`.
+
 ### Live activity
 
 - **Owner:** `lib/runner.mjs` (the writer); `nodeOf` and `snapshotOf` in `lib/status.mjs` (the
@@ -4353,6 +4368,17 @@ which `recordCommands` writes as the investigator's.
 - **Cost:** every call's usage and cost are the host's own figures, recorded by the runner on
   `returned`; `lib/status.mjs cost` aggregates them per node, folder and effort, so triage quotes
   measured figures. A call that never returned is reported as unmeasured, never as zero.
+- **Spend:** `lib/status.mjs spend` (`spendOf`) measures the same calls per unit of work — each
+  leaf, each folder's design (its planner, surveys and probe rounds, `designPlace`, the one
+  ownership test `designSpend` also uses) and each probe round — with their dispatches, rounds and
+  dollars beside the mean of each kind in the effort and in the repository's earlier efforts (each
+  whose first execution started before this one's), and the spend per role and model. Code flags
+  the outliers (`flagSpend`): dollars or rounds above `OUTLIER_MULTIPLE` × a mean of their kind, a
+  probe round with more probers than its folder's spec earns (`probersFor`), and a probe round past
+  its folder's first that derived the axes again. A unit with an unmeasured call is never flagged on
+  its dollars nor counted in a mean. The `self-improve` session judges each flag's cause; nothing
+  here decides one. A spend nothing faults is otherwise invisible: a run doing too much of the right
+  thing ends green, so without a measured view the only expectation a session holds is a guess.
 
 ---
 

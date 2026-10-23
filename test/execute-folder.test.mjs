@@ -25,6 +25,7 @@ import { commandsOf } from '../lib/gotchas.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
 import { writePermissions } from '../lib/permissions.mjs'
 import { dispatch, programContext } from '../lib/programs/common.mjs'
+import { runUnits } from '../lib/programs/execute.mjs'
 import { planFolder } from '../lib/programs/execute/folder.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
@@ -1013,4 +1014,27 @@ test("a plan journaled on a round an earlier plan already used replays none of t
   assert.equal((await w.run({ why: 'spec_edited' })).outcome, 'prepared')
   assert.equal(approvalState(w.rig.repo, E, 'p').state, 'prepared', 'the edit as it stands is prepared')
   assert.equal(ledger(w.rig, 'prepared').at(-1).hash, hashSpec(EDITED_TWICE))
+})
+
+test('a unit that settles with nothing recorded is not launched again on the same records, and the tick loop yields to timers', async (t) => {
+  const w = world(t, { steps: clean(), writes: { 1: S1 } })
+  assert.equal((await w.run()).outcome, 'prepared', 'the fixture: p is planned and compiled')
+  recordAll(w.rig.xc, [parked('p', 'integration_critical', 'the landed work lacks y')])
+  putSpec(w.rig, EDITED_SPEC)
+  const calls = []
+  // Each unit settles at once and records nothing; a relaunch past the third throws, so a loop that spins ends on that fault.
+  const idleUnit = (name) => async (ctx, xc, args) => {
+    calls.push(name + ':' + (args.folder || args.id || args.target))
+    if (calls.length > 3) throw new Error('launched again on the records it settled on')
+    return { outcome: name === 'runLeaf' ? 'stopped' : 'prepared', survey: null }
+  }
+  const units = Object.fromEntries(['planFolder', 'runLeaf', 'mergeUnit', 'reviewUnit'].map((n) => [n, idleUnit(n)]))
+  let ticked = false
+  setTimeout(() => { ticked = true }, 0)
+  const seen = { notes: [], leaves: new Map(), reviews: [], reviewsLost: [], surveysLost: [], drift: [], failed: [], stopped: '' }
+  await runUnits(w.ctx, w.rig.xc, {}, {}, seen, units)
+  assert.equal(calls.filter((c) => c === 'planFolder:p').length, 1, 'the plan of the edit ran once: ' + calls.join(', '))
+  assert.equal(new Set(calls).size, calls.length, 'no unit ran twice: ' + calls.join(', '))
+  assert.ok(seen.notes.some((n) => n.startsWith('plan:p settled with nothing recorded')), seen.notes.join('\n'))
+  assert.ok(ticked, 'a timer ran before the loop ended')
 })

@@ -2691,7 +2691,12 @@ the node records, the event log and the execution's state log) whenever anything
 The program passes what it has in flight — its running units, and the folders a running unit is
 replanning — and launches what comes back.
 Nothing below a running or replanning node launches, and a node a fault of this run holds
-does not launch at all.
+does not launch at all. A unit that settled while nobody recorded anything (the effort's `seq`
+counter did not move; `lastMinted` in `lib/ledger.mjs`) would settle the same way on the same
+records, so the program does not launch it again until something is recorded, and the run ends
+when only such units are left; a leaf that found no slot is the exception, asked again as below.
+Every pass of the loop gives the event loop a turn, so the heartbeat and a child's spawn and exit
+are never starved by units that settle at once.
 
 A leaf's dependencies are its own and every ancestor's: a dependency declared on a composite or a
 group binds every leaf beneath it. A leaf is ready when its dependencies' outputs exist where it

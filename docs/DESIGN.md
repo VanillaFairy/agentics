@@ -3119,7 +3119,7 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
 | trivial | yes | no | no | when given |
 | tests-only | yes | passes-now half read | required (≥ 1 declared) | when given |
 | tdd | yes | full: fails at base, passes now; an upkeep file passes now | when declared | when given |
-| red | yes | red: fails now, fails at base | no | — |
+| red | yes | red: fails now, fails at base; an upkeep file passes now | no | — |
 | green | yes | the red leaf's tests pass now | no | when given |
 | green, a test-author round | yes | the red leaf's tests and the round's new ones pass now | required, this round's alone | when given |
 | audit | no series expected | no | required | — |
@@ -3193,7 +3193,8 @@ measurement, no failed build or typecheck and no blocking series finding; then p
 leaf's test files that add a test case fail at base and pass now, and its upkeep files pass now —
 when none adds one, every file is held to the whole discriminator; a tests-only leaf's tests pass,
 every held mutation bites and each test file that adds a case is one a biting mutation names; a red
-leaf's tests fail now and at base; a green leaf's cycle tests pass; a green's test-author round's
+leaf's test files that add a case fail now and at base, and its upkeep files pass now, under the same
+rule as a tdd leaf's; a green leaf's cycle tests pass; a green's test-author round's
 cycle tests and new tests pass, at least one mutation it declared this round, each biting, and each
 test file that adds a case one a biting mutation names; an audit's held mutations all bite over the
 cycle's tests; trivial, verify, tdd, tests-only and green need their

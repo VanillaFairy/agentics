@@ -7,8 +7,8 @@
 // The properties that matter most:
 //   every failing conjunct names itself — a leaf never fails with an empty failure list;
 //   `unrunnable` is not a pass, and `absent` is not a failure;
-//   the discriminator's base half is waived for tests-only and green, and for a tdd leaf's upkeep
-//   files beside one that adds a test case, and for nothing else;
+//   the discriminator's base half is waived for tests-only and green, and for a tdd or red leaf's
+//   upkeep files beside one that adds a test case, and for nothing else;
 //   a lone discriminator on a tdd leaf escalates on round one rather than buying a fix round.
 
 import { test } from 'node:test'
@@ -148,6 +148,15 @@ const ROWS = [
   }],
   ['only upkeep files: nothing discriminates, so each is held to the whole question', m({ discriminator: [upkeep(true)] }), {
     tdd: ['discriminator'],
+  }],
+  ['a red measurement beside an upkeep file that passes at base and now', m({ ...red, discriminator: [disc(true, false), upkeep(true)] }), {
+    red: true,
+  }],
+  ['a red measurement beside an upkeep file that does not pass now', m({ ...red, discriminator: [disc(true, false), upkeep(false)] }), {
+    red: ['discriminator'],
+  }],
+  ['a red leaf with only an upkeep file: it added no test to fail', m({ discriminator: [upkeep(true)] }), {
+    red: ['discriminator', 'suite'],
   }],
   ['a broken measurement', m({ stop_reason: 'environment_broken', error: { kind: 'suite_failures_unnamed', message: 'm' },
     discriminator: [disc(true, true)] }), { tdd: ['environment'], verify: ['environment'] }],

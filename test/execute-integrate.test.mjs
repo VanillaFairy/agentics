@@ -313,7 +313,8 @@ test('a failing suite gate escalates the composite unreviewed', SLOW, async (t) 
 /** Two leaves merged into the root without a batch: their files committed in the root's worktree. */
 function mergedAB(rig) {
   const wt = rig.worktreeOf('.')
-  const files = { 'src/a.mjs': 'export const a = () => 1\n', 'src/b.mjs': 'export const b = () => 2\n' }
+  const pass = (n) => "import { test } from 'node:test'\ntest('" + n + "', () => {})\n"
+  const files = { 'src/a.mjs': 'export const a = () => 1\n', 'src/b.mjs': 'export const b = () => 2\n', 'test/a.test.mjs': pass('a'), 'test/b.test.mjs': pass('b') }
   const sha = commitIn(wt, files, 'Work of a and b')
   for (const id of ['a', 'b']) rig.log.append('merged', { node: id, into: rig.branchOf('.'), merged_sha: sha, head_sha: sha })
   return { wt, where: { base: rig.base_sha, worktree: wt }, head: sha, unreviewed: ['a', 'b'] }
@@ -365,25 +366,27 @@ test("the integration reviewer is a fresh read-only reviewer in the folder's wor
   assert.ok(c.brief.includes(spec), 'the root spec\'s text')
   assert.ok(c.brief.includes('git diff ' + w.rig.base_sha + ' ' + w.head), 'the span, base to the gate\'s head')
   const files = git(w.rig.repo, 'diff', '--name-only', w.rig.base_sha, w.head).split('\n').filter(Boolean)
-  assert.deepEqual(files.sort(), ['src/a.mjs', 'src/b.mjs'])
+  assert.deepEqual(files.sort(), ['src/a.mjs', 'src/b.mjs', 'test/a.test.mjs', 'test/b.test.mjs'])
   const tree = readTree(w.rig.repo, w.rig.effort)
   const decisions = tree.nodes.get('.').defines.map((d) => d.id)
   assert.deepEqual(decisions, ['D1', 'D2'])
-  const units = [...decisions.map((d) => 'decision:' + d), 'criterion:a#1', 'criterion:b#1', ...files.map((f) => 'file:' + f)]
+  const units = [...decisions.map((d) => 'decision:' + d), ...files.map((f) => 'file:' + f)]
   const lines = c.brief.split('\n')
   for (const unit of units) assert.ok(lines.includes('- ' + unit), 'a unit line for ' + unit)
-  assert.equal(c.brief.includes('criterion:b#2'), false, 'b\'s HUMAN criterion is the user\'s')
+  assert.equal(c.brief.includes('criterion:'), false, "no criterion is a unit: a check is measured, a HUMAN one is the user's")
   assert.equal(dispatchedOf(w.rig, 'reviewer')[0].node, '.')
 })
 
-test("only the unreviewed children's criteria are units", SLOW, async (t) => {
+test("a criterion with a check is measured at the integration head and handed to the reviewer as observed, never as a unit", SLOW, async (t) => {
   const w = abWorld(t)
   w.rig.script({ [reviewerKey()]: [reviewed([claim('a is there')])] })
-  await review(w, { unreviewed: ['a'] })
+  const out = await review(w, { unreviewed: ['a'] })
 
+  assert.equal(out.outcome, 'reviewed')
   const lines = call(w.rig).brief.split('\n')
-  assert.ok(lines.includes('- criterion:a#1'))
-  assert.equal(lines.includes('- criterion:b#1'), false, 'b had its own review: its criteria are not rulings of this one')
+  assert.equal(lines.some((l) => l.startsWith('- criterion:')), false)
+  assert.ok(lines.includes('- `node --test test/a.test.mjs`: passed'))
+  assert.ok(lines.includes('- `node --test test/b.test.mjs`: passed'))
 })
 
 test('a second review of a folder is a fresh reviewer on the next integration thread', SLOW, async (t) => {
@@ -429,7 +432,7 @@ test('a spec re-approved over an unchanged head is re-ruled: the edit and the cl
   assert.equal(c.thread.key, THREAD_SECOND)
   assert.equal(isRerule(c.brief), true)
   assert.ok(c.brief.includes('and the names are free.'), 'the edit')
-  const units = c.brief.split('## The units you rule')[1].split('## Claims')[0].split('\n').filter((l) => l.startsWith('- '))
+  const units = c.brief.split('## The units you rule')[1].split('## Measured')[0].split('\n').filter((l) => l.startsWith('- '))
   assert.deepEqual(units, ['- claim:2', '- change'])
   assert.equal(c.brief.includes('decision:D1'), false, 'not the whole review')
   const [, second] = kinds(w.rig, 'claims')
@@ -465,7 +468,7 @@ test('an integration reviewer leaves an approved leaf approved: its dispatch nam
   const base = rootHead(rig)
   assert.equal(ensureIntegration(rig.repo, rig.effort, 'c', rig.envelope).ok, true)
   const wt = rig.worktreeOf('c')
-  const sha = commitIn(wt, { 'src/k.mjs': 'export const k = () => 1\n' }, 'Add k')
+  const sha = commitIn(wt, { 'src/k.mjs': 'export const k = () => 1\n', 'test/k.test.mjs': "import { test } from 'node:test'\ntest('k', () => {})\n" }, 'Add k')
   rig.log.append('merged', { node: 'c/k', into: rig.branchOf('c'), merged_sha: sha, head_sha: sha })
   rig.script({ [reviewerKey('integration:c:1', 'c')]: [reviewed([claim('k is there')])] })
   assert.equal(statusOf(rig, 'y'), 'approved')
@@ -474,7 +477,7 @@ test('an integration reviewer leaves an approved leaf approved: its dispatch nam
   assert.equal(out.outcome, 'reviewed')
   assert.deepEqual(dispatchedOf(rig, 'reviewer').map((e) => e.node), ['c'])
   assert.equal(statusOf(rig, 'y'), 'approved')
-  assert.ok(call(rig).brief.split('\n').includes('- criterion:c/k#1'))
+  assert.ok(call(rig).brief.split('\n').includes('- `node --test test/k.test.mjs`: passed'))
 })
 
 test("a sub-folder's integration review is not earned when no child lacked a review and fewer than two met there", SLOW, async (t) => {

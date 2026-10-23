@@ -2572,7 +2572,7 @@ attached).
 | **leaf-close** | first put right what a verify cut off in the worktree left ([Verification](#verification)); read the producer's stored return — a round closed again with no `dispatch`, over the work a retry measures first, has none to read and is measured as no producer's ([Resume and checkpoints](#resume-and-checkpoints)); none, or a producer's with no string `status`, holds the leaf on a `role` fault, and an auditor's, which carries no status, reads as `done`: a park, an escalation, a request for the planner (or the `needs_respec` park of a folder the user writes), a `needs_tests` or a `declined` for another session is recorded and routed without measuring; otherwise, a round that returned no commits included: measure nothing while a rebase merge the round opened is unconcluded (a `failures` message, `source: the rebase`, naming the unmerged paths; left so again at the same head, it escalates `merge_conflict`); commit a shell-less author's files its role may write (`authored`) (a close cut off after that commit finds it in git and journals it), and put every other uncommitted file back to the head; journal the series as `series-done`, from git, when the producer declared it done; measure by rigor — build, typecheck, its own tests, discriminator, declared mutations and named checks; write and delete the gotchas it returned, never a command one; compute the close decision and record it — the approval, the escalation, the next round's message (`failures`, `surviving_mutations`, `tests_ready`), a verify leaf's finding (the `needs_respec` park of a folder the user writes beside the leaf's escalation; under a planner's folder the finding is the route and the leaf is not escalated, [Replanning](#replanning)), `fix_without_commits`, carrying the measured failures, when an implementer's round sent the failures of the head it opened on returns that head unmoved and it still fails (`fixWithoutProgress` in `lib/verdict.mjs`), `verify_not_converging` when a fix repeats the close before it at a moved head; hand back `command_unknown` until an investigator of this execution has returned, and escalate it after; write the round's close record. What it reads of the rounds before spans executions, as a leaf's rounds do ([Resume and checkpoints](#resume-and-checkpoints)) |
 | **leaf-review** | read the reviewer's stored rulings over the units its brief listed; compute the review loop's exit (`reviewExit`) against what the round before left open; record the approval or the escalation, or the open findings as `findings` messages, one per thread, for the next round; write the review record; after a review round `askAfter` picks that ended in a fix, read the ruler's stored convergence ruling (`convergenceRuling`): `not_converging` escalates `review_not_converging`, `said` the ruler's dispatch, `converging` records nothing, and a return with no ruling holds the leaf on a `role` fault; and, once the session retried a leaf its review loop stopped, record the stopping review's open findings as the next round's `findings` messages (`reviewResumed`) |
 | **merge-batch** | under the branch lock, set aside for the judge each leaf or cycle whose contention facts no standing ruling covers ([The judge](#the-judge)); record `batch-started` with the head it starts from; merge every other approved child into one integration branch in dependency order; verify the merged head with the fast suite; bisect a red one; append the `batch` state line first, then `merged` and `merge-observed` for each child not merged before, so a batch run again never resets the merges its outcome names; remove each merged leaf's clean worktree, keeping its branch; send each leaf that fails alone a `failures` message (`source: integration`); hand a leaf's conflict to the judge when its executor can conclude a merge and no failed resolve of it stands; record what stops — any other conflict, a combination failure, a composite or a cycle failing alone, a batch that moved nothing, a batch that could not run; write the drift record and the ruler's brief. A batch that started and never recorded its outcome is reset to where it started and done again, so an unverified merge is never recorded as landed; one during which the user's checkout moved is reset and decides nothing (a `checkout` fault) |
-| **suite-gate** | on a composite whose children have all merged, under its branch lock: run the full suite on its integration head, against the head it was cut from; record the measurement and a `gate` state line; escalate `fails_full_suite` or `suite_gate_failed`. It runs nothing where the repository does not split its tests, or where the full suite already passed at that head in this execution ([The suite gate](#the-suite-gate)). A gate that passes says whether the integration review is earned, and records one that is not as `claims` with `review: not_earned`; one during which the user's checkout moved decides nothing (a `checkout` fault) |
+| **suite-gate** | on a composite whose children have all merged, under its branch lock: run the full suite and the criterion checks of its plan on its integration head, against the head it was cut from; record the measurement and a `gate` state line; escalate `fails_full_suite`, `fails_on_integration` or `suite_gate_failed`. It runs nothing where the repository does not split its tests and its plan names no check, or where a gate over the same checks already passed at that head in this execution ([The suite gate](#the-suite-gate)). A gate that passes says whether the integration review is earned, and records one that is not as `claims` with `review: not_earned`; one during which the user's checkout moved decides nothing (a `checkout` fault) |
 | **folder-review** | read the integration reviewer's stored rulings; record its claim rulings as `claims` at the head it judged, `said` the reviewer's dispatch (a re-rule, `rerule: true`, with the prior claims it left standing, [Executors and review](#executors-and-review)); record the one park they earn, a new record after the claims it follows even where an older park stood; a review that returned nothing holds the folder on a `role` fault |
 | **rule-close** | read a ruler's stored rulings on drift or a moved base; record `drift-ruled` or `stale-ruled` with the ruler's `why`; park what the user must answer and hand the program what the planner replans; park a drifted consumer no ruling reached (`contract_drift`), hold a moved leaf no ruling reached on a `role` fault |
 | **postflight** | release this execution's slots; summarize the subtree from the records (the nodes the user must act on, the leaves waiting behind each, cycle members held); append `closed {status: done}` when every leaf in scope merged; count the branches eligible for cleanup. The run's `ended` is `lib/run.mjs`'s |
@@ -2722,8 +2722,20 @@ same head within the execution reuses its measurement, journalled at the same ke
 ([Boundaries](#boundaries)), until the user retries the composite; the next execution measures it
 again too, since what failed it may be the environment.
 
-Where the repository does not split its tests, every merge-batch already ran the full suite on
-the very head the gate would measure, and the gate runs nothing.
+**A plan criterion with a check is measured, never ruled.** A leaf's criterion checks run at the
+leaf's own head, and the folder's head moves on after it merges. So the gate also runs, at the
+integration head, the `check:` of every criterion of the plan the composite's spec holds — its own
+tasks and its groups' (`criterionChecks` in `lib/boundaries/merge.mjs`), each command once — as
+named checks in the same measurement. A check that fails, other than for tests that fail at the base
+too, fails the gate; with the suite passing, the composite escalates `fails_on_integration`. The
+`gate` line carries the checks' digest, so a passing gate stands only for the checks it ran. The
+integration reviewer is handed the results under `## Measured` and is told to leave those criteria
+out of its claims, as it leaves out a `HUMAN:` one; no such criterion is a unit it rules, and a
+re-rule decides a prior claim about one by its result. A criterion's verdict is an observation, and
+no reviewer's `cant_tell` stands in for one.
+
+Where the repository does not split its tests and the plan names no check, every merge-batch
+already ran the full suite on the very head the gate would measure, and the gate runs nothing.
 
 **Why the big tests wait:** they are slow, and a run of one per merge-batch would make every merge
 pay for them. A folder's integration branch is where the work of many leaves first meets whole,
@@ -2974,10 +2986,11 @@ and reviewed like any other.
   `integration:<folder>:<n>` (`n` counting the folder's recorded reviews in the execution) over
   the merged diff of its children, against its decision list, the criteria of every child reviewed
   there, and the folder's spec as its yardstick. Its units are each decision the folder defines
-  (`decision:<id>`), each criterion but a `HUMAN:` one of each child with no review of its own
-  (`criterion:<child>#<n>`) and each changed file (`file:<path>`). A leaf adopted on the user's
+  (`decision:<id>`) and each changed file (`file:<path>`). No criterion is a unit: one with a check
+  was measured by the suite gate at the head under review, and the reviewer is handed its result
+  ([The suite gate](#the-suite-gate)); a `HUMAN:` one is the user's. A leaf adopted on the user's
   word ([Outside work](#outside-work)) is a child with no review loop of its own whatever its
-  rigor, so its criteria are units here. The review is earned at the root
+  rigor, and its criteria are measured the same way. The review is earned at the root
   whenever something merged there (the landing view reads its rulings), and below the root when a
   child had no review loop of its own or two or more children with work meet there; a leaf adopted
   at any rigor, or an `outside` event on the folder, earns it too, since nothing else would ever
@@ -3832,7 +3845,7 @@ written when the call ends; `host_stop {dispatch, cause, until}`; `checkout_chan
 paths[]}`; `thread_renewed {thread, gen, why: too_large | session_missing | context_exceeded |
 prompt_changed | cwd_changed | raised}`; `step {key,
 value}`; `batch {target, merged[], head_sha, verified, failed_alone[], combination[], conflict}`,
-landing before the batch's `merged` events; `gate {target, head_sha, passed}`, one per suite gate
+landing before the batch's `merged` events; `gate {target, head_sha, passed, checks}`, `checks` the digest of the criterion checks it ran, one per suite gate
 that ran; `checkpoint {reason, detail, executions?, gaps?, branches?}` (the lists the checkpoint found, `branches` the `[{branch, commits}]` of an `outside_work` one;
 `lib/status.mjs checkpoint` prints them); `checkpoint-confirmed {gaps?}`, confirming the checkpoint
 line just before it; `closed {status: done | migrated}`; `batch-started {target, pre, children}`;

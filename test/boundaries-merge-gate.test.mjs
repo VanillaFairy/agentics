@@ -96,8 +96,11 @@ test('a passing gate is recorded against its head and not run again there', SLOW
   assert.equal(kindOf(journalOf(w.r), 'verify-observed', '.').length, measured, 'no new measurement')
 })
 
-test('the gate runs nothing where the repository does not split its tests', SLOW, async (t) => {
-  const w = world(inTest(t), [root(), addOne('a')])
+/** A leaf whose one criterion names no check. */
+const unchecked = (id) => addOne(id, { acceptance: [{ text: 'HUMAN: ' + id + ' looks right', check: '', decisions: ['D1'] }] })
+
+test('the gate runs nothing where the repository does not split its tests and the plan names no check', SLOW, async (t) => {
+  const w = world(inTest(t), [root(), unchecked('a')])
   const integ = integrationOf(w)
   const out = await suiteGate(w.xc, { target: '.' })
 
@@ -110,6 +113,29 @@ test('the gate runs nothing where the repository does not split its tests', SLOW
   assert.equal(out.head_sha, headOf(w.r, '.'))
   assert.deepEqual(journalOf(w.r), [], 'nothing journalled')
   assert.deepEqual(kindOf(eventsOf(w.r), 'claims'), [], 'no claims recorded')
+})
+
+test("the gate runs the plan's criterion checks on the integration head, even where the tests are not split", SLOW, async (t) => {
+  const marker = "node -e \"require('fs').writeFileSync('checked.txt','ran')\""
+  const w = world(inTest(t), [root(), addOne('a', { acceptance: [{ text: 'a works', check: marker, decisions: ['D1'] }] })])
+  const integ = integrationOf(w)
+  const out = await suiteGate(w.xc, { target: '.' })
+
+  assert.equal(out.ran, true)
+  assert.equal(out.passed, true, JSON.stringify(readJson(out.record).failures))
+  assert.deepEqual(readJson(out.record).measurement.checks.map((c) => [c.command, c.status]), [[marker, 'passed']])
+  assert.equal(gateLines(w.r).length, 1)
+  assert.equal(integ.head, out.head_sha)
+})
+
+test('a criterion check failing on the integration head fails the gate, fails_on_integration', SLOW, async (t) => {
+  const w = world(inTest(t), [root(), addOne('a', { acceptance: [{ text: 'a works', check: 'node -e "process.exit(3)"', decisions: ['D1'] }] })])
+  integrationOf(w)
+  const out = await suiteGate(w.xc, { target: '.' })
+
+  assert.equal(out.ok, true, JSON.stringify(out))
+  assert.equal(out.passed, false)
+  assert.deepEqual(stopsOf(out), [['.', 'escalated', 'fails_on_integration']])
 })
 
 test('a passing gate records claims not_earned when the review is not earned, once', SLOW, async (t) => {

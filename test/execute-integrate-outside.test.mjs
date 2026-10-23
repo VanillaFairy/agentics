@@ -25,7 +25,10 @@ function commitIn(worktree, files, subject) {
 test("the integration reviewer is told which commits a person made: an adopted leaf's and the folder's outside ones", { timeout: 120_000 }, async (t) => {
   const rig = executionRig(t)
   const wt = rig.worktreeOf('.')
-  const leafWork = commitIn(wt, { 'src/a.mjs': 'export const a = () => 1\n' }, 'a, by hand')
+  const leafWork = commitIn(wt, {
+    'src/a.mjs': 'export const a = () => 1\n',
+    'test/a.test.mjs': "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { a } from '../src/a.mjs'\ntest('a', () => assert.equal(a(), 1))\n",
+  }, 'a, by hand')
   const stray = commitIn(wt, { 'docs/notes.md': 'notes\n' }, 'notes, by hand')
   rig.log.append('merged', { node: 'a', into: rig.branchOf('.'), merged_sha: leafWork, head_sha: leafWork, by: 'user', commits: [leafWork] })
   append(rig.repo, rig.effort, 'events', { kind: 'outside', node: '.', execution: '', commits: [stray], by: 'user' })
@@ -35,5 +38,6 @@ test("the integration reviewer is told which commits a person made: an adopted l
   const brief = rig.calls[0].brief
   assert.ok(brief.includes('## Work agentics did not produce'))
   assert.ok(brief.includes(leafWork) && brief.includes(stray), 'both shas are named')
-  assert.ok(brief.split('\n').includes('- criterion:a#1'), "the adopted leaf's criterion is a unit")
+  assert.ok(!brief.split('\n').includes('- criterion:a#1'), "the adopted leaf's checked criterion is no unit to rule")
+  assert.ok(brief.includes('`node --test test/a.test.mjs`: passed'), 'it was measured at the head under review')
 })

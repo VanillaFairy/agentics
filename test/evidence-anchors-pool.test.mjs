@@ -7,7 +7,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
-  checkAnchors, itemsFor, recordCites, recordItems, recordJudgement, recordRaw, reviewScope,
+  checkAnchors, itemsFor, quotesGone, recordCites, recordItems, recordJudgement, recordRaw, reviewScope,
 } from '../lib/evidence.mjs'
 import { hashSpec } from '../lib/spec.mjs'
 import { evidenceItemsPath, evidenceReturnsDir } from '../lib/store.mjs'
@@ -67,6 +67,30 @@ test('reviewScope narrows a re-review to the changed lines and carries what no e
     'a deletion marks the lines on either side of where it was')
 
   assert.equal(reviewScope(repo, path, 'snapshot:deadbeef').full, true, 'a since the store never saw is a full review')
+})
+
+test('reviewScope carries no finding whose evidence quotes a passage the edit rewrote, though its own span stands', () => {
+  const repo = gitRepo({ 'src/a.js': text(lines(3)), '.agentics/.gitignore': '*\n' })
+  const path = '.agentics/e1/DESIGN.md'
+  const v1 = withLine(lines(40, 'spec'), 20, 'Once closing, every guarded entry is inert and throws nothing.')
+  write(repo, path, text(v1))
+  const first = reviewScope(repo, path)
+  const evidence = 'l.20 "every guarded **entry** is inert and throws nothing"; Session.ts:107 "if (!this.open) return before anything"'
+  const quoting = record(repo, {
+    question: path, topic: 'challenge:ambiguity', ground: [path], kind: 'behaviour',
+    claim: 'lines 5-7 and line 20 disagree', spans: [{ path, start: 5, end: 7, at: first.snapshot }],
+    detail: { axis: 'ambiguity', severity: 'ambiguity', section: 'design', evidence },
+  })
+
+  write(repo, path, text(withLine(v1, 31, 'spec 31, edited')))
+  assert.deepEqual(reviewScope(repo, path, first.snapshot).carried.map((i) => i.id), [quoting],
+    'carried while what it quotes stands; a quote of another file asks nothing of this one')
+
+  write(repo, path, text(withLine(v1, 20, 'An action callback is never inert.')))
+  const next = reviewScope(repo, path, first.snapshot)
+  assert.deepEqual(next.changed, [{ start: 20, end: 20 }], 'the rewritten line is reviewed afresh')
+  assert.deepEqual(next.carried, [], 'the finding quoting what it replaced is not carried')
+  assert.equal(quotesGone(evidence, text(v1), text(v1)), false)
 })
 
 test('reviewScope carries a finding anchored two snapshots before since and untouched since; never one on another artefact', () => {

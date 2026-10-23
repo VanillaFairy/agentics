@@ -1771,7 +1771,9 @@ over as context. Where a section is read off a unit or a finding (`partSection`)
 section, so a later round whose parts of a section are all ruled clean rules that section clean. It
 carries forward every earlier finding whose
 lines no hunk touched, in the probers' prompts and in the round's record: the same anchor check as
-all other evidence, with no mechanism of its own. An earlier `clean` ruling is not carried: the
+all other evidence. A finding whose evidence quotes a passage of the text it was found in that the
+text no longer holds (`quotesGone` in `lib/evidence.mjs`) is not carried, though its span stands: the
+rewritten lines are among the changed parts, reviewed afresh. An earlier `clean` ruling is not carried: the
 sections no hunk touched are out of the round's scope. An artefact unchanged since `since` buys no
 agent at all and records one empty round, every earlier finding carried; a `since` the store does
 not hold intact makes the round whole. A relaunched round whose journaled scope names a snapshot

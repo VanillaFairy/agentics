@@ -1895,8 +1895,11 @@ execution journaled (`sweepTrees`); a dirty one is never forced, and preflight r
    `probe` program, nested as `probe:<folder>:<n>` (`n` the planner round it follows), reviews the
    spec, with one standing axis beside the four: `entries` (`PLAN_AXIS` in `lib/briefs/probe.mjs`),
    whether each entry's work does what the decisions it realises say, because nobody else reads a
-   planner-written spec before it is built. After the first round, `since` (the previous
-   round's snapshot) narrows the review to the spans changed since. `spec-reviewed` reads the
+   planner-written spec before it is built. `since` narrows the review to the spans changed since: the
+   previous round's snapshot, and for a plan's first round the snapshot of the folder's latest
+   complete `reviewed` line, whichever plan or run made it. Text a complete round judged is not
+   judged again: its findings that still stand are carried, and only a revision's changed parts are
+   reviewed. `spec-reviewed` reads the
    round's result and records every round as a `reviewed` ledger line with the settlement ids of
    its ambiguities; one that left a unit unruled escalates `review_incomplete`. A round a prober's
    role fault cut short records nothing and holds the folder on that fault. The findings still to
@@ -1956,7 +1959,7 @@ the next tick hands the edit to the planner's path with no planner write first. 
 as the user's (its problems escalate `spec_refused`); a gate already open on that very text is
 prepared at once, else it is reviewed and its findings settled by the planner; it is prepared and
 compiled, and its preparation clears the park it answers (`replanned {reason: spec_edited}`). A
-stop of that plan the session retries plans the text again, so an edited spec whose gate opens on
+stop of that plan the session clears, by `retry` or an answer, plans the text again, so an edited spec whose gate opens on
 the session's word is prepared; and while a planner's spec stands edited past its preparation, no
 integration review of the folder runs over the graph compiled before it. The same park on a folder the user wrote waits for the user; a change ruled to move nothing never raises it
 ([A changed spec](#a-changed-spec)).
@@ -2651,10 +2654,12 @@ the planner writes it; one the user writes is parked `needs_design` by the tick 
 folder the planner wrote that its compile parked `spec_changed` (the park's `return`) is re-derived
 once per park: again only when this execution has no planner dispatch on that folder newer than
 that park. One the planner wrote whose spec is edited past its last `prepared` line while it is
-parked, or since the session retried its latest stop, park or escalation, is planned `spec_edited`
-once per edited text and retry: the plan's first step is keyed by the text's hash and the folder's
-latest retry (`editedPlanKey` in `lib/boundaries/execution.mjs`). Such a folder launches no
-integration review until the edit is compiled.
+parked (but for `spec_changed` and `design_spend`), or whose latest stop is cleared (a `replanned`
+newer than it: a retry, an answer), is planned `spec_edited`: one plan per stop and clearing, its
+first step keyed by both (`editedPlanKey` in `lib/boundaries/execution.mjs`), so a relaunch resumes
+the plan a dead run left, whatever the text became under it. A plan that stops leaves a stop of its
+own, and one that prepares leaves nothing edited. Such a folder launches no integration review
+until the edit is compiled.
 
 A merge-batch runs whenever approved children wait on an integration branch nobody is merging into,
 at the heads their approvals named; a leaf still running (a fix round after it failed on the

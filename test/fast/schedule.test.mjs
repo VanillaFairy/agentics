@@ -94,19 +94,25 @@ test('a planner folder parked spec_changed is re-derived once per park', () => {
   assert.deepEqual(launched(effort([folder('.'), folder('x'), leaf('x/a')], [park]), 'plan'), [])
 })
 
-test("a planner folder whose spec is edited past its preparation, under a park or a retried stop, plans the edit", () => {
+test("a planner folder whose spec is edited past its preparation, under a park or a cleared stop, plans the edit", () => {
   const nodes = [folder('.'), folder('x', { author: 'planner' }), leaf('x/a')]
   const park = { kind: 'parked', node: 'x', return: 'integration_critical' }
   const retry = { kind: 'replanned', node: 'x', reason: 'retry_escalated' }
   const edited = () => true
-  assert.deepEqual(launched(effort(nodes, [park], { edited }), 'plan').map((l) => [l.id, l.why]), [['x', 'spec_edited']])
-  assert.deepEqual(launched(effort(nodes, [park, retry], { edited }), 'plan').map((l) => l.why), ['spec_edited'], 'a retried park too')
+  assert.deepEqual(launched(effort(nodes, [park], { unprepared: edited }), 'plan').map((l) => [l.id, l.why]), [['x', 'spec_edited']])
+  assert.deepEqual(launched(effort(nodes, [park, retry], { unprepared: edited }), 'plan').map((l) => l.why), ['spec_edited'], 'a retried park too')
   assert.deepEqual(launched(effort(nodes, [park]), 'plan'), [], 'an unedited spec plans nothing')
-  assert.deepEqual(launched(effort(nodes, [], { edited }), 'plan'), [], 'nor an edit over no park: the plan that made it runs on')
+  assert.deepEqual(launched(effort(nodes, [], { unprepared: edited }), 'plan'), [], 'nor an edit over no park: the plan that made it runs on')
   const stop = { kind: 'escalated', node: 'x', reason: 'review_incomplete' }
-  assert.deepEqual(launched(effort(nodes, [stop], { edited }), 'plan'), [], 'an escalation waits for the session')
-  assert.deepEqual(launched(effort(nodes, [stop, retry], { edited }), 'plan').map((l) => l.why), ['spec_edited'], 'a retried one plans the edit')
-  assert.deepEqual(launched(effort([folder('.'), folder('x'), leaf('x/a')], [park], { edited }), 'plan'), [], "the user's folder is the user's")
+  assert.deepEqual(launched(effort(nodes, [stop], { unprepared: edited }), 'plan'), [], 'an escalation waits for the session')
+  const asked = { kind: 'parked', node: 'x', return: 'needs_decision' }
+  const answered = { kind: 'replanned', node: 'x', reason: 'answered' }
+  assert.deepEqual(launched(effort(nodes, [asked, answered], { unprepared: edited }), 'plan').map((l) => l.why), ['spec_edited'], 'an answered park too')
+  const spent = { kind: 'parked', node: 'x', return: 'design_spend' }
+  assert.deepEqual(launched(effort(nodes, [spent], { unprepared: edited }), 'plan'), [], 'a design_spend park waits for the user')
+  assert.deepEqual(launched(effort(nodes, [spent, retry], { unprepared: edited }), 'plan').map((l) => l.why), ['spec_edited'], 'and goes on once retried')
+  assert.deepEqual(launched(effort(nodes, [stop, retry], { unprepared: edited }), 'plan').map((l) => l.why), ['spec_edited'], 'a retried one plans the edit')
+  assert.deepEqual(launched(effort([folder('.'), folder('x'), leaf('x/a')], [park], { unprepared: edited }), 'plan'), [], "the user's folder is the user's")
 })
 
 test("a planner folder whose spec is edited past its preparation is not integration-reviewed over the old graph", () => {

@@ -14,7 +14,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join, relative } from 'node:path'
 
 import { approvalState, recordReviewed } from '../lib/approval.mjs'
-import { editedPlanKey, schedule } from '../lib/boundaries/execution.mjs'
+import { clearedAt, editedPlanKey, schedule, stoppedAt } from '../lib/boundaries/execution.mjs'
 import { escalated, parked, recordAll } from '../lib/boundaries/records.mjs'
 import { guidanceOf, leafBrief } from '../lib/brief.mjs'
 import { plannerBrief } from '../lib/briefs/execute.mjs'
@@ -854,12 +854,12 @@ test('a spec_changed park on a planner folder is re-derived from its spec as it 
 
 // ================================================================== beyond the acceptance lines
 
-test('planner rounds run on from the thread\'s latest round in the execution', async (t) => {
+test('planner rounds run on from the thread\'s latest round in the execution, and a new plan reviews what changed since the last review', async (t) => {
   // Each answer retitles p/x, so the asking leaf's revision moves: the second invocation has another
   // basis (the same request over the leaf as it now stands), so it is a new plan and not a relaunch.
   const first = folderSpec({ title: 'Add x, first answer to the verify finding.' })
   const second = folderSpec({ title: 'Add x, second answer to the verify finding.' })
-  const w = planned(t, { steps: { ...planner(written, written), ...probing(1, first), ...probing(2, second) }, writes: { 1: first, 2: second } })
+  const w = planned(t, { steps: { ...planner(written, written), ...probing(1, first), ...probing(2, second, [], { after: first }) }, writes: { 1: first, 2: second } })
   const ask = request('verify_finding', 'the suite fails')
   const before = nodeOf(w.rig, 'p/x').seq
   assert.equal((await w.run({ request: ask })).outcome, 'prepared')
@@ -871,7 +871,9 @@ test('planner rounds run on from the thread\'s latest round in the execution', a
   assert.deepEqual(calls.map((c) => c.round), [1, 2])
   assert.equal(calls[1].resume, true, 'the second plan resumes the thread')
   assert.equal(calls[1].thread.session, calls[0].thread.session)
-  assert.equal(stepValue(w.rig, 'probe:p:2/scope').full, true, 'the first round of a run reads from nothing')
+  const scope = stepValue(w.rig, 'probe:p:2/scope')
+  assert.equal(scope.full, false, 'the first round of the second plan is narrowed')
+  assert.equal(scope.since, stepValue(w.rig, 'probe:p:1/scope').snapshot, "to the text the first plan's review read")
   assert.ok(under(w.rig, 'probe:p:2/').length > 0)
 })
 
@@ -937,7 +939,7 @@ const EDITED_SPEC = folderSpec({ design: DESIGN_A, plan: [
 ] })
 
 test("a session's edit of a planner-written folder over its park is scheduled, reviewed, prepared and compiled, and the park cleared", async (t) => {
-  const w = world(t, { steps: { ...clean(), ...probing(2, EDITED_SPEC) }, writes: { 1: S1 } })
+  const w = world(t, { steps: { ...clean(), ...probing(2, EDITED_SPEC, [], { after: S1 }) }, writes: { 1: S1 } })
   assert.equal((await w.run()).outcome, 'prepared', 'the fixture: p is planned and compiled')
   recordAll(w.rig.xc, [parked('p', 'integration_critical', 'the landed work lacks y')])
   assert.equal(readTree(w.rig.repo, E).status.get('p').status, 'parked')
@@ -961,12 +963,10 @@ test('an edited planner spec whose gate is open is prepared and compiled once it
   const w = world(t, { steps: clean(), writes: { 1: S1 } })
   assert.equal((await w.run()).outcome, 'prepared', 'the fixture: p is planned and compiled')
   putSpec(w.rig, EDITED_SPEC)
-  const { hash } = approvalState(w.rig.repo, E, 'p')
-  w.rig.xc.log.append('step', { key: editedPlanKey('p', hash), value: 2 })
   assert.equal(recordReviewed(w.rig.repo, E, 'p', { complete: true }).ok, true)
   recordAll(w.rig.xc, [escalated('p', 'review_not_converging', 'open I1')])
   const plans = () => schedule(w.rig.xc, {}).launch.filter((l) => l.unit === 'plan' && l.id === 'p')
-  assert.deepEqual(plans(), [], 'the stop waits for the session, and that text was planned')
+  assert.deepEqual(plans(), [], 'the stop waits for the session')
   append(w.rig.repo, E, 'events', [{ kind: 'replanned', node: 'p', execution: w.rig.stamp, reason: 'retry_escalated', by: 'session' }])
   assert.deepEqual(plans().map((l) => l.why), ['spec_edited'], 'the retry plans the edit again')
 
@@ -977,4 +977,20 @@ test('an edited planner spec whose gate is open is prepared and compiled once it
   assert.equal(plannerCalls(w.rig).length, 1)
   assert.ok(liveNode(w.rig, 'p/y'), 'the edit is compiled')
   assert.equal(approvalState(w.rig.repo, E, 'p').state, 'prepared')
+})
+
+test('a relaunch resumes the plan of an edit that the plan itself has since edited, rather than starting another', async (t) => {
+  const w = world(t, { steps: { ...clean(), ...probing(2, EDITED_SPEC, [], { after: S1 }) }, writes: { 1: S1 } })
+  assert.equal((await w.run()).outcome, 'prepared', 'the fixture: p is planned and compiled')
+  recordAll(w.rig.xc, [parked('p', 'integration_critical', 'the landed work lacks y')])
+  const tree = readTree(w.rig.repo, E)
+  const key = editedPlanKey('p', stoppedAt(tree.events, 'p'), clearedAt(tree.events, 'p'))
+  w.rig.xc.log.append('step', { key, value: 2 })
+  putSpec(w.rig, EDITED_SPEC)
+  assert.deepEqual(schedule(w.rig.xc, {}).launch.filter((l) => l.unit === 'plan').map((l) => l.why), ['spec_edited'],
+    'the plan a dead run left is launched again')
+  assert.equal((await w.run({ why: 'spec_edited' })).outcome, 'prepared')
+  const plans = w.rig.log.entries().filter((e) => e.kind === 'step' && e.key.startsWith('plan:p:edited:'))
+  assert.deepEqual(plans.map((e) => e.key), [key], 'its journaled start is reused: the same plan, at its round')
+  assert.ok(stepValue(w.rig, 'probe:p:2/scope'), 'it runs at the round it journaled')
 })

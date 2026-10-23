@@ -9,11 +9,13 @@
 // signed one, its latest `approved` or `prepared` line is stated again at the new hash, every field
 // kept and `carried_from` naming the hash it was given at, so the signature stands for the same
 // words and no reader learns a new kind. Then each effort it touched is
-// compiled, so its node records carry `expects`. It lists, for the user to `retry` or replan, every
-// leaf whose open stop is `locus_held` or `verify_oscillating`, whose latest close routed a
-// `needs_locus`, or whose leaf-close recorded a `breach_reverted`: the 6.0.0 design has none of
-// these, and what each left behind is the user's to clear. The default is a dry run; `--yes` writes.
-// A second run finds no `locus:` field and writes nothing.
+// compiled, so its node records carry `expects`. Every `needs_locus` message, a kind 6.0.0 has no
+// template for, is withdrawn (a `withdrawn` event naming it), so no planner's conversation renders
+// it again. It lists, for the user to `retry` or replan, every leaf not merged whose open stop is
+// `locus_held` or `verify_oscillating`, whose latest close routed a `needs_locus`, or whose
+// leaf-close recorded a `breach_reverted`: the 6.0.0 design has none of these, and what each left
+// behind is the user's to clear; a merged leaf left nothing. The default is a dry run; `--yes` writes.
+// A second run finds no `locus:` field and no message to withdraw, and writes nothing.
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
@@ -21,6 +23,7 @@ import { pathToFileURL } from 'node:url'
 
 import { approvalState } from '../lib/approval.mjs'
 import { compileEffort } from '../lib/compile.mjs'
+import { withdrawnEvent } from '../lib/conversation.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
 import { hashSpec } from '../lib/spec.mjs'
 import { ROOT_ID, SPEC_FILE, effortDir, effortsRoot, executionsRoot, mainCheckout, posix, readJson, safeSlug } from '../lib/store.mjs'
@@ -55,10 +58,24 @@ export function rename(text) {
   return { next, changed: next !== text, formatOnly: blank(next) === blank(text) }
 }
 
-/** The leaves of `effort` the user must retry or replan, each with why. */
+/** The `withdrawn` events `effort`'s `needs_locus` messages still need, one per node and execution. */
+function withdrawalsOf(repo, effort) {
+  const events = readLog(repo, effort, 'events').entries
+  const done = new Set(events.filter((e) => e.kind === 'withdrawn').flatMap((e) => e.messages || []))
+  const groups = new Map()
+  for (const m of events.filter((e) => e.kind === 'message' && e.msg === 'needs_locus' && !done.has(e.seq))) {
+    const key = JSON.stringify([m.node || '', m.execution || ''])
+    if (!groups.has(key)) groups.set(key, { node: m.node || '', execution: m.execution || '', messages: [] })
+    groups.get(key).messages.push(m.seq)
+  }
+  return [...groups.values()].map((g) => withdrawnEvent({ ...g, why: 'migrate-expects: 6.0.0 has no needs_locus' }))
+}
+
+/** The leaves of `effort` the user must retry or replan, each with why; a merged one has nothing left to clear. */
 function staleLeaves(repo, effort) {
   const tree = readTree(repo, effort)
   const out = []
+  const open = (x) => (tree.status.get(x.node) || {}).status !== 'merged'
   for (const [id, s] of tree.status) {
     const last = s.last || {}
     if (s.status === 'escalated' && STALE_STOPS.includes(last.reason)) out.push({ effort, node: id, why: 'open stop ' + last.reason })
@@ -75,13 +92,13 @@ function staleLeaves(repo, effort) {
       if (routed) out.push({ effort, node: close.node, why: 'its close in ' + stamp + ' routed needs_locus' })
     }
   }
-  return out
+  return out.filter(open)
 }
 
 /** What the migration does to `repo`, and with `yes`, does it. */
 export function migrate(repo, { yes = false } = {}) {
   const root = mainCheckout(resolve(String(repo)))
-  const out = { specs: [], carried: [], refused: [], compiled: [], retry: [] }
+  const out = { specs: [], carried: [], refused: [], compiled: [], withdrawn: [], retry: [] }
   for (const effort of dirsOf(effortsRoot(root)).filter(safeSlug).sort()) {
     let touched = false
     for (const folder of foldersOf(root, effort)) {
@@ -115,6 +132,12 @@ export function migrate(repo, { yes = false } = {}) {
       const c = compileEffort(root, effort)
       out.compiled.push({ effort, ok: c.ok, problems: c.problems.map((p) => p.problem) })
     }
+    for (const w of withdrawalsOf(root, effort)) {
+      out.withdrawn.push({ effort, node: w.node, execution: w.execution, messages: w.messages })
+      if (!yes) continue
+      const c = append(root, effort, 'events', [w])
+      if (!c.ok) out.refused.push({ effort, folder: w.node, file: 'events', why: 'the withdrawal could not be recorded: ' + c.error })
+    }
     out.retry.push(...staleLeaves(root, effort))
   }
   return out
@@ -124,6 +147,7 @@ function reportOf(r, yes) {
   const lines = []
   for (const s of r.specs) lines.push((yes ? 'renamed ' : 'would rename ') + s.file)
   for (const c of r.carried) lines.push((yes ? 'carried ' : 'would carry ') + 'the signature of ' + c.effort + ' ' + c.folder + ' from ' + c.from.slice(0, 8) + ' to ' + c.hash.slice(0, 8))
+  for (const w of r.withdrawn) lines.push((yes ? 'withdrew ' : 'would withdraw ') + w.messages.length + ' needs_locus message(s) to ' + w.effort + ' ' + w.node)
   for (const c of r.compiled) lines.push('compiled ' + c.effort + (c.ok ? '' : ': ' + c.problems.join('; ')))
   for (const x of r.refused) lines.push('refused ' + x.file + ': ' + x.why)
   for (const x of r.retry) lines.push('retry or replan ' + x.effort + ' ' + x.node + ': ' + x.why)

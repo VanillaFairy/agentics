@@ -19,6 +19,8 @@ import { append, readLog } from '../lib/ledger.mjs'
 import { hashSpec } from '../lib/spec.mjs'
 import { specPath } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
+import { preflight } from '../lib/boundaries/execution.mjs'
+import { dispatch } from '../lib/programs/common.mjs'
 import { migrate, rename } from '../tools/migrate-expects.mjs'
 import { executionRig } from './harness/program-rig.mjs'
 
@@ -78,4 +80,38 @@ test('a 5.x store is migrated once: its specs renamed and still approved, its no
 
   const again = migrate(rig.repo, { yes: true })
   assert.deepEqual([again.specs, again.carried, again.compiled], [[], [], []], 'a second run finds nothing to do')
+})
+
+test('needs_locus messages are withdrawn once, so a planner thread holding them dispatches again, and a merged leaf is not listed to retry', { timeout: 120_000 }, async (t) => {
+  let rig = executionRig(t, { spec: SPEC })
+  // A 6.0 planner thread: two needs_locus messages it was sent, carried by its next round, then a findings message.
+  const asked = ['a', 'b'].map((node) => rig.log.append('message', {
+    node: '.', thread: 'planner:.', from: 'code', msg: 'needs_locus', payload: { node, paths: ['src/' + node + '.mjs'], why: 'w' }, round: 1,
+  }).seq)
+  rig.log.append('dispatched', { node: '.', dispatch: 'd1', thread: 'planner:.', round: 1, carries: asked, role: 'planner' })
+  rig.log.append('message', { node: '.', thread: 'planner:.', from: 'code', msg: 'findings', payload: { findings: [] }, round: 2 })
+  rig.log.append('breach_reverted', { node: 'a', paths: ['README.md'], sha: 'abc1234' })
+  rig.log.append('escalated', { node: 'b', reason: 'locus_held', detail: 'held' })
+  rig.log.append('approved', { node: 'a', head_sha: rig.base_sha, review_rounds: 0, at_integration: false })
+  rig.log.append('merged', { node: 'a', into: '.', merged_sha: rig.base_sha, head_sha: rig.base_sha })
+  assert.equal(readTree(rig.repo, rig.effort).status.get('a').status, 'merged', 'the fixture: a is merged')
+  const refused = preflight(rig.xc, {})
+  assert.deepEqual([refused.ok, refused.error && refused.error.kind], [false, 'messages_unrenderable'], 'the run refuses before any unit throws on them')
+  const planner = () => dispatch(rig.ctx, { role: 'planner', schema: 'planner_write', node: '.', thread: 'planner:.', round: 3, brief: 'Write it.' })
+  await assert.rejects(planner(), /no template for message "needs_locus"/, 'the fixture: the thread cannot be dispatched on')
+
+  const dry = migrate(rig.repo)
+  assert.deepEqual(dry.withdrawn.map((w) => w.messages), [asked])
+  assert.equal(readLog(rig.repo, rig.effort, 'events').entries.filter((e) => e.kind === 'withdrawn').length, 0, 'a dry run writes nothing')
+  const applied = migrate(rig.repo, { yes: true })
+  assert.deepEqual(applied.refused, [])
+  assert.deepEqual(applied.retry.map((r) => r.node), ['b'], 'a merged leaf has nothing left to retry')
+  assert.deepEqual(migrate(rig.repo, { yes: true }).withdrawn, [], 'a second run withdraws nothing')
+
+  rig = rig.relaunch()
+  rig.script({ 'planner|.|planner:.': [{ output: { status: 'written', text: '' } }] })
+  assert.notEqual((preflight(rig.xc, {}).error || {}).kind, 'messages_unrenderable')
+  const out = await planner()
+  assert.equal(out.status, 'returned')
+  assert.ok(!rig.calls.at(-1).freshBrief.includes('needs_locus'), 'a fresh session is told nothing of what was withdrawn')
 })

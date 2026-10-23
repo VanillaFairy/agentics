@@ -1885,14 +1885,19 @@ locates and derives its axes as a full round does. Kept ground holds each place 
 a hit located again keeps its newer lines where it now stands, and a search block word for word the
 same is kept once, so a folder's rounds grow its ground only by places no round held before.
 
-**A prober's brief fits what it can read.** Each prober's brief is built whole first; past the room
-its role leaves (`briefRoomOf`), it hands its parts as places to open instead of their lines, one at a
-time and in this order, until it fits: the repository ground (each search's head and each hit's
-`- <place> — <note>` line), the document's citations (each file with the lines it cites), the
-settled specs (their files). Each part given up says that its lines were left out to fit and to open
-what is needed with Read, which every prober carries; the probe's `declared` names the parts each
-prober was handed as places. A brief that still does not fit is sent to the runner as it stands, which
-refuses it `brief_too_large`: the prober fails, the round records nothing, and in an execution the
+**A prober's brief fits what it can read.** A prober carries Read, so everything in its brief but its
+charge can be handed as a place to open. Each brief is built whole first; past the room its role
+leaves (`briefRoomOf`), it hands its parts by reference instead of inline, one at a time and in this
+order, until it fits: the repository ground (each search's head and each hit's `- <place> — <note>`
+line), the document's citations (each file with the lines it cites), the settled specs (their files),
+the repository's guidance, a narrowed round's carried findings, the units, and last the artefact. The
+probe writes the guidance, the carried findings and each prober's units under the run's `briefs/`
+(`proberFiles`, each file named by its digest), and the artefact goes as its snapshot's text, whose
+line numbers are the ones findings cite; a narrowed round still hands its changed lines inline, with
+20 lines around each, each after its number. Each part given up says where its lines are and to open
+them with Read; the probe's `declared` names the parts each prober was handed so. What is left is the
+charge itself, so a brief past the room after all that is a defect in the charge's text, which the
+runner refuses `brief_too_large`: the prober fails, the round records nothing, and in an execution the
 folder is held on a `role` fault naming the cause.
 
 ### What a probe costs

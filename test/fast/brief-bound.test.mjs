@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { proberBrief } from '../../lib/briefs/probe.mjs'
+import { proberBrief, proberFiles } from '../../lib/briefs/probe.mjs'
 import { hitBlocks } from '../../lib/citations.mjs'
 import { briefRoomOf } from '../../lib/programs/common.mjs'
 import { joinedGround } from '../../lib/programs/probe.mjs'
@@ -117,4 +117,37 @@ test('the spend view flags a unit whose call opened its session reading past the
   assert.deepEqual(reasons['probe a:1'], ['brief_over_bound'])
   assert.equal(reasons['probe a:2'], undefined)
   assert.ok(reasons['folder a'].includes('brief_over_bound'))
+})
+
+const bigSpec = (lines) => Array.from({ length: lines }, (_, i) => 'line ' + (i + 1) + ' FAR_TEXT_TOKEN ' + 'x'.repeat(120)).join('\n') + '\n'
+const carriedOf = (n) => Array.from({ length: n }, (_, i) => ({ id: 'P' + (i + 1), severity: 'gap', axis: 'contract', section: 'design', claim: 'CARRIED_TOKEN ' + 'y'.repeat(900) }))
+
+test('a narrowed round over a large spec fits by handing its artefact and carried findings as files, its changed lines inline', () => {
+  const text = bigSpec(806)
+  const narrow = { changed: [{ start: 533, end: 533 }, { start: 697, end: 702 }], carried: carriedOf(106) }
+  const at2 = {
+    ...at(groundOf([hit(1)]), 60000), text, narrow, guidance: '## Repository guidance\n\n### CLAUDE.md\n\n' + 'g'.repeat(16000),
+    files: { artefact: '/store/snapshots/4dfef4d2.txt', carried: '/run/briefs/carried-1.md', units: '/run/briefs/units-1.md', guidance: '/run/briefs/guidance-1.md' },
+  }
+  const out = proberBrief(at2)
+  assert.ok(Buffer.byteLength(out.text) <= at2.room, 'it fits')
+  assert.ok(out.trimmed.includes('artefact') && out.trimmed.includes('carried'), JSON.stringify(out.trimmed))
+  assert.ok(out.text.includes('/store/snapshots/4dfef4d2.txt') && out.text.includes('/run/briefs/carried-1.md'))
+  assert.match(out.text, /^\s+533\tline 533 /m, 'a changed line, at its own number')
+  assert.match(out.text, /^\s+513\tline 513 /m, 'with the lines around it')
+  assert.ok(!/^\s+100\tline 100 /m.test(out.text), 'a far unchanged line goes by the file')
+})
+
+test('a full round whose artefact alone is past the room hands it as the file to read', () => {
+  const out = proberBrief({ ...at(groundOf([hit(1)]), BRIEF_BYTES - 6000), text: bigSpec(2000), files: { artefact: '/store/snapshots/big.txt' } })
+  assert.ok(Buffer.byteLength(out.text) <= BRIEF_BYTES - 6000)
+  assert.ok(out.trimmed.includes('artefact'))
+  assert.ok(!out.text.includes('FAR_TEXT_TOKEN'))
+})
+
+test("a prober's files hold its guidance, its carried findings and its units, one line each", () => {
+  const files = proberFiles({ guidance: 'G', narrow: { changed: [], carried: carriedOf(2) }, units: ['contract@intent'], sections: SECTIONS })
+  assert.equal(files.guidance, 'G')
+  assert.equal(files.carried.split('\n').length, 2)
+  assert.equal(files.units, '- contract@intent — section "Intent", lines 1-2')
 })

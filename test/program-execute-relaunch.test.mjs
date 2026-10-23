@@ -23,9 +23,11 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderMessage } from '../lib/conversation.mjs'
+import { executionLog } from '../lib/ledger.mjs'
 import { loadRole, producerTier, tierFor } from '../lib/roles.mjs'
 import { closePath, writeJson } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
+import { DEAD_PID } from './harness/dead-pid.mjs'
 import {
   T, E, YIELD, done, ruling, rulings, claim, staleRuler, rootReview, IMPL, world, kinds, stateOf, callsOf,
   startsOf, commandsFile, moveBase, assertComplete,
@@ -122,6 +124,23 @@ describe('the execute program', { concurrency: 4 }, () => {
     assertComplete(res)
   })
 
+
+  test('a start closes the call a dead run left open on a thread no unit asks for again', T, async (t) => {
+    const w = world(t, { leaves: ['a'] })
+    const gone = 'root.analyst.probe-gone'
+    executionLog(w.rig.repo, E, w.rig.stamp).append('dispatched', {
+      dispatch: gone, node: '', round: 1, thread: 'probe:a:1/prober:1', role: 'analyst', model: 'opus', effort: 'medium',
+      session: 's-gone', brief_digest: 'b', brief_parts: {}, carries: [], prompt: 'p', cwd: w.rig.repo, pid: DEAD_PID,
+    })
+    w.script({ [IMPL('a')]: [done()] }, rootReview(1, claim('D1 holds')))
+    const out = await w.start(['--effort', E])
+
+    assert.equal(out.ok, true, JSON.stringify(out))
+    const ended = stateOf(w.rig).filter((e) => e.kind === 'returned' && e.dispatch === gone)
+    assert.deepEqual(ended.map((e) => [e.status, e.cause]), [['cut_off', 'process_gone']])
+    assert.equal(callsOf(w, 'analyst').length, 0, 'the closed call is not dispatched again')
+    assert.ok(out.result.notes.some((n) => n.startsWith('1 dispatch(es) a dead run left open, closed cut off')), JSON.stringify(out.result.notes))
+  })
 
   // ------------------------------------------------------------------ the dial
 

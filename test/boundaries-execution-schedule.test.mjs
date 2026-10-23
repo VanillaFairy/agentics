@@ -57,9 +57,6 @@ function greenLeaf(r, xc, id, file) {
   return sha
 }
 
-const dispatchedFields = (dispatch, over = {}) =>
-  ({ dispatch, node: 'a', round: 1, thread: 'a:implementer', role: 'implementer', session: 's-' + dispatch, pid: 0, ...over })
-
 const ids = (launch) => launch.map((l) => l.unit + ':' + l.id)
 
 // ------------------------------------------------------------------ preflight: cleanup
@@ -182,42 +179,6 @@ test('a worktree under .claude/worktrees on a branch that is not this effort\'s 
   assert.ok(listed.some((p) => p.endsWith('/.claude/worktrees/feature')), 'another branch is not the effort\'s')
   assert.ok(listed.some((p) => p.endsWith('/.claude/worktrees/other')), "effort e10's branch is not effort e1's")
   assert.deepEqual(out.dirty_worktrees, [])
-})
-
-// ------------------------------------------------------------------ preflight: what it reports
-
-test('open_dispatches lists each dispatched with no returned and no host_stop after it', async (t) => {
-  const { r, cf } = await started(t)
-  const run = ctxOf(r)
-  run.log.append('dispatched', dispatchedFields('d-a', { node: 'a', round: 2, thread: 'a:implementer', role: 'implementer' }))
-  run.log.append('dispatched', dispatchedFields('d-b', { node: 'b' }))
-  run.log.append('returned', { dispatch: 'd-b', session: 's-d-b', status: 'returned', cause: '' })
-  run.log.append('dispatched', dispatchedFields('d-c', { node: 'b' }))
-  run.log.append('host_stop', { dispatch: 'd-c', cause: 'rate_limit', until: '' })
-  run.log.append('dispatched', dispatchedFields('d-e', { node: 'b', round: 3, thread: 'b:reviewer', role: 'reviewer' }))
-
-  const out = await preflight(ctxOf(r), { commands_file: cf })
-  assert.equal(out.ok, true)
-  const open = out.open_dispatches.map(({ dispatch, node, thread, role, round }) => ({ dispatch, node, thread, role, round }))
-  assert.deepEqual(open, [
-    { dispatch: 'd-a', node: 'a', thread: 'a:implementer', role: 'implementer', round: 2 },
-    { dispatch: 'd-e', node: 'b', thread: 'b:reviewer', role: 'reviewer', round: 3 },
-  ], 'in the order they were dispatched')
-})
-
-test('a dispatch started again after its host stop is open, once', async (t) => {
-  const { r, cf } = await started(t)
-  const run = ctxOf(r)
-  run.log.append('dispatched', dispatchedFields('d-a', { round: 1 }))
-  run.log.append('host_stop', { dispatch: 'd-a', cause: 'rate_limit', until: '' })
-  run.log.append('dispatched', dispatchedFields('d-a', { round: 2 }))
-  run.log.append('dispatched', dispatchedFields('d-r', { node: 'b', round: 1 }))
-  run.log.append('returned', { dispatch: 'd-r', session: 's-d-r', status: 'returned', cause: '' })
-  run.log.append('dispatched', dispatchedFields('d-r', { node: 'b', round: 2 }))
-
-  const out = await preflight(ctxOf(r), { commands_file: cf })
-  const open = out.open_dispatches.map(({ dispatch, round }) => ({ dispatch, round }))
-  assert.deepEqual(open, [{ dispatch: 'd-a', round: 2 }, { dispatch: 'd-r', round: 2 }], 'each key once, at its latest dispatched')
 })
 
 // ------------------------------------------------------------------ schedule

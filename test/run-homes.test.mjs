@@ -472,6 +472,7 @@ test('the cost carries by_model, each returned record joined to the latest dispa
 })
 
 test("a home's cost joins its returned records to the dispatched events of its execution, earlier runs' included", async (t) => {
+  // d1 was left open by an earlier run: the start closes it (unmeasured), and its later return is a call of its own.
   const repo = makeRepo(t)
   const u = { input_tokens: 4, output_tokens: 2 }
   logOf(repo, HOME).append('dispatched', { node: 'a', dispatch: 'd1', model: 'haiku' })
@@ -485,10 +486,10 @@ test("a home's cost joins its returned records to the dispatched events of its e
   const events = readLog(repo, E, 'events').entries
   assert.deepEqual(events.map((e) => [e.kind, e.execution]), [['dispatched', S], ['dispatched', S]])
   assert.deepEqual(out.result.cost.by_model, {
-    haiku: { dispatches: 1, tokens: 6, usd: 0.125, unmeasured: 0 },
+    haiku: { dispatches: 2, tokens: 6, usd: 0.125, unmeasured: 1 },
     opus: { dispatches: 1, tokens: 6, usd: 0.25, unmeasured: 0 },
   })
-  assert.equal(out.result.cost.dispatches, 2)
+  assert.equal(out.result.cost.dispatches, 3)
 })
 
 test("a home's cost is the effort cost report's over the same execution, unmeasured calls per model included", async (t) => {

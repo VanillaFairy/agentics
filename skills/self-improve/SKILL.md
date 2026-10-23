@@ -63,6 +63,7 @@ work itself is that large:
 | spend signal | where its cause lives |
 |---|---|
 | `probers_over_size`: more parallel judges on one artefact than its size earns | the dial that sizes the dispatch |
+| `brief_over_bound`: a call opened its session reading more than a first read may | what builds that role's brief, or the measured bytes per token behind the bound |
 | `axes_again`, or review rounds over text that did not change in substance (the spec `hash` moved by a wording edit, the findings the same claims) | what decides a round or a full re-derivation is earned |
 | a strong model in `by role` on work with nothing to judge: a search, a mechanical edit, a relocate | the role's tier |
 | `usd_over_…` or `rounds_over_…` on a unit | that unit's records: a dial, a prompt, a planner habit (entries split too fine, specs that restate each other), or the work being large |

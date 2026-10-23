@@ -508,7 +508,7 @@ It spawns the host's CLI, `claude -p`, without a shell, and owns every flag:
 | what | how | why |
 |---|---|---|
 | the role | `--system-prompt-file` with the body of `roles/<role>.md`, written once under the run's directory as `roles/<role>-<digest>.md`; a search's scout gets its charge after the body (`promptFile(role, dir, charge)`), so the find, the scope and the material are cached once and read back on every turn | the agent is told its role and nothing else |
-| the brief | on standard input | a brief of any length reaches the agent whole; no command line holds it |
+| the brief | on standard input, once it fits the first read's bound (below) | the brief reaches the agent whole; no command line holds it |
 | its tools | `--tools` with the role's host tools from its frontmatter; a tool named `mcp__search__<tool>` is not a host tool and reaches the agent through `--mcp-config` | capability is the tool list |
 | what it may touch | `--permission-mode dontAsk --permission-prompts none`; `--allowedTools` with the rules the program computes for this call: a role that writes nothing gets its read tools (`Read`, `Grep`, `Glob`, `WebSearch`, `WebFetch`) by their bare names, the search server's tools (`mcp__search__…`, `MCP_TOOL_PREFIX` in `lib/permissions.mjs`) by their exact names and `Bash(<command>:*)` for each command its command lines run (`commandParts` in `lib/permissions.mjs`: a line split at `&&`, `||`, `;`, `|` and newlines outside quotes, a leading `!` dropped, each `$(…)` a command of its own); a writer gets both an `Edit` and a `Write` rule for what it may write, because the host's `Edit` rule admits the Write tool and its `Write` rule does not: a producer by its role's rule ([Role rules](#role-rules)), its whole worktree (`/**`: a pattern is gitignore-style and a leading `/` anchors it at the call's working folder) or only the test-file globs, and a planner exactly its spec's path, its glob characters escaped; `--disallowedTools` for the store's folder (`/.agentics/**`), for the test-file globs where the role may write no test, for the files a call must not read ([Conversations](#conversations)), and, when the role runs commands, for the git options that reach past a worktree (`--amend`, `-C`, `--git-dir`, `--work-tree`, `--output`); `--amend` and `--output` are matched wherever they stand in the command, so a command that only quotes one is denied too | nothing prompts; what is not allowed is denied, and every denial comes back in `denials`. A compound command is allowed only when every part is, so a rule naming a whole check line admits nothing, and one rule per part admits the line and each part run alone |
 | settings | `--setting-sources ""`, `--strict-mcp-config`, `--disable-slash-commands`; `--mcp-config <file>` for a dispatch that names a tool server | nobody's settings, MCP servers, skills or `CLAUDE.md` reach a dispatch; the only MCP server a dispatch can reach is the one its program wrote for it (the search tool server, [Searches](#searches)); the guidance it needs is in its brief ([Briefs and returns](#briefs-and-returns)) |
@@ -548,6 +548,21 @@ cache-written tokens of the stream's last `assistant` event that carries `messag
 call of a session, so the runner records each call's cost as the difference from the session's
 previous call. Cost is measured per call (P4). No agent writes a file that code reads, except the
 work it was dispatched to do — a producer's edits in its worktree.
+
+**A first read fits what a model can read.** A call that starts a session reads its system prompt
+and its brief before it does anything, and a read that fills its window leaves it no turns to work
+in. So every tier is planned against one window (`MODEL_WINDOW` in `lib/roles.mjs`, 200 000 tokens),
+of which a first read may take half (`BRIEF_TOKENS`); code checks it in bytes (`BRIEF_BYTES`), at
+2.2 bytes a token, the fewest measured over large briefs (each brief's bytes against the `opened`
+its call recorded), so the estimate errs high. The runner refuses a fresh call whose system-prompt
+file and brief together hold more (`oversize`): nothing starts and nothing is recorded, and the call
+fails `brief_too_large`, a terminal class like `budget`, so a relaunch builds the brief again and
+meets the same refusal unless what it is built from changed. A resumed call is not checked: its
+session carries the brief, and a session past half its window is renewed instead (below). A program
+that can trim its brief fits it to the room the role leaves (`briefRoomOf` in
+`lib/programs/common.mjs`: the bound less the role's system prompt) before it dispatches; the probe
+does ([Probe](#probe)). The spend view flags a unit with a call whose session opened past the bound
+as measured ([Spend view](#spend-view)), which is how an estimate that errs low shows.
 
 **One driver per session.** The host lets two processes drive one session at once and interleaves
 their turns, so the runner keeps it to one: before a session is resumed, the runner makes sure no
@@ -1834,7 +1849,7 @@ included. It finds the guidance and the code the artefact rests on, its hits lab
 `ground`; its material is the artefact, or, given `since`, each changed range on its own
 (`locateMaterial`), and its scope the probe's roots. The artefact's own citations stay apart: they
 are resolved by `resolveCitations` and handed over as the shared ground. Every prober gets every
-hit's excerpts (`hitExcerpts`); the axes analyst gets the `guidance`-labelled ones, and is bought
+hit's excerpts (`hitExcerpts`) while they fit its brief; the axes analyst gets the `guidance`-labelled ones, and is bought
 when the repository has guidance (`guidanceOf`: the `CLAUDE.md` chain and `config.guidance`,
 resolved by code) or any hit is labelled `guidance`. The probe builds its coverage from the search
 through `searchCoverage` ([Searches](#searches)): a `done` or `stalled` locate is a `declared` line
@@ -1866,7 +1881,19 @@ joined after the kept ones. A judge that failed buys that search too, from no te
 `declared`; any doubt routes to a search. Each recorded round whose locate finished and whose axes
 analyst did not fail keeps what it used (one that would hand on less keeps nothing), so the next
 narrowed round reads it in turn; a `since` with no kept ground narrows the units all the same and
-locates and derives its axes as a full round does.
+locates and derives its axes as a full round does. Kept ground holds each place once (`joinedGround`):
+a hit located again keeps its newer lines where it now stands, and a search block word for word the
+same is kept once, so a folder's rounds grow its ground only by places no round held before.
+
+**A prober's brief fits what it can read.** Each prober's brief is built whole first; past the room
+its role leaves (`briefRoomOf`), it hands its parts as places to open instead of their lines, one at a
+time and in this order, until it fits: the repository ground (each search's head and each hit's
+`- <place> — <note>` line), the document's citations (each file with the lines it cites), the
+settled specs (their files). Each part given up says that its lines were left out to fit and to open
+what is needed with Read, which every prober carries; the probe's `declared` names the parts each
+prober was handed as places. A brief that still does not fit is sent to the runner as it stands, which
+refuses it `brief_too_large`: the prober fails, the round records nothing, and in an execution the
+folder is held on a `role` fault naming the cause.
 
 ### What a probe costs
 
@@ -3609,9 +3636,11 @@ mean is per kind (`leaf`, `folder`, `probe`) `{units, usd, rounds}`, or null whe
 is fully measured. `by_role` is role → model → `{dispatches, tokens, usd, unmeasured}`. A unit
 carries those four and its `id`; a leaf also `status` and `rounds` (the highest round its calls
 name), a folder `rounds` (its probe rounds), a probe round `folder`, `round`, `probers`, `axes` and
-`spec_lines` (its folder's spec as it stands). `flagged` lists the units with `kind` and `reasons`,
-each one of `usd_over_effort_mean`, `usd_over_earlier_mean`, `rounds_over_effort_mean`,
-`rounds_over_earlier_mean`, `probers_over_size`, `axes_again`.
+`spec_lines` (its folder's spec as it stands). Every unit carries `briefs_over`, its calls that opened
+their session reading more than a first read may (`BRIEF_TOKENS`, from the `opened` each recorded).
+`flagged` lists the units with `kind` and `reasons`, each one of `usd_over_effort_mean`,
+`usd_over_earlier_mean`, `rounds_over_effort_mean`, `rounds_over_earlier_mean`, `probers_over_size`,
+`axes_again`, `brief_over_bound`.
 
 ### Live activity
 

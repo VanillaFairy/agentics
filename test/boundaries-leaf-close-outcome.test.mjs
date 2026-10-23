@@ -30,7 +30,7 @@ import {
 
 // ================================================================== producerOutcome (pure)
 
-const node = (extra) => normalizeNode({ id: 'a', kind: 'leaf', title: 'do a', rigor: 'tdd', role: 'none', locus: ['src/a.mjs'], decisions: ['D1'], ...extra })
+const node = (extra) => normalizeNode({ id: 'a', kind: 'leaf', title: 'do a', rigor: 'tdd', role: 'none', expects: ['src/a.mjs'], decisions: ['D1'], ...extra })
 const PLAIN = node({})
 const RED = node({ id: 'r', rigor: 'tdd-pair', role: 'red' })
 const GREEN = node({ id: 'g', rigor: 'tdd-pair', role: 'green' })
@@ -60,7 +60,7 @@ test("an auditor's return is read the same with a status field as without one", 
   const at = (ret) => po({ leaf: AUDIT, role: 'auditor', round: 2, head_before: 'h1', head: 'h1', answering: 'needs_tests', red: 'r', ret })
   const without = at(AUDITOR_RETURN)
   assert.equal(without.next, 'measure')
-  for (const status of ['needs_tests', 'blocked', 'declined', 'needs_decision', 'needs_locus']) {
+  for (const status of ['needs_tests', 'blocked', 'declined', 'needs_decision', 'decompose']) {
     assert.deepEqual(at({ ...AUDITOR_RETURN, status }), without, status)
   }
 })
@@ -88,9 +88,8 @@ test('contract_changed parks the leaf on it, said the dispatch', () => {
   assert.deepEqual(out.records, [parked('a', 'contract_changed', '', 'd7')])
 })
 
-const ROUTED = ['needs_context', 'needs_locus', 'decompose', 'unsplittable', 'premise_mismatch']
-const PATHS = ['src/helper.mjs', 'lib/other.mjs']
-const routedReturn = (status) => ({ status, text: TEXT, ...(status === 'needs_locus' ? { needs_locus: { paths: PATHS, why: 'the source imports them' } } : {}) })
+const ROUTED = ['needs_context', 'decompose', 'unsplittable', 'premise_mismatch']
+const routedReturn = (status) => ({ status, text: TEXT })
 
 for (const status of ROUTED) {
   test(`${status} goes to the planner when the planner wrote the folder`, () => {
@@ -106,19 +105,6 @@ test('needs_context parks the leaf needs_context under a folder the user wrote',
   assert.equal(out.next, 'route')
   assert.equal(out.to, 'park')
   assert.deepEqual(out.records, [parked('a', 'needs_context', '', 'd7')])
-})
-
-test('needs_locus parks the leaf needs_respec under a folder the user wrote, its paths the question', () => {
-  const out = po({ author: 'you', ret: routedReturn('needs_locus') })
-  assert.equal(out.next, 'route')
-  assert.equal(out.to, 'park')
-  assert.equal(out.records.length, 1)
-  const [park] = out.records
-  assert.equal(park.kind, 'parked')
-  assert.equal(park.fields.node, 'a')
-  assert.equal(park.fields.return, 'needs_respec')
-  assert.equal(park.fields.said, 'd7')
-  for (const path of PATHS) assert.ok(park.fields.question.includes(path), 'the question names ' + path)
 })
 
 for (const status of ['decompose', 'unsplittable', 'premise_mismatch']) {
@@ -247,28 +233,27 @@ describe('leaf-close before it measures', { concurrency: 4 }, () => {
   })
 
   test("a route to the folder's planner records nothing and hands back the producer's request", SLOW, async (t) => {
-    const w = world(t, [root(), planner(), lf('c/a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })])
+    const w = world(t, [root(), planner(), lf('c/a', { expects: ['src/a.mjs', 'test/a.test.mjs'] })])
     const o = open(w, 'c/a')
-    const ret = { status: 'needs_locus', text: 'the source imports a helper', needs_locus: { paths: ['src/helper.mjs'], why: 'imported' } }
+    const ret = { status: 'needs_context', text: 'which tokenizer does the source use?' }
     const dispatch = stored(w, { node: 'c/a', role: 'implementer', round: 1, ret })
     const before = sizes(w)
     const out = await close(w, { node: 'c/a', role: 'implementer', round: 1, dispatch, base_sha: o.base_sha })
     assert.equal(out.decision.next, 'route')
-    assert.equal(out.decision.reason, 'needs_locus')
+    assert.equal(out.decision.reason, 'needs_context')
     assert.equal(out.route.to, 'planner')
     assert.equal(out.route.folder, 'c')
     assert.equal(out.route.request.node, 'c/a')
-    assert.equal(out.route.request.status, 'needs_locus')
+    assert.equal(out.route.request.status, 'needs_context')
     assert.equal(out.route.request.text, ret.text)
-    assert.deepEqual(out.route.request.paths, ['src/helper.mjs'])
+    assert.deepEqual(out.route.request.paths, [])
     assert.deepEqual(out.stops, [])
     assert.deepEqual(sizes(w), before, 'nothing recorded beyond the round\'s own dispatched and returned')
-    assert.equal(rec(w, 'c/a', 'implementer', 1).status, 'needs_locus')
+    assert.equal(rec(w, 'c/a', 'implementer', 1).status, 'needs_context')
 
     const second = await run(w, { node: 'c/a', role: 'implementer', round: 2, base_sha: o.base_sha, ret: { status: 'decompose', text: 'two jobs' } })
     assert.equal(second.out.decision.next, 'route')
     assert.equal(second.out.decision.reason, 'decompose')
-    assert.deepEqual(second.out.route.request.paths, [], 'a producer that named no paths gives the planner none')
   })
 
   test('a route under a folder the user wrote parks the leaf', SLOW, async (t) => {

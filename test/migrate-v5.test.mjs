@@ -89,7 +89,7 @@ const F = {
 }
 
 const leaf = (id, extra = {}) => ({
-  id, kind: 'leaf', title: 'do ' + id, rigor: 'tdd', locus: [id.split('/').join('-') + '.mjs'],
+  id, kind: 'leaf', title: 'do ' + id, rigor: 'tdd', expects: [id.split('/').join('-') + '.mjs'],
   acceptance: [{ text: id + ' works', check: 'node --test' }], ...extra,
 })
 const composite = (id) => ({ id, kind: 'composite', title: 'folder ' + id })
@@ -111,9 +111,9 @@ function fixture(t) {
   const seeded = seedTree(dir, E, [
     { id: '.', kind: 'composite', title: 'root' },
     leaf('a'), leaf('b'), leaf('c'), leaf('d'), leaf('n'), leaf(LONG),
-    leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['r.test.mjs'] }),
+    leaf('r', { rigor: 'tdd-pair', role: 'red', expects: ['r.test.mjs'] }),
     leaf('gr', { rigor: 'tdd-pair', role: 'green', deps: ['r'] }),
-    leaf('tr', { rigor: 'tdd-triad', role: 'red', locus: ['tr.test.mjs'] }),
+    leaf('tr', { rigor: 'tdd-triad', role: 'red', expects: ['tr.test.mjs'] }),
     leaf('tg', { rigor: 'tdd-triad', role: 'green', deps: ['tr'] }),
     leaf('ta', { rigor: 'tdd-triad', role: 'audit', deps: ['tg'] }),
     composite('f'), leaf('f/x'), composite('g'), leaf('g/y'),
@@ -1298,10 +1298,10 @@ const CYCLE_SPEC = [
   '## Decisions', '', '| id | decision | why |', '|---|---|---|', '| D1 | It runs. | The unit needs it. |', '',
   '## Design', '', 'Files under src.', '',
   '## Plan', '',
-  '- **r** — task · realises: D1 · rigor: tdd-pair · role: red · locus: test/r.test.mjs',
+  '- **r** — task · realises: D1 · rigor: tdd-pair · role: red · expects: test/r.test.mjs',
   '  Make r',
   '  - [ ] r says ok — check: `node pass.mjs`', '',
-  '- **g** — task · realises: D1 · after: r · rigor: tdd-pair · role: green · locus: src/r.mjs',
+  '- **g** — task · realises: D1 · after: r · rigor: tdd-pair · role: green · expects: src/r.mjs',
   '  Make g',
   '  - [ ] g says ok — check: `node pass.mjs`', '',
   '## Open questions', '', '## Evidence', '', 'None yet.', '',

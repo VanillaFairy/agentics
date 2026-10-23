@@ -40,7 +40,7 @@ const subEffort = (name, realises, author = 'you') =>
   ['- **' + name + '** — sub-effort · realises: ' + realises.join(', ') + ' · author: ' + author, '  Build ' + name + '.']
 const skipped = (name, kind) => ['- **' + name + '** — ' + kind + ' · realises: ', '  Skip ' + name + '.']
 const task = (name, realises) => [
-  '- **' + name + '** — task · realises: ' + realises.join(', ') + ' · rigor: tdd · locus: src/' + name + '.mjs',
+  '- **' + name + '** — task · realises: ' + realises.join(', ') + ' · rigor: tdd · expects: src/' + name + '.mjs',
   '  Add ' + name + '.',
   '  - [ ] ' + name + ' works — check: `node --test`',
 ]

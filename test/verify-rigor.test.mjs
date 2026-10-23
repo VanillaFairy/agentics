@@ -45,7 +45,7 @@ test('a trivial leaf asks no discriminator, and runs its named checks', (t) => {
 
   assert.equal(payload.stop_reason, 'completed')
   assert.deepEqual(payload.discriminator, [], 'a trivial change has no test that would not restate it')
-  assert.deepEqual(payload.series_findings, [], 'but its series is still held to the locus')
+  assert.deepEqual(payload.series_findings, [], 'but its series is still held to its role')
   assert.deepEqual(payload.checks, [
     { command: 'node -e "process.exit(0)"', status: 'passed', failing_tests: [], baseline_failing: [] },
     { command: 'node -e "process.exit(4)"', status: 'failed', failing_tests: [], baseline_failing: [] },
@@ -67,7 +67,7 @@ test('a named check that cannot be launched is unrunnable, never failed', (t) =>
 })
 
 test('a verify leaf runs no series and no discriminator: it writes nothing', (t) => {
-  // Measured in a worktree whose branch carries commits outside any locus — which a verify leaf
+  // Measured in a worktree whose branch carries commits — which a verify leaf
   // would have to be blamed for if its series were checked. It is not.
   const { worktree, base, head } = order(t)
 
@@ -123,13 +123,13 @@ test('a green leaf is discriminated over its cycle\'s tests, which its own diff 
 
   const payload = verify(parseArgs([
     '--worktree', worktree, '--base', red, '--head', head,
-    '--rigor', 'tdd-pair', '--role', 'green', '--locus', 'src/widget.mjs',
+    '--rigor', 'tdd-pair', '--role', 'green', '--expects', 'src/widget.mjs',
     '--test-file', 'test/widget.test.mjs',
     '--build', BUILD, '--typecheck-absent', '--suite', SUITE, '--test-one', TEST_ONE,
   ]))
 
   assert.equal(payload.stop_reason, 'completed')
-  assert.deepEqual(payload.series_findings, [], 'the green series touches only its own locus')
+  assert.deepEqual(payload.series_findings, [], 'the green series touches no test')
   assert.deepEqual(payload.discriminator, [
     { test_id: 'test/widget.test.mjs', adds_test: true, failed_on_base: true, passes_now: true },
   ], 'the red test fails at the red head and passes now')
@@ -142,7 +142,7 @@ test('a green leaf with no cycle tests named measures its own diff, finds none, 
 
   const payload = verify(parseArgs([
     '--worktree', worktree, '--base', red, '--head', head,
-    '--rigor', 'tdd-pair', '--role', 'green', '--locus', 'src/widget.mjs',
+    '--rigor', 'tdd-pair', '--role', 'green', '--expects', 'src/widget.mjs',
     '--build', BUILD, '--typecheck-absent', '--suite', SUITE, '--test-one', TEST_ONE,
   ]))
 
@@ -196,14 +196,14 @@ test('a tdd leaf that only keeps another test file up to date records it as upke
   git(worktree, 'commit', '-qam', 'test: pass the new argument at the base call site')
   const head = rev(worktree, 'HEAD')
 
-  const payload = verify(options({ worktree, base, head, extra: ['--rigor', 'tdd', '--locus', 'test/base.test.mjs'] }))
+  const payload = verify(options({ worktree, base, head, extra: ['--rigor', 'tdd', '--expects', 'test/base.test.mjs'] }))
 
   assert.equal(payload.stop_reason, 'completed', payload.notes)
   const byFile = Object.fromEntries(payload.discriminator.map((d) => [d.test_id, d]))
   assert.deepEqual(byFile['test/widget.test.mjs'], { test_id: 'test/widget.test.mjs', adds_test: true, failed_on_base: true, passes_now: true })
   assert.deepEqual(byFile['test/base.test.mjs'], { test_id: 'test/base.test.mjs', adds_test: false, failed_on_base: false, passes_now: true })
   assert.match(payload.notes, /1 of 2 test file\(s\) add a test case; upkeep, adding none: test\/base\.test\.mjs/)
-  assert.deepEqual(measurementOk(payload, normalizeNode({ id: 'w1', kind: 'leaf', rigor: 'tdd', locus: ['src/'] })).failures, [])
+  assert.deepEqual(measurementOk(payload, normalizeNode({ id: 'w1', kind: 'leaf', rigor: 'tdd', expects: ['src/'] })).failures, [])
 })
 
 test('addsTestCase: an added declaration adds a test case; a call site, a moved test or a regex does not', () => {

@@ -43,7 +43,7 @@ const ROUND_THREADS = [
 ]
 
 const leaf = (id) => ({
-  id, kind: 'leaf', title: 'do ' + id, rigor: 'tdd', locus: [id.split('/').join('-') + '.mjs'],
+  id, kind: 'leaf', title: 'do ' + id, rigor: 'tdd', expects: [id.split('/').join('-') + '.mjs'],
   acceptance: [{ text: id + ' works', check: 'node --test' }],
 })
 const composite = (id) => ({ id, kind: 'composite', title: 'folder ' + id })

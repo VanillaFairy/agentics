@@ -5,7 +5,7 @@
 //
 //   measureKey   one key per measurement input — the head, the worktree's status, the base, the
 //                mode, the rigor, the role, the producer, the commands, the mutations, the tests,
-//                the checks, the approved files, the locus, the fences, the held paths — and none
+//                the checks, the approved files, the expected files, the fences — and none
 //                for where or for whom the measurement is taken
 //   measure      the payload comes from a `lib/verify.mjs` child over a real linked worktree; the
 //                line it journals carries the key; the same key is not measured again, unless what
@@ -64,7 +64,7 @@ const KEYED = {
   build: 'node build.mjs', typecheck: '', suite: 'node --test', suiteFast: '', testOne: 'node --test {file}', scope: 'full',
   buildAbsent: false, typecheckAbsent: true, suiteAbsent: false, suiteFastAbsent: false,
   mutations: [{ file: 'src/a.mjs', find: 'a', replace: 'b' }], tests: ['test/a.test.mjs'], checks: ['node lint.mjs'],
-  approved: [{ file: 'test/a.test.mjs', sha: 's0' }], locus: ['src/a.mjs'], fences: {}, held: [],
+  approved: [{ file: 'test/a.test.mjs', sha: 's0' }], expects: ['src/a.mjs'], fences: {},
   worktree: '/w', node: 'n', branch: 'agentics/e--n', repo: '/r', effort: 'e', execution: '20260925-120000', key: '',
 }
 const STATUS = { status: { 'notes.txt': 'blob0' } }
@@ -85,9 +85,8 @@ const CHANGES = [
   ['the tests', { tests: ['test/b.test.mjs'] }],
   ['the checks', { checks: ['node other.mjs'] }],
   ['the approved files', { approved: [{ file: 'test/a.test.mjs', sha: 's1' }] }],
-  ['the locus', { locus: ['src/a.mjs', 'src/b.mjs'] }],
+  ['the expected files', { expects: ['src/a.mjs', 'src/b.mjs'] }],
   ['the fences', { fences: { abc1234: ['src/a.mjs'] } }],
-  ['the held paths', { held: ['src/c.mjs'] }],
 ]
 for (const [what, change] of CHANGES) {
   test('measureKey changes with ' + what, () => {

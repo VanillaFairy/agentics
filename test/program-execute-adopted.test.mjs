@@ -11,8 +11,8 @@ import { E, IMPL, T, claim, done, leafEntry, rootReview, ruling, rulings, specTe
 test('drift from adopted work is ruled first, on its own ruler thread, before any leaf runs', T, async (t) => {
   const w = world(t, {
     spec: specText([
-      leafEntry('p', { provides: 'api (src/api.txt)', locus: ['src/api.txt', 'src/p.txt'] }),
-      leafEntry('a', { locus: ['src/api.txt', 'src/a.txt'] }),
+      leafEntry('p', { provides: 'api (src/api.txt)', expects: ['src/api.txt', 'src/p.txt'] }),
+      leafEntry('a', { expects: ['src/api.txt', 'src/a.txt'] }),
       leafEntry('b', { consumes: 'api' }),
     ]),
   })

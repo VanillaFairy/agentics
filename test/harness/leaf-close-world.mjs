@@ -1,4 +1,4 @@
-// test/harness/leaf-close-world.mjs — the world builders the boundaries-leaf-close-outcome, -locus,
+// test/harness/leaf-close-world.mjs — the world builders the boundaries-leaf-close-outcome, -roles,
 // -breach, -measure, -decision, -escalation and -record tests share: a repository with a tree and
 // open leaves, a producer's stored return, `leafClose` run over it, and the readers of what the
 // close wrote. Nothing here runs at import.
@@ -137,13 +137,13 @@ export const planner = (id = 'c') => ({ id, kind: 'composite', title: id, author
 
 /** A tdd leaf `a` opened. */
 export function tdd(t, extra = {}) {
-  const w = world(t, [root(), lf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'], ...extra })])
+  const w = world(t, [root(), lf('a', { expects: ['src/a.mjs', 'test/a.test.mjs'], ...extra })])
   return { w, o: open(w, 'a') }
 }
 
 /** A tests-only leaf `t`, opened. */
-export function testsOnly(t, locus = ['test/more.test.mjs']) {
-  const w = world(t, [root(), lf('t', { rigor: 'tests-only', locus })])
+export function testsOnly(t, expects = ['test/more.test.mjs']) {
+  const w = world(t, [root(), lf('t', { rigor: 'tests-only', expects })])
   return { w, o: open(w, 't') }
 }
 
@@ -161,12 +161,12 @@ export const R_SURVIVES = { file: 'src/r.mjs', find: 'x * 2', replace: 'x + 2', 
  * A cycle: the red's test committed on its branch and approved, the green cut from that head with its
  * implementation committed, and, when `triad`, an audit cut from the green's head.
  */
-export function cycle(t, { triad = false, greenLocus = ['src/r.mjs'], greenFiles = { 'src/r.mjs': R_SRC }, redTest = R_TEST } = {}) {
+export function cycle(t, { triad = false, greenExpects = ['src/r.mjs'], greenFiles = { 'src/r.mjs': R_SRC }, redTest = R_TEST } = {}) {
   const rigor = triad ? 'tdd-triad' : 'tdd-pair'
   const w = world(t, [root(),
-    lf('r', { rigor, role: 'red', locus: ['test/r.test.mjs'] }),
-    lf('g', { rigor, role: 'green', deps: ['r'], locus: greenLocus }),
-    ...(triad ? [lf('au', { rigor, role: 'audit', deps: ['g'], locus: ['docs/audit.md'] })] : [])])
+    lf('r', { rigor, role: 'red', expects: ['test/r.test.mjs'] }),
+    lf('g', { rigor, role: 'green', deps: ['r'], expects: greenExpects }),
+    ...(triad ? [lf('au', { rigor, role: 'audit', deps: ['g'], expects: ['docs/audit.md'] })] : [])])
   const red = open(w, 'r')
   const redHead = commit(red.worktree, { 'test/r.test.mjs': redTest }, 'Pin r')
   const ok = approved('r', redHead, 1, false)
@@ -182,12 +182,12 @@ export const answered = (w, { node: id, thread, msg, payload = {}, round, from =
   w.xc.log.append('message', { node: id, thread, from, msg, payload, round }).seq
 
 /**
- * A leaf whose implementer committed work and a change outside its locus, under the user's folder or
+ * A leaf whose implementer committed work and a change it did not expect, under the user's folder or
  * a planner's. `work` is what the implementer committed beside the README edit.
  */
 export async function outside(t, { under = 'you', helper = false, failing = false, ret = DONE, noReadme = false } = {}) {
   const id = under === 'planner' ? 'c/a' : 'a'
-  const w = world(t, [root(), ...(under === 'planner' ? [planner()] : []), lf(id, { locus: ['src/a.mjs', 'test/a.test.mjs'] })])
+  const w = world(t, [root(), ...(under === 'planner' ? [planner()] : []), lf(id, { expects: ['src/a.mjs', 'test/a.test.mjs'] })])
   const o = open(w, id)
   const src = helper ? "import { h } from './helper.mjs'\nexport const a = () => h()\n" : failing ? 'export const a = () => 2\n' : A_SRC
   const files = { ...A_FILES, 'src/a.mjs': src, ...(helper ? { 'src/helper.mjs': 'export const h = () => 1\n' } : {}), ...(noReadme || helper ? {} : { 'README.md': 'hello\nedited\n' }) }

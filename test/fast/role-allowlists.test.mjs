@@ -33,7 +33,7 @@ const PINNED = {
     kind: 'judge', tools: ['Read'], commands: [],
     schemas: ['survey_plan', 'items', 'rejudge', 'axes', 'relocate', 'prober', 'frame', 'assessment', 'approach', 'investigate_tasks', 'investigate_report'],
   },
-  ruler: { kind: 'judge', tools: ['Read'], commands: [], schemas: ['ruler_premises', 'ruler_respec', 'ruler_convergence'] },
+  ruler: { kind: 'judge', tools: ['Read'], commands: [], schemas: ['ruler_premises', 'ruler_respec', 'ruler_convergence', 'ruler_contention'] },
   reviewer: { kind: 'judge', tools: ['Bash', 'Glob', 'Grep', 'Read'], commands: ['git diff', 'git log', 'git show'], schemas: ['reviewer'] },
   auditor: { kind: 'judge', tools: ['Glob', 'Grep', 'Read'], commands: [], schemas: ['auditor'] },
 }

@@ -1,7 +1,8 @@
 # Proposal: the locus becomes a scheduling hint
 
-Status: revised after its adversarial review (verdict and dispositions at the end), 2026-10-23.
-When it lands, `docs/DESIGN.md` describes the result and this file is deleted.
+Status: revised after its adversarial review (verdict and dispositions at the end), 2026-10-23;
+built on branch `locus-as-hint`, where `docs/DESIGN.md` (Role rules, The judge, Scheduling) now
+describes the result. Where the build settled a detail differently, "Built as" at the end says so.
 
 ## Why
 
@@ -234,3 +235,22 @@ result; the reviewer saw the first draft (commit `8f1c388`).
 | A10 | major | `/**` must not reach the main checkout or a sibling worktree, both of which contain the leaf worktree's path. | Probed: from a nested leaf worktree, writes to a sibling worktree, the main checkout and `<main>/.agentics/` were denied. Pinned in the host contract. |
 | A11 | minor | The migration misses other state the deletions make permanently wrong (breach-reverted held mutations, `locus_held`/`verify_oscillating` stops, pending `needs_locus` routes). | Accepted: the migration lists them for `retry` or replan. |
 | A12 | minor | Escalating every cycle `serialize` contradicts "reach the user only when it can't rule". | Gone with the move: serialize on a cycle only delays its merge; only a cycle's conflict escalates, as today. |
+
+## Built as
+
+Three details the build settled differently from the text above:
+
+- **The ruler runs on the folder being merged into**, not on the leaf: a `dispatched` event on an
+  approved leaf would read as its next round and make it active again.
+- **A replan goes through the program's replan**, as a ruler's `affected` does: under a planner's
+  folder a `premise_mismatch` request with the ruler's question; under the user's folder a
+  `needs_respec` park of the leaf with that question. There is no separate `contention` escalation
+  for a replan; `contention_unruled` and `merge_conflict` remain the two ways the judge reaches the
+  user. A unit ruled `replan` stays out of merges until its plan revised it.
+- **The migration states the signed line again** rather than writing a `carried` ledger kind: the
+  latest `approved` or `prepared` line, every field kept, at the new hash with `carried_from`
+  naming the old one. Compile, approval and the effort listing read signed lines by hash, so a new
+  kind would have needed a second reader in each.
+
+And one the build found: `ordered` (`lib/atomicity.mjs`) now follows a dependency on a whole folder,
+as `dependsOn` did, so a leaf that waits on another folder is no contention fact against its leaves.

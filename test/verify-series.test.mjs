@@ -80,7 +80,7 @@ test('a green series: build passes, suite passes, and the new test discriminates
   assert.equal(payload.build, 'passed')
   assert.equal(payload.suite, 'passed')
   assert.deepEqual(payload.failing_tests, [])
-  assert.deepEqual(payload.series_findings, [], 'both changed files are inside the declared locus')
+  assert.deepEqual(payload.series_findings, [], 'a writer may change both files')
   assert.deepEqual(payload.discriminator, [
     { test_id: 'test/widget.test.mjs', adds_test: true, failed_on_base: true, passes_now: true },
   ])
@@ -182,7 +182,7 @@ test('a changed test file with no way to run one test escalates instead of skipp
 
   const payload = verify(parseArgs([
     '--worktree', worktree, '--base', base, '--head', head,
-    '--locus', 'src/widget.mjs', '--locus', 'test/widget.test.mjs',
+    '--expects', 'src/widget.mjs', '--expects', 'test/widget.test.mjs',
     '--build', BUILD, '--typecheck-absent', '--suite', SUITE,
   ]))
 
@@ -206,18 +206,18 @@ test('a checkpoint trailer under an ordinary subject is still a blocking finding
   assert.equal(checkpoint.blocking, true)
 })
 
-test('a commit outside the declared locus is a blocking finding', (t) => {
+test("a green's own commit that changes a test is a blocking finding", (t) => {
   const { worktree, base, head } = order(t)
 
   const payload = verify(parseArgs([
-    '--worktree', worktree, '--base', base, '--head', head,
-    '--locus', 'test/widget.test.mjs',
+    '--worktree', worktree, '--base', base, '--head', head, '--rigor', 'tdd-pair', '--role', 'green',
     '--build', BUILD, '--typecheck-absent', '--suite', SUITE, '--test-one', TEST_ONE,
   ]))
 
-  const breach = payload.series_findings.find((f) => f.check === 'locus-breach')
-  assert.ok(breach)
-  assert.match(breach.message, /src\/widget\.mjs/)
+  const breach = payload.series_findings.find((f) => f.check === 'role-breach')
+  assert.ok(breach, JSON.stringify(payload.series_findings))
+  assert.equal(breach.blocking, true)
+  assert.match(breach.message, /test\/widget\.test\.mjs/)
 })
 
 // ---------------------------------------------------------------- the integration head
@@ -248,8 +248,8 @@ test('a test that fails at the base too is baseline, and a test the change broke
   const broken = (extra) => "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { label } from '../src/widget.mjs'\n" +
     "test('broken before', () => assert.fail('already broken'))\ntest('widget labels', () => assert.equal(typeof label, 'function'))\n" + extra
   const base = commit({ 'test/broken.test.mjs': broken('') }, 'Add a broken test')
-  const leaf = { rigor: 'trivial', locus: ['README.md', 'src/widget.mjs'] }
-  const measure = (head) => verify({ ...options({ worktree, base, head }), locus: leaf.locus, rigor: 'trivial', checks: [SUITE] })
+  const leaf = { rigor: 'trivial', expects: ['README.md', 'src/widget.mjs'] }
+  const measure = (head) => verify({ ...options({ worktree, base, head }), expects: leaf.expects, rigor: 'trivial', checks: [SUITE] })
 
   const readmeHead = commit({ 'README.md': 'changed\n' }, 'Touch the readme')
   const readme = measure(readmeHead)

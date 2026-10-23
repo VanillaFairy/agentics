@@ -36,7 +36,7 @@ function fresh(t) {
 /** A repository whose effort holds the folder `c` with the leaf `c/a`, and the leaf `b`. */
 function seeded(t) {
   const r = fresh(t)
-  seedTree(r, E, [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { locus: ['src/a.mjs'] }), leaf('b', { locus: ['src/b.mjs'] })])
+  seedTree(r, E, [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { expects: ['src/a.mjs'] }), leaf('b', { expects: ['src/b.mjs'] })])
   return r
 }
 

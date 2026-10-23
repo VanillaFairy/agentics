@@ -5,7 +5,7 @@ import { outsideWorkOf, reviewOf, schedule, summarize } from '../../lib/schedule
 import { deriveStatus, liveNodes } from '../../lib/tree.mjs'
 import { flat } from '../../lib/store.mjs'
 
-const leaf = (id, extra = {}) => ({ id, kind: 'leaf', title: 'do ' + id, rigor: 'tdd', locus: ['src/' + flat(id) + '.js'], ...extra })
+const leaf = (id, extra = {}) => ({ id, kind: 'leaf', title: 'do ' + id, rigor: 'tdd', expects: ['src/' + flat(id) + '.js'], ...extra })
 const folder = (id, extra = {}) => ({ id, kind: 'composite', title: 'folder ' + id, ...extra })
 
 /** An effort on disk, in memory: node records, then events, one seq each in that order. */
@@ -46,10 +46,30 @@ test('a leaf behind an escalated dependency, directly or through another, does n
   assert.deepEqual(s.blocked, [{ blocked_by: 'a', leaves_n: 2 }])
 })
 
-test('a leaf whose files another leaf holds does not launch and is counted behind the holder', () => {
-  const input = effort([folder('.'), leaf('a'), leaf('b')], [], { lockedBy: (id) => (id === 'b' ? 'z' : '') })
-  assert.deepEqual(leafIds(input), ['a'])
-  assert.deepEqual(summarize(input).blocked, [{ blocked_by: 'z', leaves_n: 1 }])
+test('a leaf that expects a file a running or approved unmerged leaf expects waits, and launches once that one merged', () => {
+  const nodes = [folder('.'), leaf('a', { expects: ['src/x.js'] }), leaf('b', { expects: ['src/x.js', 'src/b.js'] }), leaf('c')]
+  assert.deepEqual(leafIds(effort(nodes, [], { running: ['leaf:a'] })), ['c'])
+  const approved = [{ kind: 'dispatched', node: 'a' }, { kind: 'approved', node: 'a' }]
+  assert.deepEqual(leafIds(effort(nodes, approved, { running: ['leaf:c'] })), [])
+  assert.deepEqual(leafIds(effort(nodes, [...approved, { kind: 'merged', node: 'a' }])), ['b', 'c'])
+})
+
+test('of two ready leaves that expect one file, one launches per pass', () => {
+  const nodes = [folder('.'), leaf('a', { expects: ['src/'] }), leaf('b', { expects: ['src/x.js'] }), leaf('c', { expects: ['lib/c.js'] })]
+  assert.deepEqual(leafIds(effort(nodes)), ['a', 'c'])
+})
+
+test('a dependency orders two leaves that expect one file, so neither defers the other', () => {
+  const nodes = [folder('.'), leaf('r', { rigor: 'tdd-pair', role: 'red', expects: ['src/x.js'] }), leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], expects: ['src/x.js'] })]
+  assert.deepEqual(leafIds(effort(nodes, [{ kind: 'dispatched', node: 'r' }, { kind: 'approved', node: 'r' }])), ['g'])
+})
+
+test('a deferral is advisory: a leaf deferred behind work nothing in this execution runs launches when nothing else would', () => {
+  const nodes = [folder('.'), folder('x'), leaf('x/a', { expects: ['src/x.js'] }), folder('y'), leaf('y/b', { expects: ['src/x.js'] })]
+  const elsewhere = [{ kind: 'dispatched', node: 'x/a', execution: 'other' }]
+  assert.deepEqual(leafIds(effort(nodes, elsewhere, { root: 'y' })), ['y/b'], 'x/a stands active in another execution and nothing here runs')
+  assert.deepEqual(leafIds(effort(nodes, elsewhere, { root: 'y', running: ['plan:z'] })), [], 'while anything runs here, it waits')
+  assert.deepEqual(summarize(effort(nodes, elsewhere, { root: 'y' })).blocked, [], 'a deferral blocks nothing and escalates nothing')
 })
 
 test('leaves launch up to the pool less the leaves running, and none while stopping', () => {

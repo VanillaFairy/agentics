@@ -21,7 +21,7 @@ export const CLI = fileURLToPath(new URL('../../lib/status.mjs', import.meta.url
 export const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8' }).trim()
 
 export const leaf = (id, extra = {}) => ({
-  id, title: 'do ' + id, kind: 'leaf', rigor: 'trivial', locus: ['src/' + id.split('/').join('-') + '.js'],
+  id, title: 'do ' + id, kind: 'leaf', rigor: 'trivial', expects: ['src/' + id.split('/').join('-') + '.js'],
   acceptance: [{ text: id + ' works', check: 'true' }], deps: [], ...extra,
 })
 export const composite = (id, extra = {}) => ({ id, title: 'folder ' + id, kind: 'composite', deps: [], ...extra })
@@ -54,7 +54,7 @@ export const ROOT_SPEC = [
   '## Plan', '',
   '- **a** — sub-effort · realises: D1',
   '  Build a.',
-  '- **c** — task · realises: D2 · rigor: trivial · locus: src/c.js',
+  '- **c** — task · realises: D2 · rigor: trivial · expects: src/c.js',
   '  Do c.',
   '  - [ ] c works — check: `true`',
   '',
@@ -77,13 +77,13 @@ export const A_SPEC = [
   '## Design', '',
   'As planned.', '',
   '## Plan', '',
-  '- **impl** — task · realises: a.D1 · rigor: trivial · locus: src/impl.js',
+  '- **impl** — task · realises: a.D1 · rigor: trivial · expects: src/impl.js',
   '  Implement it.',
   '  - [ ] impl works — check: `true`',
-  '- **fix** — task · realises: a.D2 · rigor: trivial · locus: src/fix.js · after: impl',
+  '- **fix** — task · realises: a.D2 · rigor: trivial · expects: src/fix.js · after: impl',
   '  Fix it.',
   '  - [ ] fix works — check: `true`',
-  '- **wait** — task · realises: a.D3 · rigor: trivial · locus: src/wait.js',
+  '- **wait** — task · realises: a.D3 · rigor: trivial · expects: src/wait.js',
   '  Wait for it.',
   '  - [ ] wait works — check: `true`',
   '',

@@ -5,7 +5,7 @@
 //
 // What is pinned here:
 //
-//   the tick loop  faults that hold a leaf without crowding out the pool, a leaf held by a locus, a
+//   the tick loop  faults that hold a leaf without crowding out the pool, a leaf beside a stopped one, a
 //                  leaf that finds no slot, pause, the budget
 //   stops          a stop carried from an earlier run and a stop answered while the run goes on
 //
@@ -49,18 +49,16 @@ describe('the execute program', { concurrency: 4 }, () => {
     assert.equal(res.coverage.complete, false)
   })
 
-  test('a leaf whose files another leaf holds is reported blocked by its holder, at no dispatch', T, async (t) => {
-    const w = world(t, { spec: specText([leafEntry('z', { locus: ['src/z.txt', 'src/b.txt'] }), leafEntry('b')]) })
+  test('a leaf that expects a file a stopped leaf expects runs all the same: an expectation blocks nothing', T, async (t) => {
+    const w = world(t, { spec: specText([leafEntry('z', { expects: ['src/z.txt', 'src/b.txt'] }), leafEntry('b')]) })
     const { rig } = w
-    const held = await acquireAsync(rig.repo, { effort: E, execution: rig.stamp, node: 'z', locus: ['src/z.txt', 'src/b.txt'], waitMs: 0 })
-    assert.equal(held.ok, true, JSON.stringify(held))
     rig.log.append('escalated', { node: 'z', reason: 'blocked', detail: 'stopped before the run' })
-    w.script({})
+    w.script({ [IMPL('b')]: [done()] })
     const res = await w.run()
 
-    assert.deepEqual(res.blocked, [{ blocked_by: 'z', leaves_n: 1 }])
-    assert.equal(w.calls.length, 0, 'no call at all')
-    assert.equal(res.coverage.complete, false)
+    assert.deepEqual(res.blocked, [])
+    assert.deepEqual(w.calls.filter((c) => c.role.name === 'implementer').map((c) => c.node), ['b'])
+    assert.equal(res.coverage.complete, false, 'z is still stopped')
   })
 
   test('a leaf that finds no slot waits in the tick loop, then runs once one frees', T, async (t) => {
@@ -69,7 +67,7 @@ describe('the execute program', { concurrency: 4 }, () => {
     })
     const { rig } = w
     rig.log.append('escalated', { node: 'z', reason: 'blocked', detail: 'stopped before the run' })
-    const held = await acquireAsync(rig.repo, { effort: E, execution: '20250101-000000', node: 'x', locus: ['src/x.txt'], waitMs: 0 })
+    const held = await acquireAsync(rig.repo, { effort: E, execution: '20250101-000000', node: 'x', waitMs: 0 })
     assert.equal(held.ok, true, JSON.stringify(held))
     w.script({ [IMPL('b')]: [done()] })
     const sleepsAtFirstCall = []

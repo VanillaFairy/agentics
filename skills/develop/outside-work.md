@@ -41,7 +41,8 @@ Show, as printed:
 
 1. `unaccounted`: commits on the folder's branch this mapping still leaves out. The next run stops
    at `outside_work` again until they are adopted too.
-2. `outside_locus`: files an adopted leaf's commits touch that its locus does not admit.
+2. `role_breach`: files an adopted leaf's commits touch that its role may not change (a test on a
+   green, anything under `.agentics/`).
 3. `clears_stops`: escalations and parks this adoption overrides.
 4. `deps_open`: dependencies of an adopted leaf that are neither merged nor adopted.
 5. `criteria`: each adopted leaf's criteria, which the folder's integration review will rule on.

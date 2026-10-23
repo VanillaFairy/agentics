@@ -99,7 +99,7 @@ describe('the leaf unit', { concurrency: 4 }, () => {
 
   test('two leaves that find no command at once share one investigator', T, async (t) => {
     const w = world(t, {
-      leaves: [leafEntry('b', { locus: ['src/b.txt'] }), leafEntry('c', { locus: ['src/c.txt'] })],
+      leaves: [leafEntry('b', { expects: ['src/b.txt'] }), leafEntry('c', { expects: ['src/c.txt'] })],
       commands: {},
     })
     w.job('implementer|b#1', (cwd) => work(cwd, { 'src/b.txt': 'ok\n' }, 'make b'))

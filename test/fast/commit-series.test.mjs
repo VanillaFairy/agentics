@@ -33,9 +33,6 @@
 //     naming its own file (case 8).
 //   * `squash!` IS a wip subject. The regex is
 //     /^(wip\b|fixup!|squash!|temp\b|tmp\b)/i — see the note above case 10.
-//   * An empty locus `[]` permits NOTHING: every file touched is a breach.
-//   * Locus comparison is case-SENSITIVE, and a locus entry never stands for a directory
-//     prefix.
 //   * `empty-commit` does NOT suppress the subject checks on the same commit (case 14).
 //   * `parseLog` returns paths and subjects VERBATIM. Separator normalisation belongs to
 //     `analyzeSeries` at comparison time, so a parseLog fixture may now contain a
@@ -46,10 +43,6 @@
 //   * `subject-length` counts UTF-16 code units, i.e. plain JS `String.length`
 //     (case 12).
 //
-// One of those pins behaviour accepted with eyes open rather than behaviour anyone would
-// call obviously right: case-sensitive locus comparison is a known hazard on Windows and
-// macOS, accepted as exactly that. It is pinned so that changing it means reopening the
-// decision, not quietly "fixing" a test.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -90,7 +83,6 @@ function subjectOfLength(n) {
   return s
 }
 
-const LOCUS = ['lib/commit-series.mjs', 'test/commit-series.test.mjs']
 
 // =========================================================================================
 // parseLog
@@ -102,7 +94,7 @@ const TWO_COMMITS =
   `\x01${SHA_A}\x02add the commit series parser\n` +
   '\n' +
   'lib/commit-series.mjs\n' +
-  `\x01${SHA_B}\x02cover the locus checks\n` +
+  `\x01${SHA_B}\x02cover the series checks\n` +
   '\n' +
   'test/commit-series.test.mjs\n' +
   'lib/commit-series.mjs\n'
@@ -117,7 +109,7 @@ test('a two-commit log parses to two records, oldest first, split on the delimit
     },
     {
       sha: SHA_B,
-      subject: 'cover the locus checks',
+      subject: 'cover the series checks',
       trailers: '',
       files: ['test/commit-series.test.mjs', 'lib/commit-series.mjs'],
     },
@@ -150,13 +142,13 @@ test('a commit with no file lines gets an empty files array', () => {
   // This is the real merge-commit shape: header line, newline, then straight to the next
   // \x01. A parser that assumes a blank line is always there swallows the record after it.
   const text = record(SHA_A, 'merge: T01', []) +
-    record(SHA_B, 'cover the locus checks', ['test/commit-series.test.mjs'])
+    record(SHA_B, 'cover the series checks', ['test/commit-series.test.mjs'])
 
   assert.deepEqual(parseLog(text), [
     { sha: SHA_A, subject: 'merge: T01', trailers: '', files: [] },
     {
       sha: SHA_B,
-      subject: 'cover the locus checks',
+      subject: 'cover the series checks',
       trailers: '',
       files: ['test/commit-series.test.mjs'],
     },
@@ -187,7 +179,7 @@ test('extra blank lines and trailing newlines parse identically to the canonical
     '\n' +
     'lib/commit-series.mjs\n' +
     '\n' +
-    `\x01${SHA_B}\x02cover the locus checks\n` +
+    `\x01${SHA_B}\x02cover the series checks\n` +
     '\n' +
     'test/commit-series.test.mjs\n' +
     'lib/commit-series.mjs\n' +
@@ -253,30 +245,30 @@ test('an all-whitespace line is a file path, and it keeps its whitespace', () =>
 
 // --- case 13: the clean case, first ------------------------------------------------------
 
-test('a clean two-commit series inside its locus produces no findings', () => {
+test('a clean two-commit series produces no findings', () => {
   // A checker that flags everything passes every "it flags X" test below. This is the one
   // that stops it.
   const commits = [
     commit(SHA_A, 'add the commit series parser', ['lib/commit-series.mjs']),
-    commit(SHA_B, 'cover the locus checks', [
+    commit(SHA_B, 'cover the series checks', [
       'test/commit-series.test.mjs',
       'lib/commit-series.mjs',
     ]),
   ]
 
-  assert.deepEqual(analyzeSeries(commits, LOCUS), [])
+  assert.deepEqual(analyzeSeries(commits), [])
 })
 
 // --- case 6: empty series ----------------------------------------------------------------
 
 test('zero commits is one blocking empty-series finding with an empty sha', () => {
-  const found = analyzeSeries([], LOCUS)
+  const found = analyzeSeries([])
 
   assert.deepEqual(idsOf(found), [' empty-series true'])
 })
 
 test('the empty-series finding carries a message of its own', () => {
-  const found = analyzeSeries([], LOCUS)
+  const found = analyzeSeries([])
 
   assert.equal(typeof found[0].message, 'string')
   assert.ok(found[0].message.trim().length > 0, 'empty-series message was blank')
@@ -285,7 +277,7 @@ test('the empty-series finding carries a message of its own', () => {
 // --- case 7: empty commit ----------------------------------------------------------------
 
 test('a commit that touches no files is a blocking empty-commit finding', () => {
-  const found = analyzeSeries([commit(SHA_A, 'add the parser', [])], LOCUS)
+  const found = analyzeSeries([commit(SHA_A, 'add the parser', [])])
 
   assert.deepEqual(idsOf(found), [`${SHA_A} empty-commit true`])
 })
@@ -293,193 +285,60 @@ test('a commit that touches no files is a blocking empty-commit finding', () => 
 test('a series holding one real commit is not an empty series', () => {
   // empty-series is about the SERIES; empty-commit is about a COMMIT. Conflating them
   // makes a one-empty-commit series report both.
-  const found = analyzeSeries([commit(SHA_A, 'add the parser', [])], LOCUS)
+  const found = analyzeSeries([commit(SHA_A, 'add the parser', [])])
 
   assert.deepEqual(found.filter((f) => f.check === 'empty-series'), [])
 })
 
-// --- case 8: locus breach ----------------------------------------------------------------
+// --- case 8: role breach ----------------------------------------------------------------
 
-test('a commit touching a file outside the locus is a blocking locus-breach', () => {
+test('a writer may touch any file but the store', () => {
+  const commits = [commit(SHA_A, 'add the parser', ['lib/commit-series.mjs', 'test/commit-series.test.mjs', 'docs/notes.md'])]
+
+  assert.deepEqual(analyzeSeries(commits, { writes: 'all' }), [])
+})
+
+test('a commit touching the store is a blocking role-breach naming the file', () => {
+  const commits = [commit(SHA_A, 'add the parser', ['lib/commit-series.mjs', '.agentics/e1/DESIGN.md'])]
+
+  const found = only(analyzeSeries(commits), 'role-breach')
+  assert.equal(found.sha, SHA_A)
+  assert.equal(found.blocking, true)
+  assert.ok(found.message.includes('.agentics/e1/DESIGN.md'), found.message)
+})
+
+test('a commit of a producer barred from tests touching a test is a role-breach, one per file', () => {
+  const commits = [commit(SHA_A, 'make it pass', ['lib/commit-series.mjs', 'test/a.test.mjs', 'src/b_test.go'])]
+
+  const found = analyzeSeries(commits, { writes: 'no-tests' })
+  assert.deepEqual(idsOf(found), [`${SHA_A} role-breach true`, `${SHA_A} role-breach true`])
+  assert.deepEqual(found.map((f) => f.message.includes('test/a.test.mjs') || f.message.includes('src/b_test.go')), [true, true])
+})
+
+test('a commit of a test round touching a source file is a role-breach', () => {
+  const commits = [commit(SHA_A, 'pin the parser', ['test/a.test.mjs', 'lib/commit-series.mjs'])]
+
+  const found = only(analyzeSeries(commits, { writes: 'tests' }), 'role-breach')
+  assert.ok(found.message.includes('lib/commit-series.mjs'), found.message)
+})
+
+test('a fenced commit is held to its own rule, and every other commit to the leaf\'s', () => {
   const commits = [
-    commit(SHA_A, 'add the parser', ['lib/commit-series.mjs', 'docs/notes.md']),
+    commit(SHA_A, 'implement the parser', ['lib/commit-series.mjs']),
+    commit(SHA_B, 'pin the parser', ['test/table.test.mjs']),
+    commit(SHA_C, 'touch a test too', ['test/table.test.mjs']),
   ]
 
-  assert.deepEqual(idsOf(analyzeSeries(commits, LOCUS)), [`${SHA_A} locus-breach true`])
-})
-
-test('the locus-breach message names the offending file', () => {
-  // The verifier copies this message into its report verbatim; a message that says only
-  // "outside the locus" makes a human open the diff to learn anything.
-  const commits = [
-    commit(SHA_A, 'add the parser', ['lib/commit-series.mjs', 'docs/notes.md']),
-  ]
-  const found = only(analyzeSeries(commits, LOCUS), 'locus-breach')
-
-  assert.ok(
-    found.message.includes('docs/notes.md'),
-    `message did not name the file: ${JSON.stringify(found.message)}`,
-  )
-})
-
-test('a fenced commit is held to its own locus, and every other commit to the leaf\'s', () => {
-  // A green's test-author commit writes a test the green's locus excludes; the implementer's
-  // commits stay held to the green's locus, so neither producer can write the other's files.
-  const commits = [
-    commit(SHA_A, 'add the parser', ['lib/commit-series.mjs', 'test/table.test.mjs']),
-    commit(SHA_B, 'pin the table', ['test/table.test.mjs']),
-  ]
-  const found = analyzeSeries(commits, ['lib/commit-series.mjs'], { [SHA_B]: ['test/table.test.mjs'] })
-  assert.deepEqual(idsOf(found), [`${SHA_A} locus-breach true`])
-  assert.match(found[0].message, /test\/table\.test\.mjs/)
-})
-
-/** The multi-file breach fixture, shared by the two tests below so they cannot drift. */
-const BREACHES_TWICE = [
-  commit(SHA_A, 'add the parser', [
-    'lib/commit-series.mjs',
-    'docs/notes.md',
-    'bin/cli.mjs',
-  ]),
-]
-
-test('a commit breaching on two files gives one locus-breach finding per file', () => {
-  // Every other breach fixture in this file touches exactly one file outside the locus, so
-  // an implementation that folds a multi-file breach into a single combined finding — or
-  // that stops at the first offender it meets — sails past all of them.
-  assert.deepEqual(idsOf(analyzeSeries(BREACHES_TWICE, LOCUS)), [
-    `${SHA_A} locus-breach true`,
-    `${SHA_A} locus-breach true`,
-  ])
-})
-
-test('each of those findings names its own offending file, one file per message', () => {
-  // A per-file finding is only worth having if its message says which file it is about.
-  // Sorted before comparing: which finding comes back first is not contract.
-  const offenders = ['bin/cli.mjs', 'docs/notes.md'] // already in sort order
-
-  const named = analyzeSeries(BREACHES_TWICE, LOCUS)
-    .filter((f) => f.check === 'locus-breach')
-    .map((f) => {
-      const hits = offenders.filter((p) => f.message.includes(p))
-      assert.equal(
-        hits.length,
-        1,
-        `each message should name exactly one offender: ${JSON.stringify(f.message)}`,
-      )
-      return hits[0]
-    })
-
-  assert.deepEqual(named.sort(), offenders)
-})
-
-test('a path that merely starts with a locus entry is still outside the locus', () => {
-  // `lib/commit-series.mjs.bak` is not `lib/commit-series.mjs` under any reading, and it
-  // is what a `locus.some(l => file.startsWith(l))` implementation waves through.
-  const commits = [commit(SHA_A, 'add the parser', ['lib/commit-series.mjs.bak'])]
-
-  assert.deepEqual(idsOf(analyzeSeries(commits, LOCUS)), [`${SHA_A} locus-breach true`])
-})
-
-test('a locus entry that merely starts with the touched path does not cover it', () => {
-  // The mirror of the test above, against `locus.some(l => l.startsWith(file))`.
-  const commits = [commit(SHA_A, 'add the parser', ['lib/commit-series'])]
-
-  assert.deepEqual(idsOf(analyzeSeries(commits, LOCUS)), [`${SHA_A} locus-breach true`])
-})
-
-test('a locus entry ending in / holds every file under it, at any depth', () => {
-  // Spec check and compile accept a directory entry; read as an exact path it matched nothing
-  // under it, and every commit touching one was a blocking breach no commit could avoid.
-  const commits = [commit(SHA_A, 'pass the new id', ['tests/unit/foundations/schemes.test.ts', 'tests/unit/foundations/deep/a.test.ts'])]
-
-  assert.deepEqual(analyzeSeries(commits, ['tests/unit/foundations/']), [])
-})
-
-test('a directory entry does not hold a sibling that only shares its prefix', () => {
-  const commits = [commit(SHA_A, 'pass the new id', ['tests/unit/foundations-old/a.test.ts'])]
-
-  assert.deepEqual(idsOf(analyzeSeries(commits, ['tests/unit/foundations/'])), [`${SHA_A} locus-breach true`])
-})
-
-test('an entry without the trailing / is a file, never a directory', () => {
-  const commits = [commit(SHA_A, 'pass the new id', ['tests/unit/foundations/a.test.ts'])]
-
-  assert.deepEqual(idsOf(analyzeSeries(commits, ['tests/unit/foundations'])), [`${SHA_A} locus-breach true`])
-})
-
-// --- an empty locus permits nothing ------------------------------------------------------
-
-/** Two ordinary in-tree files, judged against a locus that declares nothing at all. */
-const EMPTY_LOCUS_COMMITS = [
-  commit(SHA_A, 'add the parser', ['lib/a.mjs', 'lib/b.mjs']),
-]
-
-test('with an empty locus every file a commit touches is a breach', () => {
-  // The locus enumerates every file an order may touch, so `[]` permits nothing.
-  // The other reading — `[]` means "no constraint" — silently disables the one fence this
-  // check exists to provide, and every other analyzeSeries fixture in this file hands over
-  // a non-empty locus, so nothing else here would notice.
-  assert.deepEqual(idsOf(analyzeSeries(EMPTY_LOCUS_COMMITS, [])), [
-    `${SHA_A} locus-breach true`,
-    `${SHA_A} locus-breach true`,
-  ])
-})
-
-test('each of those two breaches names one of the two files', () => {
-  const offenders = ['lib/a.mjs', 'lib/b.mjs'] // already in sort order
-
-  const named = analyzeSeries(EMPTY_LOCUS_COMMITS, [])
-    .map((f) => {
-      const hits = offenders.filter((p) => f.message.includes(p))
-      assert.equal(
-        hits.length,
-        1,
-        `each message should name exactly one offender: ${JSON.stringify(f.message)}`,
-      )
-      return hits[0]
-    })
-
-  assert.deepEqual(named.sort(), offenders)
-})
-
-test('no commits and an empty locus is still just the empty-series finding', () => {
-  // The two empty inputs are different questions and must stay distinct: an empty SERIES
-  // is one finding about the series, an empty LOCUS is a fence that nothing can pass.
-  assert.deepEqual(idsOf(analyzeSeries([], [])), [' empty-series true'])
-})
-
-// --- locus comparison is case-sensitive --------------------------------------------------
-
-test('a path that differs from its locus entry only in case is outside the locus', () => {
-  // Exact string equality: no casefolding anywhere.
-  //
-  // This pins a hazard accepted KNOWINGLY, not a behaviour anyone thinks is ideal. On
-  // Windows and macOS `LIB/Commit-Series.mjs` and `lib/commit-series.mjs` are the same file
-  // on disk, a known hazard accepted deliberately — changing it means changing the
-  // independence contract itself. The test
-  // exists so that a later reader who finds the behaviour surprising has to reopen the
-  // decision rather than quietly relax a comparison.
-  const commits = [commit(SHA_A, 'add the parser', ['LIB/Commit-Series.mjs'])]
-
-  assert.deepEqual(idsOf(analyzeSeries(commits, ['lib/commit-series.mjs'])), [
-    `${SHA_A} locus-breach true`,
-  ])
+  const found = analyzeSeries(commits, { writes: 'no-tests', fences: { [SHA_B]: 'tests' } })
+  assert.deepEqual(idsOf(found), [`${SHA_C} role-breach true`])
 })
 
 // --- case 9: separator normalisation -----------------------------------------------------
 
-test('a commit path written with backslashes matches a POSIX locus entry', () => {
-  const commits = [commit(SHA_A, 'add the parser', ['lib\\commit-series.mjs'])]
+test('a commit path written with backslashes is read as the POSIX path it names', () => {
+  const commits = [commit(SHA_A, 'add the parser', ['.agentics\\e1\\x.json'])]
 
-  assert.deepEqual(analyzeSeries(commits, LOCUS), [])
-})
-
-test('a locus entry written with backslashes matches a POSIX commit path', () => {
-  // The comparison normalises; neither side is trusted to arrive clean.
-  const commits = [commit(SHA_A, 'add the parser', ['lib/commit-series.mjs'])]
-
-  assert.deepEqual(analyzeSeries(commits, ['lib\\commit-series.mjs']), [])
+  assert.deepEqual(idsOf(analyzeSeries(commits)), [`${SHA_A} role-breach true`])
 })
 
 // --- case 10: wip subjects ---------------------------------------------------------------
@@ -503,7 +362,7 @@ test('WIP, fixup! and tmp subjects are each a blocking wip-subject finding', () 
     commit(SHA_C, 'tmp thing', ['lib/commit-series.mjs']),
   ]
 
-  assert.deepEqual(idsOf(analyzeSeries(commits, LOCUS)), [
+  assert.deepEqual(idsOf(analyzeSeries(commits)), [
     `${SHA_A} wip-subject true`,
     `${SHA_B} wip-subject true`,
     `${SHA_C} wip-subject true`,
@@ -513,7 +372,7 @@ test('WIP, fixup! and tmp subjects are each a blocking wip-subject finding', () 
 test('the wip prefixes are matched without regard to case', () => {
   const commits = [commit(SHA_A, 'Temp file cleanup', ['lib/commit-series.mjs'])]
 
-  assert.deepEqual(idsOf(analyzeSeries(commits, LOCUS)), [`${SHA_A} wip-subject true`])
+  assert.deepEqual(idsOf(analyzeSeries(commits)), [`${SHA_A} wip-subject true`])
 })
 
 test('a subject that merely begins with those letters is not a wip subject', () => {
@@ -524,7 +383,7 @@ test('a subject that merely begins with those letters is not a wip subject', () 
     commit(SHA_B, 'template rendering for the report', ['lib/commit-series.mjs']),
   ]
 
-  assert.deepEqual(analyzeSeries(commits, LOCUS), [])
+  assert.deepEqual(analyzeSeries(commits), [])
 })
 
 test('a squash! subject is a blocking wip-subject finding', () => {
@@ -532,7 +391,7 @@ test('a squash! subject is a blocking wip-subject finding', () => {
   // `fixup!`, and nothing else in this subject could trip a check.
   const commits = [commit(SHA_A, 'squash! rework the parser', ['lib/commit-series.mjs'])]
 
-  assert.deepEqual(idsOf(analyzeSeries(commits, LOCUS)), [`${SHA_A} wip-subject true`])
+  assert.deepEqual(idsOf(analyzeSeries(commits)), [`${SHA_A} wip-subject true`])
 })
 
 test('the bare squash! prefix is what matches, not the words following it', () => {
@@ -540,7 +399,7 @@ test('the bare squash! prefix is what matches, not the words following it', () =
   // thing that can be doing the matching.
   const commits = [commit(SHA_A, 'squash! x', ['lib/commit-series.mjs'])]
 
-  assert.deepEqual(idsOf(analyzeSeries(commits, LOCUS)), [`${SHA_A} wip-subject true`])
+  assert.deepEqual(idsOf(analyzeSeries(commits)), [`${SHA_A} wip-subject true`])
 })
 
 // --- case 10b: checkpoint commits ----------------------------------------------------------
@@ -558,10 +417,10 @@ test('the bare squash! prefix is what matches, not the words following it', () =
 test('a checkpoint subject is a blocking finding at verification time', () => {
   const commits = [
     commit(SHA_A, 'feat: the parser', ['lib/commit-series.mjs']),
-    commit(SHA_B, 'checkpoint: half of the locus checks', ['lib/commit-series.mjs']),
+    commit(SHA_B, 'checkpoint: half of the series checks', ['lib/commit-series.mjs']),
   ]
 
-  assert.deepEqual(idsOf(analyzeSeries(commits, LOCUS)),
+  assert.deepEqual(idsOf(analyzeSeries(commits)),
     [`${SHA_B} checkpoint-commit true`])
 })
 
@@ -573,13 +432,13 @@ test('the trailer alone is enough — a reworded subject does not hide a checkpo
     { sha: SHA_A, subject: 'feat: most of the parser', trailers: 'W3', files: ['lib/commit-series.mjs'] },
   ]
 
-  assert.deepEqual(idsOf(analyzeSeries(commits, LOCUS)), [`${SHA_A} checkpoint-commit true`])
+  assert.deepEqual(idsOf(analyzeSeries(commits)), [`${SHA_A} checkpoint-commit true`])
 })
 
 test('the checkpoint prefix is matched without regard to case', () => {
   const commits = [commit(SHA_A, 'Checkpoint: stopping here', ['lib/commit-series.mjs'])]
 
-  assert.deepEqual(idsOf(analyzeSeries(commits, LOCUS)), [`${SHA_A} checkpoint-commit true`])
+  assert.deepEqual(idsOf(analyzeSeries(commits)), [`${SHA_A} checkpoint-commit true`])
 })
 
 test('a dissolved series carries no checkpoint and no finding', () => {
@@ -587,10 +446,10 @@ test('a dissolved series carries no checkpoint and no finding', () => {
   // fields, nothing to dissolve.
   const commits = [
     { sha: SHA_A, subject: 'feat: the parser', trailers: '', files: ['lib/commit-series.mjs'] },
-    { sha: SHA_B, subject: 'test: cover the locus checks', trailers: '', files: ['test/commit-series.test.mjs'] },
+    { sha: SHA_B, subject: 'test: cover the series checks', trailers: '', files: ['test/commit-series.test.mjs'] },
   ]
 
-  assert.deepEqual(analyzeSeries(commits, LOCUS), [])
+  assert.deepEqual(analyzeSeries(commits), [])
 })
 
 test('a subject merely mentioning a checkpoint is not one', () => {
@@ -598,13 +457,13 @@ test('a subject merely mentioning a checkpoint is not one', () => {
   // prose about checkpoints is ordinary work.
   const commits = [commit(SHA_A, 'feat: checkpoint the parser state', ['lib/commit-series.mjs'])]
 
-  assert.deepEqual(analyzeSeries(commits, LOCUS), [])
+  assert.deepEqual(analyzeSeries(commits), [])
 })
 
 test('the checkpoint finding names the commit a human has to go and look at', () => {
   const commits = [commit(SHA_A, 'checkpoint: stopped mid-series', ['lib/commit-series.mjs'])]
 
-  const found = only(analyzeSeries(commits, LOCUS), 'checkpoint-commit')
+  const found = only(analyzeSeries(commits), 'checkpoint-commit')
   assert.ok(found.message.includes(SHA_A))
   assert.ok(found.message.includes('checkpoint: stopped mid-series'))
 })
@@ -636,7 +495,7 @@ test('a wip word further along the subject line does not make it a wip subject',
     commit(SHA_E, 'add squash! detection', ['lib/commit-series.mjs']),
   ]
 
-  assert.deepEqual(analyzeSeries(commits, LOCUS), [])
+  assert.deepEqual(analyzeSeries(commits), [])
 })
 
 // --- case 11: the AND test ---------------------------------------------------------------
@@ -644,7 +503,7 @@ test('a wip word further along the subject line does not make it a wip subject',
 test('a subject joining two concerns with " and " is an advisory and-subject finding', () => {
   const commits = [commit(SHA_A, 'fix parser and update docs', ['lib/commit-series.mjs'])]
 
-  assert.deepEqual(idsOf(analyzeSeries(commits, LOCUS)), [`${SHA_A} and-subject false`])
+  assert.deepEqual(idsOf(analyzeSeries(commits)), [`${SHA_A} and-subject false`])
 })
 
 test('the letters "and" inside a word do not trip the AND test', () => {
@@ -655,7 +514,7 @@ test('the letters "and" inside a word do not trip the AND test', () => {
     commit(SHA_B, 'add sandbox support', ['lib/commit-series.mjs']),
   ]
 
-  assert.deepEqual(analyzeSeries(commits, LOCUS), [])
+  assert.deepEqual(analyzeSeries(commits), [])
 })
 
 test('a capitalised " And " does not trip the AND test', () => {
@@ -665,7 +524,7 @@ test('a capitalised " And " does not trip the AND test', () => {
   // half of this pair is the first test in this section.
   const commits = [commit(SHA_A, 'Fix parser And update docs', ['lib/commit-series.mjs'])]
 
-  assert.deepEqual(analyzeSeries(commits, LOCUS), [])
+  assert.deepEqual(analyzeSeries(commits), [])
 })
 
 // --- case 12: subject length -------------------------------------------------------------
@@ -673,7 +532,7 @@ test('a capitalised " And " does not trip the AND test', () => {
 test('an 80-character subject is an advisory subject-length finding', () => {
   const commits = [commit(SHA_A, subjectOfLength(80), ['lib/commit-series.mjs'])]
 
-  assert.deepEqual(idsOf(analyzeSeries(commits, LOCUS)), [`${SHA_A} subject-length false`])
+  assert.deepEqual(idsOf(analyzeSeries(commits)), [`${SHA_A} subject-length false`])
 })
 
 test('a subject of exactly 72 characters is not longer than 72 characters', () => {
@@ -681,13 +540,13 @@ test('a subject of exactly 72 characters is not longer than 72 characters', () =
   // test a >= 72 implementation fails.
   const commits = [commit(SHA_A, subjectOfLength(72), ['lib/commit-series.mjs'])]
 
-  assert.deepEqual(analyzeSeries(commits, LOCUS), [])
+  assert.deepEqual(analyzeSeries(commits), [])
 })
 
 test('a subject of 73 characters is over the line', () => {
   const commits = [commit(SHA_A, subjectOfLength(73), ['lib/commit-series.mjs'])]
 
-  assert.deepEqual(idsOf(analyzeSeries(commits, LOCUS)), [`${SHA_A} subject-length false`])
+  assert.deepEqual(idsOf(analyzeSeries(commits)), [`${SHA_A} subject-length false`])
 })
 
 /** U+1D11E MUSICAL SYMBOL G CLEF: one code point, two UTF-16 code units. */
@@ -699,7 +558,7 @@ test('36 astral characters are 72 code units, and 72 is not over the line', () =
 
   const commits = [commit(SHA_A, subject, ['lib/commit-series.mjs'])]
 
-  assert.deepEqual(analyzeSeries(commits, LOCUS), [])
+  assert.deepEqual(analyzeSeries(commits), [])
 })
 
 test('37 astral characters are 74 code units and flag, though only 37 code points', () => {
@@ -713,16 +572,16 @@ test('37 astral characters are 74 code units and flag, though only 37 code point
 
   const commits = [commit(SHA_A, subject, ['lib/commit-series.mjs'])]
 
-  assert.deepEqual(idsOf(analyzeSeries(commits, LOCUS)), [`${SHA_A} subject-length false`])
+  assert.deepEqual(idsOf(analyzeSeries(commits)), [`${SHA_A} subject-length false`])
 })
 
 // --- case 14: findings compose -----------------------------------------------------------
 
 test('one commit can carry a blocking and a separate finding at once', () => {
-  const commits = [commit(SHA_A, 'WIP: rewire the parser', ['docs/notes.md'])]
+  const commits = [commit(SHA_A, 'WIP: rewire the parser', ['.agentics/notes.md'])]
 
-  assert.deepEqual(idsOf(analyzeSeries(commits, LOCUS)), [
-    `${SHA_A} locus-breach true`,
+  assert.deepEqual(idsOf(analyzeSeries(commits)), [
+    `${SHA_A} role-breach true`,
     `${SHA_A} wip-subject true`,
   ])
 })
@@ -734,7 +593,7 @@ test('two advisory checks can fire on the same subject', () => {
   assert.ok(subject.length > 72, 'fixture must exceed the subject-length limit')
   assert.ok(subject.includes(' and '), 'fixture must trip the AND test')
 
-  const found = analyzeSeries([commit(SHA_A, subject, ['lib/commit-series.mjs'])], LOCUS)
+  const found = analyzeSeries([commit(SHA_A, subject, ['lib/commit-series.mjs'])])
 
   assert.deepEqual(idsOf(found), [
     `${SHA_A} and-subject false`,
@@ -747,7 +606,7 @@ test('an empty commit with a WIP subject reports both checks, not just the first
   // that emits `empty-commit` and then moves straight on to the next commit passes it. The
   // checks are independent of one another and compose; a commit can be both empty and badly
   // titled, and the author needs to be told both things at once.
-  const found = analyzeSeries([commit(SHA_A, 'WIP: nothing yet', [])], LOCUS)
+  const found = analyzeSeries([commit(SHA_A, 'WIP: nothing yet', [])])
 
   assert.deepEqual(idsOf(found), [
     `${SHA_A} empty-commit true`,
@@ -759,12 +618,12 @@ test('a later commit is analysed too, not just the first', () => {
   const commits = [
     commit(SHA_A, 'add the commit series parser', ['lib/commit-series.mjs']),
     commit(SHA_B, 'WIP: keep going', ['lib/commit-series.mjs']),
-    commit(SHA_C, 'wire up the CLI', ['bin/cli.mjs']),
+    commit(SHA_C, 'wire up the CLI', ['.agentics/cli.json']),
   ]
 
-  assert.deepEqual(idsOf(analyzeSeries(commits, LOCUS)), [
+  assert.deepEqual(idsOf(analyzeSeries(commits)), [
     `${SHA_B} wip-subject true`,
-    `${SHA_C} locus-breach true`,
+    `${SHA_C} role-breach true`,
   ])
 })
 
@@ -774,13 +633,12 @@ test('every finding carries exactly the four fields the verifier schema allows',
   // The verifier schema's series_findings is additionalProperties:false over {sha, check,
   // message, blocking}, and the verifier copies findings in verbatim. An extra key fails the run.
   const found = [
-    ...analyzeSeries([], LOCUS),
+    ...analyzeSeries([]),
     ...analyzeSeries(
       [
-        commit(SHA_A, 'WIP: rewire the parser', ['docs/notes.md']),
+        commit(SHA_A, 'WIP: rewire the parser', ['.agentics/notes.md']),
         commit(SHA_B, subjectOfLength(80), ['lib/commit-series.mjs']),
       ],
-      LOCUS,
     ),
   ]
 
@@ -802,14 +660,13 @@ test('all six check ids produce a finding, and every one has just those four fie
   // verifier copies findings in verbatim, so that fifth key fails a real run — which makes
   // "every id, not just the convenient ones" the thing worth asserting.
   const found = [
-    ...analyzeSeries([], LOCUS), // empty-series
+    ...analyzeSeries([]), // empty-series
     ...analyzeSeries(
       [
         commit(SHA_A, 'WIP: rewire the parser', []), // empty-commit + wip-subject
-        commit(SHA_B, 'fix parser and update docs', ['docs/notes.md']), // and-subject + locus-breach
+        commit(SHA_B, 'fix parser and update docs', ['.agentics/notes.md']), // and-subject + role-breach
         commit(SHA_C, subjectOfLength(80), ['lib/commit-series.mjs']), // subject-length
       ],
-      LOCUS,
     ),
   ]
 
@@ -817,7 +674,7 @@ test('all six check ids produce a finding, and every one has just those four fie
     'and-subject',
     'empty-commit',
     'empty-series',
-    'locus-breach',
+    'role-breach',
     'subject-length',
     'wip-subject',
   ])
@@ -830,30 +687,30 @@ test('all six check ids produce a finding, and every one has just those four fie
   }
 })
 
-test('analyzeSeries does not mutate the commits or the locus it was handed', () => {
-  // It is declared pure, and the caller reuses both arrays afterwards.
+test('analyzeSeries does not mutate the commits or the rule it was handed', () => {
+  // It is declared pure, and the caller reuses both afterwards.
   const commits = [
     commit(SHA_B, 'WIP: keep going', ['lib/commit-series.mjs']),
     commit(SHA_A, 'add the parser', ['docs\\notes.md']),
   ]
-  const locus = [...LOCUS]
+  const rule = { writes: 'no-tests', fences: { [SHA_A]: 'tests' }, netFiles: ['lib/commit-series.mjs'] }
   const commitsBefore = structuredClone(commits)
-  const locusBefore = structuredClone(locus)
+  const ruleBefore = structuredClone(rule)
 
-  analyzeSeries(commits, locus)
+  analyzeSeries(commits, rule)
 
   assert.deepEqual(commits, commitsBefore)
-  assert.deepEqual(locus, locusBefore)
+  assert.deepEqual(rule, ruleBefore)
 })
 
 test('analyzeSeries is pure — the same series gives the same answer whatever ran before', () => {
-  const commits = [commit(SHA_A, 'WIP: rewire the parser', ['docs/notes.md'])]
-  const first = analyzeSeries(commits, LOCUS)
+  const commits = [commit(SHA_A, 'WIP: rewire the parser', ['.agentics/notes.md'])]
+  const first = analyzeSeries(commits)
 
-  analyzeSeries([], LOCUS)
-  analyzeSeries([commit(SHA_B, 'add the parser', ['lib/commit-series.mjs'])], LOCUS)
+  analyzeSeries([])
+  analyzeSeries([commit(SHA_B, 'add the parser', ['lib/commit-series.mjs'])])
 
-  assert.deepEqual(analyzeSeries(commits, LOCUS), first)
+  assert.deepEqual(analyzeSeries(commits), first)
 })
 
 // =========================================================================================
@@ -864,12 +721,11 @@ test('analyzeSeries is pure — the same series gives the same answer whatever r
 // CRLF text parses identically to LF. Emptiness is judged AFTER that strip, which is what
 // makes a line of "\r" empty rather than a file path.
 //
-// This is fixed rather than filed alongside the case-sensitivity
-// hazard, and the second test is the reason. On CRLF input a completely clean, fully
-// in-locus series comes back with four blocking locus-breach findings: every path keeps its
-// \r so none of them matches its locus entry, and git's blank separator line becomes a file
-// literally named "\r". Correct work would be bounced at the verifier gate with evidence
-// that reads exactly like a real breach. Case-sensitivity fails by MISSING a coupling,
+// This is fixed rather than filed, and the second test is the reason. On CRLF input a test
+// round's clean series would come back with a blocking role-breach: git's blank separator
+// line becomes a file literally named "\r", which is no test file. Correct work would be
+// bounced at the verifier gate with evidence that reads exactly like a real breach.
+// Case-sensitivity fails by MISSING a coupling,
 // which is visible; this fails by INVENTING findings against work that was fine, which is
 // not. Reachability is honestly defensive — git does not CRLF-translate log output through
 // a pipe — but `parseLog` is exported and pure, and a parser that fabricates findings on a
@@ -886,15 +742,15 @@ test('a CRLF record parses exactly like the same record with LF endings', () => 
   ])
 })
 
-test('a clean CRLF series inside its locus produces no findings', () => {
+test('a clean CRLF series of a test round produces no findings', () => {
   // The end-to-end version of the test above, and the one that shows the damage: this is
   // ordinary, well-behaved work, and today it comes back with four blocking findings.
   const text = crlf(
-    record(SHA_A, 'add the commit series parser', ['lib/commit-series.mjs']) +
-      record(SHA_B, 'cover the locus checks', ['test/commit-series.test.mjs']),
+    record(SHA_A, 'pin the commit series parser', ['test/parser.test.mjs']) +
+      record(SHA_B, 'cover the role checks', ['test/commit-series.test.mjs']),
   )
 
-  assert.deepEqual(analyzeSeries(parseLog(text), LOCUS), [])
+  assert.deepEqual(analyzeSeries(parseLog(text), { writes: 'tests' }), [])
 })
 
 test('a merge whose later parents the base holds is a refresh; one that brings in outside work is not', () => {

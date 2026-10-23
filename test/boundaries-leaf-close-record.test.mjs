@@ -3,12 +3,10 @@
 //
 // What is pinned here:
 //
-//   leafClose        the close record, a close run twice, a failing close run twice, and a close
-//                    run again after its revert
+//   leafClose        the close record, a close run twice, and a failing close run twice
 //   recordCommands   the investigator's command gotchas, written and refused
 //
-// A close is never seeded by hand: every close record and every `breach_reverted` line comes from a
-// `leafClose` call. Expected ids, shas, paths and keys are computed. The world builders the
+// A close is never seeded by hand: every close record comes from a `leafClose` call. Expected ids, shas, paths and keys are computed. The world builders the
 // leaf-close files share are in test/harness/leaf-close-world.mjs.
 //
 // Design: docs/DESIGN.md#boundaries.
@@ -27,7 +25,7 @@ import {
 
 describe('recordCommands', { concurrency: 4 }, () => {
   test("recordCommands writes the investigator's command gotchas, and the next close measures with them", SLOW, async (t) => {
-    const w = world(t, [root(), lf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })], { commands: null })
+    const w = world(t, [root(), lf('a', { expects: ['src/a.mjs', 'test/a.test.mjs'] })], { commands: null })
     const o = open(w, 'a')
     commit(o.worktree, A_FILES, 'Add a')
     const spec = { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha }
@@ -46,7 +44,7 @@ describe('recordCommands', { concurrency: 4 }, () => {
   })
 
   test('recordCommands reports what the investigator left unresolved and every command refused', SLOW, async (t) => {
-    const w = world(t, [root(), lf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })], { commands: null })
+    const w = world(t, [root(), lf('a', { expects: ['src/a.mjs', 'test/a.test.mjs'] })], { commands: null })
     const refused = { ...command('suite', 'node --test'), evidence: { command: '', output: '' } }
     const inv = stored(w, { node: 'a', role: 'investigator', round: 1, thread: 'investigator', dispatch: 'inv-1', ret: { commands: [refused], unresolved: ['typecheck'], text: 'could not find them' } })
     const result = recordCommands(w.xc, { dispatch: inv })
@@ -57,7 +55,7 @@ describe('recordCommands', { concurrency: 4 }, () => {
   })
 
   test('recordCommands with no stored return writes nothing and says so', SLOW, async (t) => {
-    const w = world(t, [root(), lf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })], { commands: null })
+    const w = world(t, [root(), lf('a', { expects: ['src/a.mjs', 'test/a.test.mjs'] })], { commands: null })
     const inv = stored(w, { node: 'a', role: 'investigator', round: 1, thread: 'investigator', dispatch: 'inv-1' })
     const result = recordCommands(w.xc, { dispatch: inv })
     assert.deepEqual(result.written, [])
@@ -84,7 +82,6 @@ describe('leaf-close record and a close run again', { concurrency: 4 }, () => {
     assert.equal(stopOf(record), 'completed')
     assert.deepEqual([record.decision.next, record.decision.reason], [s.first.decision.next, s.first.decision.reason])
     assert.equal(typeof record.raise, 'boolean')
-    assert.deepEqual(record.breach.paths, ['README.md'])
     assert.deepEqual(record.gotchas_written, [gotchaId(g)])
     assert.deepEqual(record.gotchas_deleted, [])
     assert.equal(record.committed, '')
@@ -117,17 +114,5 @@ describe('leaf-close record and a close run again', { concurrency: 4 }, () => {
     assert.equal(first.decision.next, 'fix', JSON.stringify(first.decision))
     assert.equal(msgs(w, 'failures', 'a').length, 1)
     assert.deepEqual(shapeOf(second), shapeOf(first))
-  })
-
-  test('a close run again after its revert reads the breach back and decides as before', SLOW, async (t) => {
-    const s = await outside(t, { helper: true })
-    const breach = rec(s.w, 'a', 'implementer', 1).breach
-    assert.ok(breach && breach.paths.includes('src/helper.mjs'))
-    const second = await close(s.w, { ...s.spec, dispatch: s.dispatch })
-    assert.deepEqual(shapeOf(second), shapeOf(s.first))
-    assert.deepEqual([second.decision.next, second.decision.reason], ['stop', 'needs_respec'])
-    assert.deepEqual(rec(s.w, 'a', 'implementer', 1).breach, breach)
-    assert.equal(recs(s.w, 'parked', 'a').length, 1)
-    assert.equal(recs(s.w, 'breach_reverted', 'a').length, 1)
   })
 })

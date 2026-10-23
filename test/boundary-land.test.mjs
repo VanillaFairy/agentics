@@ -35,7 +35,7 @@ test('land check lists every HUMAN: criterion, a promoted task\'s composite incl
   const seeded = seedTree(r, 'e1', [
     { id: '.', kind: 'composite', title: 'the change', defines: [{ id: 'D1', text: 'do it' }] },
     { id: 'p', kind: 'composite', title: 'promoted', author: 'planner', decisions: ['D1'], acceptance: [onComposite] },
-    { id: 'p/x', kind: 'leaf', title: 'do x', rigor: 'tdd', locus: ['src/x.js'], decisions: ['D1'], acceptance: [onLeaf] },
+    { id: 'p/x', kind: 'leaf', title: 'do x', rigor: 'tdd', expects: ['src/x.js'], decisions: ['D1'], acceptance: [onLeaf] },
   ])
   assert.equal(seeded.ok, true, JSON.stringify(seeded.problems))
   assert.deepEqual(land(r, 'e1', 'check').human.map((h) => [h.node, h.text]).sort(),

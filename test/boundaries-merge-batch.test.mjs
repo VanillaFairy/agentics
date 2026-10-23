@@ -20,7 +20,6 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { mergeBatch } from '../lib/boundaries/merge.mjs'
 import { worktrees } from '../lib/integration.mjs'
-import { heldBy } from '../lib/locks.mjs'
 import { branchOf, posix, readJson } from '../lib/store.mjs'
 import { STAMP, git, leaf, root } from './harness/boundary-fixture.mjs'
 import {
@@ -41,7 +40,7 @@ const whenFileEnds = (fn) => sharedCleanups.push(fn)
 let bisectedP
 /** x breaks the suite alone, y does not; x has been dispatched twice. */
 const bisected = () => (bisectedP ??= (async () => {
-  const w = world(whenFileEnds, [root(), addOne('x'), leaf('y', { rigor: 'trivial', locus: ['README.md'] })])
+  const w = world(whenFileEnds, [root(), addOne('x'), leaf('y', { rigor: 'trivial', expects: ['README.md'] })])
   const x = await ready(w, 'x', { 'src/add.mjs': BREAK_ADD }, 'Break add')
   dispatch(w, 'x', 2)
   const y = await ready(w, 'y', { 'README.md': 'hello world\n' }, 'Greet the world')
@@ -66,8 +65,8 @@ const passing = () => (passingP ??= (async () => {
 
 test('children merge in dependency order, whatever order they are handed in', SLOW, async (t) => {
   const w = world(inTest(t), [root(),
-    leaf('x', { rigor: 'trivial', locus: ['x.txt'] }),
-    leaf('y', { rigor: 'trivial', locus: ['y.txt'], deps: ['x'] })])
+    leaf('x', { rigor: 'trivial', expects: ['x.txt'] }),
+    leaf('y', { rigor: 'trivial', expects: ['y.txt'], deps: ['x'] })])
   const x = await ready(w, 'x', { 'x.txt': 'x\n' }, 'Add x')
   const y = await ready(w, 'y', { 'y.txt': 'y\n' }, 'Add y')
   const pre = headOf(w.r, '.')
@@ -83,8 +82,8 @@ test('children merge in dependency order, whatever order they are handed in', SL
 
 test('a cycle merges through its tip in one merge, and every member is recorded merged at that sha', SLOW, async (t) => {
   const w = world(inTest(t), [root(),
-    leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'] }),
-    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], locus: ['src/r.mjs'] })])
+    leaf('r', { rigor: 'tdd-pair', role: 'red', expects: ['test/r.test.mjs'] }),
+    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], expects: ['src/r.mjs'] })])
   const r = await ready(w, 'r', { 'test/r.test.mjs': R_TEST }, 'Pin r')
   const g = await ready(w, 'g', { 'src/r.mjs': 'export const r = () => 1\n' }, 'Implement r', { from: r.head_sha, cycleMember: true })
   const pre = headOf(w.r, '.')
@@ -146,13 +145,6 @@ test('a merged leaf loses its worktree and keeps its branch; a leaf failing alon
   assert.equal(worktrees(w.r).has(posix(x.worktree)), true)
   assert.equal(git(x.worktree, 'rev-parse', 'HEAD'), x.head_sha, 'the fix round works where it worked')
   assert.equal(git(w.r, 'rev-parse', x.branch), x.head_sha)
-})
-
-test("a merge releases the merged leaves' locus locks and keeps the others'", SLOW, async () => {
-  const { w, out } = await bisected()
-  assert.deepEqual(ids(out.merged), ['y'])
-  const held = heldBy(w.r).locus.filter((l) => l.effort === E)
-  assert.deepEqual(held.map((l) => l.node), ['x'])
 })
 
 test('a batch records batch-started, merged, merge-observed and its batch line', SLOW, async () => {

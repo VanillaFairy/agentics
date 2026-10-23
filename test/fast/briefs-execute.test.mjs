@@ -12,7 +12,7 @@ import {
 import { normalizeNode } from '../../lib/tree.mjs'
 
 const leaf = (extra = {}) => normalizeNode({
-  id: 'api/parse', kind: 'leaf', title: 'Parse keys', rigor: 'tdd', locus: ['src/api/parse.js'],
+  id: 'api/parse', kind: 'leaf', title: 'Parse keys', rigor: 'tdd', expects: ['src/api/parse.js'],
   acceptance: [{ text: 'Key lookup ignores case', check: 'node --test test/parse.test.mjs', decisions: ['D1'] }], ...extra,
 })
 
@@ -54,10 +54,10 @@ const integration = (extra = {}) => ({
 
 const consumer = normalizeNode({
   id: 'api/load', kind: 'leaf', title: 'Load configs', intent: 'configs load through the parser', rigor: 'tdd',
-  locus: ['src/api/load.js'], reads: ['src/api/parse.js'], consumes: [{ name: 'Parser', paths: ['src/api/parse.js'] }],
+  expects: ['src/api/load.js'], reads: ['src/api/parse.js'], consumes: [{ name: 'Parser', paths: ['src/api/parse.js'] }],
   acceptance: [{ text: 'A config file loads', check: 'node --test test/load.test.mjs', decisions: [] }], context: 'Call parse once per file.',
 })
-const other = normalizeNode({ id: 'ui/show', kind: 'leaf', title: 'Show configs', rigor: 'trivial', locus: ['src/ui/show.js'] })
+const other = normalizeNode({ id: 'ui/show', kind: 'leaf', title: 'Show configs', rigor: 'trivial', expects: ['src/ui/show.js'] })
 
 const drift = (extra = {}) => ({
   target: 'agentics/e1/api',
@@ -326,4 +326,13 @@ test('an integration brief names the work agentics did not produce, with its sha
 test('an integration brief with no outside work has no such section', () => {
   const text = integrationBrief({ folder: { id: 'c', title: 'c' }, spec: '# c', units: [], span: { base: 'b0', head: 'h0' } })
   assert.equal(text.includes('Work agentics did not produce'), false)
+})
+
+test('an existing test a change rewrote outside what it expected is named to its reviewer as a unit to rule closely', () => {
+  for (const text of [reviewerBrief(review({ rewritten: ['test/old.test.mjs'] })), integrationBrief(integration({ rewritten: ['test/old.test.mjs'] }))]) {
+    const section = text.slice(text.indexOf('## Existing tests rewritten'))
+    assert.ok(text.includes('## Existing tests rewritten'), text)
+    assert.ok(section.includes('- file:test/old.test.mjs'), section)
+  }
+  assert.ok(!reviewerBrief(review()).includes('## Existing tests rewritten'), 'no section when nothing was rewritten')
 })

@@ -25,7 +25,7 @@ function effort(t) {
   const ok = (out) => assert.equal(out.ok, true, out.error)
   ok(append(repo, E, 'nodes', [
     { kind: 'node', node: { id: '.', title: 'make .', kind: 'composite' } },
-    { kind: 'node', node: { id: 'x', title: 'do x', kind: 'leaf', rigor: 'trivial', locus: ['src/x.js'], acceptance: [{ text: 't', check: 'c' }] } },
+    { kind: 'node', node: { id: 'x', title: 'do x', kind: 'leaf', rigor: 'trivial', expects: ['src/x.js'], acceptance: [{ text: 't', check: 'c' }] } },
   ]))
   mkdirSync(executionDir(repo, E, X), { recursive: true })
   writeFileSync(join(executionDir(repo, E, X), 'execution.json'), JSON.stringify({ root: '.' }))

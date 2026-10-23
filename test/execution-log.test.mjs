@@ -35,7 +35,7 @@ const kindsOf = (entries) => entries.map((e) => e.kind)
 function seedLeaf(repo) {
   const out = seedTree(repo, E, [
     { id: '.', kind: 'composite', title: 't', defines: [{ id: 'D1', text: 'do it' }] },
-    { id: 'a', kind: 'leaf', title: 'do a', rigor: 'tdd', locus: ['a.mjs'], decisions: ['D1'], acceptance: [{ text: 'a works', check: 'node --test', decisions: ['D1'] }] },
+    { id: 'a', kind: 'leaf', title: 'do a', rigor: 'tdd', expects: ['a.mjs'], decisions: ['D1'], acceptance: [{ text: 'a works', check: 'node --test', decisions: ['D1'] }] },
   ])
   assert.equal(out.ok, true, JSON.stringify(out))
 }

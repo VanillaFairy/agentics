@@ -103,7 +103,7 @@ describe('the leaf unit', { concurrency: 4 }, () => {
   })
 
   test('a verify leaf is measured with no dispatch', T, async (t) => {
-    const w = world(t, { leaves: [leafEntry('v', { rigor: 'verify', locus: [], check: 'node pass.mjs' })] })
+    const w = world(t, { leaves: [leafEntry('v', { rigor: 'verify', expects: [], check: 'node pass.mjs' })] })
     const out = await w.run('v')
     assert.equal(out.outcome, 'approved')
     assert.equal(out.round, 1)
@@ -113,7 +113,7 @@ describe('the leaf unit', { concurrency: 4 }, () => {
   })
 
   test('a verify finding under a folder the user wrote parks it needs_respec', T, async (t) => {
-    const w = world(t, { leaves: [leafEntry('v', { rigor: 'verify', locus: [], check: 'node check.mjs zz' })] })
+    const w = world(t, { leaves: [leafEntry('v', { rigor: 'verify', expects: [], check: 'node check.mjs zz' })] })
     const out = await w.run('v')
     assert.equal(out.outcome, 'stopped')
     assert.equal(w.rig.calls.length, 0, 'nothing is dispatched')

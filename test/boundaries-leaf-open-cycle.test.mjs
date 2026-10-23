@@ -5,7 +5,7 @@
 //
 // The setup the parts share is in test/harness/leaf-open-world.mjs.
 //
-// Design: docs/DESIGN.md#boundaries, docs/DESIGN.md#rigor and docs/DESIGN.md#the-locus.
+// Design: docs/DESIGN.md#boundaries, docs/DESIGN.md#rigor and docs/DESIGN.md#role-rules.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -14,7 +14,7 @@ import { resolve } from 'node:path'
 import { leafOpen } from '../lib/boundaries/leaf-open.mjs'
 import { closePath, worktreeOf } from '../lib/store.mjs'
 import { STAMP, commitIn, leaf } from './harness/boundary-fixture.mjs'
-import { E, globRule, ran, closed, reviewed, cycle, askedForTests } from './harness/leaf-open-world.mjs'
+import { E, mayWrite, ran, closed, reviewed, cycle, askedForTests } from './harness/leaf-open-world.mjs'
 
 test('a green\'s round after its implementer returned needs_tests goes to the red\'s session', async (t) => {
   const { xc } = await cycle(t)
@@ -108,14 +108,14 @@ test('a measured implementer round is no test round answering a request, even wh
 })
 
 test('an audit goes to the red\'s session once a measurement let an applied mutation through', async (t) => {
-  const { r, xc } = await cycle(t, 'tdd-triad', [leaf('au', { rigor: 'tdd-triad', role: 'audit', deps: ['g'], locus: ['docs/audit.md'] })])
+  const { r, xc } = await cycle(t, 'tdd-triad', [leaf('au', { rigor: 'tdd-triad', role: 'audit', deps: ['g'], expects: ['docs/audit.md'] })])
   const greenHead = commitIn(resolve(worktreeOf(r, E, 'g')), { 'src/r.mjs': 'export const r = (x) => x * 2\n' }, 'Implement r')
   ran(xc, { node: 'g', round: 1, role: 'implementer', thread: 'producer:g', ret: { status: 'done' } })
   xc.log.append('approved', { node: 'g', head_sha: greenHead, review_rounds: 1, at_integration: false })
 
   const first = await leafOpen(xc, { node: 'au', intelligence: 'normal' })
   assert.deepEqual([first.round, first.role, first.thread, first.owner], [1, 'auditor', 'auditor:au', 'au'])
-  assert.deepEqual(first.permissions.allowed.filter(globRule), [], 'an auditor may write no test file')
+  assert.ok(!mayWrite(first.permissions, 'test/r.test.mjs'), 'an auditor may write no test file')
   ran(xc, { node: 'au', round: 1, role: 'auditor', thread: 'auditor:au', ret: { status: 'done' } })
   const mutation = { file: 'src/r.mjs', find: 'x * 2', replace: 'x + 2', expect_failing: ['test/r.test.mjs'], applied: true }
   xc.log.append('verify-observed', { node: 'au', mutations: [{ ...mutation, bites: true }] })

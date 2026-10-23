@@ -7,7 +7,6 @@
 //   G1   a close run again after a kill between a shell-less author's commit and its `authored` line
 //   G2   what a killed verify leaves (a file rewritten in place, a detached HEAD, kept work), and
 //        what verify notes so a close can tell it from the round's work
-//   G9   only this round's `agentics:` commits are read back
 //   G10  a staged rename
 //
 // Every close here is a `leafClose` call over real git and the real measurement; expected ids,
@@ -28,14 +27,13 @@ import {
   WIDGET_TEST, cycle as verifyCycle, git as plainGit, mutations as mutationFlags, options as verifyOptions,
 } from './harness/verify-fixture.mjs'
 import {
-  SLOW, REVERT, lf, scenario, world, open, write, commit, auditor, stored, close, run, recs, rec, head,
+  SLOW, lf, scenario, world, open, write, commit, auditor, stored, close, run, recs, rec, head,
   subjectsOver, holds, text, DONE, A_FILES, MORE_TEST, ADD_BITE, lfNode, tdd, testsOnly, R_TEST, R_TEST_TWO,
   R_BITES, TABLE, TABLE_TEST, CAPACITY_BITE, TABLE_GREEN, cycle,
 } from './harness/leaf-close-gaps-world.mjs'
 
 const NOTE = 'agentics-verify-rewriting'
 const KEPT = 'refs/worktree/agentics-verify/'
-const OUTSIDE = 'agentics: outside locus'
 
 const posix = (p) => String(p).split('\\').join('/')
 
@@ -55,17 +53,10 @@ describe('G1: a close run again after a kill between a shell-less author\'s comm
   })
   after(() => s.end())
 
-  test('G1.1 the commit stands with no authored line: its test file is still at the head and no revert commit is made', SLOW, async () => {
+  test('G1.1 the commit stands with no authored line: its test file is still at the head', SLOW, async () => {
     const { c, made } = await s.get()
     assert.equal(shown(c.green.worktree, 'HEAD:src/table.test.mjs'), shown(c.green.worktree, made + ':src/table.test.mjs'))
     assert.ok(isAncestor(c.green.worktree, made, 'HEAD'), 'the commit is still in the series')
-    assert.ok(!subjectsOver(c.green.worktree, c.greenHead).includes(REVERT), subjectsOver(c.green.worktree, c.greenHead).join(' | '))
-  })
-
-  test('G1.2 that close records no breach_reverted', SLOW, async () => {
-    const { c } = await s.get()
-    assert.deepEqual(recs(c.w, 'breach_reverted', 'g'), [])
-    assert.equal(rec(c.w, 'g', 'test-author', 2).breach, null)
   })
 
   test('G1.3 that close journals authored naming the commit, and committed is that sha', SLOW, async () => {
@@ -131,11 +122,10 @@ describe('G2: what a killed verify leaves in a worktree', { concurrency: 2 }, ()
   })
   after(() => mutated.end())
 
-  test('G2.2 a mutation left standing in a cycle source makes no outside-locus commit, no revert commit and no breach_reverted', SLOW, async () => {
+  test('G2.2 a mutation left standing in a cycle source makes no commit of its own', SLOW, async () => {
     const { c, tip } = await mutated.get()
     assert.equal(head(c.green.worktree), tip, 'nothing was committed after the leftover')
     assert.ok(!subjectsOver(c.green.worktree, c.greenHead).some((s) => s.startsWith('agentics:')), subjectsOver(c.green.worktree, c.greenHead).join(' | '))
-    assert.deepEqual(recs(c.w, 'breach_reverted', 'g'), [])
   })
 
   test('G2.3 the source in the worktree equals the head after that close', SLOW, async () => {
@@ -214,55 +204,9 @@ describe('G2: what a killed verify leaves in a worktree', { concurrency: 2 }, ()
 
 })
 
-// ================================================================== G9
-
-describe('G9: only this round\'s agentics: commits are read back', { concurrency: 2 }, () => {
-  const strays = scenario(async (t) => {
-    const { w, o } = testsOnly(t)
-    write(o.worktree, { 'test/more.test.mjs': MORE_TEST, 'stray.txt': 'one\n' })
-    await run(w, { node: 't', role: 'test-author', round: 1, ret: { status: 'done', text: 'one', commit: 'Test add', mutations: [ADD_BITE] }, base_sha: o.base_sha })
-    const afterOne = head(o.worktree)
-    assert.equal(subjectsOver(o.worktree, o.base_sha)[0], REVERT)
-    write(o.worktree, { 'stray2.txt': 'two\n' })
-    await run(w, { node: 't', role: 'test-author', round: 2, ret: { status: 'done', text: 'two', mutations: [ADD_BITE] }, base_sha: o.base_sha, head_before: afterOne })
-    return { w, o }
-  })
-  after(() => strays.end())
-
-  test('G9.1 a later round that starts on the revert commit of an earlier one has its own stray file taken out', SLOW, async () => {
-    const { o } = await strays.get()
-    assert.equal(existsSync(join(o.worktree, 'stray2.txt')), false)
-    assert.equal(holds(o.worktree, 'HEAD:stray2.txt'), false)
-  })
-
-  test('G9.2 its breach paths name that file and none of the earlier round', SLOW, async () => {
-    const { w } = await strays.get()
-    assert.deepEqual(rec(w, 't', 'test-author', 2).breach.paths, ['stray2.txt'])
-  })
-
-  test('G9.3 an audit cut from a green head ending in a revert records no breach when its auditor writes nothing', SLOW, async (t) => {
-    const c = cycle(t, { triad: true, greenSubject: REVERT })
-    await run(c.w, { node: 'au', role: 'auditor', round: 1, thread: 'producer:au', ret: auditor([R_BITES]), base_sha: c.audit.base_sha, head_before: c.audit.base_sha })
-    assert.deepEqual(recs(c.w, 'breach_reverted', 'au'), [])
-    assert.equal(rec(c.w, 'au', 'auditor', 1).breach, null)
-  })
-
-  test('G9.4 a round that starts on an outside-locus commit of an earlier round takes out its own stray file and leaves the earlier files out of its breach', SLOW, async (t) => {
-    const c = cycle(t, TABLE_GREEN)
-    const earlier = commit(c.green.worktree, { 'src/table.mjs': 'export const table = () => ({ capacity: 9 })\n' }, OUTSIDE)
-    write(c.green.worktree, { 'stray.txt': 'oops\n' })
-    const ret = { status: 'done', text: 'nothing to add', mutations: [R_BITES] }
-    await run(c.w, { node: 'g', role: 'test-author', round: 3, thread: 'producer:r', ret, base_sha: c.green.base_sha, head_before: earlier })
-    assert.equal(existsSync(join(c.green.worktree, 'stray.txt')), false)
-    assert.deepEqual(rec(c.w, 'g', 'test-author', 3).breach.paths, ['stray.txt'])
-  })
-})
-
-// ================================================================== G10
-
 describe('G10: a staged rename', () => {
-  test('G10.1 a rename inside the locus left staged and uncommitted is put back whole: both paths as at the head, git status clean', SLOW, async (t) => {
-    const w = world(t, [root(), lfNode('a', { locus: ['src/a.mjs', 'test/a.test.mjs', 'src/add.mjs', 'src/moved.mjs'] })])
+  test('G10.1 a rename left staged and uncommitted is put back whole: both paths as at the head, git status clean', SLOW, async (t) => {
+    const w = world(t, [root(), lfNode('a', { expects: ['src/a.mjs', 'test/a.test.mjs', 'src/add.mjs', 'src/moved.mjs'] })])
     const o = open(w, 'a')
     commit(o.worktree, A_FILES, 'Add a')
     git(o.worktree, 'mv', 'src/add.mjs', 'src/moved.mjs')

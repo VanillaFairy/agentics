@@ -30,7 +30,7 @@ const posix = (p) => String(p).split('\\').join('/')
 
 /** A trivial leaf `a` over README.md, opened, its edit committed. */
 function trivial(t, check = PASS) {
-  const w = world(t, (r) => [root(), lf('a', { rigor: 'trivial', locus: ['README.md'], acceptance: crit('a', typeof check === 'function' ? check(r) : check) })])
+  const w = world(t, (r) => [root(), lf('a', { rigor: 'trivial', expects: ['README.md'], acceptance: crit('a', typeof check === 'function' ? check(r) : check) })])
   const o = open(w, 'a')
   commit(o.worktree, { 'README.md': 'hello\nmore\n' }, 'Edit the readme')
   return { w, o }
@@ -144,7 +144,7 @@ describe('leaf-close and the measurement', { concurrency: 4 }, () => {
   })
 
   test('an escalation the measurement decides is recorded with its reason and the failing claims', SLOW, async (t) => {
-    const w = world(t, [root(), lf('a', { locus: ['test/more.test.mjs'] })])
+    const w = world(t, [root(), lf('a', { expects: ['test/more.test.mjs'] })])
     const o = open(w, 'a')
     commit(o.worktree, { 'test/more.test.mjs': MORE_TEST }, 'Add a test of what exists')
     const { out } = await run(w, { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
@@ -157,7 +157,7 @@ describe('leaf-close and the measurement', { concurrency: 4 }, () => {
   })
 
   test('a net ruling on an undecidable leaf, retried, closes it at the ruled head; a commit after it voids the ruling', SLOW, async (t) => {
-    const w = world(t, [root(), lf('a', { locus: ['test/more.test.mjs'] })])
+    const w = world(t, [root(), lf('a', { expects: ['test/more.test.mjs'] })])
     const o = open(w, 'a')
     commit(o.worktree, { 'test/more.test.mjs': MORE_TEST }, 'Add a test of what exists')
     const first = await run(w, { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
@@ -231,7 +231,7 @@ describe('leaf-close and the gotchas', { concurrency: 4 }, () => {
   })
 
   test("a producer's command gotchas are not written, a note names each, and its other gotchas are", SLOW, async (t) => {
-    const w = world(t, [root(), lf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })], { commands: null })
+    const w = world(t, [root(), lf('a', { expects: ['src/a.mjs', 'test/a.test.mjs'] })], { commands: null })
     const o = open(w, 'a')
     commit(o.worktree, A_FILES, 'Add a')
     establish(w, ['command-build'])
@@ -252,7 +252,7 @@ describe('leaf-close and the gotchas', { concurrency: 4 }, () => {
   })
 
   test("a producer's stale id naming a command gotcha deletes nothing, and a note names it", SLOW, async (t) => {
-    const w = world(t, [root(), lf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })], { commands: null })
+    const w = world(t, [root(), lf('a', { expects: ['src/a.mjs', 'test/a.test.mjs'] })], { commands: null })
     const o = open(w, 'a')
     commit(o.worktree, A_FILES, 'Add a')
     establish(w)

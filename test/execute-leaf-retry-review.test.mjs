@@ -58,8 +58,8 @@ const R1 = finding('R1', { remedy: 'tests' })
 function cycleWorld(t) {
   return world(t, {
     leaves: [
-      leafEntry('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'], check: 'node pass.mjs' }),
-      leafEntry('g', { rigor: 'tdd-pair', role: 'green', after: 'r', locus: ['src/r.mjs'], check: 'node pass.mjs' }),
+      leafEntry('r', { rigor: 'tdd-pair', role: 'red', expects: ['test/r.test.mjs'], check: 'node pass.mjs' }),
+      leafEntry('g', { rigor: 'tdd-pair', role: 'green', after: 'r', expects: ['src/r.mjs'], check: 'node pass.mjs' }),
     ],
   })
 }

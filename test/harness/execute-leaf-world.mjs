@@ -23,12 +23,12 @@ const CHECK_MJS = "import { readFileSync } from 'node:fs'\nlet ok = false\n" +
 const FILES = { 'check.mjs': CHECK_MJS, 'pass.mjs': '' }
 
 /** One Plan entry and its criterion. */
-export function leafEntry(id, { rigor = 'trivial', role = '', after = '', provides = '', locus, check } = {}) {
-  const paths = locus ?? ['src/' + id + '.txt']
+export function leafEntry(id, { rigor = 'trivial', role = '', after = '', provides = '', expects, check } = {}) {
+  const paths = expects ?? ['src/' + id + '.txt']
   const cmd = check ?? 'node check.mjs ' + id
   return [
     '- **' + id + '** — task · realises: D1' + (after ? ' · after: ' + after : '') + ' · rigor: ' + rigor +
-      (role ? ' · role: ' + role : '') + (paths.length ? ' · locus: ' + paths.join(', ') : '') +
+      (role ? ' · role: ' + role : '') + (paths.length ? ' · expects: ' + paths.join(', ') : '') +
       (provides ? ' · provides: ' + provides : ''),
     '  Make ' + id,
     '  - [ ] ' + id + ' says ok — check: `' + cmd + '`',
@@ -48,9 +48,9 @@ export function specText(entries, { decisions = true } = {}) {
   ].join('\n')
 }
 
-const B_LOCUS = ['src/b.txt', 'src/b2.txt']
+const B_EXPECTS = ['src/b.txt', 'src/b2.txt']
 export const YARD = { provides: 'b-file (src/b.txt)' }
-export const bLeaf = (extra = {}) => leafEntry('b', { locus: B_LOCUS, ...extra })
+export const bLeaf = (extra = {}) => leafEntry('b', { expects: B_EXPECTS, ...extra })
 
 export const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', windowsHide: true }).trim()
 

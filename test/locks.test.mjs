@@ -14,10 +14,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { append } from '../lib/ledger.mjs'
 import {
-  acquireAsync, heldBy, locusFileOf, maxParallel, poolConfig, holderReader, releaseLocus, releaseSlots,
+  acquireAsync, heldBy, maxParallel, poolConfig, releaseSlots,
 } from '../lib/locks.mjs'
-import { configPath, effortStateDir, mkdirState, slotsDir } from '../lib/store.mjs'
-import { addNodes } from '../lib/tree.mjs'
+import { configPath, mkdirState, slotsDir } from '../lib/store.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 
 const LOCKS = fileURLToPath(new URL('../lib/locks.mjs', import.meta.url))
@@ -36,7 +35,7 @@ const setMax = (repo, value) => {
 
 // Every leaf declares the shared file too: a lock is held only on a path its holder still claims.
 const leaf = (id) => ({
-  id, kind: 'leaf', title: 'do ' + id, rigor: 'trivial', locus: ['src/' + id + '.js', 'src/shared.js'],
+  id, kind: 'leaf', title: 'do ' + id, rigor: 'trivial', expects: ['src/' + id + '.js', 'src/shared.js'],
   decisions: ['D1'], acceptance: [{ text: id + ' works', check: 'node --test', decisions: ['D1'] }],
 })
 
@@ -61,7 +60,6 @@ const event = (repo, kind, node, extra = {}) => {
 const take = (repo, node, extra = {}) => acquireAsync(repo, { effort: E, execution: X, node, waitMs: 0, ...extra })
 
 const slotFiles = (repo) => (existsSync(slotsDir(repo)) ? readdirSync(slotsDir(repo)).filter((f) => /^\d+\.lock$/.test(f)).sort() : [])
-const locusLockExists = (repo, path) => existsSync(join(effortStateDir(repo, E), 'locks', 'locus', locusFileOf(path)))
 
 test('max_parallel: default 4, read from config on every call, malformed → default with a note', () => {
   const repo = newRepo()
@@ -97,16 +95,14 @@ test('the slot cap lives in the project settings, and a config left in slots/ is
 
 test('the pool limit is respected: the leaf past max_parallel gets no_slot and nothing is written for it', async () => {
   const repo = effortRepo(['a', 'b', 'c'], { max: 2 })
-  const a = await take(repo, 'a', { locus: ['src/a.js'] })
-  const b = await take(repo, 'b', { locus: ['src/b.js'] })
+  const a = await take(repo, 'a')
+  const b = await take(repo, 'b')
   assert.deepEqual([a.ok, a.slot, b.ok, b.slot], [true, 1, true, 2])
-  assert.deepEqual(a.locks, ['src/a.js'])
 
-  const c = await take(repo, 'c', { locus: ['src/c.js'] })
+  const c = await take(repo, 'c')
   assert.equal(c.ok, false)
   assert.equal(c.reason, 'no_slot')
   assert.deepEqual(c.held_by.map((h) => [h.n, h.node]), [[1, 'a'], [2, 'b']])
-  assert.equal(locusLockExists(repo, 'src/c.js'), false, 'all or nothing: no locus lock without a slot')
   assert.deepEqual(slotFiles(repo), ['1.lock', '2.lock'])
 })
 
@@ -138,49 +134,12 @@ for (const [kind, extra] of [
   })
 }
 
-test('all or nothing: one held locus path refuses the whole acquire, leaving no slot and no other lock', async () => {
-  const repo = effortRepo(['a', 'b'], { max: 4 })
-  assert.equal((await take(repo, 'a', { locus: ['src/shared.js'] })).ok, true)
-
-  const b = await take(repo, 'b', { locus: ['src/b.js', 'src/shared.js'] })
-  assert.equal(b.ok, false)
-  assert.equal(b.reason, 'locus_held')
-  assert.deepEqual(b.held_by, [{ effort: E, path: 'src/shared.js', node: 'a', execution: X, status: 'active' }])
-  assert.equal(locusLockExists(repo, 'src/b.js'), false)
-  assert.deepEqual(slotFiles(repo), ['1.lock'], 'b left no slot behind')
-
-  // approved is not enough for a locus lock: the file is free only once a's work has merged
-  event(repo, 'approved', 'a', { head_sha: 'abc', review_rounds: 0, at_integration: false })
-  assert.equal((await take(repo, 'b', { locus: ['src/b.js', 'src/shared.js'] })).reason, 'locus_held')
-  event(repo, 'merged', 'a', { into: 'agentics/e1', merged_sha: 'def', head_sha: 'abc' })
-  const again = await take(repo, 'b', { locus: ['src/b.js', 'src/shared.js'] })
-  assert.equal(again.ok, true)
-  assert.deepEqual(heldBy(repo).locus.map((l) => [l.path, l.node]), [['src/b.js', 'b'], ['src/shared.js', 'b']])
-})
-
-test('a locus lock whose holder was retired by a replan is free', async () => {
-  const repo = effortRepo(['a', 'b'], { max: 4 })
-  assert.equal((await take(repo, 'a', { locus: ['src/shared.js'] })).ok, true)
-  assert.equal((await take(repo, 'b', { locus: ['src/shared.js'] })).reason, 'locus_held')
-  const r = addNodes(repo, E, [{ ...leaf('a'), retired: true }], { reason: 'retired' })
-  assert.ok(r.ok, JSON.stringify(r.problems))
-  assert.equal((await take(repo, 'b', { locus: ['src/shared.js'] })).ok, true)
-})
-
-test('a locus lock on a path its holder\'s revision dropped is free', async () => {
-  const repo = effortRepo(['a', 'b'], { max: 4 })
-  assert.equal((await take(repo, 'a', { locus: ['src/shared.js'] })).ok, true)
-  const r = addNodes(repo, E, [{ ...leaf('a'), locus: ['src/a.js'] }], { reason: 'revised' })
-  assert.ok(r.ok, JSON.stringify(r.problems))
-  assert.equal((await take(repo, 'b', { locus: ['src/shared.js'] })).ok, true)
-})
-
 test('re-acquiring what the same node holds is a no-op success on the same slot', async () => {
   const repo = effortRepo(['a', 'b'], { max: 2 })
-  const first = await take(repo, 'a', { locus: ['src/a.js'] })
+  const first = await take(repo, 'a')
   assert.equal((await take(repo, 'b')).slot, 2)
-  const second = await take(repo, 'a', { locus: ['src/a.js'], execution: '20260925-130000' })
-  assert.deepEqual([second.ok, second.slot, second.locks], [true, first.slot, ['src/a.js']])
+  const second = await take(repo, 'a', { execution: '20260925-130000' })
+  assert.deepEqual([second.ok, second.slot], [true, first.slot])
   assert.deepEqual(slotFiles(repo), ['1.lock', '2.lock'])
   assert.equal(heldBy(repo).slots[0].execution, '20260925-130000', 'the slot now names the re-acquiring execution')
 })
@@ -264,7 +223,7 @@ test('two processes racing for the last slot: exactly one wins', async () => {
       import { acquireAsync } from ${JSON.stringify(LOCKS_URL)}
       while (Date.now() < ${startAt}) {}
       const r = await acquireAsync(${JSON.stringify(repo)}, { effort: ${JSON.stringify(E)}, execution: ${JSON.stringify(X)},
-        node: ${JSON.stringify(node)}, locus: ['src/${node}.js'], holderActive: () => true, waitMs: 0 })
+        node: ${JSON.stringify(node)}, holderActive: () => true, waitMs: 0 })
       console.log(JSON.stringify(r))`
     const run = (node) => new Promise((resolve, reject) => {
       const child = spawn(process.execPath, ['--input-type=module', '-e', script(node)], { stdio: ['ignore', 'pipe', 'pipe'] })
@@ -281,92 +240,33 @@ test('two processes racing for the last slot: exactly one wins', async () => {
     const winner = results.find((r) => r.ok)
     assert.equal(winner.slot, 2)
     assert.deepEqual(slotFiles(repo), ['1.lock', '2.lock'])
-    const loserNode = results[0].ok ? 'q' : 'p'
-    assert.equal(locusLockExists(repo, `src/${loserNode}.js`), false, 'the loser wrote no locus lock')
   }
 })
 
-test('releaseSlots frees one execution\'s slots; releaseLocus frees named nodes\' locks', async () => {
+test('releaseSlots frees one execution\'s slots, or one node\'s', async () => {
   const repo = newRepo()
   const on = () => true
-  await acquireAsync(repo, { effort: E, execution: X, node: 'a', locus: ['src/a.js'], holderActive: on, waitMs: 0 })
-  await acquireAsync(repo, { effort: E, execution: X, node: 'b', locus: ['src/b.js'], holderActive: on, waitMs: 0 })
-  await acquireAsync(repo, { effort: E, execution: 'other', node: 'c', locus: ['src/c.js'], holderActive: on, waitMs: 0 })
+  await acquireAsync(repo, { effort: E, execution: X, node: 'a', holderActive: on, waitMs: 0 })
+  await acquireAsync(repo, { effort: E, execution: X, node: 'b', holderActive: on, waitMs: 0 })
+  await acquireAsync(repo, { effort: E, execution: 'other', node: 'c', holderActive: on, waitMs: 0 })
   assert.deepEqual(releaseSlots(repo, { effort: E, execution: X, node: 'b' }).released, [2])
   assert.deepEqual(releaseSlots(repo, { effort: E, execution: X }).released, [1])
   assert.deepEqual(slotFiles(repo), ['3.lock'])
-
-  assert.deepEqual(releaseLocus(repo, E, ['a', 'c']).released.sort(), ['src/a.js', 'src/c.js'])
-  assert.deepEqual(heldBy(repo).locus.map((l) => l.path), ['src/b.js'])
 })
 
 test('invalid input is refused without touching the pool', async () => {
   const repo = newRepo()
   assert.equal((await acquireAsync(repo, { effort: 'Bad--slug', execution: X, node: 'a', waitMs: 0 })).reason, 'invalid')
-  assert.equal((await acquireAsync(repo, { effort: E, execution: X, node: 'a', locus: ['../etc/passwd'], waitMs: 0 })).reason, 'invalid')
+  assert.equal((await acquireAsync(repo, { effort: E, execution: X, node: '', waitMs: 0 })).reason, 'invalid')
   assert.deepEqual(slotFiles(repo), [])
 })
 
-test('heldBy reports every slot and locus lock', async () => {
+test('heldBy reports every slot', async () => {
   const repo = effortRepo(['a'], { max: 3 })
-  await take(repo, 'a', { locus: ['src/a.js'] })
+  await take(repo, 'a')
   assert.deepEqual(heldBy(repo), {
     max_parallel: 3,
     slots: [{ n: 1, effort: E, execution: X, node: 'a', active: true }],
-    locus: [{ effort: E, path: 'src/a.js', node: 'a', execution: X }],
     notes: [],
   })
-})
-
-test('a held locus is answered at once, never waited for: it frees at a merge the scheduler sees', async () => {
-  const repo = effortRepo(['a', 'b'])
-  assert.equal((await take(repo, 'a', { locus: ['src/shared.js'] })).ok, true)
-  const started = Date.now()
-  const out = await acquireAsync(repo, { effort: E, execution: X, node: 'b', locus: ['src/shared.js'], waitMs: 60000, pollMs: 50 })
-  assert.equal(out.reason, 'locus_held')
-  assert.ok(Date.now() - started < 5000, 'it did not wait out the minute')
-})
-
-test('holderReader names the unmerged leaf holding a locus, whatever its status', async () => {
-  const repo = effortRepo(['a', 'b'])
-  const holder = (node, locus) => holderReader(repo)({ effort: E, node, locus })
-  assert.equal(holder('b', ['src/shared.js']), '')
-  assert.equal((await take(repo, 'a', { locus: ['src/shared.js'] })).ok, true)
-  assert.equal(holder('b', ['src/shared.js']), 'a')
-  assert.equal(holder('b', ['src/other.js']), '')
-  assert.equal(holder('a', ['src/shared.js']), '')
-  event(repo, 'escalated', 'a', { reason: 'test' })
-  assert.equal(holder('b', ['src/shared.js']), 'a')
-  event(repo, 'merged', 'a', { into: 'agentics/e1', merged_sha: 'def', head_sha: 'abc' })
-  assert.equal(holder('b', ['src/shared.js']), '')
-})
-
-/** A red and a green that both claim the module file: red writes its signatures, green fills them. */
-function pairRepo() {
-  const repo = newRepo()
-  const member = (id, role, locus, deps = []) => ({ ...leaf(id), rigor: 'tdd-pair', role, locus, deps })
-  const out = seedTree(repo, E, [
-    { id: '.', kind: 'composite', title: 'the change', defines: [{ id: 'D1', text: 'do it' }] },
-    member('r', 'red', ['src/m.test.js', 'src/m.js']),
-    member('g', 'green', ['src/m.js'], ['r']),
-    { ...leaf('c'), locus: ['src/m.js'], deps: ['g'] },
-  ])
-  assert.ok(out.ok, JSON.stringify(out.problems))
-  return repo
-}
-
-test('a cycle holds its files as one: green takes over what its approved red holds, and nobody else does', async () => {
-  const repo = pairRepo()
-  const holder = (node) => holderReader(repo)({ effort: E, node, locus: ['src/m.js'] })
-  event(repo, 'dispatched', 'r', { role: 'test-author', round: 1, model: 'opus', effort: 'medium' })
-  assert.equal((await take(repo, 'r', { locus: ['src/m.test.js', 'src/m.js'] })).ok, true)
-  assert.equal((await take(repo, 'g', { locus: ['src/m.js'] })).reason, 'locus_held', 'red is still writing')
-
-  event(repo, 'approved', 'r', { head_sha: 'abc', review_rounds: 1, at_integration: false })
-  assert.equal(holder('c'), 'r', 'a leaf outside the cycle waits for the merge')
-  assert.equal(holder('g'), '')
-  assert.equal((await take(repo, 'g', { locus: ['src/m.js'] })).ok, true)
-  assert.deepEqual(heldBy(repo).locus.map((l) => [l.path, l.node]), [['src/m.js', 'g'], ['src/m.test.js', 'r']])
-
-  assert.deepEqual(releaseLocus(repo, E, ['r', 'g']).released.sort(), ['src/m.js', 'src/m.test.js'])
 })

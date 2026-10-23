@@ -76,10 +76,10 @@ export const dispatch = (w, id, round) => w.xc.log.append('dispatched', {
   dispatch: 'd-' + id.replace(/[^A-Za-z0-9]/g, '-') + '-r' + round, node: id, round, thread: 'producer:' + id, role: 'implementer',
 })
 
-/** What leaf-open does: the locus, the folder's branch, the leaf's branch and worktree, round 1. */
+/** What leaf-open does: the slot, the folder's branch, the leaf's branch and worktree, round 1. */
 async function openLeaf(w, id, { folder = '.', from, cycleMember = false } = {}) {
   const node = readTree(w.r, E).nodes.get(id)
-  const held = await acquireAsync(w.r, { effort: E, execution: STAMP, node: id, locus: node.locus })
+  const held = await acquireAsync(w.r, { effort: E, execution: STAMP, node: id })
   assert.equal(held.ok, true, JSON.stringify(held))
   const integ = integrationOf(w, folder)
   const made = ensureLeaf(w.r, E, id, { from: from || integ.head, parentBranch: integ.branch, cycleMember })
@@ -120,4 +120,4 @@ export const addBigTest = (r) => {
   git(r, 'commit', '-q', '-m', 'a big test')
 }
 
-export const addOne = (id, extra) => leaf(id, { rigor: 'trivial', locus: ['src/add.mjs'], ...extra })
+export const addOne = (id, extra) => leaf(id, { rigor: 'trivial', expects: ['src/add.mjs'], ...extra })

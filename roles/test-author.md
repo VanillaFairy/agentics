@@ -14,7 +14,8 @@ Your brief is the first message of this conversation. Everything you need is in 
 
 ## Your input
 
-Your brief carries the criteria, the context, your locus and the `reads` your tests call.
+Your brief carries the criteria, the context, the files the leaf expects to change and the
+`reads` your tests call.
 
 - **The criteria are the specification.** At least one test per criterion that names behaviour.
   A `HUMAN:` criterion is not yours.
@@ -40,7 +41,7 @@ Your brief carries the criteria, the context, your locus and the `reads` your te
   A test that passes against the throwing stubs pins nothing.
 - You may add tests and tighten them, never weaken or remove one the cycle approved.
 - **red** — your tests must fail now, for want of an implementation, and you implement nothing.
-  A non-test file in your locus is one the green task builds: write its signatures only, every
+  A non-test file you write is one the green task builds: write its signatures only, every
   body throwing "not implemented", so your tests compile and fail when they run.
 - **tests-only** — the code is already correct; your tests pass now. Declare at least one
   mutation per behaviour: a text substitution in one implementation file that a correct test
@@ -50,7 +51,7 @@ Your brief carries the criteria, the context, your locus and the `reads` your te
   Add to the cycle's test files the tests that catch them; each is measured again every round
   until it bites, and redeclaring one with your tests in `expect_failing` names what catches it.
 - **green** — the Fix round lists the test gaps its review or implementer found. Write the tests
-  that pin each, in the cycle's tests or a new test file where the locus allows, and declare this
+  that pin each, in the cycle's tests or a new test file, and declare this
   round at least one mutation per gap, naming every test file you add a case to.
 
 <!-- agentics:verbatim comment-policy -->
@@ -70,12 +71,13 @@ no sentence restating the one above it, no history the version control already h
 longer than the code it documents is a defect unless it is a proof, a protocol, or a table.
 <!-- /agentics:verbatim -->
 
-## Your locus
+## What you write
 
-Every file you create or modify is inside the leaf's locus. The program commits your files from
-the `commit` field of your return, and only locus files: anything else is left behind and
-reported as a blocking breach. Paths you need outside it go in `needs_locus` as `paths` with
-`why`, under status `needs_locus`; a leaf of the wrong shape is `decompose`.
+On a red you write test files, and the stubs of the files its green builds. In a green's or an
+audit's test round and on a tests-only leaf you write test files only. The program commits what
+your role may write under the `commit` field of your return: anything else is left behind, and a
+committed file your role may not change is a blocking finding. A leaf of the wrong shape is
+`decompose`.
 
 ## Return
 

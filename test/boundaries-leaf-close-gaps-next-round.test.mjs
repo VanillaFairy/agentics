@@ -54,7 +54,7 @@ describe('G11: what a round answered', () => {
 
 describe('G12: commands', () => {
   test('G12.1 a suite named by a command gotcha and by the envelope is run as the gotcha names it', SLOW, async (t) => {
-    const w = world(t, [root(), lfNode('a', { rigor: 'trivial', locus: ['README.md'] })], { commands: { ...COMMANDS, suite: 'echo envelope-suite' } })
+    const w = world(t, [root(), lfNode('a', { rigor: 'trivial', expects: ['README.md'] })], { commands: { ...COMMANDS, suite: 'echo envelope-suite' } })
     const o = open(w, 'a')
     commit(o.worktree, { 'README.md': 'hello\nmore\n' }, 'Edit the readme')
     assert.equal(writeGotcha(w.r, E, command('suite', 'echo gotcha-suite'), { source: { role: 'investigator' } }).ok, true)
@@ -100,7 +100,7 @@ describe('G16: the next round\'s messages and the raise', { concurrency: 2 }, ()
 
   test('G16.1 a close does not raise when the previous failures were two, one cleared and the other fails again beside a new one', SLOW, async (t) => {
     const w = world(t, [root(), lfNode('a', {
-      locus: ['src/a.mjs', 'test/a.test.mjs', 'a.txt', 'b.txt', 'c.txt'],
+      expects: ['src/a.mjs', 'test/a.test.mjs', 'a.txt', 'b.txt', 'c.txt'],
       acceptance: [
         { text: 'a exists', check: exists('a.txt'), decisions: ['D1'] },
         { text: 'b exists', check: exists('b.txt'), decisions: ['D1'] },
@@ -172,7 +172,7 @@ describe('G16: the next round\'s messages and the raise', { concurrency: 2 }, ()
   })
 
   test('G16.6 a test-author round 2 failing as test-author round 1 did, at another head, escalates verify_not_converging', SLOW, async (t) => {
-    const w = world(t, [root(), lfNode('t', { rigor: 'tests-only', locus: ['test/more.test.mjs'], acceptance: crit('t', FAIL) })])
+    const w = world(t, [root(), lfNode('t', { rigor: 'tests-only', expects: ['test/more.test.mjs'], acceptance: crit('t', FAIL) })])
     const o = open(w, 't')
     write(o.worktree, { 'test/more.test.mjs': MORE_TEST })
     const first = await run(w, { node: 't', role: 'test-author', round: 1, ret: { status: 'done', text: 'one', commit: 'Test add', mutations: [ADD_BITE] }, base_sha: o.base_sha })
@@ -187,7 +187,7 @@ describe('G16: the next round\'s messages and the raise', { concurrency: 2 }, ()
 
 describe('G17: recordCommands', () => {
   test('G17.1 each command gotcha recordCommands writes is observed at the repository HEAD', SLOW, async (t) => {
-    const w = world(t, [root(), lfNode('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })], { commands: null })
+    const w = world(t, [root(), lfNode('a', { expects: ['src/a.mjs', 'test/a.test.mjs'] })], { commands: null })
     const commands = [command('suite', COMMANDS.suite), command('test_one', COMMANDS.test_one)]
     const inv = stored(w, { node: 'a', role: 'investigator', round: 1, thread: 'investigator', dispatch: 'inv-1', ret: { commands, unresolved: [], text: 'found them' } })
     const result = recordCommands(w.xc, { dispatch: inv })

@@ -17,7 +17,7 @@ const SPEC = (dispatch) => [
   '# Dispatch', '', '## Intent', '', 'A task names the tier it runs at.', '', '## Decisions', '',
   '| id | decision | why |', '|---|---|---|', '| D1 | The runner runs what the plan lists. | The author holds the context. |',
   '', '## Design', '', 'Nothing more.', '', '## Plan', '',
-  '- **runner** — task · realises: D1 · rigor: tdd · locus: src/a/X.ts · dispatch: ' + dispatch, '  Build the runner',
+  '- **runner** — task · realises: D1 · rigor: tdd · expects: src/a/X.ts · dispatch: ' + dispatch, '  Build the runner',
   '  - [ ] it runs — check: `node --test src/a/X.test.mjs`', '', '## Open questions', '', '## Evidence', '',
 ].join('\n')
 

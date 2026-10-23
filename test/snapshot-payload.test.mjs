@@ -257,7 +257,7 @@ test('node fields pass through', () => {
   const n = snapshotOf(repo, effort).nodes.find((x) => x.id === 'a/fix')
   assert.deepEqual(n.deps, normalized.deps)
   assert.deepEqual(n.acceptance, normalized.acceptance)
-  assert.deepEqual(n.locus, normalized.locus)
+  assert.deepEqual(n.expects, normalized.expects)
   assert.equal(n.rigor, normalized.rigor)
   assert.equal(n.role, normalized.role)
 })

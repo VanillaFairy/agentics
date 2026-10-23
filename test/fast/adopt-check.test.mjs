@@ -12,15 +12,15 @@ import { deriveStatus, liveNodes } from '../../lib/tree.mjs'
 const NODES = [
   { id: '.', kind: 'composite', title: 'root' },
   { id: 'c', kind: 'composite', title: 'c' },
-  { id: 'c/a', kind: 'leaf', title: 'a', rigor: 'tdd', locus: ['src/a.mjs'], acceptance: [{ text: 'a works', check: 'node --test' }, { text: 'HUMAN: a reads well', check: '' }] },
-  { id: 'c/b', kind: 'leaf', title: 'b', rigor: 'tdd', locus: ['src/b.mjs'], deps: ['c/a'] },
-  { id: 'c/r', kind: 'leaf', title: 'r', rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'] },
-  { id: 'c/g', kind: 'leaf', title: 'g', rigor: 'tdd-pair', role: 'green', locus: ['src/g.mjs'], deps: ['c/r'] },
-  { id: 'c/tr', kind: 'leaf', title: 'tr', rigor: 'tdd-triad', role: 'red', locus: ['test/t.test.mjs'] },
-  { id: 'c/tg', kind: 'leaf', title: 'tg', rigor: 'tdd-triad', role: 'green', locus: ['src/t.mjs'], deps: ['c/tr'] },
-  { id: 'c/ta', kind: 'leaf', title: 'ta', rigor: 'tdd-triad', role: 'audit', locus: ['test/t.test.mjs'], deps: ['c/tg'] },
+  { id: 'c/a', kind: 'leaf', title: 'a', rigor: 'tdd', expects: ['src/a.mjs'], acceptance: [{ text: 'a works', check: 'node --test' }, { text: 'HUMAN: a reads well', check: '' }] },
+  { id: 'c/b', kind: 'leaf', title: 'b', rigor: 'tdd', expects: ['src/b.mjs'], deps: ['c/a'] },
+  { id: 'c/r', kind: 'leaf', title: 'r', rigor: 'tdd-pair', role: 'red', expects: ['test/r.test.mjs'] },
+  { id: 'c/g', kind: 'leaf', title: 'g', rigor: 'tdd-pair', role: 'green', expects: ['src/g.mjs'], deps: ['c/r'] },
+  { id: 'c/tr', kind: 'leaf', title: 'tr', rigor: 'tdd-triad', role: 'red', expects: ['test/t.test.mjs'] },
+  { id: 'c/tg', kind: 'leaf', title: 'tg', rigor: 'tdd-triad', role: 'green', expects: ['src/t.mjs'], deps: ['c/tr'] },
+  { id: 'c/ta', kind: 'leaf', title: 'ta', rigor: 'tdd-triad', role: 'audit', expects: ['test/t.test.mjs'], deps: ['c/tg'] },
   { id: 'd', kind: 'composite', title: 'd' },
-  { id: 'd/x', kind: 'leaf', title: 'x', rigor: 'tdd', locus: ['src/x.mjs'] },
+  { id: 'd/x', kind: 'leaf', title: 'x', rigor: 'tdd', expects: ['src/x.mjs'] },
 ]
 const sha = (n) => String(n).padStart(2, '0').repeat(20)
 const [S1, S2, S3, OFF, TIP, OLD] = [1, 2, 3, 4, 5, 6].map(sha)
@@ -210,14 +210,14 @@ test('a handed-over green whose red is not done refuses cycle_order', () => {
 
 // ---------------------------------------------------------------- the report
 
-test('the report names files outside the leaf locus, the stops a merge clears, open deps and the criteria to rule', () => {
+test('the report names files the leaf role may not change, the stops a merge clears, open deps and the criteria to rule', () => {
   const facts = factsOf({
-    files: { [S1]: ['src/a.mjs', 'README.md'] },
+    files: { [S1]: ['src/a.mjs', 'README.md', '.agentics/e1/DESIGN.md'] },
     events: [{ kind: 'escalated', node: 'c/b', reason: 'stuck' }],
   })
   const out = check({ done: [{ node: 'c/a', commits: [S1] }, { node: 'c/b', commits: [S2] }] }, facts)
   assert.deepEqual(out.refusals, [])
-  assert.deepEqual(out.report.outside_locus, [{ node: 'c/a', paths: ['README.md'] }, { node: 'c/b', paths: ['src/a.mjs'] }])
+  assert.deepEqual(out.report.role_breach, [{ node: 'c/a', paths: ['.agentics/e1/DESIGN.md'] }])
   assert.deepEqual(out.report.clears_stops, [{ node: 'c/b', kind: 'escalated', reason: 'stuck' }])
   assert.deepEqual(out.report.deps_open, [], 'c/b depends on c/a, adopted in the same batch')
   assert.deepEqual(out.report.criteria.find((c) => c.node === 'c/a').criteria, ['a works'], 'a HUMAN: criterion is the user\'s, not the review\'s')

@@ -47,7 +47,7 @@ const claim = (ruling, text = 'claim ' + ruling) => ({ claim: text, ruling, evid
 const critical = { id: 'F1', severity: 'critical', claim: 'wrong', evidence: 'src/a.mjs:1', failure_scenario: 'it breaks' }
 const events = (r, kind) => readLog(r, E, 'events').entries.filter((e) => e.kind === kind)
 const state = (r, kind) => readLog(r, E, 'state:' + STAMP).entries.filter((e) => e.kind === kind)
-const A = leaf('a', { locus: ['src/a.mjs'] })
+const A = leaf('a', { expects: ['src/a.mjs'] })
 
 // ---------------------------------------------------------------- folder review
 
@@ -191,9 +191,9 @@ test('a review without a prior records the return as it is, and no rerule', (t) 
 const TREE = [
   A,
   { id: 'p', kind: 'composite', title: 'planned', author: 'planner', decisions: ['D1'], acceptance: [{ text: 'p works', check: '', decisions: ['D1'] }] },
-  leaf('p/x', { locus: ['src/x.mjs'] }),
+  leaf('p/x', { expects: ['src/x.mjs'] }),
   { id: 'u', kind: 'composite', title: 'the user\'s', decisions: ['D1'], acceptance: [{ text: 'u works', check: '', decisions: ['D1'] }] },
-  leaf('u/y', { locus: ['src/y.mjs'] }),
+  leaf('u/y', { expects: ['src/y.mjs'] }),
 ]
 
 /** A drift record as merge-batch writes it: the merged head and each consumer it drifted. */

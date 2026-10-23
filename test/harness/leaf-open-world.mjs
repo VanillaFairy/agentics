@@ -8,7 +8,6 @@ import { join } from 'node:path'
 import { leafOpen } from '../../lib/boundaries/leaf-open.mjs'
 import { executionContext } from '../../lib/boundaries/records.mjs'
 import { executionLog } from '../../lib/ledger.mjs'
-import { TEST_GLOBS } from '../../lib/locus.mjs'
 import { loadRole } from '../../lib/roles.mjs'
 import { closePath, dispatchKey, returnPath, reviewPath, writeWhole } from '../../lib/store.mjs'
 import { readTree } from '../../lib/tree.mjs'
@@ -18,7 +17,16 @@ import { seedTree } from './seed-tree.mjs'
 export const E = 'e1'
 export const RED = "import { test } from 'node:test'\ntest('r', () => {})\n"
 
-export const globRule = (rule) => TEST_GLOBS.some((g) => rule.endsWith(`${g})`))
+/** A permission pattern as the host reads it, gitignore-style: `**` spans folders, `*` stays in one, `[..]` is one of a set. */
+const globMatches = (pattern, path) => {
+  const body = pattern.replace(/^\//, '').replace(/\*\*\/|\*\*|\*|\[[^\]]*\]|\\.|./g, (t) =>
+    t === '**/' ? '(?:.*/)?' : t === '**' ? '.*' : t === '*' ? '[^/]*' : t.startsWith('[') ? t
+      : t.slice(-1).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  return new RegExp('^' + body + '$').test(path)
+}
+const edits = (rules, path) => rules.filter((r) => r.startsWith('Edit(')).some((r) => globMatches(r.slice('Edit('.length, -1), path))
+/** Whether a call's permissions let it edit `path`: an allow reaches it and no deny does. */
+export const mayWrite = ({ allowed, disallowed }, path) => edits(allowed, path) && !edits(disallowed, path)
 
 /** A repository with `nodes` under the root, compiled, and an execution whose envelope stands. */
 export function setup(t, nodes, envelope = {}) {
@@ -60,8 +68,8 @@ export const roleOf = (name) => loadRole(name).role
 /** A red approved at its head and its green opened at round 1: the ground of the cycle's test session. */
 export async function cycle(t, rigor = 'tdd-pair', extra = []) {
   const { r, xc } = setup(t, [
-    leaf('r', { rigor, role: 'red', locus: ['test/r.test.mjs'] }),
-    leaf('g', { rigor, role: 'green', deps: ['r'], locus: ['src/r.mjs'] }),
+    leaf('r', { rigor, role: 'red', expects: ['test/r.test.mjs'] }),
+    leaf('g', { rigor, role: 'green', deps: ['r'], expects: ['src/r.mjs'] }),
     ...extra,
   ])
   const red = await leafOpen(xc, { node: 'r', intelligence: 'normal' })

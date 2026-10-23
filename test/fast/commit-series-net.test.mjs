@@ -1,11 +1,11 @@
-// test/fast/commit-series-net.test.mjs — pins the series check's locus judged on the net diff, base to
-// head (`netFiles`, `admits`), and `removedTestCases`, the removed-test-case finder.
+// test/fast/commit-series-net.test.mjs — pins the series check's role rule judged on the net diff,
+// base to head (`netFiles`), with fenced commits judged per commit; and `removedTestCases`, the
+// removed-test-case finder.
 //
-// Design: docs/DESIGN.md#the-locus, docs/DESIGN.md#conversations.
+// Design: docs/DESIGN.md#role-rules, docs/DESIGN.md#conversations.
 //
 // Findings are compared as sorted `check` lists and by the files their messages name, never by
-// wording or order. The modules are imported as namespaces so the tests pinning unchanged
-// behaviour run before the new exports exist.
+// wording or order.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -16,13 +16,12 @@ const SHA_A = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 const SHA_B = 'b2c3d4e5f60718293a4b5c6d7e8f90123456789a'
 const SHA_C = 'c3d4e5f60718293a4b5c6d7e8f90123456789ab1'
 
-const LOCUS = ['lib/x.mjs', 'test/x.test.mjs']
-const STRAY = 'notes/stray.txt'
+const TEST_FILE = 'test/x.test.mjs'
 
 const commit = (sha, subject, files) => ({ sha, subject, trailers: '', files })
 
 const checksOf = (findings) => findings.map((f) => f.check).sort()
-const breaches = (findings) => findings.filter((f) => f.check === 'locus-breach')
+const breaches = (findings) => findings.filter((f) => f.check === 'role-breach')
 const naming = (findings, file) => findings.filter((f) => String(f.message).includes(file))
 
 /** The new export, failing with a readable message while it is missing. */
@@ -31,84 +30,61 @@ function removedTestCases(approved, head) {
   return series.removedTestCases(approved, head)
 }
 
-/** An `admits` fake that accepts the given paths whether it is called with a path or `{path}`. */
-const admitsOnly = (accepted) => (...args) =>
-  args.some((a) => accepted.includes(typeof a === 'string' ? a : a && a.path))
-
 // =========================================================================================
 // analyzeSeries with a net diff
 // =========================================================================================
 
-test('a stray file taken out again is no breach', () => {
+test('a test a green touched and put back is no breach', () => {
   const commits = [
-    commit(SHA_A, 'feat(x): add the parser', ['lib/x.mjs', STRAY]),
-    commit(SHA_B, 'chore(x): drop the stray file', [STRAY]),
+    commit(SHA_A, 'feat(x): add the parser', ['lib/x.mjs', TEST_FILE]),
+    commit(SHA_B, 'chore(x): restore the test', [TEST_FILE]),
   ]
-  const findings = series.analyzeSeries(commits, LOCUS, {}, { netFiles: ['lib/x.mjs'] })
+  const findings = series.analyzeSeries(commits, { writes: 'no-tests', netFiles: ['lib/x.mjs'] })
   assert.deepEqual(breaches(findings), [])
-  assert.deepEqual(naming(findings, STRAY), [], 'no finding of any kind names the reverted file')
+  assert.deepEqual(naming(findings, TEST_FILE), [], 'no finding of any kind names the restored file')
 })
 
-test('a stray file left in the net diff is one breach', () => {
+test('a test left in the net diff of a green is one breach', () => {
   const commits = [
-    commit(SHA_A, 'feat(x): add the parser', ['lib/x.mjs', STRAY]),
-    commit(SHA_B, 'fix(x): tune the parser', ['lib/x.mjs', STRAY]),
+    commit(SHA_A, 'feat(x): add the parser', ['lib/x.mjs', TEST_FILE]),
+    commit(SHA_B, 'fix(x): tune the parser', ['lib/x.mjs', TEST_FILE]),
   ]
-  const findings = series.analyzeSeries(commits, LOCUS, {}, { netFiles: ['lib/x.mjs', STRAY] })
+  const findings = series.analyzeSeries(commits, { writes: 'no-tests', netFiles: ['lib/x.mjs', TEST_FILE] })
   const hits = breaches(findings)
-  assert.equal(hits.length, 1, 'one breach per stray file in the net diff, not one per commit')
-  assert.ok(hits[0].message.includes(STRAY), 'the breach names the stray file')
+  assert.equal(hits.length, 1, 'one breach per file in the net diff, not one per commit')
+  assert.ok(hits[0].message.includes(TEST_FILE), 'the breach names the test file')
   assert.equal(hits[0].blocking, true)
-  assert.deepEqual(naming(hits, 'lib/x.mjs'), [], 'a locus file is never a breach')
-})
-
-test('what admits accepts is no breach', () => {
-  const besideTest = 'lib/x.test.mjs'
-  const commits = [commit(SHA_A, 'feat(x): add the parser', ['lib/x.mjs', besideTest, STRAY])]
-  const admits = admitsOnly([...LOCUS, besideTest])
-  const findings = series.analyzeSeries(commits, LOCUS, {}, {
-    netFiles: ['lib/x.mjs', besideTest, STRAY], admits,
-  })
-  const hits = breaches(findings)
-  assert.deepEqual(naming(hits, besideTest), [], 'a file admits accepts is no breach')
-  assert.equal(hits.length, 1, 'a file admits rejects is still a breach')
-  assert.ok(hits[0].message.includes(STRAY))
+  assert.deepEqual(naming(hits, 'lib/x.mjs'), [], 'a source file is never a green\'s breach')
 })
 
 test('a fenced commit is still held to its fence', () => {
-  // SHA_A is a test-author round fenced to the test file; it also wrote the source file, which
-  // the leaf's locus lists and the net diff therefore clears. SHA_B and SHA_C add and take out a
-  // stray file the net diff clears too.
+  // SHA_A is a test round on a green, fenced to tests; it also wrote the source file, which the
+  // green may write and the net diff therefore clears.
   const commits = [
-    commit(SHA_A, 'test(x): pin the parser', ['test/x.test.mjs', 'lib/x.mjs']),
-    commit(SHA_B, 'feat(x): add the parser', ['lib/x.mjs', STRAY]),
-    commit(SHA_C, 'chore(x): drop the stray file', [STRAY]),
+    commit(SHA_A, 'test(x): pin the parser', [TEST_FILE, 'lib/x.mjs']),
+    commit(SHA_B, 'feat(x): add the parser', ['lib/x.mjs']),
   ]
-  const fences = { [SHA_A]: ['test/x.test.mjs'] }
-  const findings = series.analyzeSeries(commits, LOCUS, fences, { netFiles: ['lib/x.mjs', 'test/x.test.mjs'] })
+  const findings = series.analyzeSeries(commits, { writes: 'no-tests', fences: { [SHA_A]: 'tests' }, netFiles: ['lib/x.mjs', TEST_FILE] })
   const hits = breaches(findings)
   assert.equal(hits.length, 1, 'only the fenced commit breaches')
   assert.equal(hits[0].sha, SHA_A)
   assert.ok(hits[0].message.includes('lib/x.mjs'), 'the breach names the file outside the fence')
-  assert.deepEqual(naming(hits, STRAY), [])
 })
 
-test('without a net diff each commit is held to the locus', () => {
+test('without a net diff each commit is held to the rule', () => {
   const commits = [
-    commit(SHA_A, 'feat(x): add the parser', ['lib/x.mjs', STRAY]),
-    commit(SHA_B, 'chore(x): drop the stray file', [STRAY]),
+    commit(SHA_A, 'feat(x): add the parser', ['lib/x.mjs', TEST_FILE]),
+    commit(SHA_B, 'chore(x): restore the test', [TEST_FILE]),
   ]
   for (const findings of [
-    series.analyzeSeries(commits, LOCUS),
-    series.analyzeSeries(commits, LOCUS, {}),
-    series.analyzeSeries(commits, LOCUS, {}, {}),
-    series.analyzeSeries(commits, LOCUS, {}, { netFiles: null }),
+    series.analyzeSeries(commits, { writes: 'no-tests' }),
+    series.analyzeSeries(commits, { writes: 'no-tests', netFiles: null }),
   ]) {
     const hits = breaches(findings)
     for (const sha of [SHA_A, SHA_B]) {
       const own = hits.filter((f) => f.sha === sha)
       assert.equal(own.length, 1, `commit ${sha} breaches once`)
-      assert.ok(own[0].message.includes(STRAY))
+      assert.ok(own[0].message.includes(TEST_FILE))
     }
     assert.equal(hits.length, 2)
   }
@@ -118,51 +94,41 @@ test('the other series checks still run', () => {
   const commits = [
     commit(SHA_A, 'wip parser', ['lib/x.mjs']),
     commit(SHA_B, 'feat(x): add the parser', []),
-    commit(SHA_C, 'feat(x): add the parser and the tests', ['lib/x.mjs', 'test/x.test.mjs']),
+    commit(SHA_C, 'feat(x): add the parser and the tests', ['lib/x.mjs', TEST_FILE]),
   ]
   const expected = ['and-subject', 'empty-commit', 'wip-subject']
-  const findings = series.analyzeSeries(commits, LOCUS, {}, { netFiles: ['lib/x.mjs', 'test/x.test.mjs'] })
+  const findings = series.analyzeSeries(commits, { netFiles: ['lib/x.mjs', TEST_FILE] })
   assert.deepEqual(checksOf(findings), expected)
   const bySha = Object.fromEntries(findings.map((f) => [f.check, f.sha]))
   assert.deepEqual(bySha, { 'wip-subject': SHA_A, 'empty-commit': SHA_B, 'and-subject': SHA_C })
 })
 
 test('a file only fenced commits touched is not judged on the net diff', () => {
-  const TEST_FILE = 'test/x.test.mjs'
-  // SHA_A is a test-author round fenced to the test file; the leaf's locus does not list it and
-  // `admits` rejects it, so judging it on the net diff would breach a file the fence allows.
+  // SHA_A is a test round fenced to tests; the green may not write the test, so judging it on the
+  // net diff would breach a file the fence allows.
   const commits = [
     commit(SHA_A, 'test(x): pin the parser', [TEST_FILE]),
     commit(SHA_B, 'feat(x): add the parser', ['lib/x.mjs']),
   ]
-  const fences = { [SHA_A]: [TEST_FILE] }
-  const findings = series.analyzeSeries(commits, ['lib/x.mjs'], fences, {
-    netFiles: ['lib/x.mjs', TEST_FILE], admits: admitsOnly(['lib/x.mjs']),
-  })
+  const findings = series.analyzeSeries(commits, { writes: 'no-tests', fences: { [SHA_A]: 'tests' }, netFiles: ['lib/x.mjs', TEST_FILE] })
   assert.deepEqual(breaches(findings), [], 'the fenced commit alone touched the file: its fence judges it')
   assert.deepEqual(naming(findings, TEST_FILE), [])
 })
 
-test('an unfenced commit touching a file a fenced commit touched is judged by what the locus admits', () => {
-  const TEST_FILE = 'test/x.test.mjs'
+test('an unfenced commit touching a file a fenced commit touched is judged by the leaf\'s rule', () => {
   const commits = [
     commit(SHA_A, 'test(x): pin the parser', [TEST_FILE]),
     commit(SHA_B, 'fix(x): change the parser test', [TEST_FILE]),
   ]
-  const fences = { [SHA_A]: [TEST_FILE] }
+  const fences = { [SHA_A]: 'tests' }
   // netFiles lacks the file: the net diff of a file changed and changed back holds nothing.
-  const rejected = series.analyzeSeries(commits, ['lib/x.mjs'], fences, {
-    netFiles: [], admits: admitsOnly(['lib/x.mjs']),
-  })
-  const hits = breaches(rejected)
-  assert.equal(hits.length, 1, 'one breach: the unfenced commit; the fenced one is within its fence')
-  assert.equal(hits[0].sha, SHA_B)
-  assert.ok(hits[0].message.includes(TEST_FILE), 'the breach names the file')
+  const green = breaches(series.analyzeSeries(commits, { writes: 'no-tests', fences, netFiles: [] }))
+  assert.equal(green.length, 1, 'one breach: the unfenced commit; the fenced one is within its fence')
+  assert.equal(green[0].sha, SHA_B)
+  assert.ok(green[0].message.includes(TEST_FILE), 'the breach names the file')
 
-  const admitted = series.analyzeSeries(commits, ['lib/x.mjs'], fences, {
-    netFiles: [], admits: admitsOnly(['lib/x.mjs', TEST_FILE]),
-  })
-  assert.deepEqual(breaches(admitted), [], 'what admits accepts is no breach, fenced file or not')
+  assert.deepEqual(breaches(series.analyzeSeries(commits, { writes: 'all', fences, netFiles: [] })), [],
+    'a role that may write the file breaches nothing, fenced file or not')
 })
 
 // =========================================================================================

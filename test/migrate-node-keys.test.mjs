@@ -32,7 +32,7 @@ function put(path, text = '{}') {
 function before(t) {
   const r = repo()
   t.after(() => rmSync(r, { recursive: true, force: true }))
-  const seeded = seedTree(r, EFFORT, [root(), { id: PARENT, kind: 'composite', title: 'p' }, leaf(LONG, { locus: ['src/a.mjs'] }), leaf('short', { locus: ['src/b.mjs'] })])
+  const seeded = seedTree(r, EFFORT, [root(), { id: PARENT, kind: 'composite', title: 'p' }, leaf(LONG, { expects: ['src/a.mjs'] }), leaf('short', { expects: ['src/b.mjs'] })])
   assert.equal(seeded.ok, true, JSON.stringify(seeded.problems))
   git(r, 'branch', 'agentics/' + EFFORT + '--' + OLD)
   git(r, 'worktree', 'add', '-q', join(r, '.claude', 'worktrees', EFFORT + '--' + OLD), 'agentics/' + EFFORT + '--' + OLD)

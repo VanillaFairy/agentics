@@ -16,7 +16,7 @@ const note = (r, node, text) => append(r, E, 'events', { kind: 'noted', node, ex
 const OTHER = '20260925-110000'
 
 test("a leaf's first round carries the notes left on it, in a notes message to its thread", async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   note(r, 'a', 'handed over from hand/a at abc123')
   note(r, 'a', 'the cache is warm')
   const opened = await leafOpen(xc, { node: 'a', intelligence: 'normal' })
@@ -30,7 +30,7 @@ test("a leaf's first round carries the notes left on it, in a notes message to i
 })
 
 test('opening the same round again records the notes message once', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   note(r, 'a', 'one note')
   await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   await leafOpen(xc, { node: 'a', intelligence: 'normal' })
@@ -38,13 +38,13 @@ test('opening the same round again records the notes message once', async (t) =>
 })
 
 test('no note, no message', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   assert.equal(notesOf(r).length, 0)
 })
 
 test('a note a session of the leaf already started after is not carried again', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   note(r, 'a', 'old news')
   ran(xc, { node: 'a', round: 1, role: 'implementer', thread: 'producer:a', log: executionLog(r, E, OTHER) })
   note(r, 'a', 'new news')
@@ -53,7 +53,7 @@ test('a note a session of the leaf already started after is not carried again', 
 })
 
 test('a thread this execution dispatched gets no notes message', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   ran(xc, { node: 'a', round: 1, role: 'implementer', thread: 'producer:a', ret: { status: 'done', text: 'did it' } })
   note(r, 'a', 'after the round')
   await leafOpen(xc, { node: 'a', intelligence: 'normal' })

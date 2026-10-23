@@ -9,10 +9,10 @@ import { deriveStatus, liveNodes } from '../../lib/tree.mjs'
 
 const NODES = [
   { id: '.', kind: 'composite', title: 'root' },
-  { id: 'a', kind: 'leaf', title: 'a', rigor: 'tdd', locus: ['src/api.mjs'] },
-  { id: 'p', kind: 'leaf', title: 'p', rigor: 'tdd', locus: ['src/api.mjs'], provides: [{ name: 'api', paths: ['src/api.mjs'] }] },
-  { id: 'b', kind: 'leaf', title: 'b', rigor: 'tdd', locus: ['src/b.mjs'], consumes: [{ name: 'api', paths: ['src/api.mjs'] }] },
-  { id: 'm', kind: 'leaf', title: 'm', rigor: 'tdd', locus: ['src/m.mjs'], consumes: [{ name: 'api', paths: ['src/api.mjs'] }] },
+  { id: 'a', kind: 'leaf', title: 'a', rigor: 'tdd', expects: ['src/api.mjs'] },
+  { id: 'p', kind: 'leaf', title: 'p', rigor: 'tdd', expects: ['src/api.mjs'], provides: [{ name: 'api', paths: ['src/api.mjs'] }] },
+  { id: 'b', kind: 'leaf', title: 'b', rigor: 'tdd', expects: ['src/b.mjs'], consumes: [{ name: 'api', paths: ['src/api.mjs'] }] },
+  { id: 'm', kind: 'leaf', title: 'm', rigor: 'tdd', expects: ['src/m.mjs'], consumes: [{ name: 'api', paths: ['src/api.mjs'] }] },
 ]
 function treeOf(events = []) {
   const nodes = liveNodes(NODES.map((node, i) => ({ kind: 'node', node, seq: i + 1 })))

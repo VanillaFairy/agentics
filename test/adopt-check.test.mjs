@@ -17,9 +17,9 @@ import { commitIn, git, leaf, repo, root, STAMP } from './harness/boundary-fixtu
 import { seedTree } from './harness/seed-tree.mjs'
 
 const E = 'e1'
-const NODES = [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { locus: ['src/a.mjs'] }),
-  leaf('c/b', { locus: ['src/b.mjs'] }), { id: 'd', kind: 'composite', title: 'd', decisions: ['D1'] }, leaf('d/x', { locus: ['src/x.mjs'] }),
-  leaf('top', { locus: ['src/top.mjs'] })]
+const NODES = [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { expects: ['src/a.mjs'] }),
+  leaf('c/b', { expects: ['src/b.mjs'] }), { id: 'd', kind: 'composite', title: 'd', decisions: ['D1'] }, leaf('d/x', { expects: ['src/x.mjs'] }),
+  leaf('top', { expects: ['src/top.mjs'] })]
 
 function world(t) {
   const r = repo()
@@ -57,7 +57,7 @@ test('a check of straight commits is ok, offers the token over its digest and na
   assert.equal(out.folder_head, two)
   assert.equal(out.token, actToken({ act: 'adopt', folder: 'c', hash: out.digest }))
   assert.deepEqual(out.unaccounted, [])
-  assert.deepEqual(out.outside_locus, [])
+  assert.deepEqual(out.role_breach, [])
   assert.deepEqual(out.criteria, [{ node: 'c/a', criteria: ['c/a works'] }])
 })
 
@@ -80,12 +80,12 @@ test("commits the mapping leaves out stay in the report's unaccounted", (t) => {
   assert.deepEqual(out.unaccounted, [{ branch: branchOf(E, 'c'), commits: [two] }])
 })
 
-test("a file the leaf's locus does not admit is reported, never refused", (t) => {
+test("a file the leaf's role may not change is reported, never refused; one it does not expect is neither", (t) => {
   const w = world(t)
-  const one = commitIn(w.wt, { 'src/a.mjs': '1\n', 'README.md': 'edited\n' }, 'one')
+  const one = commitIn(w.wt, { 'src/a.mjs': '1\n', 'README.md': 'edited\n', '.agentics/note.json': '{}\n' }, 'one')
   const out = checkOf(w, { done: [{ node: 'c/a', commits: [one] }] })
   assert.equal(out.ok, true)
-  assert.deepEqual(out.outside_locus, [{ node: 'c/a', paths: ['README.md'] }])
+  assert.deepEqual(out.role_breach, [{ node: 'c/a', paths: ['.agentics/note.json'] }])
 })
 
 test('a hand --no-ff merged branch adopts what the merge brought in, and the merge leaves nothing unaccounted', (t) => {

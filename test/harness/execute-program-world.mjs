@@ -29,14 +29,14 @@ const CHECK_MJS = "import { readFileSync } from 'node:fs'\nlet ok = false\n" +
 const FILES = { 'check.mjs': CHECK_MJS, 'pass.mjs': '' }
 
 /** One Plan entry: a leaf whose check reads `src/<words joined by '/'>.txt`; `words` default to its name. */
-export function leafEntry(name, { realises = 'D1', after = '', provides = '', consumes = '', rigor = 'trivial', role = '', locus, words, check } = {}) {
+export function leafEntry(name, { realises = 'D1', after = '', provides = '', consumes = '', rigor = 'trivial', role = '', expects, words, check } = {}) {
   const parts = words ?? [name]
-  const paths = locus ?? ['src/' + parts.join('/') + '.txt']
+  const paths = expects ?? ['src/' + parts.join('/') + '.txt']
   const cmd = check ?? 'node check.mjs ' + parts.join(' ')
   const fields = [
     'task', 'realises: ' + realises, ...(after ? ['after: ' + after] : []), ...(provides ? ['provides: ' + provides] : []),
     ...(consumes ? ['consumes: ' + consumes] : []), 'rigor: ' + rigor, ...(role ? ['role: ' + role] : []),
-    ...(paths.length ? ['locus: ' + paths.join(', ')] : []),
+    ...(paths.length ? ['expects: ' + paths.join(', ')] : []),
   ]
   return ['- **' + name + '** — ' + fields.join(' · '), '  Make ' + name, '  - [ ] ' + name + ' says ok — check: `' + cmd + '`', '']
 }

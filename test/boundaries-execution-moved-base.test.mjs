@@ -137,7 +137,7 @@ test("a base head the execution's own branch already merged is not a move under 
 })
 
 test('a stopped or merged leaf is not asked about a moved base', async (t) => {
-  const nodes = [root(), ...['p', 'x', 'm', 'd'].map((id) => leaf(id, { locus: ['src/' + id + '.mjs'] }))]
+  const nodes = [root(), ...['p', 'x', 'm', 'd'].map((id) => leaf(id, { expects: ['src/' + id + '.mjs'] }))]
   const { r, cf } = await started(t, nodes)
   const xc = ctxOf(r)
   xc.log.append('parked', { node: 'p', return: 'needs_decision', question: '' })
@@ -148,7 +148,7 @@ test('a stopped or merged leaf is not asked about a moved base', async (t) => {
   assert.deepEqual(out.stale.nodes, ['d'], 'only the planned leaf is asked')
   for (const id of ['p', 'x', 'm']) assert.ok(!readFileSync(out.stale.brief, 'utf8').includes('# ' + id + ' '), id + ' is not in the brief')
 
-  const stopped = [root(), ...['p', 'x', 'm'].map((id) => leaf(id, { locus: ['src/' + id + '.mjs'] }))]
+  const stopped = [root(), ...['p', 'x', 'm'].map((id) => leaf(id, { expects: ['src/' + id + '.mjs'] }))]
   const second = await started(t, stopped)
   const two = ctxOf(second.r)
   two.log.append('parked', { node: 'p', return: 'needs_decision', question: '' })
@@ -160,7 +160,7 @@ test('a stopped or merged leaf is not asked about a moved base', async (t) => {
 })
 
 test('a moved file a leaf only reads makes it stale, listed under its reads', async (t) => {
-  const { r, cf, base } = await started(t, [root(), leaf('a', { locus: ['src/a.mjs'], reads: [ADD] })])
+  const { r, cf, base } = await started(t, [root(), leaf('a', { expects: ['src/a.mjs'], reads: [ADD] })])
   const now = commitIn(r, { [ADD]: SWAPPED }, 'Swap the operands')
   const out = await preflight(ctxOf(r), { commands_file: cf })
   assert.deepEqual(out.stale.nodes, ['a'])
@@ -168,7 +168,7 @@ test('a moved file a leaf only reads makes it stale, listed under its reads', as
 })
 
 test("only the leaves of the execution's folder are asked about a moved base", async (t) => {
-  const r = world(t, [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { locus: [ADD] }), leaf('d', { locus: ['README.md'] })])
+  const r = world(t, [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { expects: [ADD] }), leaf('d', { expects: ['README.md'] })])
   const cf = commandsFile(t)
   assert.equal((await preflight(ctxOf(r), { folder: 'c', commands_file: cf })).ok, true)
   commitIn(r, { [ADD]: SWAPPED, 'README.md': 'hello again\n' }, 'Touch both')
@@ -192,7 +192,7 @@ test('a ruling at a head outside the span from the held base to now anchors noth
 })
 
 test("the nearest integration branch of the folder decides what its leaves were cut from, not an ancestor's", async (t) => {
-  const r = world(t, [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { locus: [ADD] })])
+  const r = world(t, [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { expects: [ADD] })])
   const cf = commandsFile(t)
   const base = head(r)
   for (const id of ['.', 'c']) git(r, 'worktree', 'add', '-q', '-b', branchOf(E, id), worktreeOf(r, E, id), 'HEAD')

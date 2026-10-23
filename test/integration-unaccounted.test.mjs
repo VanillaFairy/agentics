@@ -15,7 +15,7 @@ import { commitIn, git, leaf, repo, root } from './harness/boundary-fixture.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 
 const E = 'e1'
-const NODES = [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { locus: ['src/a.mjs'] })]
+const NODES = [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { expects: ['src/a.mjs'] })]
 
 /** A repository with the tree seeded, the effort branch and folder c's branch cut at `main`, and c checked out. */
 function world(t) {

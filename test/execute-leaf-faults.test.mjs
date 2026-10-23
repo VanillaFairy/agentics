@@ -4,7 +4,7 @@
 //
 // What is pinned here:
 //
-//   requeues, routes and faults  by cause: no slot, a locus another leaf holds, needs_context, a
+//   requeues, routes and faults  by cause: no slot, needs_context, a
 //                                failed dispatch, and a throw inside the unit
 //   a relaunch                   rebuilt from the records
 //
@@ -15,7 +15,8 @@
 
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
 import { runLeaf } from '../lib/programs/execute/leaf.mjs'
 import { heldOf } from '../lib/boundaries/records.mjs'
 import { renderMessage } from '../lib/conversation.mjs'
@@ -48,9 +49,9 @@ describe('the leaf unit', { concurrency: 4 }, () => {
   // ------------------------------------------------------------------ requeues, routes and faults
 
   test('no slot: the leaf goes back to the scheduler, nothing dispatched', T, async (t) => {
-    const w = world(t, { leaves: [bLeaf(), leafEntry('x', { locus: ['src/x.txt'] })] })
+    const w = world(t, { leaves: [bLeaf(), leafEntry('x', { expects: ['src/x.txt'] })] })
     writeJson(configPath(w.rig.repo), { max_parallel: 1 })
-    const held = await acquireAsync(w.rig.repo, { effort: E, execution: w.rig.stamp, node: 'x', locus: ['src/x.txt'], waitMs: 0 })
+    const held = await acquireAsync(w.rig.repo, { effort: E, execution: w.rig.stamp, node: 'x', waitMs: 0 })
     assert.equal(held.ok, true, JSON.stringify(held))
     w.rig.script({})
     const out = await w.run('b')
@@ -61,9 +62,11 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.deepEqual(stopsOn(w.rig), [])
   })
 
-  test('a locus another leaf holds: the leaf goes back to the scheduler, nothing dispatched', T, async (t) => {
-    const w = world(t, { leaves: [bLeaf(), leafEntry('x', { locus: ['src/x.txt', 'src/b.txt'] })] })
-    const held = await acquireAsync(w.rig.repo, { effort: E, execution: w.rig.stamp, node: 'x', locus: ['src/x.txt', 'src/b.txt'], waitMs: 0 })
+  test('no free slot: the leaf goes back to the scheduler, nothing dispatched', T, async (t) => {
+    const w = world(t, { leaves: [bLeaf(), leafEntry('x', { expects: ['src/x.txt', 'src/b.txt'] })] })
+    mkdirSync(dirname(configPath(w.rig.repo)), { recursive: true })
+    writeFileSync(configPath(w.rig.repo), JSON.stringify({ max_parallel: 1 }))
+    const held = await acquireAsync(w.rig.repo, { effort: E, execution: w.rig.stamp, node: 'x', waitMs: 0 })
     assert.equal(held.ok, true, JSON.stringify(held))
     w.rig.script({})
     const out = await w.run('b')
@@ -73,22 +76,10 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.deepEqual(faultsOf(w.rig), [])
   })
 
-  test('a leaf-open that refuses stops the leaf, nothing dispatched', T, async (t) => {
-    const w = world(t, { leaves: [bLeaf()] })
-    const b = readTree(w.rig.repo, E).nodes.get('b')
-    assert.equal(append(w.rig.repo, E, 'nodes', [{ kind: 'node', node: { ...b, locus: ['../out.txt'] } }]).ok, true)
-    w.rig.script({})
-    const out = await w.run('b')
-    assert.equal(out.outcome, 'stopped')
-    assert.equal(w.rig.calls.length, 0)
-    assert.deepEqual(stopsOn(w.rig).map((e) => e.reason), ['open_refused'])
-    assert.deepEqual(faultsOf(w.rig), [])
-  })
-
   test("needs_context under a planner's folder comes back as a route to that planner", T, async (t) => {
     const root = specText([['- **f** — sub-effort · realises: D1 · author: planner', '  Fold f', '']])
     // A planner-written spec states no decision of its own: its task realises the root's D1.
-    const sub = specText([leafEntry('b', { locus: ['src/b.txt'] })], { decisions: false })
+    const sub = specText([leafEntry('b', { expects: ['src/b.txt'] })], { decisions: false })
     const w = world(t, { spec: { '.': root, f: sub } })
     const ASKED = 'which format does the folder want?'
     w.rig.script({ 'implementer|f/b|producer:f/b': [said('needs_context', ASKED)] })
@@ -102,13 +93,13 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.deepEqual(stopsOn(w.rig, 'f'), [], 'nor the folder')
   })
 
-  test("a relaunch routes a needs_locus round again while the leaf is unrevised, and opens the next round once a plan revised it", T, async (t) => {
+  test("a relaunch routes a needs_context round again while the leaf is unrevised, and opens the next round once a plan revised it", T, async (t) => {
     const root = specText([['- **f** — sub-effort · realises: D1 · author: planner', '  Fold f', '']])
-    const sub = specText([leafEntry('b', { locus: ['src/b.txt'] })], { decisions: false })
+    const sub = specText([leafEntry('b', { expects: ['src/b.txt'] })], { decisions: false })
     const w = world(t, { spec: { '.': root, f: sub } })
     const WHY = 'src/c.txt must change too'
     w.job('implementer|f/b#1', (cwd) => work(cwd, { 'src/b.txt': 'ok\n' }, 'make b'))
-    w.rig.script({ 'implementer|f/b|producer:f/b': [{ output: { status: 'needs_locus', text: WHY, needs_locus: { paths: ['src/c.txt'], why: WHY } } }] })
+    w.rig.script({ 'implementer|f/b|producer:f/b': [{ output: { status: 'needs_context', text: WHY } }] })
     const first = await w.run('f/b')
     assert.equal(first.outcome, 'route')
 
@@ -121,7 +112,7 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.deepEqual(out.route, first.route, 'the route the first run held in memory')
 
     const b = readTree(again.rig.repo, E).nodes.get('f/b')
-    assert.equal(append(again.rig.repo, E, 'nodes', [{ kind: 'node', node: { ...b, locus: ['src/b.txt', 'src/c.txt'] } }]).ok, true)
+    assert.equal(append(again.rig.repo, E, 'nodes', [{ kind: 'node', node: { ...b, expects: ['src/b.txt', 'src/c.txt'] } }]).ok, true)
     const revised = w.relaunch()
     revised.rig.script({ 'implementer|f/b|producer:f/b': [done()] })
     const next = await revised.run('f/b')

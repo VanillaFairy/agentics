@@ -5,7 +5,7 @@
 //   withLockAsync        withLock's lock and holder, waited for with an awaited sleep: timers fire
 //                        while it waits; it and withLock exclude each other; the same timeout error;
 //                        a dead holder broken; the lock held until an async fn settles
-//   acquireAsync         a slot and the locus locks, the slot wait awaited; a held locus answered at once
+//   acquireAsync         a slot, the slot wait awaited
 //   withBranchLockAsync  one branch held across an awaited fn, other branches free
 //
 // Design: docs/DESIGN.md#slots-and-locks.
@@ -53,7 +53,7 @@ const gate = () => {
 }
 
 const leaf = (id) => ({
-  id, kind: 'leaf', title: 'do ' + id, rigor: 'trivial', locus: ['src/' + id + '.js', 'src/shared.js'],
+  id, kind: 'leaf', title: 'do ' + id, rigor: 'trivial', expects: ['src/' + id + '.js', 'src/shared.js'],
   decisions: ['D1'], acceptance: [{ text: id + ' works', check: 'node --test', decisions: ['D1'] }],
 })
 
@@ -165,17 +165,6 @@ test('acquireAsync takes the slot once one frees, and taking it again answers th
   assert.deepEqual(result, await acquireAsync(repo, { ...spec, waitMs: 0 }), 'the result acquire gives for the slot b now holds')
 })
 
-test('acquireAsync answers locus_held at once, the same answer every time', { timeout: 10_000 }, async (t) => {
-  const repo = effortRepo(t, ['a', 'b'], 4)
-  assert.equal((await acquireAsync(repo, { effort: E, execution: X, node: 'a', locus: ['src/shared.js'], waitMs: 0 })).ok, true)
-  let sleeps = 0
-  const spec = { effort: E, execution: X, node: 'b', locus: ['src/b.js', 'src/shared.js'], waitMs: 60_000 }
-  const result = await acquireAsync(repo, spec, { sleep: async () => { sleeps++ } })
-  assert.equal(result.reason, 'locus_held')
-  assert.equal(sleeps, 0, 'a held locus is never waited for')
-  assert.deepEqual(result, await acquireAsync(repo, { ...spec, waitMs: 0 }))
-})
-
 test('acquireAsync answers no_slot once waitMs has passed, the same answer every time', { timeout: 10_000 }, async (t) => {
   const repo = effortRepo(t, ['a', 'b'], 1)
   assert.equal((await acquireAsync(repo, { effort: E, execution: X, node: 'a', waitMs: 0 })).ok, true)
@@ -196,9 +185,9 @@ test('the event loop runs while acquireAsync waits for a slot', { timeout: 10_00
   assert.deepEqual([result.ok, result.slot], [true, 1], 'only the timer frees the slot, so the wait let it fire')
 })
 
-test('acquireAsync refuses a bad effort, node or locus, the same answer every time', async (t) => {
+test('acquireAsync refuses a bad effort or node, the same answer every time', async (t) => {
   const repo = fresh(t)
-  for (const spec of [{ effort: 'Not An Effort', node: 'a' }, { effort: E, node: '' }, { effort: E, node: 'a', locus: ['../out.js'] }]) {
+  for (const spec of [{ effort: 'Not An Effort', node: 'a' }, { effort: E, node: '' }]) {
     const result = await acquireAsync(repo, spec)
     assert.equal(result.reason, 'invalid', JSON.stringify(spec))
     assert.deepEqual(result, await acquireAsync(repo, spec))

@@ -12,7 +12,7 @@ import { basename, dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { readLog, seqMax } from '../lib/ledger.mjs'
-import { heldBy, poolConfig } from '../lib/locks.mjs'
+import { poolConfig } from '../lib/locks.mjs'
 import { efforts } from '../lib/status.mjs'
 import { agenticsRoot, configPath, effortStateDir, legacyDir, readConfig, safeSlug } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
@@ -60,7 +60,7 @@ function legacyRepo() {
     [e + 'effort.json']: JSON.stringify({ about: 'parse configs', roots: ['.'], opened_at: '2026-09-20T10:00:00.000Z' }),
     [e + 'nodes.jsonl']: jsonl(
       { kind: 'node', node: { id: '.', kind: 'composite', title: 'the change', defines: [{ id: 'D1', text: 'do it' }] }, seq: 1 },
-      { kind: 'node', node: { id: 'a', kind: 'leaf', title: 'do a', rigor: 'tdd', locus: ['src/a.js'], decisions: ['D1'], acceptance: [{ text: 'a works', check: 'node --test', decisions: ['D1'] }] }, seq: 2 },
+      { kind: 'node', node: { id: 'a', kind: 'leaf', title: 'do a', rigor: 'tdd', expects: ['src/a.js'], decisions: ['D1'], acceptance: [{ text: 'a works', check: 'node --test', decisions: ['D1'] }] }, seq: 2 },
       { kind: 'node', node: { id: 'd', kind: 'design', level: 'component', design_doc: 'docs/agentics/designs/e1/d.md', title: 'later', decisions: ['D1'] }, seq: 3 },
     ),
     [e + 'events.jsonl']: jsonl(
@@ -232,7 +232,7 @@ const seqsIn = (text) => text.split('\n').flatMap((l) => {
   try { const s = JSON.parse(l).seq; return Number.isInteger(s) ? [s] : [] } catch { return [] }
 })
 
-test('in-flight extras arrive byte for byte and read as before: a torn state line, a counter behind the logs, a job pid, a locus lock', () => {
+test('in-flight extras arrive byte for byte and read as before: a torn state line, a counter behind the logs, a job pid, a lock file', () => {
   const repo = legacyRepo()
   const e = OLD + '/efforts/e1/'
   const torn = jsonl({ kind: 'checkpoint', reason: 'session limit', seq: 7 }) + '{"kind":"chec'
@@ -250,8 +250,7 @@ test('in-flight extras arrive byte for byte and read as before: a torn state lin
   assert.equal(seqMax(repo, 'e1'), highest)
   const [listed] = efforts(repo).efforts
   assert.deepEqual(listed.executions.map((x) => [x.stamp, x.closed, x.status]), [[STAMP, false, 'checkpoint']])
-  const lock = heldBy(repo).locus.find((l) => l.effort === 'e1')
-  assert.deepEqual([lock.path, lock.node, lock.execution], ['src/a.js', 'a', STAMP])
+  assert.equal(readFileSync(join(state, 'locks', 'locus', '0badf00d.lock'), 'utf8'), JSON.stringify({ path: 'src/a.js', node: 'a', execution: STAMP }))
 })
 
 test('a copy stopped halfway is finished by the next run, never refused for its own files', () => {

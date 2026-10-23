@@ -37,7 +37,7 @@ const ALL = {
 function world(t) {
   const r = repo()
   t.after(() => rmSync(r, { recursive: true, force: true }))
-  const seeded = seedTree(r, E, [root(), leaf('a', { locus: ['src/a.mjs'] })])
+  const seeded = seedTree(r, E, [root(), leaf('a', { expects: ['src/a.mjs'] })])
   assert.equal(seeded.ok, true, JSON.stringify(seeded))
   return r
 }
@@ -250,7 +250,7 @@ test('a later execution\'s measurement reads the session\'s absent commands from
   const xc = relaunch(r, OTHER)
   preflight(xc, {})
   assert.equal(xc.envelope().commands, null)
-  assert.equal((await acquireAsync(r, { effort: E, execution: OTHER, node: 'a', locus: ['src/a.mjs'] })).ok, true)
+  assert.equal((await acquireAsync(r, { effort: E, execution: OTHER, node: 'a' })).ok, true)
   const folder = ensureIntegration(r, E, '.', xc.envelope())
   assert.equal(folder.ok, true, folder.error)
   const made = ensureLeaf(r, E, 'a', { from: folder.head, parentBranch: folder.branch })

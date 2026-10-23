@@ -13,8 +13,8 @@ import { E, commandsFile, ctxOf, world } from './harness/execution-world.mjs'
 
 const NODES = [
   root(),
-  leaf('p', { locus: ['src/p.mjs'], provides: [{ name: 'api', paths: ['src/api.mjs'] }, { name: 'add', paths: ['src/add.mjs'] }] }),
-  leaf('b', { locus: ['src/b.mjs'], deps: ['p'], consumes: [{ name: 'api', paths: ['src/api.mjs'] }, { name: 'add', paths: ['src/add.mjs'] }] }),
+  leaf('p', { expects: ['src/p.mjs'], provides: [{ name: 'api', paths: ['src/api.mjs'] }, { name: 'add', paths: ['src/add.mjs'] }] }),
+  leaf('b', { expects: ['src/b.mjs'], deps: ['p'], consumes: [{ name: 'api', paths: ['src/api.mjs'] }, { name: 'add', paths: ['src/add.mjs'] }] }),
 ]
 const OUTSIDE = (commits) => ({ kind: 'outside', node: '.', execution: '', commits, by: 'user' })
 

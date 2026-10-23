@@ -92,7 +92,7 @@ test('a damaged gotcha file is reported as malformed, not silently dropped', () 
   assert.equal(malformed.length, 1)
 })
 
-test('gotchasFor filters by role and by locus overlap; unscoped gotchas reach every locus', () => {
+test('gotchasFor filters by role and by overlap with the expected files; unscoped gotchas reach every brief', () => {
   const r = repo()
   writeGotcha(r, E, pitfall({ trigger: 'anywhere' }), {})
   writeGotcha(r, E, pitfall({ trigger: 'in src', paths: ['src/'] }), {})
@@ -100,11 +100,11 @@ test('gotchasFor filters by role and by locus overlap; unscoped gotchas reach ev
   writeGotcha(r, E, pitfall({ trigger: 'for tests', roles: ['test-author'] }), {})
 
   const trig = (gs) => gs.map((g) => g.body.split(',')[0]).sort()
-  assert.deepEqual(trig(gotchasFor(r, E, { role: 'implementer', locus: ['src/a/b.js'] })), ['When anywhere', 'When in src'])
-  assert.deepEqual(trig(gotchasFor(r, E, { role: 'implementer', locus: ['docs/guide.md'] })), ['When anywhere', 'When in docs'])
-  assert.deepEqual(trig(gotchasFor(r, E, { role: 'implementer', locus: ['src'] })), ['When anywhere', 'When in src'])
-  assert.deepEqual(trig(gotchasFor(r, E, { role: 'implementer', locus: [] })), ['When anywhere'])
-  assert.deepEqual(trig(gotchasFor(r, E, { role: 'test-author', locus: ['src/x.js'] })), ['When for tests'])
+  assert.deepEqual(trig(gotchasFor(r, E, { role: 'implementer', paths: ['src/a/b.js'] })), ['When anywhere', 'When in src'])
+  assert.deepEqual(trig(gotchasFor(r, E, { role: 'implementer', paths: ['docs/guide.md'] })), ['When anywhere', 'When in docs'])
+  assert.deepEqual(trig(gotchasFor(r, E, { role: 'implementer', paths: ['src'] })), ['When anywhere', 'When in src'])
+  assert.deepEqual(trig(gotchasFor(r, E, { role: 'implementer', paths: [] })), ['When anywhere'])
+  assert.deepEqual(trig(gotchasFor(r, E, { role: 'test-author', paths: ['src/x.js'] })), ['When for tests'])
   assert.equal(gotchasFor(r, E, { role: 'implementer' }).length, 3)
   assert.equal(gotchasFor(r, E, {}).length, 4)
 })

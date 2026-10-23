@@ -39,18 +39,18 @@ const ROOT_SPEC = [
   '## Design', '', 'A sub-effort the planner writes and a task.', '',
   '## Plan', '',
   '- **p** — sub-effort · author: planner', '  Build p.', '  The planner writes its spec.',
-  '- **q** — task · realises: D1 · rigor: tdd · locus: src/q.mjs', '  Add q.', '  Write q and its test.',
+  '- **q** — task · realises: D1 · rigor: tdd · expects: src/q.mjs', '  Add q.', '  Write q and its test.',
   '  - [ ] q works — check: `node --test test/add.test.mjs`', '',
   '## Open questions', '', '## Evidence', '', 'None gathered.', '',
 ].join('\n')
 
 /** The folder's spec: one task `x` realising D1; each option is one way a test changes it. */
-const folderSpec = ({ locus = 'src/x.mjs, test/x.test.mjs', extra = '', after = '', design = 'One function.', title = 'Add x.', rigor = 'tdd', decisions = [], plan } = {}) => [
+const folderSpec = ({ expects = 'src/x.mjs, test/x.test.mjs', extra = '', after = '', design = 'One function.', title = 'Add x.', rigor = 'tdd', decisions = [], plan } = {}) => [
   '# Build p', '', '## Intent', '', 'Build p, as the root plans it.', '',
   '## Decisions', ...(decisions.length ? ['', '| id | decision | why |', '|---|---|---|', ...decisions.map(([id, text]) => '| ' + id + ' | ' + text + ' | faster |')] : []), '',
   '## Design', '', design, '', ...(extra ? [extra, ''] : []),
   '## Plan', '',
-  ...(plan || ['- **x** — task · realises: D1 · rigor: ' + rigor + ' · locus: ' + locus + after, '  ' + title, '  Write x and its test.',
+  ...(plan || ['- **x** — task · realises: D1 · rigor: ' + rigor + ' · expects: ' + expects + after, '  ' + title, '  Write x and its test.',
     '  - [ ] x works — check: `node --test test/x.test.mjs`']), '',
   '## Open questions', '', '## Evidence', '', 'The root\'s.', '',
 ].join('\n')
@@ -315,7 +315,7 @@ test('spec-check: different problems on the next round are sent again', (t) => {
   const xc = rig(t, { spec: folderSpec({ rigor: 'wild' }) })
   const first = problemsOf(xc)
   specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
-  put(xc.repo, 'p', folderSpec({ plan: ['- **x** — task · realises: D9 · rigor: tdd · locus: src/x.mjs, test/x.test.mjs', '  Add x.', '  Write x and its test.', '  - [ ] x works — check: `node --test test/x.test.mjs`'] }))
+  put(xc.repo, 'p', folderSpec({ plan: ['- **x** — task · realises: D9 · rigor: tdd · expects: src/x.mjs, test/x.test.mjs', '  Add x.', '  Write x and its test.', '  - [ ] x works — check: `node --test test/x.test.mjs`'] }))
   const second = problemsOf(xc)
   assert.ok(second.length > 0)
   assert.equal(textsOf(second).some((s) => textsOf(first).includes(s)), false, 'no problem in common')
@@ -331,7 +331,7 @@ test('spec-check: different problems on the next round are sent again', (t) => {
 test('spec-check: a set of problems that grew is a different set', (t) => {
   const xc = rig(t, { spec: folderSpec({ rigor: 'wild' }) })
   specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
-  put(xc.repo, 'p', folderSpec({ rigor: 'wild', plan: ['- **x** — task · realises: D9 · locus: src/x.mjs, test/x.test.mjs', '  Add x.', '  Write x and its test.', '  - [ ] x works — check: `node --test test/x.test.mjs`'] }))
+  put(xc.repo, 'p', folderSpec({ rigor: 'wild', plan: ['- **x** — task · realises: D9 · expects: src/x.mjs, test/x.test.mjs', '  Add x.', '  Write x and its test.', '  - [ ] x works — check: `node --test test/x.test.mjs`'] }))
   const now = problemsOf(xc)
   assert.ok(now.length >= 2, JSON.stringify(now))
   const out = specCheck(xc, { folder: 'p', dispatch: planner(xc, 2, { status: 'written' }) })
@@ -1019,112 +1019,18 @@ test('spec-prepare clears a spec_changed park a cut-off call left standing', (t)
   assert.notEqual(statusOf(xc).status, 'parked')
 })
 
-/** The sound spec prepared, then its locus widened by `path` and prepared again. */
+/** The sound spec prepared, then its leaf's `expects` grown by `path` and prepared again. */
 function widened(t, path, before = () => {}, opts) {
   const xc = prepared(t, opts)
   before(xc)
-  put(xc.repo, 'p', folderSpec({ locus: 'src/x.mjs, test/x.test.mjs, ' + path }))
+  put(xc.repo, 'p', folderSpec({ expects: 'src/x.mjs, test/x.test.mjs, ' + path }))
   return { xc, out: specPrepare(xc, { folder: 'p', review: REVIEW_2 }) }
 }
 
-test('spec-prepare: a widened locus another unmerged leaf holds escalates locus_held on the leaf', (t) => {
+test("spec-prepare: a leaf whose expects grew onto another unmerged leaf's file is prepared with no stop", (t) => {
   const { xc, out } = widened(t, 'src/q.mjs')
-  assertStop(out, 'p/x', 'escalated', 'locus_held')
-  const detail = detailOf(xc, 'p/x')
-  assert.match(detail, /src\/q\.mjs/, 'the detail names the path')
-  assert.match(detail, /\bq\b/, 'and the holder')
-  assert.equal(statusOf(xc, 'p/x').last.reason, 'locus_held')
-  assert.ok(nodeOf(xc, 'p/x').locus.includes('src/q.mjs'), 'the leaf\'s new revision stays compiled')
-  assert.deepEqual(escalations(xc, 'p'), [], 'the stop is the leaf\'s, not the folder\'s')
-})
-
-test('spec-prepare: a widened locus no unmerged leaf holds is admitted', (t) => {
-  const { xc, out } = widened(t, 'src/y.mjs')
-  assert.equal(out.status, 'prepared')
+  assert.equal(out.status, 'prepared', JSON.stringify(out.stops))
   assert.deepEqual(out.stops, [])
-  assert.ok(nodeOf(xc, 'p/x').locus.includes('src/y.mjs'))
-  assert.deepEqual(escalations(xc, 'p/x'), [])
-})
-
-test("spec-prepare: a widened locus on a merged leaf's path is admitted", (t) => {
-  const { xc, out } = widened(t, 'src/q.mjs', (x) => x.log.append('merged', { node: 'q', merged_sha: 'abc123', into: 'main' }))
-  assert.equal(statusOf(xc, 'q').status, 'merged')
-  assert.equal(out.status, 'prepared')
-  assert.deepEqual(out.stops, [])
-  assert.ok(nodeOf(xc, 'p/x').locus.includes('src/q.mjs'))
-})
-
-test('spec-prepare: a widened locus a held leaf lists as a directory is held too', (t) => {
-  const { xc, out } = widened(t, 'src/')
-  assertStop(out, 'p/x', 'escalated', 'locus_held')
-  assert.match(detailOf(xc, 'p/x'), /\bq\b/)
-})
-
-/** Folder p planning x and m, m after x and holding src/m.mjs; x's locus `locus`. */
-const pairSpec = (locus, { xAfterM = false } = {}) => folderSpec({ plan: [
-  '- **x** — task · realises: D1 · rigor: tdd' + (xAfterM ? ' · after: m' : '') + ' · locus: ' + locus, '  Add x.', '  Write x and its test.',
-  '  - [ ] x works — check: `node --test test/x.test.mjs`',
-  '- **m** — task · realises: D1 · rigor: tdd' + (xAfterM ? '' : ' · after: x') + ' · locus: src/m.mjs, test/m.test.mjs', '  Add m.', '  Write m and its test.',
-  '  - [ ] m works — check: `node --test test/m.test.mjs`',
-] })
-
-/** Commit on `id`'s leaf branch, cut from main: the holder has work in git. */
-function workOn(xc, id) {
-  const g = (...args) => execFileSync('git', ['-C', xc.repo, ...args], { encoding: 'utf8' }).trim()
-  const branch = branchOf(E, id)
-  g('branch', branch, 'main')
-  const tree = g('rev-parse', 'main^{tree}')
-  const sha = g('commit-tree', tree, '-p', 'main', '-m', 'work on ' + id)
-  g('update-ref', 'refs/heads/' + branch, sha)
-}
-
-test('spec-prepare: a widened locus a leaf after it holds, with no work in git, is admitted', (t) => {
-  const xc = prepared(t, { spec: pairSpec('src/x.mjs, test/x.test.mjs') })
-  put(xc.repo, 'p', pairSpec('src/x.mjs, test/x.test.mjs, src/m.mjs'))
-  const out = specPrepare(xc, { folder: 'p', review: REVIEW_2 })
-  assert.equal(out.status, 'prepared', JSON.stringify(out.stops))
-  assert.deepEqual(escalations(xc, 'p/x'), [])
-  assert.ok(nodeOf(xc, 'p/x').locus.includes('src/m.mjs'))
-})
-
-test('spec-prepare: a widened locus a leaf after it holds is held once that leaf has work in git', (t) => {
-  const xc = prepared(t, { spec: pairSpec('src/x.mjs, test/x.test.mjs') })
-  workOn(xc, 'p/m')
-  put(xc.repo, 'p', pairSpec('src/x.mjs, test/x.test.mjs, src/m.mjs'))
-  assertStop(specPrepare(xc, { folder: 'p', review: REVIEW_2 }), 'p/x', 'escalated', 'locus_held')
-  assert.match(detailOf(xc, 'p/x'), /p\/m/)
-})
-
-test("spec-prepare: a widened locus a leaf holds that waits on the leaf's folder is admitted", (t) => {
-  const root = ROOT_SPEC.replace('- **q** — task · realises: D1 · rigor: tdd ·', '- **q** — task · realises: D1 · rigor: tdd · after: p ·')
-  assert.notEqual(root, ROOT_SPEC)
-  const { xc, out } = widened(t, 'src/q.mjs', () => {}, { root })
-  assert.equal(out.status, 'prepared', JSON.stringify(out.stops))
-  assert.deepEqual(escalations(xc, 'p/x'), [])
-})
-
-test('spec-prepare: a widened locus a leaf it waits on holds is admitted, and the leaf opens only once that leaf merged', (t) => {
-  const xc = prepared(t, { spec: pairSpec('src/x.mjs, test/x.test.mjs', { xAfterM: true }) })
-  workOn(xc, 'p/m')
-  put(xc.repo, 'p', pairSpec('src/x.mjs, test/x.test.mjs, src/m.mjs', { xAfterM: true }))
-  const out = specPrepare(xc, { folder: 'p', review: REVIEW_2 })
-  assert.equal(out.status, 'prepared', JSON.stringify(out.stops))
-  assert.deepEqual(escalations(xc, 'p/x'), [])
-  const tree = readTree(xc.repo, E)
-  const leaves = (status) => schedule({ nodes: tree.nodes, status, root: ROOT_ID, maxParallel: 8 }).launch
-    .filter((u) => u.unit === 'leaf').map((u) => u.id)
-  assert.ok(leaves(tree.status).includes('p/m'))
-  assert.ok(!leaves(tree.status).includes('p/x'), 'x waits while m is unmerged')
-  const merged = new Map(tree.status)
-  merged.set('p/m', { ...(merged.get('p/m') || {}), status: 'merged' })
-  assert.ok(leaves(merged).includes('p/x'), 'x opens once m merged')
-})
-
-test('spec-prepare run twice on a held widening escalates once', (t) => {
-  const { xc, out } = widened(t, 'src/q.mjs')
-  const again = specPrepare(xc, { folder: 'p', review: REVIEW_2 })
-  assert.deepEqual(again.stops, out.stops)
-  assert.equal(again.status, 'stopped')
-  specPrepare(restarted(xc), { folder: 'p', review: REVIEW_2 })
-  assert.equal(escalations(xc, 'p/x').filter((e) => e.reason === 'locus_held').length, 1)
+  assert.ok(nodeOf(xc, 'p/x').expects.includes('src/q.mjs'), 'the leaf\'s new revision is compiled')
+  assert.deepEqual(escalations(xc, 'p/x'), [], 'an expectation is no claim: the scheduler keeps the two apart')
 })

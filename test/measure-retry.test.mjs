@@ -111,7 +111,7 @@ test('the fixed environment passes once the user retries the node', SLOW, async 
 
 /** A verify leaf `v` whose one check passes once `name` is set, opened, and a close of it. */
 function verifyLeaf(t, name) {
-  const w = leafWorld(t, [root(), lf('v', { rigor: 'verify', locus: [], acceptance: crit('v', check(name)) })])
+  const w = leafWorld(t, [root(), lf('v', { rigor: 'verify', expects: [], acceptance: crit('v', check(name)) })])
   const o = open(w, 'v')
   return { w, again: () => close(w, { node: 'v', role: '', round: 1, thread: '', dispatch: '', base_sha: o.base_sha }) }
 }

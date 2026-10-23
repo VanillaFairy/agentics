@@ -164,8 +164,8 @@ over the tree outside the deleted paths, plus the build and the suite. A name bu
 escapes the grep: say so in Evidence. A deletion that takes away behaviour something still reaches
 is not a removal.
 
-The mode: **inline** when every task would be `verify`, `trivial`, `tests-only` or `tdd`, the locus
-is known, the intent settled, nothing is irreversible, and the tasks' summed fit (the task skill's
+The mode: **inline** when every task would be `verify`, `trivial`, `tests-only` or `tdd`, the files
+it changes are known, the intent settled, nothing is irreversible, and the tasks' summed fit (the task skill's
 computation) is within this session's budget — then hand over:
 `Skill({ skill: 'agentics:task', args: '<the request, verbatim>' })`. **Dispatched** otherwise.
 
@@ -248,7 +248,7 @@ put it>.
 
 ## Plan
 
-- **<name>** — task · realises: D1 · label: <the work> · rigor: <rigor> · locus: <path>, … · reads: <path>, …
+- **<name>** — task · realises: D1 · label: <the work> · rigor: <rigor> · expects: <path>, … · reads: <path>, …
   <title: one imperative line>
   <context: self-contained, for an executor who never saw this conversation>
   - [ ] <criterion> — check: `<command>`

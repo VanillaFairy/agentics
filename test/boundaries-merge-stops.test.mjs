@@ -38,7 +38,7 @@ const PAIR_TEST = "import { test } from 'node:test'\nimport assert from 'node:as
 // ================================================================== what stops
 
 test('children that pass alone and fail together are a combination failure, and nothing merges', SLOW, async (t) => {
-  const w = world(inTest(t), [root(), leaf('p', { rigor: 'trivial', locus: ['p.txt'] }), leaf('q', { rigor: 'trivial', locus: ['q.txt'] })], {
+  const w = world(inTest(t), [root(), leaf('p', { rigor: 'trivial', expects: ['p.txt'] }), leaf('q', { rigor: 'trivial', expects: ['q.txt'] })], {
     prepare: (r) => {
       writeFileSync(join(r, 'test', 'pair.test.mjs'), PAIR_TEST)
       git(r, 'add', '-A')
@@ -61,7 +61,7 @@ test('children that pass alone and fail together are a combination failure, and 
 test('a composite failing alone on the merged head escalates fails_on_integration', SLOW, async (t) => {
   const w = world(inTest(t), [root(),
     { id: 'c', kind: 'composite', title: 'part', author: 'planner', decisions: ['D1'], acceptance: [{ text: 'c works', check: 'node --test', decisions: ['D1'] }] },
-    leaf('c/z', { rigor: 'trivial', locus: ['src/z.mjs'] })])
+    leaf('c/z', { rigor: 'trivial', expects: ['src/z.mjs'] })])
   const integ = integrationOf(w, 'c')
   const head = commitIn(integ.worktree, { 'src/add.mjs': BREAK_ADD }, 'Break add')
   const out = await batch(w, [{ id: 'c', head_sha: head }])
@@ -75,8 +75,8 @@ test('a composite failing alone on the merged head escalates fails_on_integratio
 
 test('a cycle failing alone on the merged head escalates every member fails_on_integration', SLOW, async (t) => {
   const w = world(inTest(t), [root(),
-    leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'] }),
-    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], locus: ['src/r.mjs'] })])
+    leaf('r', { rigor: 'tdd-pair', role: 'red', expects: ['test/r.test.mjs'] }),
+    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], expects: ['src/r.mjs'] })])
   const r = await ready(w, 'r', { 'test/r.test.mjs': R_TEST }, 'Pin r')
   const g = await ready(w, 'g', { 'src/r.mjs': 'export const r = () => 2\n' }, 'Implement r wrongly', { from: r.head_sha, cycleMember: true })
   const out = await mergeBatch(w.xc, { target: '.', children: handed(r, g), cycles: [['r', 'g']] })
@@ -87,27 +87,27 @@ test('a cycle failing alone on the merged head escalates every member fails_on_i
   assert.deepEqual(out.merged, [])
 })
 
-test('a conflict escalates merge_conflict naming the paths; what merged before it stays merged', SLOW, async (t) => {
+test('a conflict of a leaf with a shell is handed back for the judge, naming the paths; what merged before it stays merged', SLOW, async (t) => {
   const w = world(inTest(t), [root(),
-    leaf('m', { rigor: 'trivial', locus: ['README.md'] }),
-    leaf('n', { rigor: 'trivial', locus: ['NOTES.md'], deps: ['m'] })])
+    leaf('m', { rigor: 'trivial', expects: ['README.md'] }),
+    leaf('n', { rigor: 'trivial', expects: ['NOTES.md'], deps: ['m'] })])
   const m = await ready(w, 'm', { 'README.md': 'from m\n' }, 'Say m')
-  // n declared a disjoint locus and wrote README.md anyway: the plan was wrong about independence.
+  // n and the merged leaf both changed README.md: the merge conflicts.
   const n = await ready(w, 'n', { 'README.md': 'from n\n' }, 'Say n')
   const out = await batch(w, handed(m, n))
 
   assert.deepEqual(ids(out.merged), ['m'])
-  assert.deepEqual(stopsOf(out), [['n', 'escalated', 'merge_conflict']])
+  assert.deepEqual(stopsOf(out), [], 'the user is not asked before the judge rules')
+  assert.deepEqual(out.conflict, { id: 'n', head: n.head_sha, paths: ['README.md'] })
   assert.equal(statusOf(w.r, 'm'), 'merged')
-  assert.equal(statusOf(w.r, 'n'), 'escalated')
-  assert.ok(readTree(w.r, E).status.get('n').last.detail.includes('README.md'), 'the record names the conflicting path')
+  assert.notEqual(statusOf(w.r, 'n'), 'escalated')
   assert.equal(out.head_sha, headOf(w.r, '.'))
 })
 
-test('a conflict the first merge met stands through the bisect of a red head', SLOW, async (t) => {
+test('a conflict the first merge met stands through the bisect of a red head, and a shell-less leaf\'s escalates', SLOW, async (t) => {
   const w = world(inTest(t), [root(),
-    leaf('m', { rigor: 'trivial', locus: ['src/add.mjs', 'README.md'] }),
-    leaf('n', { rigor: 'trivial', locus: ['NOTES.md'], deps: ['m'] })])
+    leaf('m', { rigor: 'trivial', expects: ['src/add.mjs', 'README.md'] }),
+    leaf('n', { rigor: 'tests-only', expects: ['NOTES.md'], deps: ['m'] })])
   // m breaks the suite, so the merged head is red and bisected; n wrote README.md, which m changed
   // too, so the first merge stopped at n, which no bisect measures.
   const m = await ready(w, 'm', { 'src/add.mjs': BREAK_ADD, 'README.md': 'from m\n' }, 'Break add, say m')
@@ -117,7 +117,8 @@ test('a conflict the first merge met stands through the bisect of a red head', S
   assert.deepEqual(ids(out.merged), [])
   assert.deepEqual(ids(out.failed_alone), ['m'], 'm fails alone and goes back to a fix round')
   assert.ok(stopsOf(out).some(([id, status, reason]) => id === 'n' && status === 'escalated' && reason === 'merge_conflict'), JSON.stringify(stopsOf(out)))
-  assert.equal(statusOf(w.r, 'n'), 'escalated')
+  assert.equal(statusOf(w.r, 'n'), 'escalated', 'a tests-only leaf has no shell to conclude a merge')
+  assert.ok(readTree(w.r, E).status.get('n').last.detail.includes('README.md'), 'the record names the conflicting path')
   assert.equal(kindOf(stateOf(w.r), 'batch').at(-1).conflict, 'n')
 })
 
@@ -193,8 +194,8 @@ test('a batch killed after its outcome and before its merged events records them
 
 /** A provider p that merges README.md, and a pending consumer c of it. */
 const driftWorld = (t) => world(inTest(t), [root(),
-  leaf('p', { rigor: 'trivial', locus: ['README.md'] }),
-  leaf('c', { rigor: 'trivial', locus: ['src/use.mjs'], consumes: [{ name: 'docs', paths: ['README.md'] }] })])
+  leaf('p', { rigor: 'trivial', expects: ['README.md'] }),
+  leaf('c', { rigor: 'trivial', expects: ['src/use.mjs'], consumes: [{ name: 'docs', paths: ['README.md'] }] })])
 
 test('a merge under a contract a pending node consumes writes the drift record and one ruler brief', SLOW, async (t) => {
   const w = driftWorld(t)
@@ -236,10 +237,10 @@ test('drift: a landed diff under a contract a pending node consumes is flagged; 
   const r = repo()
   t.after(() => rm(r))
   const seeded = seedTree(r, E, [root(),
-    leaf('p', { rigor: 'trivial', locus: ['src/api.mjs'], provides: [{ name: 'api', paths: ['src/api.mjs'] }] }),
-    leaf('c', { rigor: 'trivial', locus: ['src/use.mjs'], consumes: [{ name: 'api', paths: ['src/api.mjs'] }], deps: ['p'] }),
-    leaf('x', { rigor: 'trivial', locus: ['src/other.mjs'] }),
-    leaf('d', { rigor: 'trivial', locus: ['src/d.mjs'], consumes: [{ name: 'shape', paths: ['src/shape/'] }] }),
+    leaf('p', { rigor: 'trivial', expects: ['src/api.mjs'], provides: [{ name: 'api', paths: ['src/api.mjs'] }] }),
+    leaf('c', { rigor: 'trivial', expects: ['src/use.mjs'], consumes: [{ name: 'api', paths: ['src/api.mjs'] }], deps: ['p'] }),
+    leaf('x', { rigor: 'trivial', expects: ['src/other.mjs'] }),
+    leaf('d', { rigor: 'trivial', expects: ['src/d.mjs'], consumes: [{ name: 'shape', paths: ['src/shape/'] }] }),
     { id: 'later', kind: 'design', title: 'later part' }])
   assert.equal(seeded.ok, true, JSON.stringify(seeded.problems))
 

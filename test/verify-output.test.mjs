@@ -107,7 +107,7 @@ test('a red leaf whose suite writes TAP is placed by each failure\'s own locatio
 
   const payload = verify(parseArgs([
     '--worktree', worktree, '--base', base, '--head', head,
-    '--locus', 'src/widget.mjs', '--locus', 'test/widget.test.mjs',
+    '--expects', 'src/widget.mjs', '--expects', 'test/widget.test.mjs',
     '--build', BUILD, '--typecheck-absent', '--suite', SUITE_TAP, '--test-one', TEST_ONE,
   ]))
 

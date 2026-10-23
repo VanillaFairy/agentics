@@ -179,7 +179,7 @@ and the plan entries, which `lib/spec.mjs check` parses:
 ```
 - **<name>** — <sub-effort | task | deferred | dropped> · realises: D1, D2 · after: <sibling>, /<path>
   · author: you|planner · provides: <contract> (<path>, …) · consumes: <contract>
-  · rigor: <rigor> · locus: <path>, … · reads: <path>, …
+  · rigor: <rigor> · expects: <path>, … · reads: <path>, …
   · label: <the work in free text, at most 16 characters: World tests, not world-red>
   <title: one imperative line>
   <context: free prose>
@@ -190,11 +190,11 @@ and the plan entries, which `lib/spec.mjs check` parses:
 `author` is for a `sub-effort` only. `you`, the default, means it comes back through this loop
 when it is next. `planner` lets develop's planner write its spec, which then passes an adversarial
 review instead of the user's approval: only for a part the user says may go autonomously, and its
-spec may state no decision. `rigor`, `locus`, `reads` and criteria are for a `task` only (rigor per
+spec may state no decision. `rigor`, `expects`, `reads` and criteria are for a `task` only (rigor per
 `docs/DESIGN.md#rigor`); a test check runs the tests that decide its criterion: those the change
 clearly affects, and from the gray area fast tests only, never big ones. A `green` task's criteria
-add no behaviour: each it states is pinned by a criterion of its red, in a test file red's locus
-holds. A `dropped` entry's decisions are recorded as not realised, accepted; a `deferred` entry
+add no behaviour: each it states is pinned by a criterion of its red, in a test file red
+expects. A `dropped` entry's decisions are recorded as not realised, accepted; a `deferred` entry
 compiles to nothing. A contract's name is effort-unique.
 
 Past a handful of tasks, gather the ones that belong together by concern (a subsystem, an area of

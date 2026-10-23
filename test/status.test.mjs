@@ -33,7 +33,7 @@ const X1 = '20260904-100000'
 const X2 = '20260905-100000'
 
 const leaf = (id, extra = {}) => ({
-  id, title: 'do ' + id, kind: 'leaf', rigor: 'trivial', locus: ['src/' + id + '.js'],
+  id, title: 'do ' + id, kind: 'leaf', rigor: 'trivial', expects: ['src/' + id + '.js'],
   acceptance: [{ text: 't', check: 'c' }], ...extra,
 })
 const composite = (id) => ({ id, title: 'make ' + id, kind: 'composite' })
@@ -53,7 +53,7 @@ const dispatched = (repo, node, role, round = 1) => ev(repo, 'dispatched', node,
 const TREE = [
   composite('.'),
   composite('a'),
-  leaf('a/impl'), leaf('a/fix'), leaf('a/tests', { rigor: 'tests-only' }), leaf('a/check', { rigor: 'verify', locus: [] }),
+  leaf('a/impl'), leaf('a/fix'), leaf('a/tests', { rigor: 'tests-only' }), leaf('a/check', { rigor: 'verify', expects: [] }),
   composite('b'),
   leaf('b/red', { rigor: 'tdd-pair', role: 'red' }),
   leaf('b/green', { rigor: 'tdd-pair', role: 'green', deps: ['b/red'] }),

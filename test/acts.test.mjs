@@ -551,7 +551,7 @@ test('a moved effort head is refused head_moved before an open escalation is', (
   const before = revParse(repo, 'HEAD')
   const askedHead = revParse(repo, 'refs/heads/' + EFFORT_BRANCH)
   moveEffortHead(repo)
-  const leafA = { id: 'a', kind: 'leaf', title: 'do a', rigor: 'tdd', locus: ['a.mjs'], decisions: ['D1'], acceptance: [{ text: 'a works', check: 'node --test', decisions: ['D1'] }] }
+  const leafA = { id: 'a', kind: 'leaf', title: 'do a', rigor: 'tdd', expects: ['a.mjs'], decisions: ['D1'], acceptance: [{ text: 'a works', check: 'node --test', decisions: ['D1'] }] }
   assert.equal(seedTree(repo, E, [{ id: '.', kind: 'composite', title: 'the change', defines: [{ id: 'D1', text: 'do it' }] }, leafA]).ok, true)
   assert.equal(append(repo, E, 'events', { kind: 'escalated', node: 'a', execution: '', reason: 'blocked', detail: '' }).ok, true)
   assert.ok(land(repo, E, 'check').open_escalations.length > 0, 'the escalation is open')

@@ -170,7 +170,7 @@ test('a checkout moved while the gate measured is a checkout fault, and no gate 
 test('suite-gate refuses a target that is no composite, and one with no integration branch', SLOW, async (t) => {
   const w = world(inTest(t), [root(), addOne('a'),
     { id: 'c', kind: 'composite', title: 'part', author: 'planner', decisions: ['D1'], acceptance: [{ text: 'c works', check: 'node --test', decisions: ['D1'] }] },
-    leaf('c/z', { rigor: 'trivial', locus: ['src/z.mjs'] })])
+    leaf('c/z', { rigor: 'trivial', expects: ['src/z.mjs'] })])
   const notComposite = await suiteGate(w.xc, { target: 'a' })
   assert.equal(notComposite.ok, false)
   assert.equal(notComposite.error.kind, 'not_a_composite')

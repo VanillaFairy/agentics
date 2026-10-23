@@ -32,7 +32,7 @@ One folder per sub-effort, one `DESIGN.md` per folder.
   Put every path under .agentics
   The store computes every path; nothing else types one.
 - **spec-parser** — task · realises: D2, D3 · after: store-layout · rigor: tdd-pair · role: red
-  · locus: test/spec.test.mjs · reads: `lib/store.mjs`
+  · expects: test/spec.test.mjs · reads: `lib/store.mjs`
   · consumes: store-paths · dispatch: producer=sonnet/medium, reviewer=opus/medium
   · ground: docs/DESIGN.md#storage
   Write the parser's tests

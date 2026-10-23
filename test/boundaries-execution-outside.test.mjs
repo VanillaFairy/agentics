@@ -11,8 +11,8 @@ import { branchOf, worktreeOf } from '../lib/store.mjs'
 import { commitIn, git, leaf, root } from './harness/boundary-fixture.mjs'
 import { E, STAMP2, commandsFile, ctxOf, started, stateKind } from './harness/execution-world.mjs'
 
-const NODES = [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { locus: ['src/a.mjs'] }),
-  { id: 'd', kind: 'composite', title: 'd', decisions: ['D1'] }, leaf('d/x', { locus: ['src/x.mjs'] })]
+const NODES = [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { expects: ['src/a.mjs'] }),
+  { id: 'd', kind: 'composite', title: 'd', decisions: ['D1'] }, leaf('d/x', { expects: ['src/x.mjs'] })]
 
 /** A branch of `id` cut at `from`, checked out in its worktree: the worktree. */
 function cut(r, id, from) {

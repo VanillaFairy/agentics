@@ -27,7 +27,7 @@ const rootSpec = (intent) => [
   '# The change', '', '## Intent', '', ...intent, '',
   '## Decisions', '', '| id | decision | why |', '|---|---|---|', '| D1 | do it | asked for |', '',
   '## Design', '', 'As planned.', '', '## Plan', '',
-  '- **x** — task · realises: D1 · rigor: tdd · locus: src/x.mjs', '  Add x.', '  - [ ] x works — check: `node --test`', '',
+  '- **x** — task · realises: D1 · rigor: tdd · expects: src/x.mjs', '  Add x.', '  - [ ] x works — check: `node --test`', '',
   '## Open questions', '', '## Evidence', '', 'None gathered.', '',
 ].join('\n')
 

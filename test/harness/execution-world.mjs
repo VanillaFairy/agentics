@@ -54,7 +54,7 @@ export const stateKind = (r, kind, stamp = STAMP) => stateOf(r, stamp).filter((e
 
 export const head = (r, ref = 'HEAD') => git(r, 'rev-parse', ref)
 
-export const NO_GAPS = [root(), leaf('a', { locus: [ADD] }), leaf('b', { locus: ['README.md'] })]
+export const NO_GAPS = [root(), leaf('a', { expects: [ADD] }), leaf('b', { expects: ['README.md'] })]
 
 /** A world whose first preflight already wrote the envelope at the repository's head. */
 export async function started(t, nodes = NO_GAPS) {

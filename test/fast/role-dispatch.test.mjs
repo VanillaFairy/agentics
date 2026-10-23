@@ -10,7 +10,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join } from 'node:path'
 
-import { GIT_DENY, MCP_TOOL_PREFIX, READ_TOOLS, readOnlyPermissions } from '../../lib/locus.mjs'
+import { GIT_DENY, MCP_TOOL_PREFIX, READ_TOOLS, readOnlyPermissions } from '../../lib/permissions.mjs'
 import { fnv1a } from '../../lib/plan-digest.mjs'
 import { GATES, ROLE_NAMES, loadRole, promptFile, tierFor } from '../../lib/roles.mjs'
 

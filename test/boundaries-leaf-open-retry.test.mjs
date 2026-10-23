@@ -4,7 +4,7 @@
 //
 // The setup the parts share is in test/harness/leaf-open-world.mjs.
 //
-// Design: docs/DESIGN.md#boundaries, docs/DESIGN.md#rigor and docs/DESIGN.md#the-locus.
+// Design: docs/DESIGN.md#boundaries, docs/DESIGN.md#rigor and docs/DESIGN.md#role-rules.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -25,7 +25,7 @@ const retriedOf = (r) => readLog(r, E, 'events').entries.filter((e) => e.kind ==
 
 /** Leaf `a`'s round 1 returned `blocked` and escalated so, in this execution. */
 async function blocked(t) {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   const said = ran(xc, { node: 'a', round: 1, role: 'implementer', thread: 'producer:a', ret: { status: 'blocked', text: 'no fixture' } })
   xc.log.append('escalated', { node: 'a', reason: 'blocked', detail: '', said })
@@ -35,7 +35,7 @@ async function blocked(t) {
 // ------------------------------------------------------------------ the raise
 
 test('a raise on the previous round\'s close renews the thread on the raised tier', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   ran(xc, { node: 'a', round: 1, role: 'implementer', thread: 'producer:a', model: 'haiku', effort: 'low', ret: { status: 'done' } })
   closed(xc, { node: 'a', role: 'implementer', round: 1, raise: false })
@@ -50,7 +50,7 @@ test('a raise on the previous round\'s close renews the thread on the raised tie
 })
 
 test('a raise on the previous round\'s review renews the thread on the raised tier', async (t) => {
-  const { xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'], provides: [{ name: 'A', paths: ['src/a.mjs'] }] })])
+  const { xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'], provides: [{ name: 'A', paths: ['src/a.mjs'] }] })])
   await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   ran(xc, { node: 'a', round: 1, role: 'implementer', thread: 'producer:a', model: 'opus', effort: 'medium', ret: { status: 'done' } })
   closed(xc, { node: 'a', role: 'implementer', round: 1, decision: { next: 'review', reason: '', failures: [] } })
@@ -103,7 +103,7 @@ test('a retried message is recorded once, however often its round is opened, a r
 })
 
 test('a reopened round records no retried message: its call resumes as it was started', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   ran(xc, { node: 'a', round: 1, role: 'implementer', thread: 'producer:a', ret: { status: 'done' } })
   const dispatch = ran(xc, { node: 'a', round: 2, role: 'implementer', thread: 'producer:a' })
@@ -122,7 +122,7 @@ test('a stop recorded after the retry is not the one the retry cleared', async (
 })
 
 test('a retry before any dispatch records no message: the first round\'s brief carries on', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   xc.log.append('escalated', { node: 'a', reason: 'open_refused', detail: 'a lock was stuck' })
   retry(r, 'a')
   const out = await leafOpen(xc, { node: 'a', intelligence: 'normal' })
@@ -131,7 +131,7 @@ test('a retry before any dispatch records no message: the first round\'s brief c
 })
 
 test('a retry after a round another execution dispatched records no message: this execution\'s call is a fresh session', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   const other = executionLog(r, E, '20260924-120000')
   ran(xc, { node: 'a', round: 1, role: 'implementer', thread: 'producer:a', ret: { status: 'blocked' }, log: other })
@@ -142,7 +142,7 @@ test('a retry after a round another execution dispatched records no message: thi
 })
 
 test('a note left before the stop, or on another node, is not quoted', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   ran(xc, { node: 'a', round: 1, role: 'implementer', thread: 'producer:a', ret: { status: 'blocked' } })
   note(r, 'a', 'before the stop')
@@ -156,7 +156,7 @@ test('a note left before the stop, or on another node, is not quoted', async (t)
 })
 
 test('a retry that cleared a park names the park\'s return as the reason', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   ran(xc, { node: 'a', round: 1, role: 'implementer', thread: 'producer:a', ret: { status: 'done' } })
   xc.log.append('parked', { node: 'a', return: 'contract_drift', question: '' })

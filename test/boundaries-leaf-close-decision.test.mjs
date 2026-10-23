@@ -62,7 +62,7 @@ describe('leaf-close and the decision', { concurrency: 4 }, () => {
   })
 
   test("the failures of a green's test round that failed only on what it wrote go back to the cycle's test session", SLOW, async (t) => {
-    const c = cycle(t, { greenLocus: ['src/r.mjs', 'src/table.mjs'], greenFiles: { 'src/r.mjs': R_SRC, 'src/table.mjs': TABLE_LABELLED } })
+    const c = cycle(t, { greenExpects: ['src/r.mjs', 'src/table.mjs'], greenFiles: { 'src/r.mjs': R_SRC, 'src/table.mjs': TABLE_LABELLED } })
     write(c.green.worktree, { 'src/table.test.mjs': TABLE_TEST })
     const unbitten = { file: 'src/table.mjs', find: "label: 'x'", replace: "label: 'y'", expect_failing: ['src/table.test.mjs'] }
     const ret = { status: 'done', text: 'pinned', commit: 'Pin the capacity', mutations: [unbitten] }
@@ -132,7 +132,7 @@ describe('leaf-close and the decision', { concurrency: 4 }, () => {
 
   /** A green's test round carrying `msg`, that adds a biting test. */
   async function testRoundAnswering(t, msg) {
-    const c = cycle(t, { greenLocus: ['src/r.mjs', 'src/table.mjs'], greenFiles: { 'src/r.mjs': R_SRC, 'src/table.mjs': TABLE } })
+    const c = cycle(t, { greenExpects: ['src/r.mjs', 'src/table.mjs'], greenFiles: { 'src/r.mjs': R_SRC, 'src/table.mjs': TABLE } })
     const seq = answered(c.w, { node: 'g', thread: 'producer:r', msg, payload: msg === 'needs_tests' ? { text: 'pin it' } : { findings: [] }, round: 3, from: msg === 'needs_tests' ? 'implementer' : 'code' })
     write(c.green.worktree, { 'src/table.test.mjs': TABLE_TEST })
     const ret = { status: 'done', text: 'pinned', commit: 'Pin the capacity', mutations: [CAPACITY_BITE] }

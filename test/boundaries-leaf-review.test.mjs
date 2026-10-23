@@ -30,11 +30,11 @@ const finding = (id, extra = {}) => ({
 const fixed = (id) => ({ id, status: 'fixed', evidence: 'ruled ' + id })
 const notFixed = (id) => ({ id, status: 'not_fixed', evidence: 'ruled ' + id })
 
-const plainLeaves = () => [leaf('a', { locus: ['a.mjs'] })]
+const plainLeaves = () => [leaf('a', { expects: ['a.mjs'] })]
 const cycleLeaves = () => [
-  leaf('r', { role: 'red', rigor: 'tdd-triad', locus: ['test/r.test.mjs'] }),
-  leaf('g', { role: 'green', rigor: 'tdd-triad', deps: ['r'], locus: ['src/g.mjs'] }),
-  leaf('u', { role: 'audit', rigor: 'tdd-triad', deps: ['g'], locus: ['test/u.test.mjs'] }),
+  leaf('r', { role: 'red', rigor: 'tdd-triad', expects: ['test/r.test.mjs'] }),
+  leaf('g', { role: 'green', rigor: 'tdd-triad', deps: ['r'], expects: ['src/g.mjs'] }),
+  leaf('u', { role: 'audit', rigor: 'tdd-triad', deps: ['g'], expects: ['test/u.test.mjs'] }),
   ...plainLeaves(),
 ]
 

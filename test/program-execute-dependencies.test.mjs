@@ -111,8 +111,8 @@ describe('the execute program', { concurrency: 4 }, () => {
   test('a tdd-pair cycle: the red held on its approval, the green cut from it, the pair merged in one batch', T, async (t) => {
     const w = world(t, {
       spec: specText([
-        leafEntry('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'], check: 'node pass.mjs' }),
-        leafEntry('g', { rigor: 'tdd-pair', role: 'green', after: 'r', locus: ['src/r.mjs'], check: 'node pass.mjs' }),
+        leafEntry('r', { rigor: 'tdd-pair', role: 'red', expects: ['test/r.test.mjs'], check: 'node pass.mjs' }),
+        leafEntry('g', { rigor: 'tdd-pair', role: 'green', after: 'r', expects: ['src/r.mjs'], check: 'node pass.mjs' }),
       ]),
     })
     const { rig } = w

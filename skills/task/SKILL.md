@@ -77,7 +77,7 @@ Raise it — recommend the dispatched mode through `agentics:develop`, or a desi
   model (`opus` or `sonnet`):
 
   ```bash
-  node -e "import('${CLAUDE_PLUGIN_ROOT}/lib/atomicity.mjs').then((m) => console.log(JSON.stringify(m.fitOf('.', { locus: [<files written>], reads: [<files read>] }, { model: '<opus|sonnet>' }))))"
+  node -e "import('${CLAUDE_PLUGIN_ROOT}/lib/atomicity.mjs').then((m) => console.log(JSON.stringify(m.fitOf('.', { expects: [<files written>], reads: [<files read>] }, { model: '<opus|sonnet>' }))))"
   ```
 
   `fits: false` trips it.

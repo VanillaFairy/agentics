@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
-import { permissionsFor, readOnlyPermissions } from '../lib/locus.mjs'
+import { readOnlyPermissions, rolePermissions, writePermissions } from '../lib/permissions.mjs'
 import { answersIn, projectsDir, resolveCli, transcriptOf } from '../lib/host.mjs'
 import { loadRole, roleCommands } from '../lib/roles.mjs'
 import { buildArgs, classifyCall, cleanEnv, parseStream, spawner } from '../lib/runner.mjs'
@@ -91,11 +91,11 @@ test('an answered question lands where answersIn reads it', { skip }, (t) => {
   assert.ok(asked.some((text) => answersIn(text).length > 0), 'transcripts that asked questions record no answer answersIn reads')
 })
 
-/** What a Write-tool call did under the rules `permissionsFor` gives `locus`: the file's existence and why not, if it is absent. */
-async function writeUnder(t, locus, file, { folders = [] } = {}) {
+/** What a Write-tool call in a fresh folder did under `rules`: the file's existence and why not, if it is absent. */
+async function writeUnder(t, rules, file, { folders = [] } = {}) {
   const dir = scratch(t)
   for (const f of folders) mkdirSync(join(dir, f), { recursive: true })
-  const { allowed, disallowed } = permissionsFor({ locus })
+  const { allowed, disallowed } = rules
   const { parsed } = await call(dir, {
     prompt: 'Use the Write tool to create the file "' + file + '" containing A. Then return x = 1.',
     session: randomUUID(), tools: ['Write'], allowed, disallowed,
@@ -105,13 +105,13 @@ async function writeUnder(t, locus, file, { folders = [] } = {}) {
 }
 
 test('a path with a space is allowed by its rule', { skip, timeout: 180000 }, async (t) => {
-  const r = await writeUnder(t, ['my folder/'], 'my folder/a.txt', { folders: ['my folder'] })
+  const r = await writeUnder(t, writePermissions(['my folder/a.txt']), 'my folder/a.txt', { folders: ['my folder'] })
   assert.deepEqual(r.denied, [], r.why)
   assert.equal(r.wrote, true, r.why)
 })
 
-// The rules a locus becomes allow exactly the listed file: the glob characters of a Next.js route and the
-// root-level name are the cases a gitignore-style pattern reads differently from a plain path.
+// A call that writes listed files (a planner's spec) is allowed exactly those: the glob characters of a
+// Next.js route and the root-level name are the cases a gitignore-style pattern reads differently from a plain path.
 for (const [name, listed, allowedFile, otherFile, folders] of [
   ['brackets', 'app/[slug]/page.tsx', 'app/[slug]/page.tsx', 'app/s/page.tsx', ['app/[slug]', 'app/s']],
   ['parentheses', 'app/(auth)/login.tsx', 'app/(auth)/login.tsx', 'app/auth/login.tsx', ['app/(auth)', 'app/auth']],
@@ -119,12 +119,50 @@ for (const [name, listed, allowedFile, otherFile, folders] of [
 ]) {
   test('a listed path with ' + name + ' is allowed, and only that path', { skip, timeout: 240000 }, async (t) => {
     const [mine, other] = await Promise.all([
-      writeUnder(t, [listed], allowedFile, { folders }),
-      writeUnder(t, [listed], otherFile, { folders }),
+      writeUnder(t, writePermissions([listed]), allowedFile, { folders }),
+      writeUnder(t, writePermissions([listed]), otherFile, { folders }),
     ])
     assert.equal(mine.wrote, true, 'the listed path: ' + mine.why)
     assert.equal(other.wrote, false, 'another path the pattern might read as its own: ' + other.why)
     assert.ok(other.denied.length > 0, 'the other write was refused, not skipped: ' + other.why)
+  })
+}
+
+// The role rules (docs/DESIGN.md#role-rules): `/**` is the call's own folder, deny beats allow, and a
+// test-file glob reaches every depth.
+for (const [writes, file, may] of [
+  ['all', 'src/a.ts', true], ['all', 'src/a.test.ts', true], ['all', '.agentics/x.txt', false],
+  ['no-tests', 'src/a.ts', true], ['no-tests', 'src/a.test.ts', false], ['no-tests', 'test/helper.mjs', false], ['no-tests', 'src/deep/x_test.go', false],
+  ['tests', 'src/b.test.ts', true], ['tests', 'test/fixture.mjs', true], ['tests', 'src/b.ts', false], ['tests', '.agentics/x.test.json', false],
+]) {
+  test('a role that writes ' + writes + ' ' + (may ? 'may' : 'may not') + ' write ' + file, { skip, timeout: 180000 }, async (t) => {
+    const r = await writeUnder(t, rolePermissions({ writes }), file, { folders: ['src/deep', 'test', '.agentics'] })
+    assert.equal(r.wrote, may, r.why)
+    if (!may) assert.ok(r.denied.length > 0, 'refused, not skipped: ' + r.why)
+  })
+}
+
+// A leaf worktree sits inside the main checkout, beside its siblings: `/**` must reach none of them.
+for (const [name, target] of [
+  ['a sibling worktree', '.claude/worktrees/b/new.txt'],
+  ['the main checkout', 'new-at-main.txt'],
+  ["the main checkout's store", '.agentics/new.txt'],
+]) {
+  test("a writer in a leaf worktree may not write in " + name, { skip, timeout: 180000 }, async (t) => {
+    const main = repo(t)
+    const git = (...args) => execFileSync('git', args, { cwd: main, stdio: 'ignore' })
+    git('worktree', 'add', '-q', '-b', 'leaf-a', join(main, '.claude', 'worktrees', 'a'))
+    git('worktree', 'add', '-q', '-b', 'leaf-b', join(main, '.claude', 'worktrees', 'b'))
+    mkdirSync(join(main, '.agentics'), { recursive: true })
+    const path = join(main, target).split('\\').join('/')
+    const { allowed, disallowed } = rolePermissions({ writes: 'all' })
+    const { parsed } = await call(main, {
+      prompt: 'Use the Write tool once to create the file "' + path + '" containing A. Do not retry another way. Then return x = 1.',
+      session: randomUUID(), tools: ['Write'], allowed, disallowed, cwd: join(main, '.claude', 'worktrees', 'a'),
+    })
+    const why = 'denials: ' + JSON.stringify(parsed.denials) + ', last tool: ' + JSON.stringify(parsed.lastTool)
+    assert.equal(existsSync(join(main, target)), false, why)
+    assert.ok(parsed.denials.length > 0, 'refused, not skipped: ' + why)
   })
 }
 
@@ -214,10 +252,10 @@ function repo(t) {
   return dir
 }
 
-test('a write outside the allowed paths is denied and reported', { skip, timeout: 180000 }, async (t) => {
+test('a write a role may not make is denied and reported', { skip, timeout: 180000 }, async (t) => {
   const dir = scratch(t)
-  mkdirSync(join(dir, 'sub')); mkdirSync(join(dir, 'other'))
-  const { allowed, disallowed } = permissionsFor({ locus: ['sub/'] })
+  mkdirSync(join(dir, 'other'))
+  const { allowed, disallowed } = rolePermissions({ writes: 'tests' })
   const { parsed } = await call(dir, {
     prompt: 'Use the Write tool to create the file "other/b.txt" containing B. Then return x = 1.',
     session: randomUUID(), tools: ['Write'], allowed, disallowed,
@@ -248,7 +286,7 @@ for (const [name, command, file] of [
 ]) {
   test('git --output is denied: ' + name, { skip, timeout: 180000 }, async (t) => {
     const dir = repo(t)
-    const { allowed, disallowed } = permissionsFor({ locus: [], commands: ['git diff', 'git log', 'git commit'] })
+    const { allowed, disallowed } = rolePermissions({ commands: ['git diff', 'git log', 'git commit'] })
     const { parsed } = await call(dir, {
       prompt: 'Use the Bash tool to run exactly this one command, then return x = 1: ' + command, session: randomUUID(), tools: ['Bash'], allowed, disallowed,
     })
@@ -259,7 +297,7 @@ for (const [name, command, file] of [
 }
 
 test('git commit --amend is denied after other arguments, and a plain commit is allowed', { skip, timeout: 240000 }, async (t) => {
-  const { allowed, disallowed } = permissionsFor({ locus: [], commands: ['git commit', 'git log'] })
+  const { allowed, disallowed } = rolePermissions({ commands: ['git commit', 'git log'] })
   const run = async (command) => {
     const dir = repo(t)
     const { parsed } = await call(dir, { prompt: 'Use the Bash tool to run exactly this one command, then return x = 1: ' + command, session: randomUUID(), tools: ['Bash'], allowed, disallowed })
@@ -272,14 +310,14 @@ test('git commit --amend is denied after other arguments, and a plain commit is 
   assert.equal(plain.count, 2)
 })
 
-test("an implementer's rules let it delete a file its locus lists and commit the deletion", { skip, timeout: 240000 }, async (t) => {
+test("an implementer's rules let it delete a file and commit the deletion", { skip, timeout: 240000 }, async (t) => {
   const dir = repo(t)
   writeFileSync(join(dir, 'gone.txt'), 'old\n')
   execFileSync('git', ['add', 'gone.txt'], { cwd: dir })
   execFileSync('git', ['commit', '-q', '-m', 'add gone'], { cwd: dir })
   const loaded = loadRole('implementer')
   assert.ok(loaded.ok, loaded.error && loaded.error.message)
-  const { allowed, disallowed } = permissionsFor({ locus: ['gone.txt'], commands: roleCommands(loaded.role, {}, null) })
+  const { allowed, disallowed } = rolePermissions({ writes: 'all', commands: roleCommands(loaded.role, {}, null) })
   const { parsed } = await call(dir, {
     prompt: 'Use the Bash tool to run exactly these two commands, one call each, then return x = 1: git rm -q gone.txt   and then   git commit -q -m "Drop gone"',
     session: randomUUID(), tools: ['Bash'], allowed, disallowed,

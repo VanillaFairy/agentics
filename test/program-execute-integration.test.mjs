@@ -67,7 +67,7 @@ describe('the execute program', { concurrency: 4 }, () => {
   // ------------------------------------------------------------------ integration
 
   test('a leaf failing alone on the merged head gets its fix round, its failures delivered, and merges', T, async (t) => {
-    const w = world(t, { spec: specText([leafEntry('a', { locus: ['src/a.txt', 'src/add.mjs'] })]) })
+    const w = world(t, { spec: specText([leafEntry('a', { expects: ['src/a.txt', 'src/add.mjs'] })]) })
     const { rig } = w
     w.jobs['implementer|a#1'] = { 'src/a.txt': 'ok\n', 'src/add.mjs': ADD_BAD }
     w.jobs['implementer|a#2'] = { 'src/add.mjs': ADD_OK }

@@ -57,7 +57,7 @@ function round(t, changes) {
 const asked = (r, over = {}) => ({
   ...options({ worktree: r.worktree, base: r.base, head: r.head }),
   rigor: 'tdd-pair', role: 'green', producer: 'test-author',
-  tests: [FILE], locus: ['src/widget.mjs'], approved: r.approved, ...over,
+  tests: [FILE], expects: ['src/widget.mjs'], approved: r.approved, ...over,
 })
 
 const journaling = (r) => ({ repo: r.dir, effort: EFFORT, execution: EXECUTION, node: NODE, branch: BRANCH })

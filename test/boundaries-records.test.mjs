@@ -28,8 +28,8 @@ function store(t) {
   t.after(() => rmSync(repo, { recursive: true, force: true }))
   const out = seedTree(repo, E, [
     { id: '.', kind: 'composite', title: 't', defines: [{ id: 'D1', text: 'do it' }] },
-    { id: 'a', kind: 'leaf', title: 'do a', rigor: 'tdd', locus: ['a.mjs'], decisions: ['D1'], acceptance: [{ text: 'a works', check: 'node --test', decisions: ['D1'] }] },
-    { id: 'b', kind: 'leaf', title: 'do b', rigor: 'tdd', locus: ['b.mjs'], decisions: ['D1'], acceptance: [{ text: 'b works', check: 'node --test', decisions: ['D1'] }] },
+    { id: 'a', kind: 'leaf', title: 'do a', rigor: 'tdd', expects: ['a.mjs'], decisions: ['D1'], acceptance: [{ text: 'a works', check: 'node --test', decisions: ['D1'] }] },
+    { id: 'b', kind: 'leaf', title: 'do b', rigor: 'tdd', expects: ['b.mjs'], decisions: ['D1'], acceptance: [{ text: 'b works', check: 'node --test', decisions: ['D1'] }] },
   ])
   assert.equal(out.ok, true, JSON.stringify(out))
   return repo
@@ -296,8 +296,8 @@ test('recordAll with no records appends nothing', (t) => {
 test('a fault recorded gives its node\'s slot in this execution back', async (t) => {
   const repo = store(t)
   const on = () => true
-  assert.equal((await acquireAsync(repo, { effort: E, execution: S, node: 'a', locus: ['a.mjs'], holderActive: on, waitMs: 0 })).ok, true)
-  assert.equal((await acquireAsync(repo, { effort: E, execution: S, node: 'b', locus: ['b.mjs'], holderActive: on, waitMs: 0 })).ok, true)
+  assert.equal((await acquireAsync(repo, { effort: E, execution: S, node: 'a', holderActive: on, waitMs: 0 })).ok, true)
+  assert.equal((await acquireAsync(repo, { effort: E, execution: S, node: 'b', holderActive: on, waitMs: 0 })).ok, true)
   const xc = executionContext({ repo, effort: E, execution: S, log: executionLog(repo, E, S) })
   recordAll(xc, [fault('a', 'program')])
   assert.deepEqual(heldBy(repo).slots.map((s) => s.node), ['b'])

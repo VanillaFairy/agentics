@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import { ACTIONS, nextActionFor } from '../../lib/resume.mjs'
 import { normalizeNode } from '../../lib/tree.mjs'
 
-const leaf = (id, over = {}) => normalizeNode({ id, kind: 'leaf', rigor: 'tdd', locus: ['src/' + id + '.mjs'], ...over })
+const leaf = (id, over = {}) => normalizeNode({ id, kind: 'leaf', rigor: 'tdd', expects: ['src/' + id + '.mjs'], ...over })
 
 test('nextActionFor answers from the facts it is handed, and only ever names a known action', () => {
   const a = leaf('a')

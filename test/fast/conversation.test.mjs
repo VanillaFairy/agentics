@@ -34,9 +34,7 @@ const TABLE = [
   { msg: 'refusals', from: 'code', to: 'thread' },
   { msg: 'cut_off', from: 'code', to: 'thread' },
   { msg: 'failures', from: 'code', to: 'producer' },
-  { msg: 'needs_locus', from: 'implementer', to: 'planner_or_park' },
-  { msg: 'needs_locus', from: 'test-author', to: 'planner_or_park' },
-  { msg: 'needs_locus', from: 'code', to: 'planner_or_park' },
+  { msg: 'rebase', from: 'code', to: 'producer' },
   { msg: 'retried', from: 'code', to: 'thread' },
   { msg: 'notes', from: 'code', to: 'thread' },
 ]
@@ -160,15 +158,6 @@ test('failures go from code to the producer, answered by a fix round', () => {
   for (const from of ['implementer', 'test-author', 'reviewer']) assertNoRoute(routeOf({ msg: 'failures', from }), `failures from ${from}`)
 })
 
-test('needs_locus from an implementer, a test-author or code goes to the planner or a park', () => {
-  for (const from of ['implementer', 'test-author', 'code']) {
-    assert.deepEqual(routeOf({ msg: 'needs_locus', from }), { to: 'planner_or_park' }, from)
-    const row = ROUTES.find((r) => r.msg === 'needs_locus' && r.from === from)
-    assert.deepEqual([...row.answers].sort(), ['needs_decision', 'spec_edit'], from)
-  }
-  assertNoRoute(routeOf({ msg: 'needs_locus', from: 'reviewer' }), 'needs_locus from reviewer')
-})
-
 test('retried goes from code to the thread its round resumes, answered by a round', () => {
   assert.deepEqual(routeOf({ msg: 'retried', from: 'code' }), { to: 'thread' })
   const row = ROUTES.find((r) => r.msg === 'retried' && r.from === 'code')
@@ -245,14 +234,6 @@ test('failures carry their source and each failed check, claim and evidence', ()
     }
     assert.ok(text.includes(failures[0].evidence), 'carries the evidence')
   }
-})
-
-test('a needs_locus names the node, each path and why', () => {
-  const payload = { node: 'api/wombat-route', paths: ['lib/zebra.mjs', 'test/quokka.test.mjs'], why: 'the route registers itself in the zebra table' }
-  const text = renderMessage({ msg: 'needs_locus', payload })
-  assert.ok(text.includes(payload.node), 'names the node')
-  for (const p of payload.paths) assert.ok(text.includes(p), `names ${p}`)
-  assert.ok(text.includes(payload.why), 'carries why')
 })
 
 test('a retried message carries the cleared stop\'s reason and each note', () => {

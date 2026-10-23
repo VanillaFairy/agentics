@@ -49,7 +49,7 @@ const shipped = [...lib, ...skills, ...tools]
 test('every record kind is written somewhere and read somewhere', () => {
   const problems = []
   const check = (ok, why) => { if (!ok) problems.push(why) }
-  const STATE = ['batch-started', 'batch', 'checkpoint', 'closed', 'breach_reverted']
+  const STATE = ['batch-started', 'batch', 'checkpoint', 'closed']
   const JOURNAL = ['verify-observed', 'merge-observed', 'series-done', 'authored']
   const RUN = ['run', 'returned', 'host_stop', 'thread_renewed', 'checkout_changed', 'step', 'ended', 'fault']
   const sources = lib.filter((f) => !f.endsWith(join('lib', 'ledger.mjs')))

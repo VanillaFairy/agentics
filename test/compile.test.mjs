@@ -66,7 +66,7 @@ function assertLeafFrom(node, entry) {
   assert.deepEqual(node.decisions, entry.realises)
   assert.equal(node.rigor, entry.rigor)
   assert.equal(node.role, entry.role || 'none')
-  assert.deepEqual(node.locus, entry.locus)
+  assert.deepEqual(node.expects, entry.expects)
   assert.deepEqual(node.reads, entry.reads)
   assert.deepEqual(node.acceptance, entry.criteria.map((c) => ({ text: c.text, check: c.check, decisions: entry.realises })))
 }
@@ -303,7 +303,7 @@ test('a removed entry is retired with its subtree; one with dispatched work is r
 })
 
 test('a decision given up by a dropped entry is accepted, and its leaf retired', () => {
-  const dropped = ROOT.replace('- **reload** — task · realises: D3 · after: api · rigor: tdd · locus: src/reload.js, test/reload.test.js', '- **reload** — dropped · realises: D3')
+  const dropped = ROOT.replace('- **reload** — task · realises: D3 · after: api · rigor: tdd · expects: src/reload.js, test/reload.test.js', '- **reload** — dropped · realises: D3')
     .replace(/ {2}- \[ \] a changed file reloads.*\n/, '')
   const repo = effort()
   approve(repo, '.')
@@ -555,7 +555,7 @@ test('a composite\'s park is answered by approving its own spec', () => {
 
 test('a prepared spec may not move a contract its entry provides', () => {
   const TUNING = PARSE.replace('# Parse keys', '# Tune the messages').replace(/realises: D1/g, 'realises: D2')
-    .replace('locus: src/api/tokens.js, test/tokens.test.js', 'locus: src/api/tokens.js, test/tokens.test.js · provides: tune-tokens (src/tune/tokens.js)')
+    .replace('expects: src/api/tokens.js, test/tokens.test.js', 'expects: src/api/tokens.js, test/tokens.test.js · provides: tune-tokens (src/tune/tokens.js)')
   const repo = effort()
   approve(repo, '.')
   approve(repo, 'api')
@@ -581,7 +581,7 @@ test('a dropped entry in a prepared spec does not give up the decision it realis
   write(repo, 'tuning', TUNING)
   prepare(repo, 'tuning')
   compiled(repo)
-  const gaveUp = TUNING.replace('- **tokens** — task · realises: D2 · rigor: tdd · locus: src/api/tokens.js, test/tokens.test.js', '- **tokens** — dropped · realises: D2')
+  const gaveUp = TUNING.replace('- **tokens** — task · realises: D2 · rigor: tdd · expects: src/api/tokens.js, test/tokens.test.js', '- **tokens** — dropped · realises: D2')
     .replace(/ {2}- \[ \] tokens split on newlines.*\n/, '')
     .replace('- **lookup** — task · realises: D2 · after: tokens ·', '- **lookup** — task ·')
   write(repo, 'tuning', gaveUp)
@@ -631,7 +631,7 @@ test('an after naming an entry dropped in the same re-approval is refused at its
   approve(repo, 'api')
   compiled(repo)
   const text = ROOT.replace('realises: D1 · after: api · consumes', 'realises: D1 · after: reload · consumes')
-    .replace('- **reload** — task · realises: D3 · after: api · rigor: tdd · locus: src/reload.js, test/reload.test.js', '- **reload** — dropped · realises: D3')
+    .replace('- **reload** — task · realises: D3 · after: api · rigor: tdd · expects: src/reload.js, test/reload.test.js', '- **reload** — dropped · realises: D3')
     .replace(/ {2}- \[ \] a changed file reloads.*\n/, '')
   write(repo, '.', text)
   approve(repo, '.')
@@ -680,7 +680,7 @@ test('parks that failed to land are appended by the next compile, once', () => {
 })
 
 /** The root and api fixtures with `reload` providing a contract that api's `parse` consumes. */
-const HOOKED_ROOT = ROOT.replace('locus: src/reload.js, test/reload.test.js', 'locus: src/reload.js, test/reload.test.js · provides: reload-hook (src/reload.js)')
+const HOOKED_ROOT = ROOT.replace('expects: src/reload.js, test/reload.test.js', 'expects: src/reload.js, test/reload.test.js · provides: reload-hook (src/reload.js)')
 const HOOKED_API = API.replace('consumes: config-type', 'consumes: config-type, reload-hook')
 
 test('renaming a contract parks its consumer in a folder edited since approval', () => {
@@ -819,10 +819,10 @@ const WATCH = [
   '### watch — group · after: api',
   'Watch configs for change',
   '',
-  '- **reload** — task · realises: D3 · rigor: tdd · locus: src/reload.js, test/reload.test.js',
+  '- **reload** — task · realises: D3 · rigor: tdd · expects: src/reload.js, test/reload.test.js',
   '  Reload configs on change',
   '  - [ ] a changed file reloads — check: `node --test test/reload.test.js`',
-  '- **notify** — task · realises: D3 · after: reload · rigor: tdd · locus: src/notify.js, test/notify.test.js',
+  '- **notify** — task · realises: D3 · after: reload · rigor: tdd · expects: src/notify.js, test/notify.test.js',
   '  Tell the user a config reloaded',
   '  - [ ] a reload notifies — check: `node --test test/notify.test.js`',
   '',

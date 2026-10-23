@@ -15,7 +15,8 @@ Your brief is the first message of this conversation. Everything you need is in 
 
 ## Your input
 
-Your brief carries the cycle's criteria, the locus of the implementation, and the test files.
+Your brief carries the cycle's criteria, the files the implementation was expected to change,
+and the test files.
 Read the implementation and its tests through the worktree path in the brief.
 
 ## Declaring mutations

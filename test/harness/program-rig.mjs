@@ -56,7 +56,7 @@ const RIG_SPEC = [
   '## Decisions', '', '| id | decision | why |', '|---|---|---|', '| D1 | `a` returns 1. | Callers need it. |', '',
   '## Design', '', 'One function in src/a.mjs.', '',
   '## Plan', '',
-  '- **a** — task · realises: D1 · rigor: tdd · locus: src/a.mjs, test/a.test.mjs',
+  '- **a** — task · realises: D1 · rigor: tdd · expects: src/a.mjs, test/a.test.mjs',
   '  Write a',
   '  - [ ] a returns 1 — check: `node --test test/a.test.mjs`', '',
   '## Open questions', '',

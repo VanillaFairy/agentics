@@ -49,7 +49,7 @@ function repository(t) {
   return dir
 }
 
-const leaf = (id, over = {}) => normalizeNode({ id, kind: 'leaf', rigor: 'tdd', locus: ['src/' + id + '.mjs'], ...over })
+const leaf = (id, over = {}) => normalizeNode({ id, kind: 'leaf', rigor: 'tdd', expects: ['src/' + id + '.mjs'], ...over })
 
 /** Cut a leaf's branch and worktree where leaf-open does: from `from` (the parent's head by default). */
 function open(dir, id, from = branchOf(EFFORT, '.')) {
@@ -275,7 +275,7 @@ test('a green measurement is judged against the leaf\'s rigor, not trusted as a 
   const ha = commit(wa, 'test/a.test.mjs', 'test(a): pin it')
   journal(dir, greenLine('a', ha))
 
-  const row = rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a', { rigor: 'tests-only', locus: ['test/a.test.mjs'] })]), 'a')
+  const row = rowOf(resumeLeaves(dir, EFFORT, EXECUTION, [leaf('a', { rigor: 'tests-only', expects: ['test/a.test.mjs'] })]), 'a')
   assert.equal(row.next_action, 'continue-series')
 })
 
@@ -337,7 +337,7 @@ test('a verify leaf is verify until recorded merged, whatever else is on disk', 
   const dir = repository(t)
   open(dir, 'v')
   journal(dir, greenLine('v', 'whatever'))
-  const nodes = [leaf('v', { rigor: 'verify', locus: [] }), leaf('w', { rigor: 'verify', locus: [] })]
+  const nodes = [leaf('v', { rigor: 'verify', expects: [] }), leaf('w', { rigor: 'verify', expects: [] })]
   event(dir, { kind: 'merged', node: 'w', into: '.', merged_sha: '', head_sha: '' })
 
   const rows = resumeLeaves(dir, EFFORT, EXECUTION, nodes)
@@ -355,8 +355,8 @@ test('a green cut from its red\'s branch is measured from the red\'s head, not t
   open(dir, 'g', branchOf(EFFORT, 'r'))
 
   const nodes = [
-    leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'] }),
-    leaf('g', { rigor: 'tdd-pair', role: 'green', locus: ['src/g.mjs'], deps: ['r'] }),
+    leaf('r', { rigor: 'tdd-pair', role: 'red', expects: ['test/r.test.mjs'] }),
+    leaf('g', { rigor: 'tdd-pair', role: 'green', expects: ['src/g.mjs'], deps: ['r'] }),
   ]
   const rows = resumeLeaves(dir, EFFORT, EXECUTION, nodes)
   assert.equal(rowOf(rows, 'r').next_action, 'verify')
@@ -382,8 +382,8 @@ test('a green brought up to its moved parent at the cut is measured from the ref
   const hg = commit(wg, 'src/g.mjs', 'feat(g): implement the rule')
 
   const nodes = [
-    leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'] }),
-    leaf('g', { rigor: 'tdd-pair', role: 'green', locus: ['src/g.mjs'], deps: ['r'] }),
+    leaf('r', { rigor: 'tdd-pair', role: 'red', expects: ['test/r.test.mjs'] }),
+    leaf('g', { rigor: 'tdd-pair', role: 'green', expects: ['src/g.mjs'], deps: ['r'] }),
   ]
   const g = rowOf(resumeLeaves(dir, EFFORT, EXECUTION, nodes), 'g')
   assert.equal(g.base_sha, refresh)

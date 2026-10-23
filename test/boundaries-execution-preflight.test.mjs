@@ -30,7 +30,7 @@ const STAMP3 = '20260925-140000'
 
 const gapsOf = (r, folder = '.') => trace(readTree(r, E).nodes, folder).gaps
 
-const WITH_GAPS = [root({ defines: [{ id: 'D1', text: 'x' }, { id: 'D2', text: 'y' }] }), leaf('a', { locus: [ADD] })]
+const WITH_GAPS = [root({ defines: [{ id: 'D1', text: 'x' }, { id: 'D2', text: 'y' }] }), leaf('a', { expects: [ADD] })]
 
 // ------------------------------------------------------------------ preflight: refusals
 
@@ -60,7 +60,7 @@ test('preflight refuses a folder the tree does not hold, no_such_node, writing n
 })
 
 test('preflight refuses an effort root that is a leaf, root_is_leaf', async (t) => {
-  const r = world(t, [{ id: '.', kind: 'leaf', title: 'the change', rigor: 'tdd', locus: [ADD], decisions: [], acceptance: [{ text: 'it works', check: 'node --test', decisions: [] }] }])
+  const r = world(t, [{ id: '.', kind: 'leaf', title: 'the change', rigor: 'tdd', expects: [ADD], decisions: [], acceptance: [{ text: 'it works', check: 'node --test', decisions: [] }] }])
   const xc = ctxOf(r, STAMP, { run: false })
   const out = await preflight(xc, { commands_file: commandsFile(t) })
   assert.equal(out.ok, false)
@@ -73,7 +73,7 @@ test('preflight refuses an effort root that is a leaf, root_is_leaf', async (t) 
 })
 
 test('preflight refuses a folder other than the one the execution recorded, wrong_root, naming that root', async (t) => {
-  const r = world(t, [root(), leaf('zeta', { locus: [ADD] }), leaf('b', { locus: ['README.md'] })])
+  const r = world(t, [root(), leaf('zeta', { expects: [ADD] }), leaf('b', { expects: ['README.md'] })])
   const cf = commandsFile(t)
   assert.equal((await preflight(ctxOf(r), { folder: 'zeta', commands_file: cf })).ok, true)
   const before = readFileSync(envPath(r), 'utf8')
@@ -303,7 +303,7 @@ test('a checkpoint once confirmed is not raised again by a later run of the exec
 })
 
 test('checkpoints come one at a time: existing_execution first, blocking_gaps once it is confirmed', async (t) => {
-  const r = world(t, [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'], defines: [{ id: 'D2', text: 'y' }] }, leaf('c/a', { locus: [ADD] })])
+  const r = world(t, [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'], defines: [{ id: 'D2', text: 'y' }] }, leaf('c/a', { expects: [ADD] })])
   const cf = commandsFile(t)
   await preflight(ctxOf(r, STAMP), { folder: '.', commands_file: cf })
   assert.ok(gapsOf(r, 'c').length > 0)

@@ -22,7 +22,7 @@ test('the CLI prints one line whose digest covers the payload it carries', (t) =
 
   const run = spawnSync(process.execPath, [CLI,
     '--worktree', worktree, '--base', base, '--head', head,
-    '--locus', 'src/widget.mjs', '--locus', 'test/widget.test.mjs',
+    '--expects', 'src/widget.mjs', '--expects', 'test/widget.test.mjs',
     '--build', BUILD, '--typecheck-absent', '--suite', SUITE, '--test-one', TEST_ONE,
   ], { encoding: 'utf8' })
 
@@ -58,7 +58,7 @@ test('the observation is journalled by the process that observed it, through the
 
   const payload = verify(parseArgs([
     '--worktree', worktree, '--base', base, '--head', head,
-    '--locus', 'src/widget.mjs', '--locus', 'test/widget.test.mjs',
+    '--expects', 'src/widget.mjs', '--expects', 'test/widget.test.mjs',
     '--build', BUILD, '--typecheck-absent', '--suite', SUITE, '--test-one', TEST_ONE,
     '--repo', dir, '--effort', EFFORT, '--execution', EXECUTION, '--node', NODE, '--branch', BRANCH,
   ]))
@@ -80,7 +80,7 @@ test('the observation is journalled by the process that observed it, through the
   assert.deepEqual(line.checks, [])
   assert.deepEqual(Object.keys(line).sort(), [
     'approved_failing', 'base_sha', 'baseline_failing', 'branch', 'build', 'checks', 'discriminator', 'failing_tests',
-    'head_sha', 'key', 'kind', 'mutations', 'node', 'producer', 'seq', 'series_findings', 'stop_reason', 'suite', 'suite_scope', 'typecheck',
+    'head_sha', 'key', 'kind', 'mutations', 'node', 'producer', 'seq', 'series_findings', 'stop_reason', 'suite', 'suite_scope', 'tests_rewritten', 'typecheck',
     'worktree',
   ], 'a resume re-derives the verdict from this line alone, so it carries every field ' +
      'lib/verdict.mjs reads — `typecheck`, `mutations` and `checks` included')

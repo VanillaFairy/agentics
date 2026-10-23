@@ -6,18 +6,18 @@ import { join, resolve } from 'node:path'
 
 import { append } from '../lib/ledger.mjs'
 import {
-  addNodes, cycleOf, cycleTestLocus, deriveStatus, executorRole, liveNodes, normalizeNode, ownReview, ownerOf, readTree,
-  renderTree, subtreeOf, testLocusAdmits, treeProblems, unitsOf,
+  addNodes, cycleOf, deriveStatus, executorRole, liveNodes, normalizeNode, ownReview, ownerOf, readTree,
+  renderTree, subtreeOf, treeProblems, unitsOf,
 } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
-import { checkAtomicity, coupledOf, fitOf } from '../lib/atomicity.mjs'
+import { checkAtomicity, coupledOf, fitOf, ordered } from '../lib/atomicity.mjs'
 import { trace } from '../lib/traceability.mjs'
 import { ancestorsOf, branchOf, flat, nodeIdProblem, parentOf, safeSlug, worktreeOf } from '../lib/store.mjs'
 
 const repo = () => mkdtempSync(join(tmpdir(), 'agentics-tree-'))
 
 const leaf = (id, extra = {}) => ({
-  id, kind: 'leaf', title: 'do ' + id, rigor: 'tdd', locus: ['src/' + flat(id) + '.js'],
+  id, kind: 'leaf', title: 'do ' + id, rigor: 'tdd', expects: ['src/' + flat(id) + '.js'],
   decisions: ['D1'], acceptance: [{ text: id + ' works', check: 'node --test', decisions: ['D1'] }], ...extra,
 })
 const root = (extra = {}) => ({ id: '.', kind: 'composite', title: 'the change', defines: [{ id: 'D1', text: 'do it' }], ...extra })
@@ -60,7 +60,7 @@ test('tree problems name the node and the reason', () => {
     leaf('b', { deps: ['a'] }),
     leaf('c', { decisions: ['D9'], acceptance: [{ text: 'x', check: '', decisions: ['D9'] }] }),
     leaf('orphan/x'),
-    { id: 'd', kind: 'leaf', title: 'no rigor', locus: ['x'], acceptance: [{ text: 'y', check: 'z' }] },
+    { id: 'd', kind: 'leaf', title: 'no rigor', expects: ['x'], acceptance: [{ text: 'y', check: 'z' }] },
   )
   const problems = treeProblems(nodes).map((p) => p.node + ': ' + p.problem).join('\n')
   assert.match(problems, /dependency cycle/)
@@ -72,9 +72,9 @@ test('tree problems name the node and the reason', () => {
 
 test('a red/green/audit cycle is read from role and deps', () => {
   const nodes = tree(root(),
-    leaf('r', { rigor: 'tdd-triad', role: 'red', locus: ['test/x.test.js'] }),
+    leaf('r', { rigor: 'tdd-triad', role: 'red', expects: ['test/x.test.js'] }),
     leaf('g', { rigor: 'tdd-triad', role: 'green', deps: ['r'] }),
-    leaf('au', { rigor: 'tdd-triad', role: 'audit', deps: ['g'], locus: ['audit.md'] }))
+    leaf('au', { rigor: 'tdd-triad', role: 'audit', deps: ['g'], expects: ['audit.md'] }))
   assert.deepEqual(treeProblems(nodes), [])
   assert.deepEqual(cycleOf(nodes, 'g'), ['r', 'g', 'au'])
   assert.deepEqual(cycleOf(nodes, 'au'), ['r', 'g', 'au'])
@@ -87,27 +87,8 @@ test('a red/green/audit cycle is read from role and deps', () => {
   assert.match(treeProblems(bad).map((p) => p.problem).join(), /depends on exactly one red/)
 })
 
-test('a cycle\'s test locus: red\'s tests and new test files beside its loci, never a source, never another leaf\'s path', () => {
-  const nodes = tree(root(),
-    leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['src/Letters.test.ts', 'src/Letters.ts'] }),
-    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], locus: ['src/Letters.ts', 'src/table/Table.ts'] }),
-    leaf('o', { locus: ['src/table/Other.test.ts'] }),
-    leaf('m', { locus: ['src/table/Merged.test.ts'] }))
-  const status = new Map([['m', { status: 'merged' }]])
-  const scope = cycleTestLocus(nodes, status, nodes.get('g'))
-  const admits = (path, isNew = () => true) => testLocusAdmits(scope, path, isNew)
-  assert.equal(admits('src/Letters.test.ts', () => false), true, 'red\'s own test file, though it exists')
-  assert.equal(admits('src/table/Table.test.ts'), true, 'a new test beside a green source')
-  assert.equal(admits('src/table/Table.ts'), false, 'a source file is the implementer\'s, even inside the cycle')
-  assert.equal(admits('src/Letters.ts'), false, 'red\'s signature file is a source, not a test')
-  assert.equal(admits('src/table/Other.test.ts'), false, 'a path an unmerged leaf outside the cycle holds')
-  assert.equal(admits('src/table/Merged.test.ts', () => false), false, 'an existing file nobody in the cycle owns')
-  assert.equal(admits('src/table/deep/Table.test.ts'), false, 'only directly beside a cycle entry')
-  assert.equal(admits('test/Table.test.ts'), false, 'nor in a directory the cycle never touched')
-})
-
 test('a verify leaf writes nothing and has no producer', () => {
-  const nodes = tree(root(), leaf('v', { rigor: 'verify', locus: [] }))
+  const nodes = tree(root(), leaf('v', { rigor: 'verify', expects: [] }))
   assert.deepEqual(treeProblems(nodes), [])
   assert.equal(executorRole(nodes.get('v')), '')
 })
@@ -144,35 +125,25 @@ test('traceability: an undelivered decision is a gap, an untraced criterion is r
   assert.deepEqual(trace(tree(root())).gaps, [], 'a node with no children yet is frontier, not a gap')
 })
 
-test('atomicity: overlapping loci need an ordering, and a coupled pair is exempt', () => {
-  const nodes = tree(root({ shared: ['package.json'] }),
-    leaf('a', { locus: ['src/x.js'] }), leaf('b', { locus: ['src/x.js'] }),
-    leaf('c', { locus: ['src/y.js'], deps: [] }), leaf('d', { locus: ['src/y.js'], deps: ['c'] }),
-    leaf('e', { locus: ['package.json'] }), leaf('f', { locus: ['package.json'] }))
-  assert.deepEqual(checkAtomicity(nodes, 'a').map((f) => f.condition), [3])
-  assert.deepEqual(checkAtomicity(nodes, 'd'), [])
+test('atomicity: two leaves expecting one file is no atomicity problem, and a shared file couples', () => {
+  const nodes = tree(root({ shared: ['package.json', 'config/'] }),
+    leaf('a', { expects: ['src/x.js'] }), leaf('b', { expects: ['src/x.js'] }),
+    leaf('e', { expects: ['package.json'] }), leaf('f', { expects: ['config/app.json'] }), leaf('g', { expects: ['configs/app.json'] }))
+  assert.deepEqual(checkAtomicity(nodes, 'a'), [], 'the scheduler keeps them apart; the plan need not order them')
   assert.equal(coupledOf(nodes, 'e'), true)
-  assert.deepEqual(checkAtomicity(nodes, 'e'), [])
-})
-
-test('atomicity: a directory entry overlaps every file under it, and a shared directory couples', () => {
-  const nodes = tree(root({ shared: ['config/'] }),
-    leaf('a', { locus: ['tests/unit/'] }), leaf('b', { locus: ['tests/unit/x.test.ts'] }),
-    leaf('c', { locus: ['tests/unit-old/x.test.ts'] }), leaf('e', { locus: ['config/app.json'] }))
-  assert.deepEqual(checkAtomicity(nodes, 'b').map((f) => f.condition), [3])
-  assert.deepEqual(checkAtomicity(nodes, 'c'), [], 'a sibling that only shares the prefix is not under it')
-  assert.equal(coupledOf(nodes, 'e'), true)
+  assert.equal(coupledOf(nodes, 'f'), true, 'a shared directory couples every file under it')
+  assert.equal(coupledOf(nodes, 'g'), false, 'a sibling that only shares the prefix is not under it')
 })
 
 test('atomicity: fit is computed from file sizes against the model budget', () => {
   const r = repo()
   mkdirSync(join(r, 'src'))
   writeFileSync(join(r, 'src', 'big.js'), 'x'.repeat(400000))
-  const big = normalizeNode(leaf('a', { locus: ['src/big.js', 'src/new.js'] }))
+  const big = normalizeNode(leaf('a', { expects: ['src/big.js', 'src/new.js'] }))
   const fit = fitOf(r, big)
   assert.equal(fit.fits, false)
   assert.deepEqual(fit.files.map((f) => f.missing), [false, true])
-  const nodes = tree(root(), leaf('a', { locus: ['src/big.js'] }))
+  const nodes = tree(root(), leaf('a', { expects: ['src/big.js'] }))
   assert.deepEqual(checkAtomicity(nodes, 'a', { repo: r }).map((f) => f.condition), [7])
 })
 
@@ -220,7 +191,7 @@ test('an autonomous replan preserves decisions: no new or changed defines, no ch
 
   const split = addNodes(r, 'e1', [
     { id: 'a', kind: 'composite', title: 'do a', decisions: ['D1'], provides: [{ name: 'api', paths: ['src/a.js'] }] },
-    leaf('a/x', { locus: ['src/a.js'] }), leaf('a/y', { locus: ['src/b.js'] }),
+    leaf('a/x', { expects: ['src/a.js'] }), leaf('a/y', { expects: ['src/b.js'] }),
   ], { by: 'planner', reason: 'decompose' })
   assert.equal(split.ok, true, JSON.stringify(split.problems))
 
@@ -450,14 +421,13 @@ test('a group is merged once every task in it is, since it has no branch of its 
   assert.equal(both.get('.').status, 'reviewing')
 })
 
-test('atomicity: waiting for a group, or sitting in a group that waits, orders a leaf against every task in it', () => {
-  const shared = { locus: ['src/same.js'] }
-  const byGroupDep = tree(root(), group('g'), leaf('g/a', shared), leaf('b', { ...shared, deps: ['g'] }))
-  assert.deepEqual(checkAtomicity(byGroupDep, 'b').filter((f) => f.condition === 3), [])
-  const byGroupAfter = tree(root(), leaf('a', shared), group('g', { deps: ['a'] }), leaf('g/b', shared))
-  assert.deepEqual(checkAtomicity(byGroupAfter, 'g/b').filter((f) => f.condition === 3), [])
-  const unordered = tree(root(), group('g'), leaf('g/a', shared), leaf('b', shared))
-  assert.equal(checkAtomicity(unordered, 'b').filter((f) => f.condition === 3).length, 1)
+test('ordering: waiting for a group, or sitting in a group that waits, orders a leaf against every task in it', () => {
+  const byGroupDep = tree(root(), group('g'), leaf('g/a'), leaf('b', { deps: ['g'] }))
+  assert.equal(ordered(byGroupDep, 'b', 'g/a'), true)
+  const byGroupAfter = tree(root(), leaf('a'), group('g', { deps: ['a'] }), leaf('g/b'))
+  assert.equal(ordered(byGroupAfter, 'g/b', 'a'), true)
+  const unordered = tree(root(), group('g'), leaf('g/a'), leaf('b'))
+  assert.equal(ordered(unordered, 'b', 'g/a'), false)
 })
 
 test('traceability passes through a group: a decision its tasks realise is no gap at the folder', () => {

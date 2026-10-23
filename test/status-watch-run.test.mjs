@@ -190,7 +190,7 @@ test('an ended record before the latest run is not the current run\'s end', () =
 const EFFORT = 'e1'
 const STAMP = '20260101-000000'
 const XRUN = executionRunId(EFFORT, STAMP)
-const leaf = (id) => ({ id, title: 'do ' + id, kind: 'leaf', rigor: 'trivial', locus: ['src/' + id + '.js'], acceptance: [{ text: 't', check: 'c' }] })
+const leaf = (id) => ({ id, title: 'do ' + id, kind: 'leaf', rigor: 'trivial', expects: ['src/' + id + '.js'], acceptance: [{ text: 't', check: 'c' }] })
 const event = (r, kind, node, fields = {}) => append(r, EFFORT, 'events', { kind, node, execution: STAMP, ...fields })
 const state = (r, kind, fields = {}) => append(r, EFFORT, 'state:' + STAMP, { kind, ...fields })
 

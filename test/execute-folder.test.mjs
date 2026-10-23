@@ -23,7 +23,7 @@ import { renderMessage } from '../lib/conversation.mjs'
 import { changedParts, sectionsOf, unitsOf } from '../lib/evidence.mjs'
 import { commandsOf } from '../lib/gotchas.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
-import { permissionsFor } from '../lib/locus.mjs'
+import { writePermissions } from '../lib/permissions.mjs'
 import { dispatch, programContext } from '../lib/programs/common.mjs'
 import { planFolder } from '../lib/programs/execute/folder.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
@@ -45,18 +45,18 @@ const rootSpec = ({ known = true } = {}) => [
   '## Design', '', 'A sub-effort the planner writes and a task.', '',
   '## Plan', '',
   '- **p** — sub-effort · author: planner' + (known ? ' · ground: src' : ''), '  Build p.', '  The planner writes its spec.',
-  '- **q** — task · realises: D1 · rigor: tdd · locus: src/q.mjs', '  Add q.', '  Write q and its test.',
+  '- **q** — task · realises: D1 · rigor: tdd · expects: src/q.mjs', '  Add q.', '  Write q and its test.',
   '  - [ ] q works — check: `node --test test/add.test.mjs`', '',
   '## Open questions', '', '## Evidence', '', 'None gathered.', '',
 ].join('\n')
 
 /** p's spec: one task `x` realising D1; each option is one way a test changes it. */
-const folderSpec = ({ locus = 'src/x.mjs, test/x.test.mjs', extra = '', after = '', design = 'One function.', title = 'Add x.', rigor = 'tdd', decisions = [], plan } = {}) => [
+const folderSpec = ({ expects = 'src/x.mjs, test/x.test.mjs', extra = '', after = '', design = 'One function.', title = 'Add x.', rigor = 'tdd', decisions = [], plan } = {}) => [
   '# Build p', '', '## Intent', '', 'Build p, as the root plans it.', '',
   '## Decisions', ...(decisions.length ? ['', '| id | decision | why |', '|---|---|---|', ...decisions.map(([id, text]) => '| ' + id + ' | ' + text + ' | faster |')] : []), '',
   '## Design', '', design, '', ...(extra ? [extra, ''] : []),
   '## Plan', '',
-  ...(plan || ['- **x** — task · realises: D1 · rigor: ' + rigor + ' · locus: ' + locus + after, '  ' + title, '  Write x and its test.',
+  ...(plan || ['- **x** — task · realises: D1 · rigor: ' + rigor + ' · expects: ' + expects + after, '  ' + title, '  Write x and its test.',
     '  - [ ] x works — check: `node --test test/x.test.mjs`']), '',
   '## Open questions', '', '## Evidence', '', 'The root\'s.', '',
 ].join('\n')
@@ -69,9 +69,9 @@ const S2 = folderSpec({ design: DESIGN_B })
 const BAD = folderSpec({ rigor: 'wild' })
 const SPLIT = folderSpec({
   plan: [
-    '- **x1** — task · realises: D1 · rigor: tdd · locus: src/x1.mjs, test/x1.test.mjs', '  Add x1.', '  Write x1 and its test.',
+    '- **x1** — task · realises: D1 · rigor: tdd · expects: src/x1.mjs, test/x1.test.mjs', '  Add x1.', '  Write x1 and its test.',
     '  - [ ] x1 works — check: `node --test test/x1.test.mjs`',
-    '- **x2** — task · realises: D1 · rigor: tdd · locus: src/x2.mjs, test/x2.test.mjs', '  Add x2.', '  Write x2 and its test.',
+    '- **x2** — task · realises: D1 · rigor: tdd · expects: src/x2.mjs, test/x2.test.mjs', '  Add x2.', '  Write x2 and its test.',
     '  - [ ] x2 works — check: `node --test test/x2.test.mjs`',
   ],
 })
@@ -263,7 +263,7 @@ test("the planner writes on planner:<folder> in the session the folder mints, at
     assert.equal(call.cwd, w.rig.repo)
     assert.equal(call.round, 1)
     const rel = posix(relative(mainCheckout(w.rig.repo), specFile(w.rig)))
-    const fence = permissionsFor({ locus: [rel], tests: false })
+    const fence = writePermissions([rel])
     const writes = (list) => list.filter((rule) => /^(Edit|Write)\(/.test(rule)).sort()
     assert.deepEqual(writes(call.permissions.allowed), writes(fence.allowed), 'Edit and Write are the spec\'s alone')
     assert.ok(writes(call.permissions.allowed).length > 0)
@@ -767,22 +767,6 @@ test("an answered needs_context leaves the asker's thread brief changed, so its 
   assert.ok(call.carries.includes(changed[0].seq), 'the resumed dispatch carries the message')
 })
 
-test('a needs_locus request reaches the planner as a needs_locus message naming its paths', async (t) => {
-  const answer = folderSpec({ locus: 'src/x.mjs, src/y.mjs, test/x.test.mjs' })
-  const w = planned(t, { steps: clean(answer), writes: { 1: answer } })
-  const ask = request('needs_locus', 'x also reads and writes src/y.mjs', ['src/y.mjs'])
-  const out = await w.run({ request: ask })
-  assert.equal(out.outcome, 'prepared')
-  const sent = messages(w.rig, 'needs_locus')
-  assert.equal(sent.length, 1)
-  assert.deepEqual(sent[0].payload, { node: 'p/x', paths: ['src/y.mjs'], why: ask.text })
-  const [call] = plannerCalls(w.rig)
-  assert.ok(call.carries.includes(sent[0].seq))
-  assert.ok(call.brief.includes(renderMessage({ msg: 'needs_locus', payload: sent[0].payload })))
-  assert.ok(nodeOf(w.rig, 'p/x').locus.includes('src/y.mjs'), 'p/x has the widened locus')
-  assert.equal(ledger(w.rig, 'prepared').length, 1)
-})
-
 test("a decompose request is answered from the planner's answer brief, reviewed, prepared and compiled into the split", async (t) => {
   const w = planned(t, { steps: clean(SPLIT), writes: { 1: SPLIT } })
   const before = readSpec(w.rig)
@@ -932,9 +916,9 @@ test('a go-on past an earlier design_spend park raises the allowance by one mult
 })
 
 const EDITED_SPEC = folderSpec({ design: DESIGN_A, plan: [
-  '- **x** — task · realises: D1 · rigor: tdd · locus: src/x.mjs, test/x.test.mjs', '  Add x.', '  Write x and its test.',
+  '- **x** — task · realises: D1 · rigor: tdd · expects: src/x.mjs, test/x.test.mjs', '  Add x.', '  Write x and its test.',
   '  - [ ] x works — check: `node --test test/x.test.mjs`',
-  '- **y** — task · realises: D1 · rigor: trivial · after: x · locus: src/y.mjs', '  Add y.', '  Write y.',
+  '- **y** — task · realises: D1 · rigor: trivial · after: x · expects: src/y.mjs', '  Add y.', '  Write y.',
   '  - [ ] y exists — check: `node -e "process.exit(0)"`',
 ] })
 

@@ -1,7 +1,7 @@
 // test/fast/plan-digest.test.mjs — pins the tripwire that stands between a plan and a model.
 //
 // The digest exists to catch a paraphrase, so the tests that matter are the ones that assert
-// what it does NOT ignore: a reworded context, a dropped acceptance entry, a rewritten locus.
+// what it does NOT ignore: a reworded context, a dropped acceptance entry, a rewritten expects.
 // The counterpart is just as load-bearing — a key reordered on the way through a model is
 // not corruption, and a digest that fired on it would halt every honest resume.
 
@@ -12,7 +12,7 @@ import { canonical, fnv1a } from '../../lib/plan-digest.mjs'
 const order = (over = {}) => ({
   id: 'W1',
   title: 'add the parser',
-  locus: ['src/parse.js', 'test/parse.test.js'],
+  expects: ['src/parse.js', 'test/parse.test.js'],
   acceptance: ['node --test passes', 'HUMAN: the error message reads clearly'],
   context: 'The tokenizer already exists in src/lex.js.',
   deps: [],

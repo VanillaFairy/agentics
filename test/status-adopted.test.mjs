@@ -13,7 +13,7 @@ import { leaf, repo, root, STAMP } from './harness/boundary-fixture.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 
 const E = 'e1'
-const NODES = [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { locus: ['src/a.mjs'] }), leaf('c/b', { locus: ['src/b.mjs'] })]
+const NODES = [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { expects: ['src/a.mjs'] }), leaf('c/b', { expects: ['src/b.mjs'] })]
 function world(t) {
   const r = repo()
   t.after(() => rmSync(r, { recursive: true, force: true }))

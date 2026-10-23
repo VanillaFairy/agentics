@@ -20,9 +20,9 @@ import { commitIn, git, leaf, root } from './harness/boundary-fixture.mjs'
 import { E, STAMP2, commandsFile, ctxOf, started } from './harness/execution-world.mjs'
 
 const NODES = [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] },
-  leaf('c/a', { locus: ['src/a.mjs'] }), leaf('c/b', { locus: ['src/b.mjs'] }),
-  leaf('c/r', { rigor: 'tdd-pair', role: 'red', locus: ['test/g.test.mjs'] }),
-  leaf('c/g', { rigor: 'tdd-pair', role: 'green', locus: ['src/g.mjs'], deps: ['c/r'] })]
+  leaf('c/a', { expects: ['src/a.mjs'] }), leaf('c/b', { expects: ['src/b.mjs'] }),
+  leaf('c/r', { rigor: 'tdd-pair', role: 'red', expects: ['test/g.test.mjs'] }),
+  leaf('c/g', { rigor: 'tdd-pair', role: 'green', expects: ['src/g.mjs'], deps: ['c/r'] })]
 
 /** A started execution, the effort and folder c's branches cut at its base, c checked out, and a place for map files. */
 async function handWorld(t) {

@@ -61,7 +61,7 @@ test('a review that stands, one not earned, a replan beneath the folder and none
 
 // ------------------------------------------------------------------ a park an integration review raised
 
-const TREE = [{ id: '.', kind: 'composite', title: 'root' }, { id: 'c', kind: 'composite', title: 'c' }, { id: 'c/x', kind: 'leaf', title: 'x', rigor: 'tdd', locus: ['src/x.mjs'] }]
+const TREE = [{ id: '.', kind: 'composite', title: 'root' }, { id: 'c', kind: 'composite', title: 'c' }, { id: 'c/x', kind: 'leaf', title: 'x', rigor: 'tdd', expects: ['src/x.mjs'] }]
 const statusOf = (events, id = 'c') => {
   const nodes = liveNodes(TREE.map((node, i) => ({ kind: 'node', node, seq: i + 1 })))
   return deriveStatus(nodes, events.map((e) => ({ execution: '', ...e }))).get(id)

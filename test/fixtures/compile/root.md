@@ -24,10 +24,10 @@ A loader reads the file; a parser maps keys.
   Build the config api
   The loader and the parser live in src/api.
 - **cli** — task · realises: D1 · after: api · consumes: config-api · rigor: tdd
-  · locus: src/cli.js, test/cli.test.js · reads: src/api/index.js
+  · expects: src/cli.js, test/cli.test.js · reads: src/api/index.js
   Read configs from the command line
   - [ ] the CLI loads a config — check: `node --test test/cli.test.js`
-- **reload** — task · realises: D3 · after: api · rigor: tdd · locus: src/reload.js, test/reload.test.js
+- **reload** — task · realises: D3 · after: api · rigor: tdd · expects: src/reload.js, test/reload.test.js
   Reload configs on change
   - [ ] a changed file reloads — check: `node --test test/reload.test.js`
 - **later** — deferred · realises: D2

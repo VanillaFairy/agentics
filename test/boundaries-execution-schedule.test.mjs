@@ -66,8 +66,8 @@ const ids = (launch) => launch.map((l) => l.unit + ':' + l.id)
 
 test("preflight frees this execution's slots and no other execution's", async (t) => {
   const r = world(t, NO_GAPS)
-  assert.equal((await acquireAsync(r, { effort: E, execution: STAMP, node: 'a', locus: [ADD] })).ok, true)
-  assert.equal((await acquireAsync(r, { effort: E, execution: STAMP2, node: 'b', locus: ['README.md'] })).ok, true)
+  assert.equal((await acquireAsync(r, { effort: E, execution: STAMP, node: 'a' })).ok, true)
+  assert.equal((await acquireAsync(r, { effort: E, execution: STAMP2, node: 'b' })).ok, true)
   assert.equal(heldBy(r).slots.length, 2)
   const out = await preflight(ctxOf(r), { commands_file: commandsFile(t) })
   assert.equal(out.ok, true)
@@ -238,7 +238,7 @@ test('schedule refuses an execution with no envelope, and an unreadable tree', a
 })
 
 test('schedule launches the ready leaves, and none behind an unmerged dependency', async (t) => {
-  const r = world(t, [root(), leaf('a', { locus: ['src/a.mjs'] }), leaf('b', { locus: ['src/b.mjs'], deps: ['a'] })])
+  const r = world(t, [root(), leaf('a', { expects: ['src/a.mjs'] }), leaf('b', { expects: ['src/b.mjs'], deps: ['a'] })])
   envelopeFor(r)
   const out = await schedule(ctxOf(r), {})
   assert.equal(out.ok, true)
@@ -248,7 +248,7 @@ test('schedule launches the ready leaves, and none behind an unmerged dependency
 })
 
 test('schedule launches nothing beneath a folder being planned', async (t) => {
-  const r = world(t, [root(), { id: 'f', kind: 'composite', title: 'f', decisions: ['D1'] }, leaf('f/a', { locus: ['src/fa.mjs'] }), leaf('b', { locus: ['src/b.mjs'] })])
+  const r = world(t, [root(), { id: 'f', kind: 'composite', title: 'f', decisions: ['D1'] }, leaf('f/a', { expects: ['src/fa.mjs'] }), leaf('b', { expects: ['src/b.mjs'] })])
   envelopeFor(r)
   const xc = ctxOf(r)
   assert.deepEqual(ids((await schedule(xc, { planning: [] })).launch).sort(), ['leaf:b', 'leaf:f/a'])
@@ -256,7 +256,7 @@ test('schedule launches nothing beneath a folder being planned', async (t) => {
 })
 
 test("schedule launches no more leaves than the pool allows, and only those of the execution's folder", async (t) => {
-  const r = world(t, [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { locus: ['src/ca.mjs'] }), leaf('c/b', { locus: ['src/cb.mjs'] }), leaf('d', { locus: ['src/d.mjs'] })])
+  const r = world(t, [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { expects: ['src/ca.mjs'] }), leaf('c/b', { expects: ['src/cb.mjs'] }), leaf('d', { expects: ['src/d.mjs'] })])
   mkdirSync(join(configPath(r), '..'), { recursive: true })
   writeFileSync(configPath(r), JSON.stringify({ max_parallel: 1 }))
   envelopeFor(r, STAMP, 'c')
@@ -268,7 +268,7 @@ test("schedule launches no more leaves than the pool allows, and only those of t
 })
 
 test('schedule holds a node with a fault after the latest run, and takes it up in the next run', async (t) => {
-  const r = world(t, [root(), leaf('a', { locus: ['src/a.mjs'] }), leaf('b', { locus: ['src/b.mjs'] })])
+  const r = world(t, [root(), leaf('a', { expects: ['src/a.mjs'] }), leaf('b', { expects: ['src/b.mjs'] })])
   envelopeFor(r)
   const xc = ctxOf(r)
   recordAll(xc, [fault('a', 'role', 'the dispatch returned nothing')])
@@ -281,7 +281,7 @@ test('schedule holds a node with a fault after the latest run, and takes it up i
 })
 
 test('schedule parks a childless folder the user writes needs_design and launches it nowhere', async (t) => {
-  const r = world(t, [root(), leaf('a', { locus: ['src/a.mjs'] }), { id: 'mine', kind: 'design', title: 'my part', author: 'you' }])
+  const r = world(t, [root(), leaf('a', { expects: ['src/a.mjs'] }), { id: 'mine', kind: 'design', title: 'my part', author: 'you' }])
   envelopeFor(r)
   const out = await schedule(ctxOf(r), {})
   assert.equal(out.ok, true)
@@ -293,7 +293,7 @@ test('schedule parks a childless folder the user writes needs_design and launche
 })
 
 test('schedule parks every childless folder the user writes in one call, past the pool', async (t) => {
-  const r = world(t, [root(), leaf('a', { locus: ['src/a.mjs'] })])
+  const r = world(t, [root(), leaf('a', { expects: ['src/a.mjs'] })])
   const n = Math.max(5, maxParallel(r) + 1)
   const mine = Array.from({ length: n }, (_, i) => 'mine' + i)
   const seeded = seedTree(r, E, mine.map((id) => ({ id, kind: 'design', title: 'part ' + id, author: 'you' })))
@@ -309,7 +309,7 @@ test('schedule parks every childless folder the user writes in one call, past th
 })
 
 test('a childless folder the planner writes is launched to plan', async (t) => {
-  const r = world(t, [root(), leaf('a', { locus: ['src/a.mjs'] }), { id: 'later', kind: 'design', title: 'later part', author: 'planner' }])
+  const r = world(t, [root(), leaf('a', { expects: ['src/a.mjs'] }), { id: 'later', kind: 'design', title: 'later part', author: 'planner' }])
   envelopeFor(r)
   const out = await schedule(ctxOf(r), {})
   assert.equal(out.ok, true)
@@ -320,7 +320,7 @@ test('a childless folder the planner writes is launched to plan', async (t) => {
 
 /** A leaf `a` measured green at its head with no approval: the world the ladder sends to merge. */
 function ladderWorld(t, extra = {}) {
-  const r = world(t, [root(), leaf('a', { locus: ['src/a.mjs'], ...extra })])
+  const r = world(t, [root(), leaf('a', { expects: ['src/a.mjs'], ...extra })])
   envelopeFor(r)
   const xc = ctxOf(r)
   return { r, xc, sha: greenLeaf(r, xc, 'a', 'src/a.mjs') }
@@ -360,7 +360,7 @@ test('a ladder-green leaf whose approval stands is not approved again', async (t
 })
 
 test('schedule run twice records nothing twice', async (t) => {
-  const r = world(t, [root(), leaf('a', { locus: ['src/a.mjs'] }), { id: 'mine', kind: 'design', title: 'my part', author: 'you' }])
+  const r = world(t, [root(), leaf('a', { expects: ['src/a.mjs'] }), { id: 'mine', kind: 'design', title: 'my part', author: 'you' }])
   envelopeFor(r)
   const xc = ctxOf(r)
   const sha = greenLeaf(r, xc, 'a', 'src/a.mjs')
@@ -412,7 +412,7 @@ test('postflight run twice appends closed once', async (t) => {
 })
 
 test('below the effort root, postflight closes only once the root folder merged too', async (t) => {
-  const r = world(t, [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { locus: ['src/a.mjs'] })])
+  const r = world(t, [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { expects: ['src/a.mjs'] })])
   envelopeFor(r, STAMP, 'c')
   const xc = ctxOf(r)
   xc.log.append('merged', { node: 'c/a' })
@@ -426,8 +426,8 @@ test('below the effort root, postflight closes only once the root folder merged 
 test("postflight frees this execution's slots", async (t) => {
   const r = world(t, NO_GAPS)
   envelopeFor(r)
-  assert.equal((await acquireAsync(r, { effort: E, execution: STAMP, node: 'a', locus: [ADD] })).ok, true)
-  assert.equal((await acquireAsync(r, { effort: E, execution: STAMP2, node: 'b', locus: ['README.md'] })).ok, true)
+  assert.equal((await acquireAsync(r, { effort: E, execution: STAMP, node: 'a' })).ok, true)
+  assert.equal((await acquireAsync(r, { effort: E, execution: STAMP2, node: 'b' })).ok, true)
   const out = await postflight(ctxOf(r))
   assert.equal(out.ok, true)
   assert.deepEqual(heldBy(r).slots.map((s) => [s.execution, s.node]), [[STAMP2, 'b']])
@@ -457,7 +457,7 @@ test("postflight names the root's integration branch and head, and counts merged
 })
 
 test('postflight summarizes the subtree: the stopped nodes and the leaves waiting behind each', async (t) => {
-  const r = world(t, [root(), leaf('a', { locus: ['src/a.mjs'] }), leaf('b', { locus: ['src/b.mjs'], deps: ['a'] })])
+  const r = world(t, [root(), leaf('a', { expects: ['src/a.mjs'] }), leaf('b', { expects: ['src/b.mjs'], deps: ['a'] })])
   envelopeFor(r)
   const xc = ctxOf(r)
   xc.log.append('escalated', { node: 'a', reason: 'blocked', detail: '' })

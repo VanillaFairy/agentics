@@ -144,12 +144,12 @@ test('fields parse to their types, wrapped "·" lines included', () => {
   assert.deepEqual(parser.after, ['store-layout'])
   assert.equal(parser.rigor, 'tdd-pair')
   assert.equal(parser.role, 'red')
-  assert.deepEqual(parser.locus, ['test/spec.test.mjs'])
+  assert.deepEqual(parser.expects, ['test/spec.test.mjs'])
   assert.deepEqual(parser.reads, ['lib/store.mjs'], 'backticks around a value are not part of it')
   assert.deepEqual(parser.consumes, [{ name: 'store-paths' }])
   assert.deepEqual(parser.dispatch, { producer: { model: 'sonnet', effort: 'medium' }, reviewer: { model: 'opus', effort: 'medium' } })
   assert.deepEqual(parser.ground, ['docs/DESIGN.md#storage'])
-  assert.deepEqual(parser.given, ['realises', 'after', 'rigor', 'role', 'locus', 'reads', 'consumes', 'dispatch', 'ground'])
+  assert.deepEqual(parser.given, ['realises', 'after', 'rigor', 'role', 'expects', 'reads', 'consumes', 'dispatch', 'ground'])
   for (const e of spec.entries) for (const key of e.given) assert.ok(ENTRY_KEYS.includes(key), key)
 
   const planner = entry(spec, 'planner-part')
@@ -158,7 +158,7 @@ test('fields parse to their types, wrapped "·" lines included', () => {
   assert.deepEqual(planner.shared, ['package.json'])
 
   const paths = entry(parseSpec(SUB, { file: 'DESIGN.md' }), 'paths')
-  assert.deepEqual(paths.locus, ['lib/store.mjs', 'test/store.test.mjs'])
+  assert.deepEqual(paths.expects, ['lib/store.mjs', 'test/store.test.mjs'])
 })
 
 test('criteria carry their check; a HUMAN: criterion keeps its prefix and has no check', () => {
@@ -353,15 +353,15 @@ test('a name that breaks the segment rule, or repeats a sibling\'s, is refused a
 })
 
 test('task-only keys and criteria on a sub-effort are refused', () => {
-  const text = swap(ROOT, '· shared: package.json', '  · shared: package.json · rigor: tdd · locus: src/a.js\n  Let the planner write this part\n  - [ ] it works — check: `node --test`')
+  const text = swap(ROOT, '· shared: package.json', '  · shared: package.json · rigor: tdd · expects: src/a.js\n  Let the planner write this part\n  - [ ] it works — check: `node --test`')
     .replace('\n  Let the planner write this part\n- **later**', '\n- **later**')
   const problems = problemsOf(text)
-  refusedAt(problems, lineOf(text, '- **planner-part**'), /rigor|locus|task/)
+  refusedAt(problems, lineOf(text, '- **planner-part**'), /rigor|expects|task/)
   refusedAt(problems, lineOf(text, '- [ ] it works'), /criteri|task/)
 })
 
 test('author and shared on a task are refused at its entry', () => {
-  const text = swap(ROOT, '  · locus: test/spec.test.mjs', '  · locus: test/spec.test.mjs · author: planner · shared: package.json')
+  const text = swap(ROOT, '  · expects: test/spec.test.mjs', '  · expects: test/spec.test.mjs · author: planner · shared: package.json')
   refusedAt(problemsOf(text), lineOf(text, '- **spec-parser**'), /author/)
   refusedAt(problemsOf(text), lineOf(text, '- **spec-parser**'), /shared/)
 })
@@ -461,7 +461,7 @@ test('checkFolder refuses a decision no entry of the spec realises, at its Decis
   }
 })
 
-test('checkFolder refuses a task whose node compile would refuse: no rigor, an unknown rigor, no locus, a role that does not fit its rigor (I3)', () => {
+test('checkFolder refuses a task whose node compile would refuse: no rigor, an unknown rigor, a role that does not fit its rigor (I3); a task with no expects is fine', () => {
   const at = (text) => effortOnDisk({ '.': ROOT, 'store-layout': text })
   const line = (text) => lineOf(text, '**paths**')
   const refusedAtLine = (problems, at, keyword) => assert.ok(
@@ -474,8 +474,8 @@ test('checkFolder refuses a task whose node compile would refuse: no rigor, an u
   const badRigor = SUB.replace('rigor: tdd', 'rigor: fancy')
   refusedAtLine(checkFolder(at(badRigor), 'e1', 'store-layout').problems, line(badRigor), /rigor/)
 
-  const noLocus = SUB.replace(' · locus: lib/store.mjs, test/store.test.mjs', '')
-  refusedAtLine(checkFolder(at(noLocus), 'e1', 'store-layout').problems, line(noLocus), /locus/)
+  const noExpects = SUB.replace(' · expects: lib/store.mjs, test/store.test.mjs', '')
+  assert.deepEqual(checkFolder(at(noExpects), 'e1', 'store-layout').problems, [], 'expects is a hint: a task may leave it out')
 
   const wrongRole = SUB.replace('rigor: tdd', 'rigor: tdd · role: green')
   refusedAtLine(checkFolder(at(wrongRole), 'e1', 'store-layout').problems, line(wrongRole), /role/)
@@ -502,10 +502,10 @@ const GROUP = [
   'Check specs where they sit',
   'One subsystem, reviewed together.',
   '',
-  '- **lint-a** — task · realises: D2 · rigor: trivial · locus: lib/a.mjs',
+  '- **lint-a** — task · realises: D2 · rigor: trivial · expects: lib/a.mjs',
   '  Lint the first half',
   '  - [ ] a lints — check: `node --test`',
-  '- **lint-b** — task · realises: D2 · after: lint-a, planner-part · rigor: trivial · locus: lib/b.mjs',
+  '- **lint-b** — task · realises: D2 · after: lint-a, planner-part · rigor: trivial · expects: lib/b.mjs',
   '  Lint the second half',
   '  - [ ] b lints — check: `node --test`',
   '',
@@ -533,12 +533,12 @@ test('a group is refused when its heading is not a group, it carries a field oth
   const field = swap(GROUPED, '### checks', '### checks — group · realises: D2')
   refusedAt(problemsOf(field), lineOf(field, '### checks'), /only after/)
   const empty = GROUPED.replace(/- \*\*lint-a\*\* — task/, '- **lint-a** — deferred').replace(/- \*\*lint-b\*\* — task/, '- **lint-b** — dropped')
-    .replace(/ · rigor: trivial · locus: lib\/[ab]\.mjs/g, '').replace(/ {2}- \[ \] [ab] lints.*\n/g, '')
+    .replace(/ · rigor: trivial · expects: lib\/[ab]\.mjs/g, '').replace(/ {2}- \[ \] [ab] lints.*\n/g, '')
   refusedAt(problemsOf(empty), lineOf(empty, '### checks'), /holds no task/)
 })
 
 test('a group holds no sub-effort, shares one namespace with the entries, and never waits on itself', () => {
-  const sub = swap(GROUPED, '- **lint-a**', '- **lint-a** — sub-effort · realises: D2').replace(' · rigor: trivial · locus: lib/a.mjs', '').replace(/ {2}- \[ \] a lints.*\n/, '')
+  const sub = swap(GROUPED, '- **lint-a**', '- **lint-a** — sub-effort · realises: D2').replace(' · rigor: trivial · expects: lib/a.mjs', '').replace(/ {2}- \[ \] a lints.*\n/, '')
   refusedAt(problemsOf(sub), lineOf(sub, '- **lint-a**'), /a group holds tasks/)
   const clash = swap(GROUPED, '### checks', '### later — group')
   refusedAt(problemsOf(clash), lineOf(clash, '- **later**'), /named later/)
@@ -580,4 +580,10 @@ test('the spec CLI refuses a value that is not a handle, and a flag it does not 
   }
   assert.deepEqual(refusal('check', '--repo', '.', '--effort', 'e1', '--folder', 'a\nb'), [1, 'args_unreadable'])
   assert.deepEqual(refusal('check', '--repo', '.', '--effort', 'e1', '--file', 'DESIGN.md'), [1, 'unknown_flag'])
+})
+
+test('a task that still writes locus is refused, naming the migration', () => {
+  const old = SUB.replace(' · expects: ', ' · locus: ')
+  const problems = checkFolder(effortOnDisk({ '.': ROOT, 'store-layout': old }), 'e1', 'store-layout').problems
+  assert.ok(problems.some((p) => p.line === lineOf(old, '**paths**') && /migrate-expects/.test(p.problem)), JSON.stringify(problems))
 })

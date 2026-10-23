@@ -11,7 +11,7 @@ import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { renderMessage } from '../lib/conversation.mjs'
-import { readOnlyPermissions } from '../lib/locus.mjs'
+import { readOnlyPermissions } from '../lib/permissions.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
 import {
   coverageOf, deliver, dispatch, dispatchJudge, programContext, step, waitFor,

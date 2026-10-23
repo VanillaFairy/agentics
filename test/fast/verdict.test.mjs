@@ -9,8 +9,7 @@
 //   `unrunnable` is not a pass, and `absent` is not a failure;
 //   the discriminator's base half is waived for tests-only and green, and for a tdd leaf's upkeep
 //   files beside one that adds a test case, and for nothing else;
-//   a lone discriminator on a tdd leaf escalates on round one rather than buying a fix round;
-//   fix rounds cycling between a lone locus breach and a broken build escalate.
+//   a lone discriminator on a tdd leaf escalates on round one rather than buying a fix round.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -22,17 +21,17 @@ import {
 import { normalizeNode } from '../../lib/tree.mjs'
 
 const leaf = (over = {}) => normalizeNode({
-  id: 'a/b', kind: 'leaf', rigor: 'tdd', locus: ['src/x.mjs', 'test/x.test.mjs'], ...over,
+  id: 'a/b', kind: 'leaf', rigor: 'tdd', expects: ['src/x.mjs', 'test/x.test.mjs'], ...over,
 })
 
 const LEAVES = {
   tdd: leaf(),
   'tests-only': leaf({ rigor: 'tests-only' }),
   trivial: leaf({ rigor: 'trivial' }),
-  verify: leaf({ rigor: 'verify', locus: [] }),
-  red: leaf({ rigor: 'tdd-pair', role: 'red', locus: ['test/x.test.mjs'] }),
-  green: leaf({ rigor: 'tdd-pair', role: 'green', locus: ['src/x.mjs'] }),
-  audit: leaf({ rigor: 'tdd-triad', role: 'audit', locus: ['src/x.mjs'] }),
+  verify: leaf({ rigor: 'verify', expects: [] }),
+  red: leaf({ rigor: 'tdd-pair', role: 'red', expects: ['test/x.test.mjs'] }),
+  green: leaf({ rigor: 'tdd-pair', role: 'green', expects: ['src/x.mjs'] }),
+  audit: leaf({ rigor: 'tdd-triad', role: 'audit', expects: ['src/x.mjs'] }),
 }
 // A green's test-author round: the same leaf, measured as the round that closes a test gap.
 LEAVES['green-tests'] = LEAVES.green
@@ -85,7 +84,7 @@ const ROWS = [
   ['a red measurement, placed in its own test file', m(red), {
     red: true, tdd: ['discriminator', 'suite'], green: ['discriminator', 'suite'], trivial: ['suite'],
   }],
-  ['a red measurement with a stray failure outside the locus', m({ ...red,
+  ['a red measurement with a stray failure outside its own tests', m({ ...red,
     failing_tests: [...red.failing_tests, { file: 'test/other.test.mjs', id: 'y' }] }), { red: ['suite'] }],
   ['a red measurement whose failure names no file', m({ ...red, failing_tests: [] }), { red: ['suite'] }],
   ['a failed build', m({ build: 'failed', discriminator: [disc(true, true)], mutations: [bites] }), {
@@ -98,9 +97,9 @@ const ROWS = [
     tdd: true, trivial: true, verify: true, green: true,
     audit: ['mutation', 'suite'],
   }],
-  ['a blocking locus breach', m({ discriminator: [disc(true, true)],
-    series_findings: [{ sha: 'abc', check: 'locus-breach', message: 'outside', blocking: true }] }), {
-    tdd: ['series-locus-breach'], trivial: ['series-locus-breach'], verify: ['series-locus-breach'],
+  ['a blocking role breach', m({ discriminator: [disc(true, true)],
+    series_findings: [{ sha: 'abc', check: 'role-breach', message: 'a test', blocking: true }] }), {
+    tdd: ['series-role-breach'], trivial: ['series-role-breach'], verify: ['series-role-breach'],
   }],
   ['an advisory series finding is not a failure', m({ discriminator: [disc(true, true)],
     series_findings: [{ sha: 'abc', check: 'and-subject', message: 'x and y', blocking: false }] }), { tdd: true, trivial: true }],
@@ -195,8 +194,8 @@ test('a green\'s test-author round shows every test it added catches a break; th
   assert.deepEqual(measurementOk(m({ discriminator: [redTest, added], mutations: [named] }), LEAVES.green, 'test-author').failures, [])
   const blind = measurementOk(m({ discriminator: [redTest, added], mutations: [bites] }), LEAVES.green, 'test-author').failures
   assert.deepEqual(blind.map((f) => f.claim), ['test/table.test.mjs adds a test no biting mutation names'])
-  assert.equal(closeDecision(m({ discriminator: [redTest, added], mutations: [named] }), LEAVES.green, [], 'test-author').next, 'review')
-  assert.equal(closeDecision(m({ discriminator: [redTest, added] }), LEAVES.green, [], 'test-author').next, 'fix',
+  assert.equal(closeDecision(m({ discriminator: [redTest, added], mutations: [named] }), LEAVES.green, 'test-author').next, 'review')
+  assert.equal(closeDecision(m({ discriminator: [redTest, added] }), LEAVES.green, 'test-author').next, 'fix',
     'a round with no declared break measured nothing about its tests')
 })
 
@@ -260,14 +259,14 @@ test('a lone discriminator on a tdd leaf escalates on round one as discriminator
 test('a file the user ruled a regression net is held to passes_now alone, beside a criterion check', () => {
   const passed = [{ command: 'grep wired', status: 'passed' }]
   const nets = ['test/x.test.mjs']
-  assert.equal(closeDecision(m({ discriminator: [disc(false, true)], checks: passed }), LEAVES.tdd, [], '', { nets }).next, 'approve')
+  assert.equal(closeDecision(m({ discriminator: [disc(false, true)], checks: passed }), LEAVES.tdd, '', { nets }).next, 'approve')
   assert.equal(measurementOk(m({ discriminator: [disc(false, false)], checks: passed }), LEAVES.tdd, '', { nets }).ok, false, 'a net must pass now')
   const two = m({ discriminator: [disc(false, true), disc(false, true, 'test/z.test.mjs')], checks: passed })
-  assert.equal(closeDecision(two, LEAVES.tdd, [], '', { nets }).reason, 'discriminator_undecidable', 'a file not ruled is still undecidable')
+  assert.equal(closeDecision(two, LEAVES.tdd, '', { nets }).reason, 'discriminator_undecidable', 'a file not ruled is still undecidable')
 })
 
 test('with every changed test file ruled a net, a leaf with no criterion check that ran does not pass', () => {
-  const d = closeDecision(m({ discriminator: [disc(false, true)] }), LEAVES.tdd, [], '', { nets: ['test/x.test.mjs'] })
+  const d = closeDecision(m({ discriminator: [disc(false, true)] }), LEAVES.tdd, '', { nets: ['test/x.test.mjs'] })
   assert.equal(d.reason, 'discriminator_undecidable')
   assert.ok(d.failures.some((f) => /no criterion check ran/.test(f.claim)))
 })
@@ -301,36 +300,6 @@ test('an ordinary failure is a fix round and carries its failures', () => {
   assert.deepEqual(d.failures.map((f) => f.check), ['build'])
 })
 
-const breach = m({ discriminator: [disc(true, true)],
-  series_findings: [{ sha: 'a', check: 'locus-breach', message: 'outside', blocking: true }] })
-const broken = m({ build: 'failed', discriminator: [disc(true, true)] })
-
-test('fix rounds cycling between a lone locus breach and a broken build escalate as verify_oscillating', () => {
-  // The field case: edit outside the locus, revert (the tree no longer compiles), edit again.
-  assert.equal(closeDecision(breach, LEAVES.tdd, []).next, 'fix')
-  assert.equal(closeDecision(broken, LEAVES.tdd, [breach]).next, 'fix',
-    'one move from a breach to a broken build is a fix round like any other')
-  const back = closeDecision(breach, LEAVES.tdd, [breach, broken])
-  assert.deepEqual([back.next, back.reason], ['escalate', 'verify_oscillating'],
-    'returning to a state already left is the cycle')
-  assert.equal(closeDecision(broken, LEAVES.tdd, [broken, breach]).reason, 'verify_oscillating',
-    'in either direction')
-})
-
-test('a typecheck failure oscillates with a breach just as a build failure does', () => {
-  const typeBroken = m({ typecheck: 'failed', discriminator: [disc(true, true)] })
-  assert.equal(closeDecision(breach, LEAVES.tdd, [breach, typeBroken]).reason, 'verify_oscillating')
-})
-
-test('no oscillation without alternation: the same state twice, or states of other shapes', () => {
-  assert.equal(closeDecision(breach, LEAVES.tdd, [breach, breach]).next, 'fix')
-  const suite = m({ suite: 'failed', failing_tests: [{ file: 'test/x.test.mjs', id: 'x' }], discriminator: [disc(true, true)] })
-  assert.equal(closeDecision(suite, LEAVES.tdd, [suite, broken]).next, 'fix')
-  const breachAndSuite = m({ ...suite, series_findings: breach.series_findings })
-  assert.equal(closeDecision(breachAndSuite, LEAVES.tdd, [breachAndSuite, broken]).next, 'fix',
-    'a breach is "lone" only when it is the only failing fact')
-})
-
 // ---------------------------------------------------------------- the baseline
 
 test('a suite whose every named failure fails at the base too did not fail for this change', () => {
@@ -346,13 +315,13 @@ test('a suite whose every named failure fails at the base too did not fail for t
   assert.equal(suiteFailed(m({ suite: 'failed', failing_tests: [], baseline_failing: [] })), true, 'a failure that names nothing is never excused')
 })
 
-test('a red leaf is judged on its own failures: a baseline failure outside its locus is not collateral', () => {
+test('a red leaf is judged on its own failures: a baseline failure outside its own tests is not collateral', () => {
   const measured = m({ ...red, failing_tests: [...red.failing_tests, { file: 'test/old.test.mjs', id: 'old' }], baseline_failing: [{ file: 'test/old.test.mjs', id: 'old' }] })
   assert.deepEqual(measurementOk(measured, LEAVES.red).failures, [])
 })
 
-test('a red leaf whose locus is a directory owns the failures under it, and only those', () => {
-  const dirRed = leaf({ rigor: 'tdd-pair', role: 'red', locus: ['test/'] })
+test('a red leaf owns the failures in the test files of its own diff, and only those', () => {
+  const dirRed = leaf({ rigor: 'tdd-pair', role: 'red', expects: ['test/'] })
   assert.deepEqual(measurementOk(m(red), dirRed).failures, [])
   const stray = m({ ...red, failing_tests: [...red.failing_tests, { file: 'tests-old/y.test.mjs', id: 'y' }] })
   assert.deepEqual(measurementOk(stray, dirRed).failures.map((f) => f.check), ['suite'])
@@ -434,7 +403,7 @@ test('a green\'s next round goes to a test-author only when what is left is the 
   assert.equal(greenRoundRole({ review: { next: 'fix', open: [tests] } }), 'test-author')
   assert.equal(greenRoundRole({ review: { next: 'fix', open: [tests, critical('F1')] } }), 'implementer', 'a mixed set: the code first')
   assert.equal(greenRoundRole({ review: { next: 'fix', open: [critical('F1')] } }), 'implementer', 'a finding with no remedy is the code\'s')
-  assert.equal(greenRoundRole({ close: fix([{ check: 'mutation' }, { check: 'series-locus-breach' }]) }), 'test-author', 'its own break or breach')
+  assert.equal(greenRoundRole({ close: fix([{ check: 'mutation' }, { check: 'series-role-breach' }]) }), 'test-author', 'its own break or breach')
   assert.equal(greenRoundRole({ close: fix([{ check: 'mutation' }, { check: 'discriminator' }]) }), 'implementer', 'a new test failing now may be the code\'s')
   assert.equal(greenRoundRole({ close: fix([{ check: 'mutation' }], 'implementer') }), 'implementer')
 })

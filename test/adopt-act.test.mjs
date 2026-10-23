@@ -24,7 +24,7 @@ import { seedTree } from './harness/seed-tree.mjs'
 
 const BOUNDARY = fileURLToPath(new URL('../lib/boundary.mjs', import.meta.url))
 const E = 'e1'
-const NODES = [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { locus: ['src/a.mjs'] }), leaf('c/b', { locus: ['src/b.mjs'] })]
+const NODES = [root(), { id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('c/a', { expects: ['src/a.mjs'] }), leaf('c/b', { expects: ['src/b.mjs'] })]
 
 function world(t) {
   const r = repo()
@@ -541,8 +541,8 @@ test("a hand merge of the parent into the folder does not make the parent's bran
 /** A red and its green under the root: the red's commit R is on the effort branch, the green's work on a hand branch cut from there. */
 function handedCycle(t) {
   const { r, xc } = openWorld(t, [
-    leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'] }),
-    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], locus: ['src/r.mjs'] }),
+    leaf('r', { rigor: 'tdd-pair', role: 'red', expects: ['test/r.test.mjs'] }),
+    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], expects: ['src/r.mjs'] }),
   ])
   const base = git(r, 'rev-parse', 'HEAD')
   git(r, 'branch', branchOf(E, '.'), base)

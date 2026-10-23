@@ -99,7 +99,7 @@ describe('G3: [D1] a decline of a round that carried needs_tests and findings', 
 
 describe('G5: [D2] an implementer\'s needs_tests is answered by the test round that finally measures', { concurrency: 2 }, () => {
   const s = scenario(async (t) => {
-    const c = cycle(t, { greenLocus: ['src/r.mjs', 'src/table.mjs'], greenFiles: { 'src/r.mjs': R_SRC, 'src/table.mjs': TABLE_LABELLED } })
+    const c = cycle(t, { greenExpects: ['src/r.mjs', 'src/table.mjs'], greenFiles: { 'src/r.mjs': R_SRC, 'src/table.mjs': TABLE_LABELLED } })
     const asked = answered(c.w, { node: 'g', thread: 'producer:r', msg: 'needs_tests', payload: { text: 'pin it' }, round: 3, from: 'implementer' })
     write(c.green.worktree, { 'src/table.test.mjs': TABLE_TEST })
     const one = { status: 'done', text: 'pinned', commit: 'Pin the capacity', mutations: [LABEL_UNBITTEN] }
@@ -134,7 +134,7 @@ describe('G5: [D2] an implementer\'s needs_tests is answered by the test round t
 
 describe('G6: [D3] a verify finding under a planner\'s folder', () => {
   test('G6.1 the folder replanned without the leaf leaves the leaf not escalated', SLOW, async (t) => {
-    const w = world(t, [root(), planner(), lfNode('c/v', { rigor: 'verify', locus: [], acceptance: crit('c/v', FAIL) })])
+    const w = world(t, [root(), planner(), lfNode('c/v', { rigor: 'verify', expects: [], acceptance: crit('c/v', FAIL) })])
     const o = open(w, 'c/v')
     const out = await close(w, { node: 'c/v', role: '', round: 1, thread: '', dispatch: '', base_sha: o.base_sha })
     assert.equal(out.decision.next, 'route')
@@ -148,9 +148,9 @@ describe('G6: [D3] a verify finding under a planner\'s folder', () => {
 
 // ================================================================== G7
 
-describe('G7: the previous close and the breach record across executions', { concurrency: 2 }, () => {
+describe('G7: the previous close across executions', { concurrency: 2 }, () => {
   test('G7.1 a round-2 close in a later execution escalates verify_not_converging against the earlier execution round-1 close', SLOW, async (t) => {
-    const first = world(t, [root(), lfNode('a', { locus: ['src/a.mjs', 'test/a.test.mjs'], acceptance: crit('a', FAIL) })])
+    const first = world(t, [root(), lfNode('a', { expects: ['src/a.mjs', 'test/a.test.mjs'], acceptance: crit('a', FAIL) })])
     const o = open(first, 'a')
     const one = commit(o.worktree, A_FILES, 'Add a')
     const r1 = await run(first, { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
@@ -165,7 +165,7 @@ describe('G7: the previous close and the breach record across executions', { con
     const ok1 = 'node -e "process.exit(require(\'fs\').existsSync(\'ok1.txt\')?0:1)"'
     const bad2 = 'node -e "process.exit(require(\'fs\').existsSync(\'bad2.txt\')?1:0)"'
     const first = world(t, [root(), lfNode('a', {
-      locus: ['src/a.mjs', 'test/a.test.mjs', 'ok1.txt', 'bad2.txt'],
+      expects: ['src/a.mjs', 'test/a.test.mjs', 'ok1.txt', 'bad2.txt'],
       acceptance: [{ text: 'ok1 exists', check: ok1, decisions: ['D1'] }, { text: 'bad2 is absent', check: bad2, decisions: ['D1'] }],
     })])
     const o = open(first, 'a')
@@ -177,18 +177,6 @@ describe('G7: the previous close and the breach record across executions', { con
     assert.ok(claimsOf(r2.out).length > claimsOf(r1.out).length, 'round 2 keeps the failure and adds one')
     assert.equal(r2.out.raise, true)
     assert.equal(rec(later, 'a', 'implementer', 2).raise, true)
-  })
-
-  test('G7.3 a close run again under a new execution records no second breach_reverted for the node and sha', SLOW, async (t) => {
-    const s = await outside(t)
-    const reverted = recs(s.w, 'breach_reverted', 'a')
-    assert.equal(reverted.length, 1)
-    const later = elsewhere(s.w)
-    const dispatch = stored(later, s.spec)
-    const second = await close(later, { ...s.spec, dispatch })
-    assert.equal(second.decision.next, s.first.decision.next)
-    assert.deepEqual(recs(later, 'breach_reverted', 'a'), [])
-    assert.deepEqual(recs(s.w, 'breach_reverted', 'a'), reverted)
   })
 })
 

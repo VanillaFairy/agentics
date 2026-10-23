@@ -34,7 +34,7 @@ describe('leaf-close and the decision', { concurrency: 4 }, () => {
     const ok1 = 'node -e "process.exit(require(\'fs\').existsSync(\'ok1.txt\')?0:1)"'
     const bad2 = 'node -e "process.exit(require(\'fs\').existsSync(\'bad2.txt\')?1:0)"'
     const w = world(t, [root(), lf('a', {
-      locus: ['src/a.mjs', 'test/a.test.mjs', 'ok1.txt', 'bad2.txt'],
+      expects: ['src/a.mjs', 'test/a.test.mjs', 'ok1.txt', 'bad2.txt'],
       acceptance: [{ text: 'ok1 exists', check: ok1, decisions: ['D1'] }, { text: 'bad2 is absent', check: bad2, decisions: ['D1'] }],
     })])
     return { w, o: open(w, 'a') }
@@ -68,7 +68,7 @@ describe('leaf-close and the decision', { concurrency: 4 }, () => {
   })
 
   test('two consecutive closes failing identically at a moved head escalate verify_not_converging', SLOW, async (t) => {
-    const w = world(t, [root(), lf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'], acceptance: crit('a', FAIL) })])
+    const w = world(t, [root(), lf('a', { expects: ['src/a.mjs', 'test/a.test.mjs'], acceptance: crit('a', FAIL) })])
     const o = open(w, 'a')
     const one = commit(o.worktree, A_FILES, 'Add a')
     const first = await run(w, { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
@@ -83,7 +83,7 @@ describe('leaf-close and the decision', { concurrency: 4 }, () => {
 
   /** A leaf with no commands anywhere, its first close done. */
   async function unknownCommands(t) {
-    const w = world(t, [root(), lf('a', { locus: ['src/a.mjs', 'test/a.test.mjs'] })], { commands: null })
+    const w = world(t, [root(), lf('a', { expects: ['src/a.mjs', 'test/a.test.mjs'] })], { commands: null })
     const o = open(w, 'a')
     commit(o.worktree, A_FILES, 'Add a')
     const spec = { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha }
@@ -140,7 +140,7 @@ describe('leaf-close and the decision', { concurrency: 4 }, () => {
 
   /** A verify leaf `v` whose one check fails, under the root or a planner's folder. */
   async function verifyLeaf(t, id) {
-    const w = world(t, [root(), ...(id === 'c/v' ? [planner()] : []), lf(id, { rigor: 'verify', locus: [], acceptance: crit(id, FAIL) })])
+    const w = world(t, [root(), ...(id === 'c/v' ? [planner()] : []), lf(id, { rigor: 'verify', expects: [], acceptance: crit(id, FAIL) })])
     const o = open(w, id)
     const out = await close(w, { node: id, role: '', round: 1, thread: '', dispatch: '', base_sha: o.base_sha })
     return { w, out }

@@ -5,6 +5,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -13,12 +14,12 @@ import { leafBrief, measuresFor } from '../lib/brief.mjs'
 import { recordItems } from '../lib/evidence.mjs'
 import { writeGotcha } from '../lib/gotchas.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
-import { configPath } from '../lib/store.mjs'
+import { branchOf, configPath } from '../lib/store.mjs'
 import { normalizeNode, readTree } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 
 const E = 'e1'
-const HEADINGS = ['Task', 'Acceptance criteria', 'Decisions realised', 'Locus and reads', 'Evidence', 'Gotchas',
+const HEADINGS = ['Task', 'Acceptance criteria', 'Decisions realised', 'Expected files and reads', 'Evidence', 'Gotchas',
   'Measures', 'Commands', 'Worktree', 'Repository guidance']
 
 /** A repository with a seeded effort, its guidance files, and a red → green cycle beside a plain leaf. */
@@ -33,14 +34,14 @@ function effort(t, files = {}) {
     { id: '.', kind: 'composite', title: 'Parse configs', intent: 'configs load from disk',
       defines: [{ id: 'D1', text: 'Keys are case-insensitive.' }, { id: 'D2', text: 'Unknown keys are an error.' }] },
     { id: 'parse', kind: 'leaf', title: 'Parse keys', intent: 'keys parse case-insensitively', rigor: 'tdd',
-      locus: ['src/api/parse.js', 'test/parse.test.mjs'], reads: ['src/api/types.js'], decisions: ['D1'],
+      expects: ['src/api/parse.js', 'test/parse.test.mjs'], reads: ['src/api/types.js'], decisions: ['D1'],
       acceptance: [{ text: 'Key lookup ignores case', check: 'node --test test/parse.test.mjs', decisions: ['D1'] }],
       context: 'Use the existing tokenizer.', ground: ['src/api'] },
     { id: 'red', kind: 'leaf', title: 'Pin unknown keys', rigor: 'tdd-pair', role: 'red', decisions: ['D2'],
-      locus: ['test/unknown.test.mjs'], acceptance: [{ text: 'An unknown key fails', check: 'node --test test/unknown.test.mjs', decisions: ['D2'] }] },
+      expects: ['test/unknown.test.mjs'], acceptance: [{ text: 'An unknown key fails', check: 'node --test test/unknown.test.mjs', decisions: ['D2'] }] },
     { id: 'green', kind: 'leaf', title: 'Refuse unknown keys', rigor: 'tdd-pair', role: 'green', deps: ['red'], decisions: ['D2'],
-      locus: ['src/api/unknown.js'], acceptance: [{ text: 'Every test red wrote passes', check: 'node --test test/unknown.test.mjs', decisions: ['D2'] }] },
-    { id: 'spec', kind: 'leaf', title: 'Document keys', rigor: 'tdd', locus: ['src/doc.js'], ground: ['docs/spec'],
+      expects: ['src/api/unknown.js'], acceptance: [{ text: 'Every test red wrote passes', check: 'node --test test/unknown.test.mjs', decisions: ['D2'] }] },
+    { id: 'spec', kind: 'leaf', title: 'Document keys', rigor: 'tdd', expects: ['src/doc.js'], ground: ['docs/spec'],
       acceptance: [{ text: 'Docs list keys', check: 'node --test test/doc.test.mjs' }] },
   ])
   assert.equal(added.ok, true, JSON.stringify(added.problems))
@@ -105,17 +106,29 @@ test('the criteria and the decisions realised are listed', (t) => {
   assert.ok(!s['Decisions realised'].includes('Unknown keys are an error'), 'a decision the leaf does not realise')
 })
 
-test('the locus and the reads are listed', (t) => {
-  const s = sectionsOf(brief(effort(t)).text)['Locus and reads']
+test('the expected files and the reads are listed', (t) => {
+  const s = sectionsOf(brief(effort(t)).text)['Expected files and reads']
   for (const p of ['src/api/parse.js', 'test/parse.test.mjs', 'src/api/types.js']) assert.ok(s.includes('- ' + p), p)
 })
 
-test("a green's test round writes the cycle's tests", (t) => {
+test("a green's test round lists the test files the red's branch changed, whatever the red expected", (t) => {
   const repo = effort(t)
-  const s = sectionsOf(brief(repo, 'green', { role: 'test-author' }).text)['Locus and reads']
-  assert.ok(s.includes('- test/unknown.test.mjs'), 'the red\'s test file')
-  assert.ok(!s.includes('- src/api/unknown.js'), 'never the green\'s source')
-  assert.ok(sectionsOf(brief(repo, 'green').text)['Locus and reads'].includes('- src/api/unknown.js'), 'the implementer writes the source')
+  const git = (...args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' })
+  git('init', '-q', '-b', 'main')
+  git('-c', 'user.email=a@b.c', '-c', 'user.name=n', 'commit', '-q', '--allow-empty', '-m', 'base')
+  git('branch', branchOf(E, '.'))
+  git('checkout', '-q', '-b', branchOf(E, 'red'))
+  mkdirSync(join(repo, 'test'), { recursive: true })
+  writeFileSync(join(repo, 'test', 'unknown-keys.test.mjs'), "test('x', () => {})\n")
+  mkdirSync(join(repo, 'src', 'api'), { recursive: true })
+  writeFileSync(join(repo, 'src', 'api', 'unknown.js'), "export const refuse = () => { throw new Error('not implemented') }\n")
+  git('add', '-A')
+  git('-c', 'user.email=a@b.c', '-c', 'user.name=n', 'commit', '-q', '-m', 'pin unknown keys')
+  const s = sectionsOf(brief(repo, 'green', { role: 'test-author' }).text)['Expected files and reads']
+  assert.ok(s.includes('- test/unknown-keys.test.mjs'), 'the test the red committed')
+  assert.ok(s.includes('never a source file'), s)
+  assert.ok(!s.slice(0, s.indexOf('Expected to change')).includes('src/api/unknown.js'), 'a stub the red wrote is no cycle test')
+  assert.ok(!sectionsOf(brief(repo, 'green').text)['Expected files and reads'].includes('never a source file'), 'the implementer writes the source')
 })
 
 test('the measures are measuresFor the leaf and the role', (t) => {
@@ -137,7 +150,7 @@ test('no round number, no findings, no report or progress contract is in it', (t
   }
 })
 
-test('gotchas reach the brief for its role and locus only', (t) => {
+test('gotchas reach the brief for its role and expected files only', (t) => {
   const repo = effort(t)
   writeGotcha(repo, E, pitfall('for implementers in api', ['implementer'], ['src/api/']), {})
   writeGotcha(repo, E, pitfall('for implementers in docs', ['implementer'], ['docs/']), {})
@@ -165,12 +178,12 @@ test('standing evidence whose ground meets the leaf is excerpted', (t) => {
   assert.doesNotMatch(s, /UI never reads configs/)
 })
 
-test("the guidance is the CLAUDE.md files of the locus's directories", (t) => {
+test("the guidance is the CLAUDE.md files of the expected files' directories", (t) => {
   const repo = effort(t, { 'CLAUDE.md': 'root rules\n', 'src/api/CLAUDE.md': 'api rules\n', 'src/ui/CLAUDE.md': 'ui rules\n' })
   const s = sectionsOf(brief(repo).text)['Repository guidance']
   assert.ok(s.includes('### CLAUDE.md\n\nroot rules'))
   assert.ok(s.includes('### src/api/CLAUDE.md\n\napi rules'))
-  assert.ok(!s.includes('ui rules'), 'a directory the locus does not touch')
+  assert.ok(!s.includes('ui rules'), 'a directory no expected file sits in')
   assert.ok(s.indexOf('### CLAUDE.md') < s.indexOf('### src/api/CLAUDE.md'), 'root first')
 })
 

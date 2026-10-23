@@ -163,7 +163,7 @@ const ROOT_SPEC = [
   '## Design', '', 'A loader and a parser.', '',
   '## Plan', '',
   '- **api** — sub-effort · realises: D1 · provides: config-api (src/api/)', '  Build the config api',
-  '- **cli** — task · realises: D1 · after: api · consumes: config-api · rigor: tdd · locus: src/cli.js',
+  '- **cli** — task · realises: D1 · after: api · consumes: config-api · rigor: tdd · expects: src/cli.js',
   '  Read configs from the command line', '  - [ ] the CLI loads a config — check: `node --test`', '',
   '## Open questions', '', '## Evidence', '', 'None yet.', '',
 ].join('\n')
@@ -173,7 +173,7 @@ const API_SPEC = [
   '## Design', '', 'See api.D1: `load(path)`, then `parse(text)`.', '',
   '## Plan', '',
   '- **parse** — sub-effort · realises: D1, api.D1', '  Parse keys',
-  '- **types** — task · realises: api.D1 · after: /api/parse · rigor: tdd · locus: src/api/types.js',
+  '- **types** — task · realises: api.D1 · after: /api/parse · rigor: tdd · expects: src/api/types.js',
   '  Declare the config type', '  - [ ] HUMAN: the type reads well', '',
   '## Open questions', '', '## Evidence', '', 'None yet.', '',
 ].join('\n')
@@ -182,7 +182,7 @@ const PARSE_SPEC = [
   '## Decisions', '', '| id | decision | why |', '|---|---|---|', '| api.parse.D1 | Parsing is one pass. | Configs are small. |', '',
   '## Design', '', 'A tokenizer.', '',
   '## Plan', '',
-  '- **tokens** — task · realises: D1, api.D1, api.parse.D1 · rigor: tdd · locus: src/api/tokens.js',
+  '- **tokens** — task · realises: D1, api.D1, api.parse.D1 · rigor: tdd · expects: src/api/tokens.js',
   '  Tokenize the config', '  - [ ] tokens split on newlines — check: `node --test`', '',
   '## Open questions', '', '## Evidence', '', 'None yet.', '',
 ].join('\n')
@@ -392,7 +392,7 @@ test('the store ignores itself: an opened effort and its records leave git statu
 
 test('a rename rewrites a group heading\'s after, and a group\'s name counts as taken', () => {
   const repo = approvedEffort()
-  const group = '### watch — group · after: api\nWatch configs\n\n- **reload** — task · rigor: trivial · locus: src/reload.js\n  Reload configs\n  - [ ] it reloads — check: `node --test`\n\n'
+  const group = '### watch — group · after: api\nWatch configs\n\n- **reload** — task · rigor: trivial · expects: src/reload.js\n  Reload configs\n  - [ ] it reloads — check: `node --test`\n\n'
   putSpec(repo, '.', readSpec(repo, '.').replace('## Open questions', group + '## Open questions'))
   assert.equal(renameSubEffort(repo, E, 'api', 'watch').ok, false, 'a group already holds the name')
   assert.equal(renameSubEffort(repo, E, 'api', 'loader').ok, true)

@@ -121,7 +121,7 @@ Headings in this order: `# <title>`, `## Intent`, `## Decisions`, `## Design`, `
 
 ```
 - **<name>** — task · realises: D1, a.D2 · after: <sibling>, /<path from the root>
-  · rigor: <rigor> · role: <role> · locus: <path>, … · reads: <path>, …
+  · rigor: <rigor> · role: <role> · expects: <path>, … · reads: <path>, …
   · provides: <contract> (<path>, …) · consumes: <contract> · dispatch: producer=sonnet/medium
   · label: <the work in free text, at most 16 characters: World tests, not world-red>
   <title: one imperative line>
@@ -157,8 +157,9 @@ never by rigor or role.
 
 1. **One concern**: one commit subject, no conjunction.
 2. **One rigor and one role.**
-3. **Closed locus**: every file it writes is in `locus`, and no unmerged task shares a file with
-   it unless an `after` edge orders them, or the file is a designated `shared` file.
+3. **Its own files**: `expects` names the files it will change, so the scheduler keeps two
+   tasks that expect one file from running at once; order them with `after` when one builds on
+   the other. A prediction, never a fence: a task may change what its work needs.
 4. **Checkable alone**: every criterion but a `HUMAN:` one names a check that runs on this task's
    branch alone and decides it. Tests the change clearly affects are named whatever their size;
    from the gray area it might reach, fast tests only, never big ones (those outside `suite_fast`).
@@ -171,19 +172,19 @@ never by rigor or role.
 
 Stop splitting when all seven hold. A split yielding a task that fails 4 or 5 is forbidden. A
 change to a closed set (a union, an enum, a status list) owns every exhaustive consumer of it:
-find them all and put them in the locus. When that breaks condition 7, return `unsplittable`,
+find them all and list them in `expects`. When that breaks condition 7, return `unsplittable`,
 naming the condition. Aim at commit series of dozens of lines.
 
 ## Rigor: first match, top down
 
 | rigor | the work | tasks |
 |---|---|---|
-| `verify` | writes nothing: confirms a premise, proves a criterion holds, measures | one task, empty locus, criteria are commands |
+| `verify` | writes nothing: confirms a premise, proves a criterion holds, measures | one task, no `expects`, criteria are commands |
 | `trivial` | a change a test would only restate: literals, user-visible text, config values, docs, assets, renames behind an unchanged interface, dependency versions, wiring existing parts | one implementer task |
 | `tests-only` | only adds tests to code that is already correct | one test-author task |
 | `tdd` | adds behaviour whose expected results the criteria state exactly | one implementer task, test first |
-| `tdd-pair` | behaviour where a wrong reading would pass its author's own tests: edge-case rules, parsers, state machines, concurrency, contracts others consume | `red` (test files; where the typecheck covers tests, also the files green builds, as signatures that throw) then `green` (the implementation, `after: <red>`; its criteria are "every test <red> wrote passes" plus their check, never a new behaviour: each behaviour green's context states is pinned by a red criterion, in a test file red's locus holds) |
-| `tdd-triad` | as tdd-pair, and a miss ships silently into durable state or is costly: persistence formats, migrations, data loss, security, money | red, green, then `audit` (`after: <green>`, locus: its report only) |
+| `tdd-pair` | behaviour where a wrong reading would pass its author's own tests: edge-case rules, parsers, state machines, concurrency, contracts others consume | `red` (test files; where the typecheck covers tests, also the files green builds, as signatures that throw) then `green` (the implementation, `after: <red>`; its criteria are "every test <red> wrote passes" plus their check, never a new behaviour: each behaviour green's context states is pinned by a red criterion, in a test file red expects) |
+| `tdd-triad` | as tdd-pair, and a miss ships silently into durable state or is costly: persistence formats, migrations, data loss, security, money | red, green, then `audit` (`after: <green>`, expects nothing) |
 
 **A removal is tasks, never a sub-effort**, however many files it spans: an item that only deletes
 what nothing reads once it is gone (with the tests, docs, imports and registrations naming it, and

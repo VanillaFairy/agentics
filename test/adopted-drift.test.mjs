@@ -18,9 +18,9 @@ import { executionRig } from './harness/program-rig.mjs'
 
 const NODES = [
   root(),
-  leaf('p', { locus: ['src/p.mjs'], provides: [{ name: 'api', paths: ['src/api.mjs'] }] }),
-  leaf('a', { locus: ['src/api.mjs'], deps: ['p'] }),
-  leaf('b', { locus: ['src/b.mjs'], deps: ['p'], consumes: [{ name: 'api', paths: ['src/api.mjs'] }] }),
+  leaf('p', { expects: ['src/p.mjs'], provides: [{ name: 'api', paths: ['src/api.mjs'] }] }),
+  leaf('a', { expects: ['src/api.mjs'], deps: ['p'] }),
+  leaf('b', { expects: ['src/b.mjs'], deps: ['p'], consumes: [{ name: 'api', paths: ['src/api.mjs'] }] }),
 ]
 
 let sides = 0
@@ -196,7 +196,7 @@ test('a consumer no ruling reached is held on a role fault, never parked: the ne
 })
 
 test('rulings reach each consumer on its own: the one a ruling skipped is held while the ruled one is recorded', (t) => {
-  const nodes = [...NODES, leaf('m', { locus: ['src/m.mjs'], deps: ['p'], consumes: [{ name: 'api', paths: ['src/api.mjs'] }] })]
+  const nodes = [...NODES, leaf('m', { expects: ['src/m.mjs'], deps: ['p'], consumes: [{ name: 'api', paths: ['src/api.mjs'] }] })]
   const { r, out } = ruled(t, [{ node: 'b', ruling: 'unaffected', why: 'x', question: '' }], [item('b', 11), item('m', 11)], nodes)
   assert.deepEqual(stateKind(r, 'drift-ruled').map((e) => [e.node, e.adopted_seq]), [['b', 11]])
   assert.deepEqual(out.stops.map((s) => [s.id, s.status]), [['m', 'held']])

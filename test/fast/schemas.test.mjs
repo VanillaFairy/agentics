@@ -65,7 +65,7 @@ test('no schema offers more where a part could not progress: a searcher, or a re
 
 test('a producer returns one of the 5.0 statuses', () => {
   assert.deepEqual(schemaOf('producer').properties.status.enum, ['done', 'done_with_concerns', 'blocked', 'needs_context',
-    'needs_tests', 'needs_locus', 'decompose', 'unsplittable', 'premise_mismatch', 'needs_decision', 'contract_changed', 'declined'])
+    'needs_tests', 'decompose', 'unsplittable', 'premise_mismatch', 'needs_decision', 'contract_changed', 'declined'])
 })
 
 test('declined is a producer status no other schema offers', () => {

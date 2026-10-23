@@ -38,9 +38,9 @@ function cycleWorld(t, { triad = false } = {}) {
   const rigor = triad ? 'tdd-triad' : 'tdd-pair'
   return world(t, {
     leaves: [
-      leafEntry('r', { rigor, role: 'red', locus: ['test/r.test.mjs'], check: 'node pass.mjs' }),
-      leafEntry('g', { rigor, role: 'green', after: 'r', locus: ['src/r.mjs'], check: 'node pass.mjs' }),
-      ...(triad ? [leafEntry('au', { rigor, role: 'audit', after: 'g', locus: ['docs/audit.md'], check: 'node pass.mjs' })] : []),
+      leafEntry('r', { rigor, role: 'red', expects: ['test/r.test.mjs'], check: 'node pass.mjs' }),
+      leafEntry('g', { rigor, role: 'green', after: 'r', expects: ['src/r.mjs'], check: 'node pass.mjs' }),
+      ...(triad ? [leafEntry('au', { rigor, role: 'audit', after: 'g', expects: ['docs/audit.md'], check: 'node pass.mjs' })] : []),
     ],
   })
 }

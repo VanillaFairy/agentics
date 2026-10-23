@@ -1,11 +1,11 @@
 // test/boundaries-leaf-open-round.test.mjs — pins leaf-open in-process: the round a dispatch opens
-// (its role, thread and tier, and one that is no round of the leaf), the slot and locus locks, the
+// (its role, thread and tier, and one that is no round of the leaf), the slot, the
 // integration branch and the leaf cut under their branch locks, and the refusals it records and the
 // waits it answers.
 //
 // The setup the parts share is in test/harness/leaf-open-world.mjs.
 //
-// Design: docs/DESIGN.md#boundaries, docs/DESIGN.md#rigor and docs/DESIGN.md#the-locus.
+// Design: docs/DESIGN.md#boundaries, docs/DESIGN.md#rigor and docs/DESIGN.md#role-rules.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -26,8 +26,8 @@ import { E, setup, ran, nodeOf, roleOf, cycle } from './harness/leaf-open-world.
 
 test('round 1 goes to the leaf\'s executor on its own thread, at its producer tier, in its own worktree', async (t) => {
   const { r, xc } = setup(t, [
-    leaf('a', { locus: ['src/a.mjs'] }),
-    leaf('r', { rigor: 'tdd-pair', role: 'red', locus: ['test/r.test.mjs'] }),
+    leaf('a', { expects: ['src/a.mjs'] }),
+    leaf('r', { rigor: 'tdd-pair', role: 'red', expects: ['test/r.test.mjs'] }),
   ])
   const a = await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   assert.equal(a.status, 'opened')
@@ -46,14 +46,14 @@ test('round 1 goes to the leaf\'s executor on its own thread, at its producer ti
 })
 
 test('leaf-open records no dispatch: the runner records it', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   assert.deepEqual(readLog(r, E, 'events').entries.filter((e) => e.kind === 'dispatched'), [])
   assert.equal(readTree(r, E).status.get('a').status, 'planned')
 })
 
 test('a started, unreturned dispatch\'s round is opened again with its role, thread and tier', async (t) => {
-  const { xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   const dispatch = ran(xc, { node: 'a', round: 1, role: 'implementer', thread: 'producer:a', model: 'sonnet', effort: 'high' })
   const again = await leafOpen(xc, { node: 'a', intelligence: 'normal' })
@@ -66,7 +66,7 @@ test('a started, unreturned dispatch\'s round is opened again with its role, thr
 })
 
 test('a dispatch whose call failed is still open: its round is opened again', async (t) => {
-  const { xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   const dispatch = ran(xc, { node: 'a', round: 1, role: 'implementer', thread: 'producer:a' })
   xc.log.append('returned', { dispatch, session: 's', status: 'failed', cause: 'host_error', usage: null, cost_total: null, cost_usd: null, denials: [] })
@@ -74,14 +74,14 @@ test('a dispatch whose call failed is still open: its round is opened again', as
 })
 
 test('a dispatch another execution started is not resumed here: the round after it opens', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   ran(xc, { node: 'a', round: 1, role: 'implementer', thread: 'producer:a', log: executionLog(r, E, '20260924-120000') })
   assert.equal((await leafOpen(xc, { node: 'a', intelligence: 'normal' })).round, 2)
 })
 
 test('a reviewer\'s dispatch is no round of the leaf', async (t) => {
-  const { xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   ran(xc, { node: 'a', round: 1, role: 'implementer', thread: 'producer:a', ret: { status: 'done' } })
   ran(xc, { node: 'a', round: 1, role: 'reviewer', thread: 'reviewer:a:1' })
@@ -104,7 +104,7 @@ test('a 4.x execution\'s dispatch is no round: the close and review records besi
 })
 
 test('a verify leaf opens its worktree with no role, thread or tier', async (t) => {
-  const { xc } = setup(t, [leaf('v', { rigor: 'verify', locus: [] })])
+  const { xc } = setup(t, [leaf('v', { rigor: 'verify', expects: [] })])
   const out = await leafOpen(xc, { node: 'v', intelligence: 'normal' })
   assert.equal(out.status, 'opened')
   assert.deepEqual([out.role, out.thread, out.owner, out.fresh, out.tier, out.permissions], ['', '', 'v', '', null, null])
@@ -115,37 +115,23 @@ test('a verify leaf opens its worktree with no role, thread or tier', async (t) 
 // ------------------------------------------------------------------ waits and refusals
 
 test('a full pool answers no_slot, naming the holder', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] }), leaf('b', { locus: ['src/b.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] }), leaf('b', { expects: ['src/b.mjs'] })])
   mkdirSync(join(configPath(r), '..'), { recursive: true })
   writeFileSync(configPath(r), JSON.stringify({ max_parallel: 1 }))
-  assert.equal((await acquireAsync(r, { effort: E, execution: STAMP, node: 'b', locus: ['src/b.mjs'], waitMs: 0 })).ok, true)
+  assert.equal((await acquireAsync(r, { effort: E, execution: STAMP, node: 'b', waitMs: 0 })).ok, true)
   const out = await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   assert.equal(out.status, 'no_slot')
   assert.deepEqual(out.held_by.map((h) => h.node), ['b'])
 })
 
-test('a locus path another leaf holds answers locus_held, naming the holder', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] }), leaf('b', { locus: ['src/a.mjs'] })])
-  assert.equal((await acquireAsync(r, { effort: E, execution: STAMP, node: 'b', locus: ['src/a.mjs'], waitMs: 0 })).ok, true)
-  const out = await leafOpen(xc, { node: 'a', intelligence: 'normal' })
-  assert.equal(out.status, 'locus_held')
-  assert.deepEqual(out.held_by, [{ node: 'b', status: 'planned' }])
-})
-
-test('an invalid locus escalates open_refused, once', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
-  assert.equal(append(r, E, 'nodes', [{ kind: 'node', node: { ...nodeOf(r, 'a'), locus: ['../out.mjs'] } }]).ok, true)
-  const out = await leafOpen(xc, { node: 'a', intelligence: 'normal' })
-  assert.equal(out.status, 'stopped')
-  assert.deepEqual(out.stops, [{ id: 'a', status: 'escalated', reason: 'open_refused', said: '' }])
-  const again = await leafOpen(xc, { node: 'a', intelligence: 'normal' })
-  assert.deepEqual(again.stops, out.stops)
-  const refusals = readLog(r, E, 'events').entries.filter((e) => e.kind === 'escalated' && e.node === 'a')
-  assert.deepEqual(refusals.map((e) => [e.reason, e.execution]), [['open_refused', STAMP]])
+test('a leaf that expects a file another open leaf expects opens all the same: an expectation is no lock', async (t) => {
+  const { xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] }), leaf('b', { expects: ['src/a.mjs'] })])
+  assert.equal((await leafOpen(xc, { node: 'b', intelligence: 'normal' })).status, 'opened')
+  assert.equal((await leafOpen(xc, { node: 'a', intelligence: 'normal' })).status, 'opened')
 })
 
 test('an integration branch that cannot be made escalates open_refused', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })], { base_sha: '' })
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })], { base_sha: '' })
   const out = await leafOpen(xc, { node: 'a', intelligence: 'normal' })
   assert.deepEqual([out.status, out.stops.map((s) => s.reason)], ['stopped', ['open_refused']])
   assert.match(readLog(r, E, 'events').entries.find((e) => e.kind === 'escalated').detail, /no base commit/)
@@ -153,14 +139,14 @@ test('an integration branch that cannot be made escalates open_refused', async (
 
 test('two leaf-opens at once under one fresh composite both open', async (t) => {
   const { xc } = setup(t, [{ id: 'c', kind: 'composite', title: 'c', decisions: ['D1'] },
-    leaf('c/p', { locus: ['src/p.mjs'] }), leaf('c/q', { locus: ['src/q.mjs'] })])
+    leaf('c/p', { expects: ['src/p.mjs'] }), leaf('c/q', { expects: ['src/q.mjs'] })])
   const [p, q] = await Promise.all([leafOpen(xc, { node: 'c/p', intelligence: 'normal' }), leafOpen(xc, { node: 'c/q', intelligence: 'normal' })])
   assert.deepEqual([p.status, q.status], ['opened', 'opened'])
   assert.equal(p.base_sha, q.base_sha, 'both cut from the composite\'s one head')
 })
 
 test('a held integration branch is waited for through the given sleep, then the leaf opens', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   let release
   const gate = new Promise((done) => { release = done })
   const holding = withBranchLockAsync(r, E, branchOf(E, '.'), () => gate)
@@ -177,7 +163,7 @@ test('a held integration branch is waited for through the given sleep, then the 
 })
 
 test('a branch lock not taken in time answers busy, with no holder named', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   let release
   const gate = new Promise((done) => { release = done })
   const holding = withBranchLockAsync(r, E, branchOf(E, '.'), () => gate)
@@ -191,7 +177,7 @@ test('a branch lock not taken in time answers busy, with no holder named', async
 })
 
 test('a lock fault other than the timeout is thrown, never answered as busy', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { locus: ['src/a.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
   const locks = join(effortStateDir(r, E), 'locks')
   mkdirSync(locks, { recursive: true })
   writeFileSync(join(locks, 'branch'), 'a file where the branch locks go')
@@ -200,7 +186,7 @@ test('a lock fault other than the timeout is thrown, never answered as busy', as
 
 test('a composite in a group is cut from the group\'s folder: the group has no branch', async (t) => {
   const { r, xc } = setup(t, [{ id: 'x', kind: 'group', title: 'gather x' },
-    { id: 'x/c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('x/c/a', { locus: ['src/a.mjs'] })])
+    { id: 'x/c', kind: 'composite', title: 'c', decisions: ['D1'] }, leaf('x/c/a', { expects: ['src/a.mjs'] })])
   const out = await leafOpen(xc, { node: 'x/c/a', intelligence: 'normal' })
   assert.equal(out.status, 'opened')
   assert.equal(git(r, 'branch', '--list', branchOf(E, 'x')), '', 'no branch for the group')
@@ -210,11 +196,11 @@ test('a composite in a group is cut from the group\'s folder: the group has no b
 })
 
 test('a leaf decomposed in place releases its claim: its children open', async (t) => {
-  const { r, xc } = setup(t, [leaf('a', { rigor: 'trivial', locus: ['src/a.mjs', 'src/b.mjs'] })])
+  const { r, xc } = setup(t, [leaf('a', { rigor: 'trivial', expects: ['src/a.mjs', 'src/b.mjs'] })])
   assert.equal((await leafOpen(xc, { node: 'a', intelligence: 'normal' })).status, 'opened')
   const split = addNodes(r, E, [
     { id: 'a', kind: 'composite', title: 'do a', decisions: ['D1'] },
-    leaf('a/x', { rigor: 'trivial', locus: ['src/a.mjs'] }), leaf('a/y', { rigor: 'trivial', locus: ['src/b.mjs'] }),
+    leaf('a/x', { rigor: 'trivial', expects: ['src/a.mjs'] }), leaf('a/y', { rigor: 'trivial', expects: ['src/b.mjs'] }),
   ], { by: 'planner', reason: 'decompose' })
   assert.equal(split.ok, true, JSON.stringify(split.problems))
   assert.equal((await leafOpen(xc, { node: 'a/x', intelligence: 'normal' })).status, 'opened')

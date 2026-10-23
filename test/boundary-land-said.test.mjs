@@ -12,7 +12,7 @@ import { leaf, repo, root, STAMP } from './harness/boundary-fixture.mjs'
 
 test('land check gives each parked node the question its dispatch\'s stored return holds', () => {
   const r = repo()
-  seedTree(r, 'e1', [root(), leaf('x', { rigor: 'trivial', locus: ['src/x.mjs'] })])
+  seedTree(r, 'e1', [root(), leaf('x', { rigor: 'trivial', expects: ['src/x.mjs'] })])
   const dispatch = 'x.implementer.producer-x.r1'
   const text = 'Keep the cache on disk or in memory?'
   writeJson(returnPath(executionDir(r, 'e1', STAMP), dispatch), { status: 'blocked', text })

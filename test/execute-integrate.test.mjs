@@ -35,7 +35,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import { ensureIntegration, ensureLeaf } from '../lib/integration.mjs'
-import { readOnlyPermissions } from '../lib/locus.mjs'
+import { readOnlyPermissions } from '../lib/permissions.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
 import { dispatchKey, mergePath, nodeKey, specPath, stalePath, writeWhole } from '../lib/store.mjs'
@@ -65,12 +65,12 @@ const specOf = (title, decisions, plan) => [
   ...FILLER,
 ].join('\n')
 
-/** One plan task. Its check file is listed in its locus unless `criteria` is given. */
-function task(name, { realises = 'D1', rigor = 'trivial', after = '', provides = '', consumes = '', locus = null, criteria = null } = {}) {
-  const own = locus ?? [`src/${name}.mjs`, `test/${name}.test.mjs`]
+/** One plan task. It expects its check file unless `criteria` is given. */
+function task(name, { realises = 'D1', rigor = 'trivial', after = '', provides = '', consumes = '', expects = null, criteria = null } = {}) {
+  const own = expects ?? [`src/${name}.mjs`, `test/${name}.test.mjs`]
   const fields = [
     'task', 'realises: ' + realises, ...(after ? ['after: ' + after] : []), ...(provides ? ['provides: ' + provides] : []),
-    ...(consumes ? ['consumes: ' + consumes] : []), 'rigor: ' + rigor, ...(own.length ? ['locus: ' + own.join(', ')] : []),
+    ...(consumes ? ['consumes: ' + consumes] : []), 'rigor: ' + rigor, ...(own.length ? ['expects: ' + own.join(', ')] : []),
   ]
   const cs = criteria ?? [`${name} works — check: \`node --test test/${name}.test.mjs\``]
   return [`- **${name}** — ${fields.join(' · ')}`, `  Do ${name}`, ...cs.map((c) => `  - [ ] ${c}`)].join('\n')
@@ -79,8 +79,8 @@ const subEffort = (name, realises) => `- **${name}** — sub-effort · realises:
 
 /** Drift: p provides api, a writes src/api.mjs without providing it, b consumes api. */
 const DRIFT_SPEC = specOf('Drift', [['D1', 'The api is stable.']], [
-  task('p', { provides: 'api (src/api.mjs)', locus: ['src/api.mjs', 'test/p.test.mjs'] }),
-  task('a', { after: 'p', locus: ['src/api.mjs', 'test/a.test.mjs'] }),
+  task('p', { provides: 'api (src/api.mjs)', expects: ['src/api.mjs', 'test/p.test.mjs'] }),
+  task('a', { after: 'p', expects: ['src/api.mjs', 'test/a.test.mjs'] }),
   task('b', { after: 'p', consumes: 'api' }),
 ])
 
@@ -99,7 +99,7 @@ const TRIVIAL_FOLDER = {
 /** A root whose only entry is a sub-folder c whose only child is a verify leaf v. */
 const VERIFY_FOLDER = {
   '.': specOf('Root', [['D1', 'c is there.']], [subEffort('c', 'D1')]),
-  c: subSpec([task('v', { realises: 'D1, c.D1', rigor: 'verify', locus: [], criteria: ['v holds — check: `node --test test/add.test.mjs`'] })]),
+  c: subSpec([task('v', { realises: 'D1, c.D1', rigor: 'verify', expects: [], criteria: ['v holds — check: `node --test test/add.test.mjs`'] })]),
 }
 
 const SPLIT = {

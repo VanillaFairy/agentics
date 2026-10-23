@@ -978,3 +978,39 @@ test('a relaunch resumes the plan of an edit that the plan itself has since edit
   assert.deepEqual(plans.map((e) => e.key), [key], 'its journaled start is reused: the same plan, at its round')
   assert.ok(stepValue(w.rig, 'probe:p:2/scope'), 'it runs at the round it journaled')
 })
+
+const EDITED_TWICE = EDITED_SPEC.replace('  Write y.', '  Write y, and say why.')
+
+/** p planned, then edited by the session over a park with its gate open on the edit, so its plan prepares it with no dispatch. */
+async function editedOnce(t) {
+  const w = world(t, { steps: clean(), writes: { 1: S1 } })
+  assert.equal((await w.run()).outcome, 'prepared', 'the fixture: p is planned and compiled')
+  recordAll(w.rig.xc, [parked('p', 'integration_critical', 'the landed work lacks y')])
+  putSpec(w.rig, EDITED_SPEC)
+  assert.equal(recordReviewed(w.rig.repo, E, 'p', { complete: true }).ok, true)
+  assert.equal((await w.run({ why: 'spec_edited' })).outcome, 'prepared', 'the fixture: the first edit is prepared at once')
+  assert.equal(plannerCalls(w.rig).length, 1, 'the fixture: the first edit dispatched nothing')
+  recordAll(w.rig.xc, [parked('p', 'integration_critical', 'y says nothing of why')])
+  putSpec(w.rig, EDITED_TWICE)
+  assert.equal(recordReviewed(w.rig.repo, E, 'p', { complete: true }).ok, true)
+  return w
+}
+const planStarts = (rig) => rig.log.entries().filter((e) => e.kind === 'step' && e.key.startsWith('plan:p:'))
+
+test("a second edit's plan starts past the round the first edit's plan journaled at, and prepares the text it was handed", async (t) => {
+  const w = await editedOnce(t)
+  assert.equal((await w.run({ why: 'spec_edited' })).outcome, 'prepared')
+  assert.equal(approvalState(w.rig.repo, E, 'p').state, 'prepared', "the second edit is prepared, not the first edit's preparation replayed")
+  const rounds = planStarts(w.rig).map((e) => e.value)
+  assert.equal(new Set(rounds).size, rounds.length, 'every plan of p starts on a round of its own: ' + rounds.join(', '))
+})
+
+test("a plan journaled on a round an earlier plan already used replays none of that plan's steps", async (t) => {
+  const w = await editedOnce(t)
+  const tree = readTree(w.rig.repo, E)
+  const first = planStarts(w.rig).at(-1)
+  w.rig.xc.log.append('step', { key: editedPlanKey('p', stoppedAt(tree.events, 'p'), clearedAt(tree.events, 'p')), value: first.value })
+  assert.equal((await w.run({ why: 'spec_edited' })).outcome, 'prepared')
+  assert.equal(approvalState(w.rig.repo, E, 'p').state, 'prepared', 'the edit as it stands is prepared')
+  assert.equal(ledger(w.rig, 'prepared').at(-1).hash, hashSpec(EDITED_TWICE))
+})

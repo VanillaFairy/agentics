@@ -482,7 +482,8 @@ waits out a host stop and resumes the same call ([Host stops](#host-stops)); and
 from the store, so one it cannot read is a failed dispatch (`return_unreadable`). A side effect —
 recording items, writing a context, settling — is a `step {key, value}` record: a relaunch reads
 the value back instead of acting again, and a step cut off before its record runs again, so each
-is safe to repeat.
+is safe to repeat. A context may carry `replayAfter`, a seq: then only a step recorded after it is
+read back, because what was journaled before a unit began is another unit's answer.
 
 **Results.** `lib/run.mjs` writes the result to `result.json` in the run's home with `run` and
 `cost` added — `{dispatches, by_model, tokens, usd, unmeasured}` over the home's `returned` lines,
@@ -1872,7 +1873,11 @@ answer a leaf's request, a ruling or its own `spec_changed` park) goes ahead wit
 approval, but only once an adversarial review passes. It runs inside the `execute` program, one
 folder at a time, every planner round in the folder's one planner session (`planner:<folder>`),
 which may write that folder's spec and nothing else. Each boundary's answer is journaled as a `step`
-under the folder and the round, so a relaunch replays what was decided. The plan's basis — the
+under the folder and the round, so a relaunch replays what was decided. A plan journals its start
+round first (`plan:<folder>:<basis>`), past every round dispatched on the planner thread and every
+earlier plan's start, since a plan of an edit journals its first steps at its start round without
+dispatching; and it replays only the steps recorded after its start, so no plan reads back another
+plan's check, gate or preparation. The plan's basis — the
 folder's revision, or the request it answers — also names the folder's latest `retry_escalated`
 event, so a plan after the user's `retry` is a new plan that runs on from the planner thread's
 latest round, never a replay back to the stop the user cleared. Each plan of a folder searches one

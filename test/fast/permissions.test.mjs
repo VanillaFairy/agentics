@@ -112,6 +112,15 @@ test('commands become bash rules', () => {
   assert.ok(!all.allowed.includes('Bash(*:*)'))
 })
 
+test('a compound check becomes one bash rule per command it runs, so each part also runs alone', () => {
+  const check = 'git grep -nF "a && b" -- x.js && test "$(grep -c y x.js)" -ge 2 && ! git grep -n z -- x.js | head -1; npm run lint'
+  const { allowed } = rolePermissions({ commands: [check] })
+  assert.deepEqual(allowed.filter((r) => r.startsWith('Bash')), [
+    'Bash(git grep -nF "a && b" -- x.js:*)', 'Bash(grep -c y x.js:*)', 'Bash(test "$(grep -c y x.js)" -ge 2:*)',
+    'Bash(git grep -n z -- x.js:*)', 'Bash(head -1:*)', 'Bash(npm run lint:*)',
+  ])
+})
+
 /** The deny and allow rules as the host reads a Bash rule: `:*` is a prefix, any other `*` stands for any text. */
 const bashRuleMatches = (rule, command) => {
   const body = rule.slice('Bash('.length, -1)

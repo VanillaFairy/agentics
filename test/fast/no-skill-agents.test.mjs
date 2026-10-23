@@ -71,3 +71,10 @@ test('the message says a program dispatches every agent', () => {
   assert.match(v.message, /agentics:scout/)
   assert.match(v.message, /program/)
 })
+
+test("the self-improve skill alone may start the plugin's fix agent, and names no agentics agent either", () => {
+  const text = 'Hand the fix to one fix agent: start it with the host\'s `Agent` tool.'
+  assert.deepEqual(check(text, 'skills/self-improve/SKILL.md'), [])
+  assert.ok(check(text, 'skills/develop/SKILL.md').length > 0, 'every other skill still may not')
+  assert.ok(check('Start agentics:reviewer.', 'skills/self-improve/SKILL.md').length > 0)
+})

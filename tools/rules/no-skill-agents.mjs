@@ -5,13 +5,17 @@
 // agent itself — the host's `Agent` or `Task` tool, a `subagent_type`, an `agentics:<type>`
 // agent name — dispatches one nothing records. The Task tools that keep a task list
 // (`TaskCreate`, `TaskUpdate`, `TaskList`) start no agent. An `agentics:<name>` is a skill when
-// `skills/<name>/` exists; `agentics:verbatim` marks a pinned block.
+// `skills/<name>/` exists; `agentics:verbatim` marks a pinned block. `OWN_FIX` is the one skill whose
+// agent works on this plugin's own repository, outside every effort, so no program dispatches it.
 
 import { readdirSync } from 'node:fs'
 
 export const id = 'no-skill-agents'
 
 export const applies = /^skills\/.+\.md$/
+
+/** The skill that starts the plugin's own fix agent with the host's agent tool (docs/DESIGN.md#skills). */
+const OWN_FIX = 'skills/self-improve/SKILL.md'
 
 let skills = null
 /** The skill names: the folders under `skills/`, read once. */
@@ -37,13 +41,14 @@ const NAMED = /\bagentics:([a-z][a-z0-9-]*)/g
 /**
  * Pure but for the skill folders it reads once.
  * @param {string} source full file text
+ * @param {string} [filePath] the repository path it was read from
  * @returns {Array<{line: number, message: string}>}
  */
-export function check(source) {
+export function check(source, filePath = '') {
   const violations = []
   const tail = ': no skill starts an agent; a program dispatches every agent (run it with lib/run.mjs)'
   source.split('\n').forEach((text, index) => {
-    for (const [re, say] of PATTERNS) {
+    for (const [re, say] of filePath === OWN_FIX ? [] : PATTERNS) {
       for (const m of text.matchAll(re)) violations.push({ line: index + 1, message: say(m) + tail })
     }
     for (const m of text.matchAll(NAMED)) {

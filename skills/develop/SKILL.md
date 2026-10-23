@@ -323,7 +323,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" execute --repo . --detach --effort <e> 
 It prints `{run, pid, log, result_file}` at once: keep `run` (`<e>.<stamp>`, the execution's
 stamp after the dot) and `result_file`. A `run_live` refusal names a run already going on this
 folder: watch that `run` instead. `launch_failed` is a plugin fault: say so and start the same
-command once more; the same refusal again is reported to the user as a plugin defect. Any other
+command once more; the same refusal again is a plugin defect (`self-improve`). Any other
 refusal names the argument it refused: fix it and start again.
 
 The execution works on `agentics/<effort>` and branches and worktrees it owns; it never touches
@@ -338,7 +338,7 @@ Monitor({ command: 'node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" watch --repo . -
 ```
 
 Refresh the todo list (step 5) on each line. A re-armed watch prints again a line that still
-stands: act on each once.
+stands: act on each once. Hold each line to `self-improve`'s signals: it decides when the plugin is the cause.
 
 - `<id> escalated <reason>` or `<id> parked <return>`: a stop of that node alone; the run goes on.
   Read its text on the node's card (step 0) and ask the user at once (step 4b or 4c) until the
@@ -347,12 +347,12 @@ stands: act on each once.
 - `host_stop <dispatch>: <cause> until <time>`: the host is unavailable; the run waits it out and
   resumes the call itself. Nothing to do.
 - `fault <channel>: <detail>`: a plugin fault; its node is held for the rest of the run, which goes
-  on. Ask nothing: 4b relaunches it once the run ends.
+  on. Ask nothing: 4b relaunches it once the run ends; one naming a throw goes to `self-improve`.
 - `ended <status>: complete=<bool> result=<file>`: read `result_file` and walk it (step 4).
   `ended failed` or `ended launch_failed` is a plugin fault: say so and start the same command once
-  more; the same fault again is reported to the user as a plugin defect.
+  more; the same fault again is a plugin defect: take it through `self-improve`.
 - `stopped: …`: the run's process is gone. Start the same command again: it resumes.
-- `unresponsive: …`: the process lives but stopped beating, a plugin defect: report it, start nothing.
+- `unresponsive: …`: the process lives but stopped beating, a plugin defect: take it through `self-improve`.
 
 **Resuming** is starting again. After a stop, a fault, an answer or a kill, from this session or
 another, the same start on the same folder resumes the open execution, and each task picks up at
@@ -418,8 +418,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" note --repo . --effort <e> --node 
 ```
 
 **Faults** — `{id, channel}`: a plugin fault, never a question. Relaunch at once (step 3), asking
-nothing; a fault on the same node again is reported to the user as a plugin defect, with the node
-and what it left undone.
+nothing; a fault on the same node again is a plugin defect: take it through `self-improve`.
 
 **c. Parked nodes** — `{id, return, said}`, the question on the node's card (step 0). Ask the
 user each question, one topic at a time,

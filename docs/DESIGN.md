@@ -327,7 +327,7 @@ what the project's docs describe, its plan carries the entry that updates them.
 ### The process model
 
 ```
-user ⇄ session ── skills: design, develop, task, investigate, challenge-idea, next
+user ⇄ session ── skills: design, develop, task, investigate, challenge-idea, next, self-improve
           │           talks to the user, edits specs with them, calls lib CLIs;
           │           every name it types is resolved or refused; it starts no agent
           ▼
@@ -3384,12 +3384,16 @@ disagree about it.
 | `investigate` | answering a question from evidence (the `investigate` program) |
 | `search-for-existing-solutions-before-building` | service step, hidden (`user-invocable: false`) — the `solutions` program |
 | `next` | every effort, where it stands and its computed Next line; hands the pick on |
+| `self-improve` | the session driving a run: watches it, tells a plugin cause from a spec or code cause, and has the plugin itself fixed, released and installed before the work goes on |
 
 A service step carries `user-invocable: false`: it is gone from the `/` menu, and the model still
 runs it when asked in chat.
 
 **A skill starts no agent.** Every agent a skill needs is a program's: the skill starts the program
-and reads its result, so every dispatch is recorded, confined and judged as the laws ask.
+and reads its result, so every dispatch is recorded, confined and judged as the laws ask. The one
+exception is `self-improve`'s fix agent, which works on this plugin's own repository, outside every
+effort and every execution tree, so no program owns it: the session starts it with the host's agent
+tool, and the fix it makes lands as a release like any other change to the plugin.
 The session writes every text longer than a phrase that a program takes — a question, a capability,
 criteria, the drafts' excerpts — to a file outside the repository with its Write tool, so no
 snapshot holds it, and passes the path; a phrase (`--notes`, `--context`, `--constraints`) is the
@@ -4246,7 +4250,8 @@ which `recordCommands` writes as the investigator's.
   judged); only handles in a command a skill runs (P2; `skill-handles`) — and at run time every CLI
   a skill calls refuses an argument that is not a handle or a line of named free text
   (`handleArgs`); no skill that starts an agent (`no-skill-agents`: no skill names the host's Agent
-  or Task tool, a `subagent_type`, or an `agentics:` name that is not a skill); gate clauses in
+  or Task tool, a `subagent_type`, or an `agentics:` name that is not a skill; `self-improve` alone
+  starts its plugin fix agent); gate clauses in
   gated skills (`design-gate`); a stated task-tool fallback (`task-tool-fallback`); size budgets
   (`size-budget`); and that nothing in `test/fast/` imports `child_process` or a helper from `test/`
   outside it (`fast-tier`).

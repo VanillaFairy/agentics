@@ -1806,10 +1806,12 @@ stored returns, the round's `record` channel failed.
 
 Every axis the repository's guidance yields is probed, beside the standing four: an axis nobody ran
 and an axis that found nothing must not leave the same mark, and the per-unit rulings are what tell
-them apart. One analyst holds every axis as a checklist; more are bought when the lines attacked are
-many enough (one per 400) or, in a full round, the checklist is (one per 12 axes), whichever buys
-more; a narrowed round counts its changed lines alone and buys nothing for its checklist, never more than one per axis, the axes dealt round-robin;
-`--per-axis` buys one per axis. A second round is earned only by a resolution that reshaped the
+them apart. One analyst holds every axis as a checklist; another is bought for every 400 lines
+attacked (`probersFor`), a narrowed round counting its changed lines alone, never more than one per
+axis, the axes dealt round-robin; `--per-axis` buys one per axis. The checklist's length buys no
+head: what fills a prober's context is the text and its ground, which every prober is handed whole,
+and an axis adds one line of charge, so a second prober over a short text pays for that text twice
+to rule units one prober holds. A second round is earned only by a resolution that reshaped the
 design.
 
 The coverage names what the probe could not do. The locating search is one search
@@ -1858,8 +1860,8 @@ locates and derives its axes as a full round does.
 **The cost of a probe is turn count, not payload**: every turn re-sends the accumulated context,
 and analysts that each locate the same lines pay for them once each. So the program resolves the
 document's cited evidence once (`lib/citations.mjs`) and puts the excerpts in every prober's
-prompt, and the head count is earned by the lines attacked and the checklist's size, never one
-analyst per axis unless asked.
+prompt, and the head count is earned by the lines attacked alone, never one analyst per axis
+unless asked.
 
 The Ground phase resolves three bodies of text once: the document's own citations, read from the
 probe's tree; the located ground, every `locate` hit with the lines it points at (`hitExcerpts` in

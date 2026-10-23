@@ -80,9 +80,9 @@ const NEW = finding('invariants', 'gap', 'risks', 9, 'NEW_FINDING_TOKEN load is 
 
 // --- what a round is expected to buy, by the rule ----------------------------------------------
 
-/** The head count: one per 400 lines, and in a full round one per 12 axes, whichever is more; never more than the axes. */
-const headsFor = (keys, lines, perAxis, narrow = false) =>
-  (perAxis ? keys.length : Math.min(keys.length, Math.max(1, Math.ceil(lines / 400), narrow ? 1 : Math.ceil(keys.length / 12))))
+/** The head count: one per 400 lines however many axes; never more than the axes. */
+const headsFor = (keys, lines, perAxis) =>
+  (perAxis ? keys.length : Math.min(keys.length, Math.max(1, Math.ceil(lines / 400))))
 /** The axes dealt round-robin: group i holds the axes whose index is i mod n. */
 const deal = (keys, n) => Array.from({ length: n }, (_, i) => keys.filter((_, j) => j % n === i))
 /** The changed lines a narrowed scope earns its head count by. */
@@ -95,7 +95,7 @@ const changedLines = (changed) => changed.reduce((n, r) => n + r.end - r.start +
  */
 function narrowed(text, scope, { keys = STANDING, perAxis = false, probers = {}, locate = LOCATE() } = {}) {
   const touched = changedParts(sectionsOf(text), scope.changed)
-  const groups = deal(keys, headsFor(keys, changedLines(scope.changed), perAxis, true))
+  const groups = deal(keys, headsFor(keys, changedLines(scope.changed), perAxis))
   const unitsOfGroup = groups.map((g) => unitsOf(g, touched))
   const script = { ...locate }
   unitsOfGroup.forEach((units, i) => {

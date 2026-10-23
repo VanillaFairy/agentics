@@ -88,9 +88,9 @@ const FAIL = { status: 'failed', cause: 'host_error' }
 
 // --- what a probe is expected to buy, by the rule ----------------------------------------------
 
-/** The head count: one per 400 lines, one per 12 axes, whichever is more; never more than the axes. */
+/** The head count: one per 400 lines however many axes; never more than the axes. */
 const headsFor = (keys, lines, perAxis) =>
-  (perAxis ? keys.length : Math.min(keys.length, Math.max(1, Math.ceil(lines / 400), Math.ceil(keys.length / 12))))
+  (perAxis ? keys.length : Math.min(keys.length, Math.max(1, Math.ceil(lines / 400))))
 /** The axes dealt round-robin: group i holds the axes whose index is i mod n. */
 const deal = (keys, n) => Array.from({ length: n }, (_, i) => keys.filter((_, j) => j % n === i))
 
@@ -538,14 +538,26 @@ test('a long document buys a prober per 400 lines', async (t) => {
   assert.deepEqual(result.analysts, deal(STANDING, n))
 })
 
-test('a long checklist buys a prober per 12 axes', async (t) => {
+test('a short document is one prober however long its checklist', async (t) => {
   const extra = Array.from({ length: 21 }, (_, i) => 'axis-' + String(i + 1).padStart(2, '0'))
   const keys = [...STANDING, ...extra]
   const { rig, result } = await probeIn(t, {
     files: { [ART]: DOC, ...GROUND_FILES }, script: withGuidance([{ output: axesOut(extra.map((k) => axis(k))) }], keys).script,
   })
-  assert.equal(keys.length, 25)
-  const n = Math.ceil(25 / 12)
+  assert.ok(linesOf(DOC).length <= 400, 'the fixture: the document fits one prober')
+  assert.ok(keys.length > STANDING.length * 3, 'the fixture: a checklist many times the standing one')
+  assert.deepEqual(proberCalls(rig).map((c) => c.thread.key), ['prober:1'])
+  assert.deepEqual(result.analysts, [keys])
+})
+
+test('a long document with a long checklist buys probers by its lines alone', async (t) => {
+  const doc = longDoc(801)
+  const extra = Array.from({ length: 21 }, (_, i) => 'axis-' + String(i + 1).padStart(2, '0'))
+  const keys = [...STANDING, ...extra]
+  const { rig, result } = await probeIn(t, {
+    files: { [ART]: doc, ...GROUND_FILES }, script: scriptFor(doc, keys, { ...located([GUIDE_HIT]), axes: [{ output: axesOut(extra.map((k) => axis(k))) }] }).script,
+  })
+  const n = Math.ceil(801 / 400)
   assert.equal(proberCalls(rig).length, n)
   assert.deepEqual(result.analysts, deal(keys, n))
 })

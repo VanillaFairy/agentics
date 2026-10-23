@@ -71,8 +71,7 @@ excerpts in every prober's prompt, beside the document numbered by line; a citat
 to **nothing** reaches every prober as evidence about the document.
 
 **How many analysts.** One, by default, holding every axis as a checklist. The program buys
-another for each 400 lines of document or each 12 axes, whichever buys more, never more than one
-per axis. `result.analysts` says who held what. Pass `--per-axis` only when the user asks for
+another for each 400 lines of document, however many axes, never more than one per axis. `result.analysts` says who held what. Pass `--per-axis` only when the user asks for
 independent heads per axis; it multiplies the bill by the axis count.
 
 ### What a probe costs

@@ -192,6 +192,22 @@ describe('leaf-close and the measurement', { concurrency: 4 }, () => {
     assert.deepEqual(msgs(w, 'failures', 'r'), [])
   })
 
+  test("a red's file of cases over what held at base escalates on round one; a net over it, retried, sends the red to review", SLOW, async (t) => {
+    const w = world(t, [root(),
+      lf('r', { rigor: 'tdd-pair', role: 'red', expects: ['test/r.test.mjs', 'test/more.test.mjs'] }),
+      lf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], expects: ['src/r.mjs'] })])
+    const o = open(w, 'r')
+    commit(o.worktree, { 'test/r.test.mjs': R_TEST, 'test/more.test.mjs': MORE_TEST }, 'Pin r beside add')
+    const first = await run(w, { node: 'r', role: 'test-author', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
+    assert.deepEqual([first.out.decision.next, first.out.decision.reason], ['stop', 'discriminator_undecidable'], JSON.stringify(first.out.decision))
+    const ruled = ruleNets(w.r, E, 'r', { nets: [{ file: 'test/more.test.mjs', why: 'pins add over negatives, which held at base' }] })
+    assert.deepEqual([ruled.ok, ruled.all], [true, false])
+    assert.equal(append(w.r, E, 'events', [{ kind: 'replanned', node: 'r', execution: w.stamp, reason: 'retry_escalated', by: 'session' }]).ok, true)
+    const again = await close(w, { node: 'r', round: 1, dispatch: '', base_sha: o.base_sha, head_before: o.base_sha })
+    assert.equal(again.decision.next, 'review', JSON.stringify(again.decision))
+    assert.deepEqual(msgs(w, 'failures', 'r'), [], 'no producer round was sent')
+  })
+
   test("uncommitted work left in a shell producer's worktree is put back to the head before measuring", SLOW, async (t) => {
     const { w, o } = tdd(t)
     const tip = commit(o.worktree, A_FILES, 'Add a')

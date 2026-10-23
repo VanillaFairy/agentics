@@ -2836,8 +2836,9 @@ and reviewed like any other.
   a brief change or commits made by hand was sent no failures of its head, so its failures go to
   the next round. Two consecutive measurements failing
   identically escalate (`verify_not_converging`). lib/verdict.mjs escalates what no commit of
-  the leaf can move — a discriminator that is the only failing fact on a `tdd` leaf
-  (`discriminator_undecidable`) — and any environment error by its kind. The user may rule such a
+  the leaf can move — a discriminator that is the only failing fact on a `tdd` leaf, or on a `red`
+  leaf whose only failing fact is a file that adds a case and passes at base and now beside the tests
+  that fail as they must (`discriminator_undecidable`) — and any environment error by its kind. The user may rule such a
   file a regression net over behaviour that held at base (`net`, [Session calls](#session-calls)): at
   the head that ruling names (`netsAt`), the file is held to `passes_now` alone, as upkeep is; when
   every changed test file that adds a case is a net, at least one criterion check must have run, and

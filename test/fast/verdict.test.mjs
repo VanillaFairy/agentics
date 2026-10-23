@@ -9,7 +9,7 @@
 //   `unrunnable` is not a pass, and `absent` is not a failure;
 //   the discriminator's base half is waived for tests-only and green, and for a tdd or red leaf's
 //   upkeep files beside one that adds a test case, and for nothing else;
-//   a lone discriminator on a tdd leaf escalates on round one rather than buying a fix round.
+//   a lone discriminator on a tdd or red leaf escalates on round one rather than buying a fix round.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -301,6 +301,17 @@ test('...and not beside any other failure, nor on another rigor', () => {
   assert.equal(closeDecision(m({ discriminator: [disc(true, true)], mutations: [survives] }), LEAVES.tdd).next, 'fix')
   assert.equal(closeDecision(m({ discriminator: [disc(true, false)] }), LEAVES.green).next, 'fix')
   assert.equal(closeDecision(m({ discriminator: [disc(false, false)] }), LEAVES.red).next, 'fix')
+})
+
+test('a red leaf whose only failing fact is a file that adds a case passing at base and now escalates, and a net over it passes', () => {
+  const held = disc(false, true, 'test/z.test.mjs')
+  const d = closeDecision(m({ ...red, discriminator: [disc(true, false), held] }), LEAVES.red)
+  assert.deepEqual([d.next, d.reason], ['escalate', 'discriminator_undecidable'])
+  assert.equal(closeDecision(m({ ...red, discriminator: [disc(true, false), held] }), LEAVES.red, '', { nets: ['test/z.test.mjs'] }).next, 'review')
+  assert.equal(closeDecision(m({ ...red, discriminator: [disc(true, false), disc(false, false, 'test/z.test.mjs')] }), LEAVES.red).next, 'fix',
+    'a test that passed at base and fails now is one the red broke')
+  assert.equal(closeDecision(m({ discriminator: [held] }), LEAVES.red).next, 'fix', 'a red whose every test passes pins nothing it could not move')
+  assert.equal(closeDecision(m({ ...red, discriminator: [disc(true, false), upkeep(false)] }), LEAVES.red).next, 'fix', 'an upkeep file it broke is its to fix')
 })
 
 test('an ordinary failure is a fix round and carries its failures', () => {

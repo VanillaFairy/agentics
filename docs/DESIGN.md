@@ -3034,7 +3034,14 @@ and reviewed like any other.
   The brief carries what a person did as its own section, "Work agentics did not produce": each
   adopted leaf with its commits, and the commits that belong to no leaf; and "Leaves with no
   discriminating test": each leaf `undiscriminated` names (`lib/verdict.mjs`), its nets and their
-  whys, for the reviewer to judge whether its criterion checks pin the change. Besides findings it returns a
+  whys, for the reviewer to judge whether its criterion checks pin the change. It carries "The specs
+  of its sub-efforts", each child with a spec of its own in a fence (`childSpecs` in
+  `lib/programs/execute/integrate.mjs`), the yardstick for what the folder's entry for it claims;
+  and "Entries that run after this folder" (`laterEntries`): every unmerged entry outside the folder
+  that waits on it, topmost first, with the decisions it realises. A claim one of them realises is
+  not the folder's to have met: the reviewer leaves it out of its claims and names it in its notes.
+  Both sections, like any, go as files under the run's `briefs/` when the brief is past its room.
+  Besides findings it returns a
   **claim ruling** for each
   claim the spec makes (a success criterion, a Design statement, a plan criterion): `met`,
   `equivalent`, `under`, `over`, `deviates`, `spec_defect` or `cant_tell`, recorded by `folder-review` as a `claims` event

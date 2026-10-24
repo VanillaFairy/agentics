@@ -515,6 +515,37 @@ test('an integration reviewer leaves an approved leaf approved: its dispatch nam
   assert.ok(call(rig).brief.split('\n').includes('- `node --test test/k.test.mjs`: passed'))
 })
 
+test("a folder's integration reviewer is handed its sub-efforts' specs and the entries that run after it", SLOW, async (t) => {
+  const spec = {
+    '.': specOf('Root', [['D1', 'y documents what c ruled.'], ['D2', 'c is there.']], [subEffort('c', 'D2'), task('y', { realises: 'D1', after: 'c' })]),
+    c: subSpec([task('k', { realises: 'D2, c.D1' })]),
+  }
+  const rig = executionRig(t, { spec })
+  const base = rootHead(rig)
+  assert.equal(ensureIntegration(rig.repo, rig.effort, 'c', rig.envelope).ok, true)
+  const wt = rig.worktreeOf('c')
+  const sha = commitIn(wt, { 'src/k.mjs': 'export const k = () => 1\n', 'test/k.test.mjs': "import { test } from 'node:test'\ntest('k', () => {})\n" }, 'Add k')
+  rig.log.append('merged', { node: 'c/k', into: rig.branchOf('c'), merged_sha: sha, head_sha: sha })
+  rig.script({
+    [reviewerKey('integration:c:1', 'c')]: [reviewed([claim('k is there')])],
+    [reviewerKey()]: [reviewed([claim('c is there')])],
+  })
+  await reviewUnit(rig.ctx, rig.xc, { id: 'c', where: { base, worktree: wt }, unreviewed: ['c/k'], intelligence: 'normal' })
+  const later = call(rig).brief.split('## Entries that run after this folder')[1]
+  assert.ok(later && later.includes('- y — Do y; realises D1: y documents what c ruled.'), 'y waits on c, so its claims are not c\'s')
+
+  const rootWt = rig.worktreeOf('.')
+  const pass = (n) => "import { test } from 'node:test'\ntest('" + n + "', () => {})\n"
+  const files = { 'src/k.mjs': 'export const k = () => 1\n', 'test/k.test.mjs': pass('k'), 'src/y.mjs': 'export const y = 1\n', 'test/y.test.mjs': pass('y') }
+  const merged = commitIn(rootWt, files, 'Merge c and y')
+  for (const node of ['c', 'y']) rig.log.append('merged', { node, into: rig.branchOf('.'), merged_sha: merged, head_sha: merged })
+  const out = await reviewUnit(rig.ctx, rig.xc, { id: '.', where: { base: rig.base_sha, worktree: rootWt }, unreviewed: ['c/k', 'y'], intelligence: 'normal' })
+  assert.equal(out.outcome, 'reviewed', JSON.stringify(out))
+  const root = rig.calls.find((c) => c.thread.key === THREAD_ROOT).brief
+  const child = readFileSync(specPath(rig.repo, rig.effort, 'c'), 'utf8').replace(/\r\n/g, '\n').trimEnd()
+  assert.ok(root.split('## The specs of its sub-efforts')[1].includes(child), "the root's reviewer reads c's own spec")
+})
+
 test("a sub-folder's integration review is not earned when no child lacked a review and fewer than two met there", SLOW, async (t) => {
   const rig = executionRig(t, { spec: VERIFY_FOLDER })
   const base = rootHead(rig)

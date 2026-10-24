@@ -447,11 +447,11 @@ test('a spec re-approved over an unchanged head is re-ruled: the edit and the cl
 
 const unitsIn = (brief) => brief.split('## The units you rule')[1].split('\n## ')[0].split('\n').filter((l) => l.startsWith('- '))
 
-test('a review after work merged is narrowed to what moved: its files, the decisions it realises and the claims not passed, every other ruling standing', SLOW, async (t) => {
+test('a review after work merged is narrowed to what moved: its files, the decisions it realises, and every prior claim judged again', SLOW, async (t) => {
   const w = await respecced(t, { first: [claim('a is there'), claim('b is there', 'under')], moved: true, edit: false })
   w.rig.log.append('merged', { node: 'b', into: w.rig.branchOf('.'), merged_sha: w.head, head_sha: w.head })
-  const ruled = ['claim:2', 'file:src/c.mjs', 'decision:D2'].map((unit) => ({ unit, ruling: 'clean', why: 'ruled' }))
-  w.rig.script({ [reviewerKey(THREAD_SECOND)]: [{ output: { ...REVIEW_EMPTY, units: ruled, claims: [claim('b is there')] } }] })
+  const ruled = ['claim:1', 'claim:2', 'file:src/c.mjs', 'decision:D2'].map((unit) => ({ unit, ruling: 'clean', why: 'ruled' }))
+  w.rig.script({ [reviewerKey(THREAD_SECOND)]: [{ output: { ...REVIEW_EMPTY, units: ruled, claims: [claim('a is there'), claim('b is there')] } }] })
   const out = await review(w)
 
   assert.equal(out.outcome, 'reviewed')
@@ -459,7 +459,8 @@ test('a review after work merged is narrowed to what moved: its files, the decis
   assert.equal(isRerule(c.brief), true)
   assert.ok(c.brief.includes('## What merged since the last review'))
   assert.equal(c.brief.includes('## The edit to the spec'), false, 'the spec did not change')
-  assert.deepEqual(unitsIn(c.brief), ['- claim:2', '- file:src/c.mjs', '- decision:D2'], 'only what moved, b merged since, and the claim not passed')
+  assert.deepEqual(unitsIn(c.brief), ['- claim:1', '- claim:2', '- file:src/c.mjs', '- decision:D2'],
+    'every prior claim over moved work, the files that moved, and the decision b merged since realises')
   const second = kinds(w.rig, 'claims').at(-1)
   assert.equal(second.rerule, true)
   assert.deepEqual(second.claims.map((x) => [x.claim, x.ruling]), [['a is there', 'met'], ['b is there', 'met']])

@@ -146,6 +146,16 @@ test('the header reads DONE when the execution\'s root is integrated, and the ro
   assert.match(renderTodos(list), /^DONE — eff \/ 20260904-100000 \(root a\)\n\[x\] a — make a/)
 })
 
+test('a review that left claims unsettled for landing is pending on them, and the header waits on the user', () => {
+  const repo = effortWith([composite('.'), composite('a'), leaf('a/x')], { root: 'a' })
+  dispatched(repo, 'a/x', 'implementer')
+  ev(repo, 'merged', 'a/x', { into: 'agentics/eff--a', merged_sha: 'm', head_sha: 'h' })
+  ev(repo, 'claims', 'a', { head_sha: 'h', review: 'done', claims: [{ claim: 'p', ruling: 'met' }, { claim: 'q', ruling: 'cant_tell' }, { claim: 'r', ruling: 'over' }] })
+  const list = todosOf(repo, E, X1)
+  assert.deepEqual([byKey(list)['a/@review'].status, byKey(list)['a/@review'].activeForm], ['pending', '2 unsettled claims for landing'])
+  assert.equal(list.header, 'NEEDS_INPUT', 'integrated is not done while the user has claims to judge')
+})
+
 test('an execution without an envelope lists the whole effort', () => {
   const repo = effortWith([composite('.'), leaf('x')])
   const list = todosOf(repo, E, '20260101-000000')

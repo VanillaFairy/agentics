@@ -2925,8 +2925,10 @@ and reviewed like any other.
   identically escalate (`verify_not_converging`). lib/verdict.mjs escalates what no commit of
   the leaf can move — a discriminator that is the only failing fact on a `tdd` leaf, or on a `red`
   leaf whose only failing fact is a file that adds a case and passes at base and now beside the tests
-  that fail as they must (`discriminator_undecidable`) — and any environment error by its kind. The user may rule such a
-  file a regression net over behaviour that held at base (`net`, [Session calls](#session-calls)): at
+  that fail as they must (`discriminator_undecidable`) — and any environment error by its kind. Such a file may be ruled a
+  regression net over behaviour that held at base (`net`, [Session calls](#session-calls)): by the
+  session when the file only pins that behaviour ([Skills](#skills), who settles a stop), else by the
+  user. At
   the head that ruling names (`netsAt`), the file is held to `passes_now` alone, as upkeep is; when
   every changed test file that adds a case is a net, at least one criterion check must have run, and
   the leaf is reported `undiscriminated` in the result and named to its folder's integration review.
@@ -3002,7 +3004,7 @@ and reviewed like any other.
 <!-- /agentics:verbatim -->
 
 - **Integration review** runs per folder once every child has merged and no plan of the folder or
-  an ancestor runs or launches beside it (`reviewsToLaunch` in `lib/schedule.mjs`): a plan may add
+  an ancestor runs or is due, waiting for a slot or not (`reviewsToLaunch` in `lib/schedule.mjs`): a plan may add
   the very work the spec's claims describe, and a review over the graph before it rules those
   claims `under`. It is a fresh reviewer on
   `integration:<folder>:<n>` (`n` counting the folder's recorded reviews in the execution) over
@@ -3032,7 +3034,8 @@ and reviewed like any other.
   `integration_critical` (the user routes the fix). A drift that names no failure, and a `cant_tell`,
   park nothing: they stand in the `claims` event, never as a pass, and the land check lists every one
   under `unsettled_claims` (`unsettledClaims` in `lib/tree.mjs`) for the user to judge before they
-  land. A claim is held to the same consequence rule as a finding: a difference that breaks nothing
+  land; until then the folder's review row is pending on them, the todo header reads `NEEDS_INPUT`
+  (`todosOf` in `lib/status.mjs`) and the Next line names their count. A claim is held to the same consequence rule as a finding: a difference that breaks nothing
   is the user's to read once, not a fix round, a re-review and another question. A drift with no
   behaviour behind it that still parks is the orchestrating session's call:
   `accept` ([Session calls](#session-calls)) records its acceptance of the `under`, `over` and
@@ -3043,23 +3046,28 @@ and reviewed like any other.
 
   **After its first review, a folder is reviewed only where it moved.** Once a finished review of
   the folder recording the blockers it left `open` stands no more — a revision of the folder, a
-  `replanned` event on it, or a merge beneath it came after it — and no `outside` event on or under
-  the folder came since (`narrowableReview` in `lib/tree.mjs`), the next review is not redone whole.
+  `replanned` event on it, or a merge beneath it came after it — and no work agentics did not
+  produce reached the folder since, an `outside` event on or under it or a leaf adopted on the
+  user's word (`narrowableReview` in `lib/tree.mjs`), the next review is not redone whole.
   `reviewUnit` dispatches `integrationRerule`, briefed by `narrowPlan`: the folder's span for
-  context; what merged since, the span from the head that review judged to the head now; the spec's
-  edit since the text it judged (the folder's latest `compiled` ledger line before it, the kept
-  copy of that hash, diffed by `keptSpecDiff` in `lib/spec.mjs`, the diff `respec` shows), when it
-  changed; the last review's claims numbered `claim:<n>`; the blockers it left open, each to be ruled
-  in `fix_rulings`; every answer the user recorded on the folder, the latest per question, as settled;
-  the units (`claim:<n>` for each claim not ruled `met`, `equivalent` or `accepted`, `change` over an
-  edit, `file:<path>` for each file changed since that head, `decision:<id>` for each decision the
-  folder defines that a leaf merged since realises); and the spec whole. The reviewer returns only
-  the claims it ruled; `folderReview` records `rerule: true` with the prior claims that passed and
-  were not restated, the returned claims, and each prior unit claim whose `claim:<n>` unit the return
-  did not rule, carried as it was so that it still parks. Every review records the criticals it
-  leaves `open`: its own, and each prior one it neither ruled `fixed` nor reported again
-  (`openBlockers`), which parks as its own do. A spec whose judged text cannot be diffed, a folder
-  with outside work since, and a first review are reviewed whole.
+  context; what merged since, the span from the head that review judged to the head now; the leaves
+  merged since that no test discriminates, and the existing tests rewritten in the files that moved;
+  the spec's edit since the text it judged (the folder's latest `compiled` ledger line before it, the
+  kept copy of that hash, diffed by `keptSpecDiff` in `lib/spec.mjs`, the diff `respec` shows), when
+  it changed; the last review's claims numbered `claim:<n>`; the blockers it left open, each to be
+  ruled in `fix_rulings`; every answer the user recorded on the folder, the latest per question, as
+  settled; the units and the spec whole. The units are `claim:<n>` for each claim not ruled `met`,
+  `equivalent` or `accepted` — for every claim once the head moved, since a pass judged before the
+  work moved is no pass of the work now — `change` over an edit, `file:<path>` for each file changed
+  since that head, and `decision:<id>` for each decision the folder defines that a leaf merged since
+  realises. The reviewer returns only the claims it ruled; `folderReview` records `rerule: true`
+  with the returned claims and each prior claim the return neither restated nor ruled as a unit:
+  one ruled other than a pass carried as it was, so that it still parks; a pass carried over the
+  same head as it was, and over a moved head as `cant_tell`, never a pass. Every review records the
+  criticals it leaves `open`: its own, and each prior one it did not rule `fixed`, dropped only as the
+  same critical reported again (`openBlockers`), which parks as its own do. A spec whose judged text
+  cannot be diffed, a moved head git cannot diff, outside or adopted work since, and a first review
+  are reviewed whole.
 
   **Why:** a fix round moves a few files, yet a whole review re-rules every file and every claim
   of the folder, buys a fresh batch of nits, and parks the folder again on what the user just
@@ -3625,14 +3633,14 @@ either)
 outcome: serialize | resolve | replan | cant_rule, after[], why, said}` (the judge's ruling on a unit
 at its approved head, [The judge](#the-judge); `contentionOf`, `waitsOn` and `conflictJudged` read it) ·
 `landed {into, merged_sha, by}` (`by` who confirmed the word: `user` or `terminal`) · `nets {head_sha,
-nets[{file, why}], all, by}` (the user's ruling that test files are regression nets, `net`
+nets[{file, why}], all, by}` (the ruling, the session's or the user's, that test files are regression nets, `net`
 under [Session calls](#session-calls)) · `claims
 {head_sha, review: done | not_earned, claims[{claim, ruling, failure_scenario?}], open?[{id, claim,
 failure_scenario}], said?, by?, accepted?[{claim, was, why}], rerule?}` (`open` is every critical a
 finished review leaves open, its own and the prior's it did not rule fixed) (`ruling` is the reviewer's `met`, `equivalent`, `under`, `over`, `deviates`, `spec_defect` or
 `cant_tell`, or `accepted`, the session's on a drift claim, which `by: session` and `accepted` record
-with the ruling it had and its reason, and `rerule: true` marks a review that ruled only what a spec
-edit touched; `failure_scenario` is kept only on a drift that names one, the one that parks; each
+with the ruling it had and its reason, and `rerule: true` marks a narrowed review, which ruled only
+what moved since the review before it; `failure_scenario` is kept only on a drift that names one, the one that parks; each
 ruling's evidence is in the reviewer's stored return) · `noted {by, text}` (what a session learned about the node; no status
 is derived from it) · `message {thread, from, msg, payload, round}` (a message code delivers to a
 thread's session, [Conversations](#conversations); its `execution` is `''` only on one the migration
@@ -4032,7 +4040,7 @@ the session's, called as CLIs:
 - **land** — `check`: `into` (the user's checked-out branch), `effort_branch`, `effort_head` (the
   head its token names), `open_escalations`, `parked`, `human`, `drift {base_sha, base_moved,
   commits, overlap}`, `root_status`, `root_claims`, `unsettled_claims[{node, claim, ruling}]` (every
-  drift and `cant_tell` the latest review of a folder left without a park), `landing`, `token` (the act the user's answer
+  drift and `cant_tell` a folder's standing review left without a park), `landing`, `token` (the act the user's answer
   must choose: `land <effort>@<head8>` over the effort branch's head, `land <effort>@` once the
   branch is gone); `merge`: `merged_sha`, `already` (nothing left to merge), `removed[]` (the
   branches swept), `kept[{branch, why}]`, once `landAct` has confirmed the user's word
@@ -4058,8 +4066,8 @@ the session's, called as CLIs:
   not be created; those already made are in `created`), `append_failed`, `bad_arg` (an action that
   is neither), or `confirmAct`'s refusal (`no_token`, `not_approved`, `answer_unverifiable`). The
   refusal kinds are listed under [Outside work](#outside-work).
-- **net** — `net --repo <r> --effort <e> --node <leaf> --file <path>`: the user's ruling, recorded
-  by the session, on a leaf escalated `discriminator_undecidable`. The file is JSON the session
+- **net** — `net --repo <r> --effort <e> --node <leaf> --file <path>`: the session's ruling, or the
+  user's it records, on a leaf escalated `discriminator_undecidable`. The file is JSON the session
   wrote, `{nets: [{file, why}]}`, each `file` a changed test file of the measurement the escalation
   stands on (its execution's latest `verify-observed` line of the leaf before it) that passes now
   and passed at base, `why` one line. Returns `{ok: true, head_sha, nets_n, all}` or `{ok: false,

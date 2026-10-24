@@ -157,6 +157,9 @@ test('a folder is not integration-reviewed while a plan of it or an ancestor run
   assert.deepEqual(launched(both, 'plan').map((l) => l.id), ['p'])
   assert.deepEqual(launched(both, 'review'), [])
   assert.deepEqual(launched(effort(deep, under), 'review').map((l) => l.id), ['p/x'], 'with no plan launching, p/x is reviewed')
+  const full = effort(deep, under, { unprepared: (id) => id === 'p', maxParallel: 1, running: ['plan:q'] })
+  assert.deepEqual(launched(full, 'plan'), [], 'no plan slot is free')
+  assert.deepEqual(launched(full, 'review'), [], 'a due plan waiting for a slot holds the review too')
 })
 
 test('approved leaves merge into their parent at the head they were approved at, never while running', () => {

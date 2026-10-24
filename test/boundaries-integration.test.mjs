@@ -123,6 +123,8 @@ test('a drift that names its failure keeps the scenario in its claims event; any
     { claim: 'u', ruling: 'under', failure_scenario: 'a save written now reads back empty' },
     { claim: 'o', ruling: 'over' }, { claim: 'm', ruling: 'met' },
   ])
+  const tree = readTree(r, E)
+  assert.deepEqual(unsettledClaims(tree.nodes, tree.events).map((x) => x.claim), ['o'], 'the drift that parked is no unsettled claim')
 })
 
 test('a review earning several classes parks the folder once', (t) => {
@@ -162,6 +164,7 @@ const PRIOR = {
     { claim: 'a', ruling: 'met' }, { claim: 'b', ruling: 'equivalent' }, { claim: 'c', ruling: 'accepted' },
     { claim: 'd', ruling: 'under', failure_scenario: 'it breaks' }, { claim: 'e', ruling: 'cant_tell' },
   ],
+  head_sha: 'h1',
 }
 
 test('a re-rule keeps the prior claims it passed, replaces the ones the return restates and records rerule', (t) => {
@@ -191,6 +194,33 @@ test('a re-rule carries a prior claim whose unit the return did not rule, so it 
   const [c] = events(r, 'claims')
   assert.deepEqual(c.claims.filter((x) => x.ruling === 'under').map((x) => x.claim), ['d'], 'd was not ruled again: its last ruling stands')
   assert.ok(events(r, 'parked')[0].question.includes('[under] d'))
+})
+
+test('a prior open critical stays open until ruled fixed: a finding of another severity under its id does not close it', (t) => {
+  const prior = { claims: [], head_sha: 'h1', open: [{ id: 'F1', claim: 'saves are lost', failure_scenario: 'a reload reads empty' }] }
+  const cases = [
+    ['a minor under the same id', { findings: [{ ...critical, severity: 'minor', claim: 'a name' }] }, ['F1'], 'saves are lost'],
+    ['no ruling at all', {}, ['F1'], 'saves are lost'],
+    ['the same critical again', { findings: [{ ...critical, claim: 'saves are still lost' }] }, ['F1'], 'saves are still lost'],
+    ['ruled fixed', { fix_rulings: [{ id: 'F1', status: 'fixed', evidence: 'src/a.mjs:1' }] }, [], ''],
+  ]
+  for (const [what, value, ids, text] of cases) {
+    const { r, xc } = setup(t, [A])
+    const out = folderReview(xc, { target: '.', head: 'h1', dispatch: review(xc, value), spec_path: 'S', prior })
+    const [c] = events(r, 'claims')
+    assert.deepEqual(c.open.map((o) => o.id), ids, what)
+    if (text) assert.equal(c.open[0].claim, text, what)
+    assert.deepEqual(out.stops.map((s) => s.reason), ids.length ? ['integration_critical'] : [], what)
+  }
+})
+
+test('over a moved head a prior pass nobody ruled again reads cant_tell; one ruled again is the return\'s', (t) => {
+  const { r, xc } = setup(t, [A])
+  const prior = { claims: [{ claim: 'saves round-trip', ruling: 'met' }, { claim: 'names match', ruling: 'met' }], head_sha: 'h0', open: [] }
+  const dispatch = review(xc, { units: [unit('claim:2')], claims: [claim('met', 'names match as now worded')] })
+  folderReview(xc, { target: '.', head: 'h1', dispatch, spec_path: 'S', prior })
+  const [c] = events(r, 'claims')
+  assert.deepEqual(c.claims.map((x) => [x.claim, x.ruling]), [['saves round-trip', 'cant_tell'], ['names match as now worded', 'met']])
 })
 
 test('a review without a prior records the return as it is, and no rerule', (t) => {

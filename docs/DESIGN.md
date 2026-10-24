@@ -2994,7 +2994,10 @@ and reviewed like any other.
   look thorough.
 <!-- /agentics:verbatim -->
 
-- **Integration review** runs per folder once every child has merged, a fresh reviewer on
+- **Integration review** runs per folder once every child has merged and no plan of the folder or
+  an ancestor runs or launches beside it (`reviewsToLaunch` in `lib/schedule.mjs`): a plan may add
+  the very work the spec's claims describe, and a review over the graph before it rules those
+  claims `under`. It is a fresh reviewer on
   `integration:<folder>:<n>` (`n` counting the folder's recorded reviews in the execution) over
   the merged diff of its children, against its decision list, the criteria of every child reviewed
   there, and the folder's spec as its yardstick. Its units are each decision the folder defines

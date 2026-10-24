@@ -143,6 +143,22 @@ test("a planner folder whose spec is edited past its preparation is not integrat
   assert.deepEqual(reviews({ unprepared: (id) => id === 'x' }), [])
 })
 
+test('a folder is not integration-reviewed while a plan of it or an ancestor runs or launches beside the review', () => {
+  const nodes = [folder('.'), folder('x', { author: 'planner' }), leaf('x/a')]
+  const merged = [{ kind: 'dispatched', node: 'x/a' }, { kind: 'approved', node: 'x/a' }, { kind: 'merged', node: 'x/a' }]
+  const reviews = (events, extra) => launched(effort(nodes, events, extra), 'review').map((l) => l.id)
+  assert.deepEqual(reviews(merged, {}), ['x'], 'the fixture: x is reviewing')
+  assert.deepEqual(reviews(merged, { running: ['plan:x'] }), [], 'its plan runs')
+  assert.deepEqual(reviews(merged, { running: ['plan:.'] }), [], "an ancestor's plan runs")
+  // A retried stop on an edited planner spec above x launches its plan: x's review waits for what that plan compiles.
+  const deep = [folder('.'), folder('p', { author: 'planner' }), folder('p/x'), leaf('p/x/a'), leaf('p/b')]
+  const under = [{ kind: 'merged', node: 'p/x/a' }, { kind: 'escalated', node: 'p', reason: 'review_not_converging' }, { kind: 'replanned', node: 'p', reason: 'retry_escalated' }]
+  const both = effort(deep, under, { unprepared: (id) => id === 'p' })
+  assert.deepEqual(launched(both, 'plan').map((l) => l.id), ['p'])
+  assert.deepEqual(launched(both, 'review'), [])
+  assert.deepEqual(launched(effort(deep, under), 'review').map((l) => l.id), ['p/x'], 'with no plan launching, p/x is reviewed')
+})
+
 test('approved leaves merge into their parent at the head they were approved at, never while running', () => {
   const nodes = [folder('.'), leaf('a'), leaf('b')]
   const events = ['a', 'b'].flatMap((id) => [{ kind: 'dispatched', node: id }, { kind: 'approved', node: id }])

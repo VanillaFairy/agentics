@@ -141,4 +141,5 @@ When the effort lands or the user ends it:
 3. Give the user one summary: each plugin version made during the effort, its commits and what each
    fixed or corrected, from the fix agents' returns and `git log --oneline` of the plugin checkout
    over the commits pushed since the effort began; then each outlier judged earned, with its
-   numbers. With neither, say that no plugin update was needed and every outlier was earned.
+   numbers (with neither: no update was needed, every outlier earned); then the view's `lines`,
+   the test and source lines the effort added and their ratio, a measurement that gates nothing.

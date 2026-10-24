@@ -8,7 +8,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { probersFor } from '../../lib/programs/probe.mjs'
-import { OUTLIER_MULTIPLE as MULTIPLE, designPlace, flagSpend, spendUnits } from '../../lib/status.mjs'
+import { OUTLIER_MULTIPLE as MULTIPLE, designPlace, flagSpend, lineRatio, spendUnits } from '../../lib/status.mjs'
 
 const call = (thread, usd, { node = '', role = 'analyst', model = 'opus', round = 1, measured = true } = {}) =>
   ({ node, thread, role, model, round, tokens: 1, usd, measured })
@@ -94,4 +94,10 @@ test("a probe round past its folder's first that derived the axes again is flagg
     unit('a:10', 1, { folder: 'a', round: '10', probers: 1, axes: true, spec_lines: 10 }),
   ]
   assert.deepEqual(reasonsOf(flagSpend({ ...none, probe }).flagged), { 'probe a:10': ['axes_again'] })
+})
+
+test("an effort's lines split into tests and source; docs, the store and binaries count as neither", () => {
+  const numstat = ['30\t2\tlib/a.mjs', '70\t0\ttest/a.test.mjs', '9\t0\tREADME.md', '4\t0\t.agentics/e/DESIGN.md', '-\t-\tart.png'].join('\n')
+  assert.deepEqual(lineRatio(numstat), { test_lines: 70, source_lines: 30, ratio: 2.33 })
+  assert.equal(lineRatio('').ratio, null, 'no source line, no ratio')
 })

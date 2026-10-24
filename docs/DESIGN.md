@@ -3801,11 +3801,12 @@ effort store exists.
 
 ### Spend view
 
-- **Owner:** `spendOf`, `spendUnits` and `flagSpend` in `lib/status.mjs`.
-- **Restated in:** `skills/self-improve/SKILL.md` (a reader: the flag names it maps to causes).
+- **Owner:** `spendOf`, `spendUnits`, `flagSpend` and `lineRatio` in `lib/status.mjs`.
+- **Restated in:** `skills/self-improve/SKILL.md` (a reader: the flag names it maps to causes, and
+  the lines it reports at the effort's end).
 
 `node lib/status.mjs spend --repo <r> --effort <e> [--json]` prints `{effort, multiple,
-earlier_efforts, means: {effort, earlier}, by_role, units: {leaf, folder, probe}, flagged}`. Each
+earlier_efforts, means: {effort, earlier}, by_role, units: {leaf, folder, probe}, flagged, lines}`. Each
 mean is per kind (`leaf`, `folder`, `probe`) `{units, usd, rounds}`, or null when no unit of the kind
 is fully measured. `by_role` is role → model → `{dispatches, tokens, usd, unmeasured}`. A unit
 carries those four and its `id`; a leaf also `status` and `rounds` (the highest round its calls
@@ -3814,7 +3815,11 @@ name), a folder `rounds` (its probe rounds), a probe round `folder`, `round`, `p
 their session reading more than a first read may (`BRIEF_TOKENS`, from the `opened` each recorded).
 `flagged` lists the units with `kind` and `reasons`, each one of `usd_over_effort_mean`,
 `usd_over_earlier_mean`, `rounds_over_effort_mean`, `rounds_over_earlier_mean`, `probers_over_size`,
-`axes_again`, `brief_over_bound`.
+`axes_again`, `brief_over_bound`. `lines` is `{test_lines, source_lines, ratio}`, the lines the
+effort's diff adds from where its branch was cut to its head (the branch, or once landed and swept,
+the effort's side of the landing merge), split by `isTestPath`, docs and the store counted as
+neither, `ratio` tests per source line or null with no source line; null when either end is
+unknown. It is a measurement, and it gates nothing.
 
 ### Live activity
 

@@ -723,7 +723,12 @@ in the sections `Task`, `Acceptance criteria`, `Decisions realised`, `Expected f
 `Evidence`, `Gotchas`, `Measures`, `Commands`, `Worktree` and `Repository guidance`: the node, the
 decisions it realises, the files it expects to change (a prediction, never a limit) and those it
 reads, a test round of a green or an audit also the test files the red's branch changed
-(`cycleTests` in `lib/integration.mjs`), its referenced evidence, the gotchas its role and expected
+(`cycleTests` in `lib/integration.mjs`); then, under `Effort files` and only when there are any,
+the text of each file under the effort's store (`.agentics/<effort>/`, its `.state/` records
+excepted) that the leaf reads or its intent or context cites, read from the main checkout: the store
+is gitignored, so no worktree holds it, and the producer is confined to its worktree. Like any
+section it is handed as a file under the run's `briefs/` when the brief is past its room. Then its
+referenced evidence, the gotchas its role and expected
 files call for, how its rigor measures it, the established commands, its worktree, and the
 repository's guidance — its `CLAUDE.md` files from the root to each directory its expected files sit
 in, and the files

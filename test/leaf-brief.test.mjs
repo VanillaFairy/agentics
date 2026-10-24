@@ -111,6 +111,34 @@ test('the expected files and the reads are listed', (t) => {
   for (const p of ['src/api/parse.js', 'test/parse.test.mjs', 'src/api/types.js']) assert.ok(s.includes('- ' + p), p)
 })
 
+test("the effort store's files a leaf reads or cites are handed in the brief, its records never", (t) => {
+  const repo = mkdtempSync(join(tmpdir(), 'agentics-leaf-brief-'))
+  t.after(() => rmSync(repo, { recursive: true, force: true }))
+  for (const [path, text] of Object.entries({
+    '.agentics/e1/area/DESIGN.md': '# Area\n\nREAD_SPEC_TOKEN the rulings\n',
+    '.agentics/e1/notes.md': 'CITED_NOTE_TOKEN\n',
+    '.agentics/e1/.state/events.jsonl': 'STATE_TOKEN\n',
+  })) {
+    mkdirSync(dirname(join(repo, path)), { recursive: true })
+    writeFileSync(join(repo, path), text)
+  }
+  const added = seedTree(repo, E, [
+    { id: '.', kind: 'composite', title: 'Docs', defines: [{ id: 'D1', text: 'Docs say it.' }] },
+    { id: 'docs', kind: 'leaf', title: 'Write the docs', rigor: 'trivial', expects: ['docs/kb.md'], reads: ['.agentics/e1/area/DESIGN.md'],
+      decisions: ['D1'], acceptance: [{ text: 'Docs say it', check: 'grep -q it docs/kb.md', decisions: ['D1'] }],
+      context: 'Copy the rows .agentics/e1/notes.md lists; .agentics/e1/.state/events.jsonl and .agentics/e1/gone.md are not for you.' },
+  ])
+  assert.equal(added.ok, true, JSON.stringify(added.problems))
+  const { text, parts } = brief(repo, 'docs')
+  const at = text.indexOf('## Effort files\n')
+  assert.ok(at > text.indexOf('## Expected files and reads\n') && at < text.indexOf('## Evidence\n'), 'after the reads, before the evidence')
+  const section = text.slice(at, text.indexOf('## Evidence\n'))
+  assert.ok(section.includes('### .agentics/e1/area/DESIGN.md') && section.includes('READ_SPEC_TOKEN'), 'a read under the store')
+  assert.ok(section.includes('### .agentics/e1/notes.md') && section.includes('CITED_NOTE_TOKEN'), 'a store file the context cites')
+  assert.ok(!text.includes('STATE_TOKEN') && !section.includes('gone.md'), 'neither the records nor a path that is no file')
+  assert.ok(parts['Effort files'])
+})
+
 test("a green's test round lists the test files the red's branch changed, whatever the red expected", (t) => {
   const repo = effort(t)
   const git = (...args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' })

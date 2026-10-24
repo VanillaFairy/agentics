@@ -171,7 +171,7 @@ test('a re-rule keeps the prior claims it passed, replaces the ones the return r
   const { r, xc } = setup(t, [A])
   const dispatch = review(xc, {
     units: [unit('claim:4'), unit('claim:5'), unit('change')],
-    claims: [claim('met', 'd as the spec now words it'), claim('met', 'e as the spec now words it'), claim('met', 'b'), claim('met', 'a new claim')],
+    claims: [{ ...claim('met', 'd as the spec now words it'), unit: 'claim:4' }, { ...claim('met', 'e as the spec now words it'), unit: 'claim:5' }, claim('met', 'b'), claim('met', 'a new claim')],
   })
   const out = folderReview(xc, { target: '.', head: 'h1', dispatch, spec_path: 'S', prior: PRIOR })
 
@@ -187,7 +187,7 @@ test('a re-rule keeps the prior claims it passed, replaces the ones the return r
 
 test('a re-rule carries a prior claim whose unit the return did not rule, so it still parks', (t) => {
   const { r, xc } = setup(t, [A])
-  const dispatch = review(xc, { units: [unit('claim:5'), unit('change')], claims: [claim('met', 'e as the spec now words it')] })
+  const dispatch = review(xc, { units: [unit('claim:5'), unit('change')], claims: [{ ...claim('met', 'e as the spec now words it'), unit: 'claim:5' }] })
   const out = folderReview(xc, { target: '.', head: 'h1', dispatch, spec_path: 'S', prior: PRIOR })
 
   assert.deepEqual(out.stops.map((s) => s.reason), ['integration_critical'])
@@ -217,10 +217,19 @@ test('a prior open critical stays open until ruled fixed: a finding of another s
 test('over a moved head a prior pass nobody ruled again reads cant_tell; one ruled again is the return\'s', (t) => {
   const { r, xc } = setup(t, [A])
   const prior = { claims: [{ claim: 'saves round-trip', ruling: 'met' }, { claim: 'names match', ruling: 'met' }], head_sha: 'h0', open: [] }
-  const dispatch = review(xc, { units: [unit('claim:2')], claims: [claim('met', 'names match as now worded')] })
+  const dispatch = review(xc, { units: [unit('claim:2')], claims: [{ ...claim('met', 'names match as now worded'), unit: 'claim:2' }] })
   folderReview(xc, { target: '.', head: 'h1', dispatch, spec_path: 'S', prior })
   const [c] = events(r, 'claims')
   assert.deepEqual(c.claims.map((x) => [x.claim, x.ruling]), [['saves round-trip', 'cant_tell'], ['names match as now worded', 'met']])
+})
+
+test('a unit ruled in units but left out of claims restates nothing: its prior claim is carried', (t) => {
+  const prior = { claims: [{ claim: 'names match', ruling: 'met' }, { claim: 'loads survive reload', ruling: 'under', failure_scenario: 'a reload reads empty' }], head_sha: 'h0', open: [] }
+  const { r, xc } = setup(t, [A])
+  const out = folderReview(xc, { target: '.', head: 'h1', dispatch: review(xc, { units: [unit('claim:1'), unit('claim:2')], claims: [] }), spec_path: 'S', prior })
+  const [c] = events(r, 'claims')
+  assert.deepEqual(c.claims.map((x) => [x.claim, x.ruling]), [['names match', 'cant_tell'], ['loads survive reload', 'under']])
+  assert.deepEqual(out.stops.map((s) => s.reason), ['integration_critical'], 'the drift that parked still parks')
 })
 
 test('a review without a prior records the return as it is, and no rerule', (t) => {

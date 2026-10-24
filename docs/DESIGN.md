@@ -3061,8 +3061,9 @@ and reviewed like any other.
   work moved is no pass of the work now — `change` over an edit, `file:<path>` for each file changed
   since that head, and `decision:<id>` for each decision the folder defines that a leaf merged since
   realises. The reviewer returns only the claims it ruled; `folderReview` records `rerule: true`
-  with the returned claims and each prior claim the return neither restated nor ruled as a unit:
-  one ruled other than a pass carried as it was, so that it still parks; a pass carried over the
+  with the returned claims and each prior claim the return did not restate (a returned claim restates
+  `claim:<n>` by naming it in `unit`, or by its very text; a unit ruled in `units` alone restates
+  nothing): one ruled other than a pass carried as it was, so that it still parks; a pass carried over the
   same head as it was, and over a moved head as `cant_tell`, never a pass. Every review records the
   criticals it leaves `open`: its own, and each prior one it did not rule `fixed`, dropped only as the
   same critical reported again (`openBlockers`), which parks as its own do. A spec whose judged text
@@ -4375,8 +4376,9 @@ threw.
 `{units[{unit, ruling: clean | findings, ids[], why}], findings[{id, severity: critical | major |
 minor, claim, evidence, failure_scenario, remedy?: code | tests}], fix_rulings[{id, status: fixed |
 not_fixed | regressed, evidence}], claims[{claim, ruling: met | equivalent | under | over |
-deviates | spec_defect | cant_tell, evidence, failure_scenario}], notes}` (`failure_scenario` is
-`''` on every claim but a drift that names its failure). The units are those the brief lists — a
+deviates | spec_defect | cant_tell, evidence, failure_scenario, unit}], notes}` (`failure_scenario` is
+`''` on every claim but a drift that names its failure; `unit` is the `claim:<n>` of a narrowed
+review's prior claim the entry restates, else `''`). The units are those the brief lists — a
 leaf review's criteria, changed files and failing approved cases, an integration review's decisions, the
 criteria of its children with no review of their own, and its changed files — and a unit with no
 ruling is open. A leaf review returns `claims: []`. `remedy` is who must change to fix a finding

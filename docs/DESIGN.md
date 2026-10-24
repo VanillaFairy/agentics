@@ -2930,7 +2930,9 @@ and reviewed like any other.
   regression net over behaviour that held at base (`net`, [Session calls](#session-calls)): by the
   session when the file only pins that behaviour ([Skills](#skills), who settles a stop), else by the
   user. At
-  the head that ruling names (`netsAt`), the file is held to `passes_now` alone, as upkeep is; when
+  the head that ruling names, and at any later head of the leaf where the file's content is the same
+  (a rebase for a conflict elsewhere, a fix round that left the file alone; `netsAt`, through
+  `sameBlob`), the file is held to `passes_now` alone, as upkeep is; when
   every changed test file that adds a case is a net, at least one criterion check must have run, and
   the leaf is reported `undiscriminated` in the result and named to its folder's integration review.
 - **Review** is a fresh reviewer each round (`reviewer:<leaf>:<n>`, `n` counting this execution's

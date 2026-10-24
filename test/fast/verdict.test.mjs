@@ -292,6 +292,23 @@ test('a net ruling stands at its head alone, and a leaf approved there reads und
   assert.deepEqual(undiscriminated(nodes, [...events, { kind: 'approved', node: 'x', head_sha: 'bbb', seq: 3 }], '.'), [])
 })
 
+test('a net ruling carries to a later head for each netted file whose content is unchanged there', () => {
+  const nets = [{ file: 'test/x.test.mjs', why: 'a net' }, { file: 'test/y.test.mjs', why: 'a net' }]
+  const events = [
+    { kind: 'nets', node: 'x', head_sha: 'aaa', nets, all: true, seq: 1 },
+    { kind: 'approved', node: 'x', head_sha: 'bbb', seq: 2 },
+  ]
+  // A rebase for a conflict elsewhere: x's file is the same at bbb, y's was edited.
+  const sameAt = (from, to, file) => from === 'aaa' && to === 'bbb' && file === 'test/x.test.mjs'
+  const carried = netsAt(events, 'x', 'bbb', sameAt)
+  assert.deepEqual(carried.files, ['test/x.test.mjs'])
+  assert.equal(carried.all, false, 'a net voided on the way leaves a file to discriminate')
+  assert.equal(netsAt(events, 'x', 'bbb', () => true).all, true)
+  assert.equal(netsAt(events, 'x', 'bbb', () => false), null, 'every netted file changed: nothing carries')
+  const nodes = new Map([['x', normalizeNode({ id: 'x', kind: 'leaf' })]])
+  assert.deepEqual(undiscriminated(nodes, events, '.', () => true).map((l) => l.id), ['x'])
+})
+
 test('...but not when a test does not pass now, which an implementer can move', () => {
   assert.equal(closeDecision(m({ discriminator: [disc(true, false)] }), LEAVES.tdd).next, 'fix')
 })

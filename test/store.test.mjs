@@ -18,7 +18,7 @@ import {
   AGENTICS_DIR, CONFIG_FILE, EVIDENCE_RENDER, ROOT_ID, SPEC_FILE, STATE_DIR,
   agenticsRoot, configPath, contextDir, effortDir, effortStateDir, effortsRoot,
   evidenceStoreDir, executionDir, executionsRoot, folderDir, mainCheckout, mkdirState,
-  projectStateDir, readConfig, returnPath, safeSlug, saidOf, slotsDir, specPath, withLock, writeJson,
+  projectStateDir, readConfig, returnPath, safeSlug, saidOf, sameBlob, slotsDir, specPath, withLock, writeJson,
 } from '../lib/store.mjs'
 import { DEAD_PID } from './harness/dead-pid.mjs'
 
@@ -319,4 +319,19 @@ test('breaking a gone holder never frees a lock someone holds now', () => {
     assert.deepEqual(readdirSync(dir), ['held'], 'a waiter that gave up leaves nothing beside the lock')
   })
   assert.equal(existsSync(path), false)
+})
+
+test('sameBlob: a file holds the same content at two commits, or it does not', () => {
+  const r = gitRepo('blob')
+  writeFileSync(join(r, 'a.txt'), 'one\n')
+  writeFileSync(join(r, 'b.txt'), 'one\n')
+  git(r, 'add', '.')
+  git(r, 'commit', '-q', '-m', 'first')
+  const first = git(r, 'rev-parse', 'HEAD')
+  writeFileSync(join(r, 'b.txt'), 'two\n')
+  git(r, 'commit', '-q', '-am', 'second')
+  const second = git(r, 'rev-parse', 'HEAD')
+  assert.equal(sameBlob(r, first, second, 'a.txt'), true)
+  assert.equal(sameBlob(r, first, second, 'b.txt'), false)
+  assert.equal(sameBlob(r, first, second, 'gone.txt'), false, 'absent at both is not the same content')
 })

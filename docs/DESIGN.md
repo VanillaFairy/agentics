@@ -1632,9 +1632,12 @@ Every leaf carries a `rigor`, set by its author. Walk the table top-down; the fi
 **Would a test only restate the diff?** A test of a `trivial` change asserts that the value
 written is the value written. A `tdd` change has a result the diff does not state literally — a
 computed value, a branch taken, an error raised — and that result is what its test pins. Unsure
-between `trivial` and `tdd`: `tdd`.
+between `trivial` and `tdd`: `tdd`, unless the typecheck already fixes the shape and the leaf wires
+existing parts: `trivial`.
 
-Unsure between `tdd` and `tdd-pair`: `tdd` when the leaf is small, `tdd-pair` when it is not.
+Unsure between `tdd` and `tdd-pair`, weigh the cost — a pair is two producers, a review loop and
+a consolidation round: `tdd` when the leaf is small, and whenever the types fix the shape and the
+unit is wiring, even a contract's; `tdd-pair` otherwise.
 
 **Tests are owned, not counted.** Every criterion that names behaviour is owned by a test that
 names the mistake it catches; one test may own several, and a criterion the typecheck, lint, the

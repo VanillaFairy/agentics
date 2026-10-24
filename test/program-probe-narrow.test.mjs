@@ -277,6 +277,25 @@ test("a finding the spec's folder settled as its gate counts it is not carried; 
   assert.ok(!told.includes('CARRIED_AMBIGUITY_TOKEN') && !told.includes('CARRIED_NOTE_TOKEN'), 'no prober is told a settled finding')
 })
 
+test("a narrowed round's anchor checks leave the event loop free, so the run's heartbeat keeps beating", async (t) => {
+  const many = Array.from({ length: 40 }, (_, i) => finding('yagni', 'note', 'intent', 4, 'MANY_' + i + ' the key is never defined'))
+  const w = reviewedThenEdited(t, { findings: many })
+  const t0 = Date.now()
+  assert.equal(reviewScope(w.rig.repo, w.file, w.since).carried.length, many.length)
+  const blocking = Date.now() - t0
+  assert.ok(blocking > 200, 'the fixture: checked in-process, the anchors hold the loop for ' + blocking + ' ms')
+
+  const n = narrowed(EDITED, w.scope)
+  let last = Date.now()
+  let gap = 0
+  const timer = setInterval(() => { const now = Date.now(); gap = Math.max(gap, now - last); last = now }, 10)
+  const result = await probe(w.rig.relaunch(n.script).ctx, argsFor(w.rig.repo, ART, { since: w.since }))
+  clearInterval(timer)
+  gap = Math.max(gap, Date.now() - last)
+  assert.equal(result.findings.filter((f) => f.carried).length, many.length)
+  assert.ok(gap < blocking / 2, 'the longest the loop stood still was ' + gap + ' ms, against ' + blocking + ' ms in-process')
+})
+
 test('a carried ambiguity is open and keeps the probe unratifiable', async (t) => {
   const { scope, itemOf, result } = await narrowRound(t)
   const ambiguity = carriedFindings(scope).find((f) => f.item === itemOf[AMBIGUITY.claim])

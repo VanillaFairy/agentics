@@ -356,6 +356,12 @@ the user becomes a park or an escalation the session's watch picks up ([Progress
 an answer the user gave reaches a program only as the `answered` ledger line the session recorded
 ([The user's word](#the-users-word)). An agent is where judgment happens, and nowhere else.
 
+A program's process carries the run's heartbeat and every live call's stream on one event loop, so
+work that spawns git again and again runs in a child the program awaits: a check
+(`lib/measure.mjs`), and a probe round's anchor checks, its review scope computed by
+`childCall` (`lib/child-call.mjs`) and its carried findings handed to `recordProbe` rather than
+checked again.
+
 ### Programs
 
 A program is an async function over three ports: the store, git and the runner. A test hands it

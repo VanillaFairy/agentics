@@ -433,12 +433,19 @@ test('an integration review parks once, by class: a spec defect, then criticals 
   assert.equal(integrationPark([], [claim('met')], 'S'), null)
   for (const v of ['equivalent', 'accepted']) assert.equal(integrationPark([], [claim('met'), claim(v)], 'S'), null, v + ' passes like met')
   assert.equal(integrationPark([critical('F1')], [claim('equivalent')], 'S').why, 'integration_critical', 'a critical still parks beside a pass')
-  for (const v of ['under', 'over', 'deviates']) assert.equal(integrationPark([], [claim(v)], 'S').why, 'integration_critical')
+  const failing = (v) => ({ ...claim(v), failure_scenario: 'a save written now reads back empty' })
+  for (const v of ['under', 'over', 'deviates']) {
+    assert.equal(integrationPark([], [failing(v)], 'S').why, 'integration_critical', v + ' that names its failure parks')
+    assert.equal(integrationPark([], [claim(v)], 'S'), null, v + ' that names none is left for landing')
+    assert.equal(integrationPark([], [{ ...claim(v), failure_scenario: '  ' }], 'S'), null, v + ' with a blank scenario names none')
+  }
+  assert.ok(integrationPark([], [failing('under')], 'S').question.includes('fails: a save written now reads back empty'))
   assert.equal(integrationPark([critical('F1')], [claim('cant_tell')], 'S').why, 'integration_critical')
-  assert.equal(integrationPark([], [claim('cant_tell')], 'S').why, 'cant_tell')
+  assert.equal(integrationPark([], [claim('cant_tell')], 'S'), null, 'what the review could not tell is left for landing')
   const defect = integrationPark([critical('F1')], [claim('cant_tell', 'a'), claim('spec_defect', 'b')], 'S')
   assert.equal(defect.why, 'spec_defect')
-  assert.ok(defect.question.startsWith('the spec S: ') && ['F1: wrong', '[cant_tell] a', '[spec_defect] b'].every((s) => defect.question.includes(s)))
+  assert.ok(defect.question.startsWith('the spec S: ') && ['F1: wrong', '[spec_defect] b'].every((s) => defect.question.includes(s)))
+  assert.equal(defect.question.includes('[cant_tell] a'), false, 'what parks nothing is not asked about')
 })
 
 test('a tests-only file that adds a test no biting mutation names is not shown to catch anything', () => {

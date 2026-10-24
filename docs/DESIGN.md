@@ -3020,9 +3020,14 @@ and reviewed like any other.
   at the head it judged (`review: done`; a skipped review records `review: not_earned` and no
   rulings, and one that returned nothing is a plugin fault on the folder and a lost check). Routing
   (`integrationPark`) is by class, first match: any `spec_defect` parks the folder `spec_defect` on
-  its spec (a re-spec); any critical, or any `under`, `over` or `deviates`, parks it
-  `integration_critical` (the user routes the fix); any `cant_tell` parks it `cant_tell`, which
-  never counts as a pass. A drift with no behaviour behind it is the orchestrating session's call:
+  its spec (a re-spec); any critical, or any `under`, `over` or `deviates` whose `failure_scenario`
+  names the input, state or consumer that goes wrong (`harmfulDrift`), parks it
+  `integration_critical` (the user routes the fix). A drift that names no failure, and a `cant_tell`,
+  park nothing: they stand in the `claims` event, never as a pass, and the land check lists every one
+  under `unsettled_claims` (`unsettledClaims` in `lib/tree.mjs`) for the user to judge before they
+  land. A claim is held to the same consequence rule as a finding: a difference that breaks nothing
+  is the user's to read once, not a fix round, a re-review and another question. A drift with no
+  behaviour behind it that still parks is the orchestrating session's call:
   `accept` ([Session calls](#session-calls)) records its acceptance of the `under`, `over` and
   `deviates` claims it names, each with a reason, and the folder integrates unless something else
   still parks it. `equivalent` passes like `met`: the work does the claimed thing with the
@@ -3597,11 +3602,12 @@ at its approved head, [The judge](#the-judge); `contentionOf`, `waitsOn` and `co
 `landed {into, merged_sha, by}` (`by` who confirmed the word: `user` or `terminal`) · `nets {head_sha,
 nets[{file, why}], all, by}` (the user's ruling that test files are regression nets, `net`
 under [Session calls](#session-calls)) · `claims
-{head_sha, review: done | not_earned, claims[{claim, ruling}], said?, by?, accepted?[{claim, was,
+{head_sha, review: done | not_earned, claims[{claim, ruling, failure_scenario?}], said?, by?, accepted?[{claim, was,
 why}], rerule?}` (`ruling` is the reviewer's `met`, `equivalent`, `under`, `over`, `deviates`, `spec_defect` or
 `cant_tell`, or `accepted`, the session's on a drift claim, which `by: session` and `accepted` record
 with the ruling it had and its reason, and `rerule: true` marks a review that ruled only what a spec
-edit touched; each ruling's evidence is in the reviewer's stored return) · `noted {by, text}` (what a session learned about the node; no status
+edit touched; `failure_scenario` is kept only on a drift that names one, the one that parks; each
+ruling's evidence is in the reviewer's stored return) · `noted {by, text}` (what a session learned about the node; no status
 is derived from it) · `message {thread, from, msg, payload, round}` (a message code delivers to a
 thread's session, [Conversations](#conversations); its `execution` is `''` only on one the migration
 recorded, and no status is derived from it) · `withdrawn {messages[], why}` (the seqs of messages a
@@ -3999,7 +4005,8 @@ the session's, called as CLIs:
 
 - **land** — `check`: `into` (the user's checked-out branch), `effort_branch`, `effort_head` (the
   head its token names), `open_escalations`, `parked`, `human`, `drift {base_sha, base_moved,
-  commits, overlap}`, `root_status`, `root_claims`, `landing`, `token` (the act the user's answer
+  commits, overlap}`, `root_status`, `root_claims`, `unsettled_claims[{node, claim, ruling}]` (every
+  drift and `cant_tell` the latest review of a folder left without a park), `landing`, `token` (the act the user's answer
   must choose: `land <effort>@<head8>` over the effort branch's head, `land <effort>@` once the
   branch is gone); `merge`: `merged_sha`, `already` (nothing left to merge), `removed[]` (the
   branches swept), `kept[{branch, why}]`, once `landAct` has confirmed the user's word
@@ -4334,7 +4341,8 @@ threw.
 `{units[{unit, ruling: clean | findings, ids[], why}], findings[{id, severity: critical | major |
 minor, claim, evidence, failure_scenario, remedy?: code | tests}], fix_rulings[{id, status: fixed |
 not_fixed | regressed, evidence}], claims[{claim, ruling: met | equivalent | under | over |
-deviates | spec_defect | cant_tell, evidence}], notes}`. The units are those the brief lists — a
+deviates | spec_defect | cant_tell, evidence, failure_scenario}], notes}` (`failure_scenario` is
+`''` on every claim but a drift that names its failure). The units are those the brief lists — a
 leaf review's criteria, changed files and failing approved cases, an integration review's decisions, the
 criteria of its children with no review of their own, and its changed files — and a unit with no
 ruling is open. A leaf review returns `claims: []`. `remedy` is who must change to fix a finding

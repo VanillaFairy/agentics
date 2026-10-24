@@ -443,7 +443,6 @@ fault, its parent, a child or a consumer whose text it decides), have each ruled
 | `premise_mismatch`, `needs_respec` | the spec holding the node's entry: correct what the user rules wrong |
 | `integration_critical` | judge each drift claim the question lists (`[under]`, `[over]`, `[deviates]`). Behaviour-neutral, low regression risk (a name, a shape): write `{claims: [{claim, why}]}` with Write, each `claim` as listed, and run `node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" accept --repo . --effort <e> --node <id> --file <file>`: no spec edit, no re-review; tell the user what you accepted and why. Behaviour wrong: the folder's spec, a `task` entry that fixes it. Unsure, or a critical finding (never accepted): the folder's spec as the user rules; a re-spec over an unchanged head re-rules only what the edit touched |
 | `spec_defect` | the spec the question names: the claim cannot be met as written; the user rules how it changes. On this or `integration_critical`, a folder develop's planner wrote is never ruled: after the edit, relaunch, and the run reviews, prepares and compiles it |
-| `cant_tell` | the folder's spec: make the claim decidable, a criterion with a check or a `HUMAN:` criterion the user judges at landing |
 | `contract_drift` | merged work touched a contract the node consumes, and the planner could not take it: no ruler could rule, work already stood on the node's plan when it was ruled affected, or its replan faulted. The consumer's entry: the user rules it unaffected (then clear it with `retry` (b) and edit nothing: the ruling stands until those files change again, and a later ruler is handed it with the answer), re-designs it, or re-slices it |
 | `design_spend` | none: a folder develop's planner writes has spent on its design past its allowance, the question naming the numbers. The user goes on (clear it with `retry` (b); the next park comes one allowance later), cuts the scope or hands the work to a task (a re-spec of the entry in the parent spec) |
 | `spec_changed` | a folder you wrote was re-approved while work under it was under way, and no ruling found that work untouched: the user rules whether the dispatched work still stands, and re-specs what does not. A folder develop's planner wrote never reaches you with this return: the run hands it back to the planner, which re-derives it |
@@ -461,8 +460,9 @@ relaunch for them while it is still escalated.
 
 **e. Integration.** `integration.branch` and `head_sha`, then `reviews[{target, said}]` per
 folder: read each review's return, `.agentics/<e>/.state/executions/<stamp>/returns/<said>.json`,
-its `findings` and `claims`. Criticals, and claims that did not hold, were parked (c); majors are
-the user's decision queue, reported as written. A review that ran with planned children missing
+its `findings` and `claims`. Criticals, and drift claims naming a failure scenario, were parked (c);
+a drift naming none and a `cant_tell` parked nothing and wait for landing (`unsettled_claims`);
+majors are the user's decision queue, reported as written. A review that ran with planned children missing
 carries that caveat on every finding — say so.
 
 **f. `HUMAN:` criteria.** `node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" land --repo . --effort <e>

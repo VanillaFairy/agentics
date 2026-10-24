@@ -154,7 +154,9 @@ const rulerKey = (thread, node = '.') => `ruler|${node}|${thread}`
 const ruling = (node, kind, why = 'because ' + node, question = '') => ({ node, ruling: kind, why, question: kind === 'affected' ? (question || 'Does ' + node + ' still hold?') : question })
 const rulings = (...list) => ({ output: { rulings: list } })
 const REVIEW_EMPTY = { units: [], findings: [], fix_rulings: [], claims: [], notes: '' }
-const claim = (text, kind = 'met') => ({ claim: text, ruling: kind, evidence: 'src/x.mjs:1' })
+const claim = (text, kind = 'met') => ({
+  claim: text, ruling: kind, evidence: 'src/x.mjs:1', failure_scenario: ['under', 'over', 'deviates'].includes(kind) ? 'a caller of ' + text + ' breaks' : '',
+})
 const reviewed = (claims, findings = []) => ({ output: { ...REVIEW_EMPTY, claims, findings } })
 const CRITICAL = { id: 'F1', severity: 'critical', claim: 'the pair breaks', evidence: 'src/a.mjs:1', failure_scenario: 'a and b disagree' }
 

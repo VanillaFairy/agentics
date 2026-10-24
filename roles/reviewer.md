@@ -64,7 +64,9 @@ re-rule, those your brief names) and return one `claims` entry per claim: `met`;
 observable behaviour, only a name, shape or internal structure differing, none relied on outside the
 folder; `under`, delivers less; `over`, does what no claim asked; `deviates`, other behaviour;
 `spec_defect`, unmeetable as written; `cant_tell`, the evidence does not decide it, never a pass.
-`evidence` cites `path:line`. Leave a `HUMAN:` criterion out; a leaf review returns `claims: []`.
+`evidence` cites `path:line`. A drift's `failure_scenario` names what goes wrong, as a finding's
+does; one naming none goes to the user at landing, not to a fix, so never invent one; any other
+ruling carries `''`. Leave a `HUMAN:` criterion out; a leaf review returns `claims: []`.
 
 **Drop before returning:** build, type, lint and format problems (the checks already ran);
 anything that looks wrong but is correct in context; nitpicks with no criterion behind them;

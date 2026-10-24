@@ -10,7 +10,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" land --repo . --effort <e> --actio
 ```
 
 It prints the report as JSON: `open_escalations`, `parked`, `human`,
-`drift: {base_moved, commits, overlap}`, `root_claims`, `landing` and `token`, the act the user's
+`drift: {base_moved, commits, overlap}`, `root_claims`, `unsettled_claims`, `landing` and `token`, the act the user's
 answer must choose. It reads; it writes nothing. `ok: false` with `no_effort_branch` means nothing
 was ever built into an effort branch: there is nothing to land; say so and stop.
 
@@ -22,14 +22,16 @@ was ever built into an effort branch: there is nothing to land; say so and stop.
    `cant_tell` is not a pass, and no review is not a clean review. Under the verdicts it prints
    what the review said of the evidence behind each; a view that says the review's evidence was
    not written down has verdicts with nothing shown behind them: say so.
-2. **Open escalations and parked nodes.** Landing refuses over an open escalation or a parked
+2. **Unsettled claims**, each of `unsettled_claims` verbatim with its folder and ruling: a drift naming
+   no failure, or a claim no review could decide. It parked nothing and is no pass; the go accepts it.
+3. **Open escalations and parked nodes.** Landing refuses over an open escalation or a parked
    node; resolve those first (develop step 4b–c).
-3. **What is not in the effort branch.** When the user asked to land what exists, name every
+4. **What is not in the effort branch.** When the user asked to land what exists, name every
    planned node that has not merged (`lib/status.mjs show --repo . --effort <e>`), so a partial
    landing never reads as the whole.
-4. **Drift.** How the user's branch moved since the effort branch was cut: the commits and the
+5. **Drift.** How the user's branch moved since the effort branch was cut: the commits and the
    files. A file on both sides is where a conflict will be.
-5. **Every `HUMAN:` criterion**, verbatim, prefix included. These are the user's to judge before
+6. **Every `HUMAN:` criterion**, verbatim, prefix included. These are the user's to judge before
    the go, and nobody else surfaces them.
 
 ## 3. Ask

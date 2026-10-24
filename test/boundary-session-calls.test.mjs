@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 import { acceptDrift, land, landAct } from '../lib/boundary.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
 import { dispatchKey, executionDir, returnPath, revParse, writeJson } from '../lib/store.mjs'
-import { readTree, standingReview } from '../lib/tree.mjs'
+import { readTree, standingReview, unsettledClaims } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 import { commitIn, git, leaf, repo, root } from './harness/boundary-fixture.mjs'
 
@@ -319,7 +319,7 @@ test('a note by --text and --text-file is refused bad_args, and by a file that i
 // ================================================================== accept
 
 const REVIEW_THREAD = dispatchKey({ node: 'c', role: 'reviewer', thread: 'integration:c:1', round: 1 })
-const drift = (text, ruling = 'under') => ({ claim: text, ruling })
+const drift = (text, ruling = 'under') => ({ claim: text, ruling, ...(ruling === 'met' ? {} : { failure_scenario: 'a reader of ' + text + ' breaks' }) })
 const settle = (r, id) => readTree(r, E).status.get(id)
 const accepted = (r) => eventsOf(r, 'claims').filter((e) => e.by === 'session')
 
@@ -374,11 +374,12 @@ test('accepting some drift claims leaves the folder parked, on a fresh park of t
   assert.deepEqual(accepted(r).at(-1).accepted.map((a) => a.claim), ['names match', 'shape matches'], 'the second acceptance keeps the first')
 })
 
-test('what the acceptance leaves undecided earns its own park, never a pass', (t) => {
+test('what the acceptance leaves undecided parks nothing and stands unsettled for landing, never a pass', (t) => {
   const r = judged(t, { claims: [drift('names match'), { claim: 'latency stays flat', ruling: 'cant_tell' }] })
   const out = acceptDrift(r, E, 'c', take('names match'))
-  assert.equal(out.park, 'cant_tell')
-  assert.equal(settle(r, 'c').last.return, 'cant_tell')
+  assert.equal(out.park, null)
+  const tree = readTree(r, E)
+  assert.deepEqual(unsettledClaims(tree.nodes, tree.events), [{ node: 'c', claim: 'latency stays flat', ruling: 'cant_tell' }])
 })
 
 test("accept refuses where the verdict is not the session's, recording nothing", (t) => {

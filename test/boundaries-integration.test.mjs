@@ -13,7 +13,7 @@ import { executionContext } from '../lib/boundaries/records.mjs'
 import { folderReview, ruleClose } from '../lib/boundaries/integration.mjs'
 import { executionLog, readLog } from '../lib/ledger.mjs'
 import { dispatchKey, posix, returnPath, specPath, writeJson } from '../lib/store.mjs'
-import { readTree } from '../lib/tree.mjs'
+import { readTree, unsettledClaims } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 import { leaf, repo, root, STAMP } from './harness/boundary-fixture.mjs'
 
@@ -43,7 +43,8 @@ function stored(xc, node, role, thread, value) {
 const review = (xc, value) => stored(xc, '.', 'reviewer', 'integration:.:1',
   { units: [], findings: [], fix_rulings: [], claims: [], notes: '', ...value })
 const ruler = (xc, rulings) => stored(xc, '.', 'ruler', 'ruler:drift:x', { rulings })
-const claim = (ruling, text = 'claim ' + ruling) => ({ claim: text, ruling, evidence: 'src/a.mjs:1' })
+const claim = (ruling, text = 'claim ' + ruling) => ({ claim: text, ruling, evidence: 'src/a.mjs:1', failure_scenario: '' })
+const drifting = (ruling, text) => ({ ...claim(ruling, text), failure_scenario: 'a save written now reads back empty' })
 const critical = { id: 'F1', severity: 'critical', claim: 'wrong', evidence: 'src/a.mjs:1', failure_scenario: 'it breaks' }
 const events = (r, kind) => readLog(r, E, 'events').entries.filter((e) => e.kind === kind)
 const state = (r, kind) => readLog(r, E, 'state:' + STAMP).entries.filter((e) => e.kind === kind)
@@ -85,11 +86,11 @@ test('a spec_defect parks the folder spec_defect on its spec, before every other
   assert.equal(p.said, dispatch)
 })
 
-test('a critical finding, or an under, over or deviates claim, parks integration_critical', (t) => {
+test('a critical finding, or an under, over or deviates claim naming its failure, parks integration_critical', (t) => {
   const { r, xc } = setup(t, [A])
   const cases = [
     { claims: [claim('met')], findings: [critical] },
-    { claims: [claim('under')] }, { claims: [claim('over')] }, { claims: [claim('deviates')] },
+    { claims: [drifting('under')] }, { claims: [drifting('over')] }, { claims: [drifting('deviates')] },
     { claims: [claim('cant_tell')], findings: [critical] },
   ]
   for (const [i, value] of cases.entries()) {
@@ -103,11 +104,25 @@ test('a critical finding, or an under, over or deviates claim, parks integration
   assert.ok(parks.at(-1).seq > events(r, 'claims').at(-1).seq && tree.status.get('.').last.seq === parks.at(-1).seq)
 })
 
-test('a cant_tell claim alone parks cant_tell: it never counts as a pass', (t) => {
+test('a cant_tell, or a drift naming no failure, parks nothing and stands unsettled for landing, never as a pass', (t) => {
   const { r, xc } = setup(t, [A])
-  const out = folderReview(xc, { target: '.', head: 'h1', dispatch: review(xc, { claims: [claim('met'), claim('cant_tell')] }), spec_path: 'S' })
-  assert.deepEqual(out.stops.map((s) => s.reason), ['cant_tell'])
-  assert.equal(events(r, 'parked')[0].return, 'cant_tell')
+  const claims = [claim('met'), claim('cant_tell'), claim('under'), claim('over'), claim('deviates')]
+  const out = folderReview(xc, { target: '.', head: 'h1', dispatch: review(xc, { claims }), spec_path: 'S' })
+  assert.deepEqual(out.stops, [])
+  assert.equal(events(r, 'parked').length, 0)
+  const tree = readTree(r, E)
+  assert.deepEqual(unsettledClaims(tree.nodes, tree.events).map((c) => [c.node, c.ruling]),
+    [['.', 'cant_tell'], ['.', 'under'], ['.', 'over'], ['.', 'deviates']])
+})
+
+test('a drift that names its failure keeps the scenario in its claims event; any other claim records none', (t) => {
+  const { r, xc } = setup(t, [A])
+  folderReview(xc, { target: '.', head: 'h1', dispatch: review(xc, { claims: [drifting('under', 'u'), claim('over', 'o'), claim('met', 'm')] }), spec_path: 'S' })
+  const [c] = events(r, 'claims')
+  assert.deepEqual(c.claims, [
+    { claim: 'u', ruling: 'under', failure_scenario: 'a save written now reads back empty' },
+    { claim: 'o', ruling: 'over' }, { claim: 'm', ruling: 'met' },
+  ])
 })
 
 test('a review earning several classes parks the folder once', (t) => {
@@ -127,7 +142,7 @@ test('a folder review with no stored return is a role fault on the folder, and r
 
 test('a folder review run twice records nothing twice and reports the same', (t) => {
   const { r, xc } = setup(t, [A])
-  const args = { target: '.', head: 'h1', dispatch: review(xc, { claims: [claim('under')] }), spec_path: 'S' }
+  const args = { target: '.', head: 'h1', dispatch: review(xc, { claims: [drifting('under')] }), spec_path: 'S' }
   const first = folderReview(xc, args)
   assert.deepEqual(folderReview(xc, args), first)
   assert.equal(events(r, 'claims').length, 1)
@@ -145,7 +160,7 @@ const unit = (name) => ({ unit: name, ruling: 'clean', why: 'ruled' })
 const PRIOR = {
   claims: [
     { claim: 'a', ruling: 'met' }, { claim: 'b', ruling: 'equivalent' }, { claim: 'c', ruling: 'accepted' },
-    { claim: 'd', ruling: 'under' }, { claim: 'e', ruling: 'cant_tell' },
+    { claim: 'd', ruling: 'under', failure_scenario: 'it breaks' }, { claim: 'e', ruling: 'cant_tell' },
   ],
 }
 

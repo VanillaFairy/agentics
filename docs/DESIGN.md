@@ -1829,7 +1829,11 @@ carries forward every earlier finding whose
 lines no hunk touched, in the probers' prompts and in the round's record: the same anchor check as
 all other evidence. A finding whose evidence quotes a passage of the text it was found in that the
 text no longer holds (`quotesGone` in `lib/evidence.mjs`) is not carried, though its span stands: the
-rewritten lines are among the changed parts, reviewed afresh. An earlier `clean` ruling is not carried: the
+rewritten lines are among the changed parts, reviewed afresh. Nor, when the artefact is a folder's
+spec, is a finding its folder settled as the gate counts it (`settledFindings` in
+`lib/approval.mjs`): one discarded, or one incorporated whose section a later review ruled clean.
+An incorporation no review has ruled on yet is still carried, and an ambiguity so carried keeps the
+gate shut. An earlier `clean` ruling is not carried: the
 sections no hunk touched are out of the round's scope. An artefact unchanged since `since` buys no
 agent at all and records one empty round, every earlier finding carried; a `since` the store does
 not hold intact makes the round whole. A relaunched round whose journaled scope names a snapshot

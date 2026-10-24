@@ -12,9 +12,9 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { reviewedFromResult } from '../lib/approval.mjs'
+import { recordDisposition, reviewedFromResult } from '../lib/approval.mjs'
 import { carriedFindings, changedParts, liveItems, recordProbe, reviewScope, sectionsOf, unitsOf } from '../lib/evidence.mjs'
-import { readLog } from '../lib/ledger.mjs'
+import { append, readLog } from '../lib/ledger.mjs'
 import { locateMaterial, probe } from '../lib/programs/probe.mjs'
 import { evidenceReturnsDir, evidenceSnapshotsDir } from '../lib/store.mjs'
 import { closedSearch, closingRound, hitTurn } from './fast/harness/scout.mjs'
@@ -258,6 +258,23 @@ test('a finding on a changed line is not carried', async (t) => {
   assert.ok(!carriedItems.includes(suspect), 'the finding on the changed line is not carried')
   const others = LAST.filter((f) => f !== ON_CHANGED).map((f) => itemOf[f.claim])
   assert.deepEqual(sorted(carriedItems), sorted(others), "the last round's other findings are carried")
+})
+
+test("a finding the spec's folder settled as its gate counts it is not carried; an incorporation not yet ruled clean is", async (t) => {
+  const path = '.agentics/e1/DESIGN.md'
+  const w = reviewedThenEdited(t, { path })
+  const [ambiguity, gap, note] = [AMBIGUITY, GAP, NOTE].map((f) => w.itemOf[f.claim])
+  for (const [finding, outcome] of [[ambiguity, 'incorporated'], [gap, 'incorporated'], [note, 'discarded']]) {
+    assert.equal(recordDisposition(w.rig.repo, 'e1', '.', { finding, outcome, by: 'planner' }).ok, true)
+  }
+  // A later review ruled the ambiguity's section clean: the gate counts its incorporation settled.
+  append(w.rig.repo, 'e1', 'ledger', { kind: 'reviewed', folder: '.', hash: 'abcd0123', complete: true, remaining: [], ambiguities: [], clean: ['intent'], sections: { [ambiguity]: 'intent' } })
+  const n = narrowed(EDITED, reviewScope(w.rig.repo, w.file, w.since))
+  const result = await probe(w.rig.relaunch(n.script).ctx, argsFor(w.rig.repo, path, { since: w.since }))
+  const carried = result.findings.filter((f) => f.carried).map((f) => f.item)
+  assert.deepEqual(carried, [gap], 'the gap whose incorporation no review has ruled on yet is still carried')
+  const told = proberCalls(w.rig).map((c) => c.brief).join('\n')
+  assert.ok(!told.includes('CARRIED_AMBIGUITY_TOKEN') && !told.includes('CARRIED_NOTE_TOKEN'), 'no prober is told a settled finding')
 })
 
 test('a carried ambiguity is open and keeps the probe unratifiable', async (t) => {

@@ -2930,7 +2930,7 @@ and reviewed like any other.
   what the prior round left open; it returns its rulings, and `leaf-review` computes the exit
   (`reviewExit` in `lib/verdict.mjs`), never judged:
   - Round 1 reviews the whole series; later rounds rule on the open blockers and review the fix
-    span alone — the merged change is reviewed whole again at integration.
+    span alone — the merged change is reviewed whole at the folder's first integration review.
   - The blocking set is the round's criticals, plus its majors when the leaf is a yardstick —
     a `red`, an `audit`, or one that `provides` a contract (`isYardstick` in `lib/tree.mjs`) —
     and the finding carries a non-empty `failure_scenario`. A red's tests are what its green is
@@ -3034,24 +3034,31 @@ and reviewed like any other.
   same observable behaviour, only a name, a signature's shape or an internal structure differing,
   and nothing outside the folder relies on the difference.
 
-  **A re-spec over an unchanged head re-rules only what the edit touched.** A review that stands no
-  more only because the folder itself changed, a revision or a `replanned` event on it, over a head
-  that did not move (no `merged` beneath it and no `outside` on or under it since: `rerulableReview`
-  in `lib/tree.mjs`, which shares its outdating predicate with `standingReview`) is not redone whole.
-  When the head is the one that review judged, its stored return holds no critical, and the spec text
-  it judged (the folder's latest `compiled` ledger line before it, the kept copy of that hash) differs
-  from the spec now, `reviewUnit` dispatches `integrationRerule` instead: the span, the edit as a
-  diff (`keptSpecDiff` in `lib/spec.mjs`, the diff `respec` shows), the last review's claims numbered
-  `claim:<n>`, the units (`claim:<n>` for each not ruled `met`, `equivalent` or `accepted`, and
-  `change`, every claim the changed lines make or alter) and the spec whole. The reviewer returns
-  only the claims it ruled; `folderReview` records `rerule: true` with the prior claims that passed
-  and were not restated, the returned claims, and each prior unit claim whose `claim:<n>` unit the
-  return did not rule, carried as it was so that it still parks. Otherwise the review is whole.
+  **After its first review, a folder is reviewed only where it moved.** Once a finished review of
+  the folder recording the blockers it left `open` stands no more — a revision of the folder, a
+  `replanned` event on it, or a merge beneath it came after it — and no `outside` event on or under
+  the folder came since (`narrowableReview` in `lib/tree.mjs`), the next review is not redone whole.
+  `reviewUnit` dispatches `integrationRerule`, briefed by `narrowPlan`: the folder's span for
+  context; what merged since, the span from the head that review judged to the head now; the spec's
+  edit since the text it judged (the folder's latest `compiled` ledger line before it, the kept
+  copy of that hash, diffed by `keptSpecDiff` in `lib/spec.mjs`, the diff `respec` shows), when it
+  changed; the last review's claims numbered `claim:<n>`; the blockers it left open, each to be ruled
+  in `fix_rulings`; every answer the user recorded on the folder, the latest per question, as settled;
+  the units (`claim:<n>` for each claim not ruled `met`, `equivalent` or `accepted`, `change` over an
+  edit, `file:<path>` for each file changed since that head, `decision:<id>` for each decision the
+  folder defines that a leaf merged since realises); and the spec whole. The reviewer returns only
+  the claims it ruled; `folderReview` records `rerule: true` with the prior claims that passed and
+  were not restated, the returned claims, and each prior unit claim whose `claim:<n>` unit the return
+  did not rule, carried as it was so that it still parks. Every review records the criticals it
+  leaves `open`: its own, and each prior one it neither ruled `fixed` nor reported again
+  (`openBlockers`), which parks as its own do. A spec whose judged text cannot be diffed, a folder
+  with outside work since, and a first review are reviewed whole.
 
-  **Why:** a re-spec that only records what was built moves no code, so redoing the whole review
-  over the same head buys nothing but a fresh batch of nits, and the folder parks again on what the
-  user just settled. A drift with no behaviour behind it is the orchestrator's call, recorded with
-  its reason (`accept`); doubt still buys a review, a narrowed one.
+  **Why:** a fix round moves a few files, yet a whole review re-rules every file and every claim
+  of the folder, buys a fresh batch of nits, and parks the folder again on what the user just
+  settled. A ruling stands until what it judged moves; the user's answers reach the reviewer, so it
+  does not dispute what they chose. A drift with no behaviour behind it is the orchestrator's call,
+  recorded with its reason (`accept`); doubt still buys a review, a narrowed one.
 - **Establishing commands** is judgment: when no build or test command is established, leaf-close
   hands back `command_unknown`, and an investigator establishes them once for the execution — one
   call on thread `investigator`, in a throwaway worktree detached at the envelope's base, shared by
@@ -3602,8 +3609,9 @@ at its approved head, [The judge](#the-judge); `contentionOf`, `waitsOn` and `co
 `landed {into, merged_sha, by}` (`by` who confirmed the word: `user` or `terminal`) · `nets {head_sha,
 nets[{file, why}], all, by}` (the user's ruling that test files are regression nets, `net`
 under [Session calls](#session-calls)) · `claims
-{head_sha, review: done | not_earned, claims[{claim, ruling, failure_scenario?}], said?, by?, accepted?[{claim, was,
-why}], rerule?}` (`ruling` is the reviewer's `met`, `equivalent`, `under`, `over`, `deviates`, `spec_defect` or
+{head_sha, review: done | not_earned, claims[{claim, ruling, failure_scenario?}], open?[{id, claim,
+failure_scenario}], said?, by?, accepted?[{claim, was, why}], rerule?}` (`open` is every critical a
+finished review leaves open, its own and the prior's it did not rule fixed) (`ruling` is the reviewer's `met`, `equivalent`, `under`, `over`, `deviates`, `spec_defect` or
 `cant_tell`, or `accepted`, the session's on a drift claim, which `by: session` and `accepted` record
 with the ruling it had and its reason, and `rerule: true` marks a review that ruled only what a spec
 edit touched; `failure_scenario` is kept only on a drift that names one, the one that parks; each
@@ -4052,8 +4060,8 @@ the session's, called as CLIs:
   {kind, message}}`, writing nothing: `not_a_folder` (not a live composite), `no_review` (no
   `claims` event stands, or it is `not_earned`), `not_a_drift_park` (the folder is not parked
   `integration_critical` by that very review: its `said` is the park's), `no_return` or
-  `critical_finding` (the review's stored return is gone, or holds a `critical`, which is never
-  accepted), `not_acceptable` (a listed claim is not in the event, or was not ruled `under`, `over`
+  `critical_finding` (the review's stored return is gone, or holds a `critical`, or its event leaves
+  one `open`, which is never accepted), `not_acceptable` (a listed claim is not in the event, or was not ruled `under`, `over`
   or `deviates`: a `spec_defect` needs a spec change and a `cant_tell` is never a pass), `no_reason`
   (an empty `why`), `no_claims` (an empty list) and `bad_file` (not that shape, or a claim listed
   twice); a file that does not resolve refuses `unknown_file`. Acceptance may be partial. On success

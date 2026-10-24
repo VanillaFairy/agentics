@@ -35,6 +35,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import { ensureIntegration, ensureLeaf } from '../lib/integration.mjs'
+import { append } from '../lib/ledger.mjs'
 import { readOnlyPermissions } from '../lib/permissions.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
@@ -444,23 +445,54 @@ test('a spec re-approved over an unchanged head is re-ruled: the edit and the cl
   assert.equal(statusOf(w.rig, '.'), 'integrated')
 })
 
-test('a re-approval is reviewed whole when the head moved, the last review found a critical, or the spec did not change', SLOW, async (t) => {
-  const cases = [
-    ['the head moved', { first: [claim('a is there')], moved: true }],
-    ['the last review found a critical', { first: [claim('a is there')], findings: [CRITICAL] }],
-    ['the spec is unchanged', { first: [claim('a is there')], edit: false }],
-  ]
-  for (const [what, setup] of cases) {
-    const w = await respecced(t, setup)
-    w.rig.script({ [reviewerKey(THREAD_SECOND)]: [reviewed([claim('a is there'), claim('b is there')])] })
-    const out = await review(w)
+const unitsIn = (brief) => brief.split('## The units you rule')[1].split('\n## ')[0].split('\n').filter((l) => l.startsWith('- '))
 
-    assert.equal(out.outcome, 'reviewed', what)
+test('a review after work merged is narrowed to what moved: its files, the decisions it realises and the claims not passed, every other ruling standing', SLOW, async (t) => {
+  const w = await respecced(t, { first: [claim('a is there'), claim('b is there', 'under')], moved: true, edit: false })
+  w.rig.log.append('merged', { node: 'b', into: w.rig.branchOf('.'), merged_sha: w.head, head_sha: w.head })
+  const ruled = ['claim:2', 'file:src/c.mjs', 'decision:D2'].map((unit) => ({ unit, ruling: 'clean', why: 'ruled' }))
+  w.rig.script({ [reviewerKey(THREAD_SECOND)]: [{ output: { ...REVIEW_EMPTY, units: ruled, claims: [claim('b is there')] } }] })
+  const out = await review(w)
+
+  assert.equal(out.outcome, 'reviewed')
+  const c = w.rig.calls.at(-1)
+  assert.equal(isRerule(c.brief), true)
+  assert.ok(c.brief.includes('## What merged since the last review'))
+  assert.equal(c.brief.includes('## The edit to the spec'), false, 'the spec did not change')
+  assert.deepEqual(unitsIn(c.brief), ['- claim:2', '- file:src/c.mjs', '- decision:D2'], 'only what moved, b merged since, and the claim not passed')
+  const second = kinds(w.rig, 'claims').at(-1)
+  assert.equal(second.rerule, true)
+  assert.deepEqual(second.claims.map((x) => [x.claim, x.ruling]), [['a is there', 'met'], ['b is there', 'met']])
+  assert.equal(statusOf(w.rig, '.'), 'integrated')
+})
+
+test('a critical the last review left open is put to the next for a fix ruling, and parks again until ruled fixed', SLOW, async (t) => {
+  for (const [status, parks] of [['not_fixed', 1], ['fixed', 0]]) {
+    const w = await respecced(t, { first: [claim('a is there')], findings: [CRITICAL], moved: true, edit: false })
+    assert.deepEqual(kinds(w.rig, 'claims')[0].open, [{ id: 'F1', claim: 'the pair breaks', failure_scenario: 'a and b disagree' }])
+    const parkedBefore = kinds(w.rig, 'parked').length
+    w.rig.script({ [reviewerKey(THREAD_SECOND)]: [{ output: { ...REVIEW_EMPTY, units: [{ unit: 'file:src/c.mjs', ruling: 'clean', why: 'ruled' }], fix_rulings: [{ id: 'F1', status, evidence: 'src/a.mjs:1' }] } }] })
+    assert.equal((await review(w)).outcome, 'reviewed', status)
+
     const c = w.rig.calls.at(-1)
-    assert.equal(isRerule(c.brief), false, what)
-    assert.ok(c.brief.includes('decision:D1'), what + ': the whole review\'s units')
-    assert.equal(kinds(w.rig, 'claims').at(-1).rerule, undefined, what)
+    assert.ok(c.brief.includes('## Blockers the last review left open') && c.brief.includes('F1: the pair breaks — fails: a and b disagree'), status)
+    assert.equal(kinds(w.rig, 'parked').length - parkedBefore, parks, status)
+    assert.deepEqual(kinds(w.rig, 'claims').at(-1).open.map((o) => o.id), parks ? ['F1'] : [], status)
   }
+})
+
+test("the user's answers on the folder reach a narrowed review, the latest per question", SLOW, async (t) => {
+  const w = await respecced(t, { first: [claim('a is there')], moved: true, edit: false })
+  append(w.rig.repo, w.rig.effort, 'ledger', { kind: 'answered', asked: 1, nodes: ['.'], answers: [{ question: 'Guard every callback?', answer: 'Yes' }] })
+  append(w.rig.repo, w.rig.effort, 'ledger', { kind: 'answered', asked: 2, nodes: ['.'], answers: [{ question: 'Guard every callback?', answer: 'No: a throw may crash the game' }] })
+  append(w.rig.repo, w.rig.effort, 'ledger', { kind: 'answered', asked: 3, nodes: ['c'], answers: [{ question: 'Another folder?', answer: 'Not this one' }] })
+  w.rig.script({ [reviewerKey(THREAD_SECOND)]: [{ output: { ...REVIEW_EMPTY, units: [{ unit: 'file:src/c.mjs', ruling: 'clean', why: 'ruled' }] } }] })
+  assert.equal((await review(w)).outcome, 'reviewed')
+
+  const brief = w.rig.calls.at(-1).brief
+  assert.ok(brief.includes('Answered: No: a throw may crash the game'))
+  assert.equal(brief.includes('Answered: Yes'), false, 'only the latest answer to a question')
+  assert.equal(brief.includes('Not this one'), false, "another folder's answer")
 })
 
 test('an integration reviewer leaves an approved leaf approved: its dispatch names the folder', SLOW, async (t) => {

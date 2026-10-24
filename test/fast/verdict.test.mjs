@@ -265,6 +265,22 @@ test('a lone discriminator on a tdd leaf escalates on round one as discriminator
   assert.equal(d.failures.length, 1)
 })
 
+test('a tdd change the typecheck rejects at base is discriminated by the check that failed there', () => {
+  const check = 'npx tsc --noEmit && ! git grep -n "optional?:" -- src/x.ts'
+  const typed = (over) => m({ discriminator: [disc(false, true), upkeep(true)], typecheck: 'passed', checks: [{ command: check, status: 'passed' }], ...over })
+  for (const s of [{ kind: 'typecheck', command: 'npx tsc --noEmit', failed_on_base: true }, { kind: 'check', command: check, failed_on_base: true }]) {
+    assert.equal(closeDecision(typed({ static_on_base: [s] }), LEAVES.tdd).next, 'approve', s.kind + ' failed at base with the tests restored')
+  }
+  const undecided = (over, why) => assert.equal(closeDecision(typed(over), LEAVES.tdd).reason, 'discriminator_undecidable', why)
+  undecided({ static_on_base: [{ kind: 'typecheck', command: 'npx tsc --noEmit', failed_on_base: false }] }, 'the typecheck held at base')
+  undecided({ static_on_base: [] }, 'nothing static was asked')
+  const unrun = closeDecision(typed({ static_on_base: [{ kind: 'check', command: check, failed_on_base: true }], checks: [{ command: check, status: 'unrunnable' }] }), LEAVES.tdd)
+  assert.ok(unrun.failures.some((f) => f.check === 'discriminator'), 'a check that does not pass now pins nothing')
+  // A behaviour change keeps the test-first rule: a test file that failed at base is never waived.
+  const behaviour = typed({ discriminator: [disc(true, false), disc(false, true, 'test/z.test.mjs')], static_on_base: [{ kind: 'typecheck', command: 'npx tsc --noEmit', failed_on_base: true }] })
+  assert.equal(closeDecision(behaviour, LEAVES.tdd).next, 'fix')
+})
+
 test('a file the user ruled a regression net is held to passes_now alone, beside a criterion check', () => {
   const passed = [{ command: 'grep wired', status: 'passed' }]
   const nets = ['test/x.test.mjs']

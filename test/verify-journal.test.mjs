@@ -80,7 +80,7 @@ test('the observation is journalled by the process that observed it, through the
   assert.deepEqual(line.checks, [])
   assert.deepEqual(Object.keys(line).sort(), [
     'approved_failing', 'base_sha', 'baseline_failing', 'branch', 'build', 'checks', 'discriminator', 'failing_tests',
-    'head_sha', 'key', 'kind', 'mutations', 'node', 'producer', 'seq', 'series_findings', 'stop_reason', 'suite', 'suite_scope', 'tests_rewritten', 'typecheck',
+    'head_sha', 'key', 'kind', 'mutations', 'node', 'producer', 'seq', 'series_findings', 'static_on_base', 'stop_reason', 'suite', 'suite_scope', 'tests_rewritten', 'typecheck',
     'worktree',
   ], 'a resume re-derives the verdict from this line alone, so it carries every field ' +
      'lib/verdict.mjs reads — `typecheck`, `mutations` and `checks` included')

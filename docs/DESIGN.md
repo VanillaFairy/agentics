@@ -2941,7 +2941,13 @@ and reviewed like any other.
   identically escalate (`verify_not_converging`). lib/verdict.mjs escalates what no commit of
   the leaf can move — a discriminator that is the only failing fact on a `tdd` leaf, or on a `red`
   leaf whose only failing fact is a file that adds a case and passes at base and now beside the tests
-  that fail as they must (`discriminator_undecidable`) — and any environment error by its kind. Such a file may be ruled a
+  that fail as they must (`discriminator_undecidable`) — and any environment error by its kind. A
+  tdd leaf whose every changed test file passes at base and now is not undecidable when the change
+  is one the typecheck rejects at base: the established typecheck, or a criterion check that runs
+  it, run at base with the leaf's test files restored, fails there and passes now
+  (`static_on_base`, `staticallyPinned` in `lib/verdict.mjs`). That check is its discriminator, and
+  its test files are held to passing now. A test file that failed at base is never waived, so a
+  behaviour change keeps its test-first discriminator. Such a file may be ruled a
   regression net over behaviour that held at base (`net`, [Session calls](#session-calls)): by the
   session when the file only pins that behaviour ([Skills](#skills), who settles a stop), else by the
   user. At
@@ -3998,6 +4004,9 @@ nothing ran); `suite_output_tail` (only when the suite failed);
 `failing_tests[{file, id}]`; `baseline_failing[{file, id}]` (failing tests that fail at the base
 too); `discriminator[{test_id, adds_test, failed_on_base, passes_now}]` (`adds_test` false for a
 file of the leaf's own diff that adds no test case; an entry without it is read as adding one);
+`static_on_base[{kind, command, failed_on_base}]` (on a tdd leaf whose every changed test file held
+at base, the established typecheck, `kind: typecheck`, and each criterion check that runs it, `kind:
+check`, each run at base with the tests under measurement restored; empty otherwise);
 `mutations[{file, find, replace, applied, unapplied_reason, expect_failing, observed_failing,
 bites}]`; `series_findings[{sha, check, message, blocking}]`; `checks[{command, status,
 failing_tests, baseline_failing}]` (`status` `passed | failed | unrunnable`);

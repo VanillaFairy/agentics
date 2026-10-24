@@ -1470,7 +1470,8 @@ any fails:
    failing tests of a `red` leaf, which never reach the effort branch without their green.
 6. **Decided.** Its brief carries every decision the executor needs.
 7. **Fits one executor.** Brief + expected files + reads fit the executor model's context budget
-   with headroom for its turns, computed by script from file sizes and the model's limit.
+   with headroom for its turns, computed by script from file sizes, at the bytes a token a first
+   read measured (`BYTES_PER_TOKEN` in `lib/roles.mjs`), and the model's limit.
 
 Conditions 2, 4 and 7 are computed by `lib/atomicity.mjs`; 1, 3, 5 and 6 are judgment and are
 never reported by a script, because a script that claimed to check "one concern" would be a script

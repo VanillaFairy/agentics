@@ -11,6 +11,7 @@ import {
 } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 import { checkAtomicity, coupledOf, fitOf, ordered } from '../lib/atomicity.mjs'
+import { BYTES_PER_TOKEN } from '../lib/roles.mjs'
 import { trace } from '../lib/traceability.mjs'
 import { ancestorsOf, branchOf, flat, nodeIdProblem, parentOf, safeSlug, worktreeOf } from '../lib/store.mjs'
 
@@ -145,6 +146,16 @@ test('atomicity: fit is computed from file sizes against the model budget', () =
   assert.deepEqual(fit.files.map((f) => f.missing), [false, true])
   const nodes = tree(root(), leaf('a', { expects: ['src/big.js'] }))
   assert.deepEqual(checkAtomicity(nodes, 'a', { repo: r }).map((f) => f.condition), [7])
+})
+
+test('atomicity: fit estimates tokens at the bytes a token a first read measured', () => {
+  const r = repo()
+  mkdirSync(join(r, 'src'))
+  // Fits at 3.5 bytes a token, not at the measured figure: a leaf a first read could not hold.
+  writeFileSync(join(r, 'src', 'mid.js'), 'x'.repeat(300000))
+  const fit = fitOf(r, normalizeNode(leaf('a', { expects: ['src/mid.js'] })), { briefBytes: 0 })
+  assert.equal(fit.tokens, Math.ceil(300000 / BYTES_PER_TOKEN))
+  assert.equal(fit.fits, false)
 })
 
 test('addNodes validates against the tree on disk, all or nothing, and logs planned/replanned', () => {

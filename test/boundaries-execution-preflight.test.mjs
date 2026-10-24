@@ -19,7 +19,7 @@ import { preflight } from '../lib/boundaries/execution.mjs'
 import { executionContext } from '../lib/boundaries/records.mjs'
 import { executionLog } from '../lib/ledger.mjs'
 import { trace } from '../lib/traceability.mjs'
-import { readTree } from '../lib/tree.mjs'
+import { addNodes, readTree } from '../lib/tree.mjs'
 import { COMMANDS, STAMP, commitIn, git, leaf, root } from './harness/boundary-fixture.mjs'
 import {
   E, STAMP2, ADD, world, ctxOf, commandsFile, envPath, envelopeOf, stateOf, journalOf, stateKind, head,
@@ -260,7 +260,7 @@ test("confirmed equal to the latest checkpoint's seq passes it and records check
   assert.equal(stateKind(r, 'checkpoint').length, 1, 'the checkpoint is not raised again')
 })
 
-test("a confirmed naming an older checkpoint's seq does not pass it", async (t) => {
+test("a confirmed naming an older checkpoint's seq passes it while the gaps it found stand", async (t) => {
   const r = world(t, WITH_GAPS)
   const cf = commandsFile(t)
   const first = await preflight(ctxOf(r), { commands_file: cf })
@@ -270,9 +270,35 @@ test("a confirmed naming an older checkpoint's seq does not pass it", async (t) 
   assert.equal(stateKind(r, 'checkpoint').length, 2)
 
   const third = await preflight(ctxOf(r), { confirmed: first.checkpoint.seq, commands_file: cf })
-  assert.equal(third.checkpoint.reason, 'blocking_gaps')
-  assert.ok(third.checkpoint.seq > second.checkpoint.seq)
-  assert.equal(stateKind(r, 'checkpoint-confirmed').length, 0)
+  assert.equal(third.checkpoint, null)
+  assert.deepEqual(stateKind(r, 'checkpoint-confirmed').map((c) => c.reason), ['blocking_gaps'])
+})
+
+test('a confirmation made in a new execution passes the checkpoint an earlier one stopped at, until its gaps change', async (t) => {
+  const r = world(t, [root({ defines: [{ id: 'D1', text: 'x' }, { id: 'D2', text: 'y' }, { id: 'D3', text: 'z' }] }), leaf('a', { expects: [ADD] })])
+  const cf = commandsFile(t)
+  const one = ctxOf(r, STAMP)
+  const first = await preflight(one, { commands_file: cf })
+  assert.equal(first.checkpoint.reason, 'blocking_gaps')
+  one.log.append('closed', { status: 'done' })
+
+  const two = ctxOf(r, STAMP2)
+  const second = await preflight(two, { confirmed: first.checkpoint.seq, commands_file: cf })
+  assert.equal(second.ok, true)
+  assert.equal(second.checkpoint, null, 'the confirmation names the checkpoint the closed execution stopped at')
+  assert.equal(stateKind(r, 'checkpoint', STAMP2).length, 0)
+  const [confirmation] = stateKind(r, 'checkpoint-confirmed', STAMP2)
+  assert.deepEqual(confirmation.gaps, stateKind(r, 'checkpoint', STAMP)[0].gaps)
+  two.log.append('closed', { status: 'done' })
+
+  const three = ctxOf(r, STAMP3)
+  assert.equal((await preflight(three, { commands_file: cf })).checkpoint, null, 'a later execution over the same gaps is not stopped again')
+  three.log.append('closed', { status: 'done' })
+
+  const added = addNodes(r, E, [leaf('b', { expects: ['README.md'], decisions: ['D2'], acceptance: [{ text: 'b works', check: 'node --test', decisions: ['D2'] }] })])
+  assert.equal(added.ok, true, JSON.stringify(added.problems))
+  const changed = await preflight(ctxOf(r, '20260925-150000'), { commands_file: cf })
+  assert.equal(changed.checkpoint.reason, 'blocking_gaps', 'gaps that changed are not what the user confirmed')
 })
 
 test('a confirmed seq that is no checkpoint line passes nothing', async (t) => {

@@ -3404,10 +3404,13 @@ another dial is another execution.
 A checkpoint dispatches nothing new and says how to proceed. What it found — the overlapping
 executions, the gaps, the branches with their unaccounted commits — is on its state line, and
 `lib/status.mjs checkpoint --effort <e> --execution <stamp>` prints it. A relaunch with
-`confirmed` set to the latest checkpoint line's `seq` records `checkpoint-confirmed` (with the gaps
-it passes, for `blocking_gaps`), which confirms the checkpoint line just before it; a reason
-confirmed once stays passed for every later run of the execution. A run that stops again for a
-reason it already wrote a line for reuses that line's `seq`:
+`confirmed` set to a checkpoint line's `seq`, in this execution or an earlier one of the effort (a
+checkpoint ends its execution, so the relaunch that confirms it is a new one), records
+`checkpoint-confirmed` with that line's reason and what it found (the gaps of a `blocking_gaps`, the
+executions of an `existing_execution`). A confirmation stands, in every later run and execution of
+the effort, for a checkpoint of the same reason over the same gaps or executions; once what preflight
+finds changes, the checkpoint is raised again. A run that stops again for a reason it already wrote
+a line for reuses that line's `seq`:
 
 | checkpoint | meaning | to proceed |
 |---|---|---|
@@ -3904,8 +3907,8 @@ prompt_changed | cwd_changed | raised}`; `step {key,
 value}`; `batch {target, merged[], head_sha, verified, failed_alone[], combination[], conflict}`,
 landing before the batch's `merged` events; `gate {target, head_sha, passed, checks}`, `checks` the digest of the criterion checks it ran, one per suite gate
 that ran; `checkpoint {reason, detail, executions?, gaps?, branches?}` (the lists the checkpoint found, `branches` the `[{branch, commits}]` of an `outside_work` one;
-`lib/status.mjs checkpoint` prints them); `checkpoint-confirmed {gaps?}`, confirming the checkpoint
-line just before it; `closed {status: done | migrated}`; `batch-started {target, pre, children}`;
+`lib/status.mjs checkpoint` prints them); `checkpoint-confirmed {reason, gaps?, executions?}`, the
+reason and what the confirmed checkpoint line found; `closed {status: done | migrated}`; `batch-started {target, pre, children}`;
 `drift-ruled {node, contract, head_sha, ruling, why, said, adopted_seq?}` (`adopted_seq` the seq of the adopted record the ruling covers, [Landing and drift](#landing-and-drift)) and `stale-ruled {node, base_now,
 ruling, why, said}` (`said` the ruler's dispatch; the newest `stale-ruled` of a leaf is its anchor
 for the next moved base once it is `unaffected` or answered on disk); `fault {node, channel, detail}`, once per node and channel

@@ -15,7 +15,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  auditGap, closeDecision, fixNotConverging, fixWithoutProgress, greenRoundRole, heldMutations, integrationPark, measurementOk, ownFailing, profileOf, reviewExit,
+  CONSOLIDATION, auditGap, closeDecision, consolidationDue, fixNotConverging, fixWithoutProgress, greenRoundRole, heldMutations, integrationPark, measurementOk,
+  ownFailing, profileOf, reviewExit,
   netsAt, suiteFailed, undiscriminated,
 } from '../../lib/verdict.mjs'
 import { normalizeNode } from '../../lib/tree.mjs'
@@ -508,4 +509,32 @@ test('an audit gap opens with the first applied mutation its tests let through, 
   assert.equal(auditGap([]), false)
   assert.equal(auditGap([m({ mutations: [bites, stale] })]), false, 'an unapplied declaration is the auditor\'s, not a gap')
   assert.equal(auditGap([m({ mutations: [survives] }), m({ mutations: [bites] })]), true)
+})
+
+test('a finding that asks a test to go never blocks, whatever severity it was given', () => {
+  const retire = { ...critical('X1'), remedy: 'retire' }
+  assert.equal(reviewExit({ findings: [retire], yardstick: true }).next, 'approve')
+  assert.equal(integrationPark([retire], [], 'spec.md'), null)
+})
+
+test("a cycle's last member owes one consolidation round, owed again on the replay of the review that asked or after a replan", () => {
+  const g = LEAVES.green
+  const r = leaf({ id: 'a/r', rigor: 'tdd-pair', role: 'red' })
+  const cycle = [r.id, g.id]
+  const asked = { kind: 'message', node: g.id, msg: 'consolidate', round: 3, seq: 5 }
+  assert.equal(consolidationDue(g, cycle, [], 2), true)
+  assert.equal(consolidationDue(r, cycle, [], 1), false, 'a red is never the last member')
+  assert.equal(consolidationDue(g, [], [], 2), false, 'a leaf in no cycle owes none')
+  assert.equal(consolidationDue(g, cycle, [asked], 2), true, 'the review that asked, replayed, asks again')
+  assert.equal(consolidationDue(g, cycle, [asked], 3), false)
+  assert.equal(consolidationDue(g, cycle, [asked, { kind: 'replanned', node: g.id, seq: 6 }], 3), true)
+})
+
+test('a consolidation round is held to the breaks it declares and the audit held, and to a run of its tests', () => {
+  assert.equal(profileOf(LEAVES.audit, CONSOLIDATION), 'consolidation')
+  const failing = (over) => measurementOk(m(over), LEAVES.green, CONSOLIDATION).failures.map((f) => f.check)
+  assert.deepEqual(failing({ mutations: [bites] }), [])
+  assert.deepEqual(failing({}), ['mutation'], 'a round that declares no break showed it lost nothing')
+  assert.deepEqual(failing({ mutations: [bites, survives] }), ['mutation'])
+  assert.deepEqual(failing({ suite: 'not_run', mutations: [bites] }), ['suite'])
 })

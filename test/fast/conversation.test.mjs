@@ -24,6 +24,7 @@ const TABLE = [
   { msg: 'findings', from: 'reviewer', remedy: 'tests', to: 'cycle_test' },
   { msg: 'surviving_mutations', from: 'code', to: 'cycle_test' },
   { msg: 'needs_tests', from: 'implementer', to: 'cycle_test' },
+  { msg: 'consolidate', from: 'code', to: 'cycle_test' },
   { msg: 'tests_ready', from: 'code', to: 'green_implementer' },
   { msg: 'declined', from: 'test-author', to: 'requester' },
   { msg: 'needs_context', from: 'implementer', to: 'planner_or_park' },
@@ -204,6 +205,15 @@ test('surviving mutations name what survived', () => {
 test('surviving mutations accept the tests under the name tests', () => {
   const text = renderMessage({ msg: 'surviving_mutations', payload: { mutations: [{ file: 'lib/a.mjs', find: 'x', replace: 'y', tests: ['alpha counts once'] }] } })
   assert.ok(text.includes('alpha counts once'))
+})
+
+test('a consolidation request names each test its judges asked to retire and each break the audit holds', () => {
+  const retire = [{ claim: 'wombat exists only restates the type', evidence: 'test/w.test.mjs:4' }]
+  const held = [{ file: 'lib/w.mjs', find: 'n > 0', replace: 'n >= 0', expect_failing: ['test/w.test.mjs'] }]
+  const text = renderMessage({ msg: 'consolidate', payload: { retire, held } })
+  for (const part of [retire[0].claim, retire[0].evidence, held[0].file, held[0].find, held[0].replace, held[0].expect_failing[0]]) {
+    assert.ok(text.includes(part), 'carries ' + part)
+  }
 })
 
 test('a test request carries its text and forbids the code', () => {

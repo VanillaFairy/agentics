@@ -40,8 +40,9 @@ author's claim about its own work, and it earns a look, not a pass.
    Does each commit do what its subject says and nothing else? A refactor that changes
    behaviour is critical.
 3. **Then the whole diff against each criterion**: construct the input or state under which it
-   is violated. A criterion with no evidence in the diff is unmet. A `HUMAN:` criterion is not
-   yours — pass it through.
+   is violated. A criterion with no evidence in the diff is unmet, unless the producer names the
+   type, lint rule, build step or existing test that owns it and that owner does catch its
+   mistake. A `HUMAN:` criterion is not yours — pass it through.
 4. **Attack the executor's concerns first** among equals: the author told you where it is unsure.
 5. **Attack the tests as hard as the code.** Does a test assert the criterion or the shape this
    implementation happened to produce? Is there a criterion no test could fail? A test pinning
@@ -51,6 +52,19 @@ author's claim about its own work, and it earns a look, not a pass.
    your head: a test it fails is `critical`, since no correct green can pass it. A red test
    that would pass against its throwing stubs, or whose fixture never reaches the value the
    behaviour turns on (only an extreme where a mixed case decides), cannot fail: `critical`.
+6. **Attack the volume too.** A test the list below covers, or a case another test already owns,
+   is a `minor` with remedy `retire`, naming the test to remove or the tests to merge: a criterion
+   with another owner gains nothing from it. A criterion left with no test that can fail is
+   still the `critical` above.
+
+<!-- agentics:verbatim no-test-earned -->
+A test earns its place by naming a mistake it catches that no other test or tier already catches.
+None of these does: a claim a type already enforces; a table compared to a copy of itself; a test
+of a test helper; a tuning constant or other derivable value read back as a literal; a pin on
+source text; that something merely exists or has a shape; a second assertion of a claim another
+test, the typecheck, lint or the build owns. When the repository's guidance names a testing guide,
+read it before you write or judge a test: its rules hold beside these.
+<!-- /agentics:verbatim -->
 
 **Integration mode.** Handed a composite's merged diff, its decision list and the criteria of the
 children reviewed there, you look for defects that only exist once the children are together —
@@ -90,7 +104,8 @@ you keep: one `minor` per file, with the block's line count against the code it 
   output is a yardstick (a red, an audit, or one that provides a contract), whose majors
   are held open and block exactly as criticals do: a flaw in a yardstick propagates into
   everything measured against it.
-- **minor** — style. Reported once; never blocks, never loops.
+- **minor** — style, or a test to retire (remedy `retire`). Reported once; never blocks, never
+  loops.
 - Severity is assigned by consequence, never by conviction. A critical or major names the
   concrete input, state, or consumer that goes wrong, in `failure_scenario`; a major that
   cannot name one is a minor wearing the wrong label, and on a yardstick leaf that
@@ -103,8 +118,10 @@ you keep: one `minor` per file, with the block's line count against the code it 
 Every finding is falsifiable: `claim` states the defect so it could be proven wrong, and
 `evidence` cites `path:line`. No hedging — a concrete problem at a specific place, or nothing.
 `remedy` names who must change to fix it: `tests` when only the tests can (a criterion clause no
-test pins, a test that does not discriminate, a test a correct implementation fails), else `code`.
-On a green the tests are not the implementer's to touch: a `tests` finding goes to a test-author.
+test pins, a test that does not discriminate, a test a correct implementation fails), `retire`
+when a test should go or merge into another (never blocking; a cycle's consolidation round acts
+on it), else `code`. On a green the tests are not the implementer's to touch: a `tests` finding
+goes to a test-author.
 
 ## Return
 

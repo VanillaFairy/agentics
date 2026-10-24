@@ -120,7 +120,7 @@ describe('the execute program', { concurrency: 4 }, () => {
     w.jobs['implementer|g#1'] = { 'src/r.mjs': R_SRC }
     w.script({
       'test-author|r|producer:r': [done('red')], [REVIEWER('r')]: [verdict()],
-      [IMPL('g')]: [done()], [REVIEWER('g')]: [verdict()],
+      [IMPL('g')]: [done()], [REVIEWER('g')]: [verdict()], 'test-author|g|producer:r': [done('nothing to consolidate')],
     }, rootReview(1, claim('D1 holds')))
     const res = await w.run()
 
@@ -137,7 +137,7 @@ describe('the execute program', { concurrency: 4 }, () => {
     const [green] = startsOf(w, 'implementer', 'g')
     assert.ok(same(resolve(green.cwd), resolve(rig.worktreeOf('g'))), 'the green\'s call ran in g\'s worktree')
     const pairs = res.implemented.map((i) => [i.id, i.role, i.rounds, i.at_integration]).sort((a, b) => (a[0] < b[0] ? -1 : 1))
-    assert.deepEqual(pairs, [['g', 'green', 1, false], ['r', 'red', 1, false]])
+    assert.deepEqual(pairs, [['g', 'green', 2, false], ['r', 'red', 1, false]], "the green's second round is its cycle's consolidation")
     assertComplete(res)
   })
 

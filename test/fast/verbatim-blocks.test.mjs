@@ -55,6 +55,9 @@ const REQUIRED_IDS = [
   // Every skill that asks the user a question puts it the same way; a copy that drifts lets one
   // skill re-ask without the explanation the user asked for, or number a set differently.
   'asking-the-user',
+  // Whoever writes a test and whoever judges one apply the same list of what earns none, or a
+  // reviewer's retire finding is an opinion about a rule the author never had.
+  'no-test-earned',
 ]
 
 const OPEN = /<!--\s*agentics:verbatim\s+([a-z0-9-]+)\s*-->/g

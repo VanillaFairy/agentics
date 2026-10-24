@@ -5,6 +5,8 @@
 //
 //   a cycle    the cycle's test session: a green's needs_tests and tests_ready, a review that finds
 //              a test gap, and the red's own session across the green's and the audit's rounds
+//   consolidation  the round a cycle's approval opens: what lands when its tests still bite, and
+//              when they do not
 //
 // The rig, the scripted answers and the worlds the parts share are in
 // test/harness/execute-leaf-world.mjs.
@@ -17,7 +19,7 @@ import { renderMessage } from '../lib/conversation.mjs'
 import { attach } from '../lib/integration.mjs'
 import {
   T, leafEntry, write, work, world, messages, startsOf, approvals, sessionFor, done, said, verdict, finding,
-  fixed,
+  fixed, headOf,
 } from './harness/execute-leaf-world.mjs'
 
 // The rig does not clear NODE_TEST_CONTEXT, and a measurement's nested `node --test` that inherits
@@ -69,16 +71,16 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     w.rig.script({
       'implementer|g|producer:g': [done()],
       'reviewer|g|reviewer:g:1': [verdict({ findings: [finding('R1', { remedy: 'tests' })] })],
-      'test-author|g|producer:r': [done('pinned doubles 3', { mutations: [R_BITES] })],
+      'test-author|g|producer:r': [done('pinned doubles 3', { mutations: [R_BITES] }), done('nothing to consolidate')],
       'reviewer|g|reviewer:g:2': [verdict({ fix: [fixed('R1')] })],
     })
     const out = await w.run('g')
     assert.equal(out.outcome, 'approved')
-    assert.equal(out.round, 2)
+    assert.equal(out.round, 3, 'the review approved round 2; round 3 is the consolidation')
     assert.equal(out.review_rounds, 2)
     assert.equal(startsOf(w.rig, 'implementer', 'g').length, 1, 'its implementer ran once')
     const authors = startsOf(w.rig, 'test-author', 'g')
-    assert.equal(authors.length, 1)
+    assert.equal(authors.length, 2)
     assert.equal(authors[0].round, 2)
     assert.equal(authors[0].thread.key, 'producer:r')
     assert.equal(authors[0].thread.session, sessionFor(w.rig, { node: 'r', role: 'test-author', thread: 'producer:r', gen: 0 }), "the red's generation-0 session")
@@ -97,13 +99,13 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     w.job('implementer|g#3', (cwd) => work(cwd, { 'src/r.mjs': R_SRC + '// round three\n' }, 'answer the finding'))
     w.rig.script({
       'implementer|g|producer:g': [said('needs_tests', ASK), done()],
-      'test-author|g|producer:r': [done('pinned doubles 3', { mutations: [R_BITES] })],
+      'test-author|g|producer:r': [done('pinned doubles 3', { mutations: [R_BITES] }), done('nothing to consolidate')],
       'reviewer|g|reviewer:g:1': [verdict({ findings: [finding('F1')] })],
       'reviewer|g|reviewer:g:2': [verdict({ fix: [fixed('F1')] })],
     })
     const out = await w.run('g')
     assert.equal(out.outcome, 'approved')
-    assert.equal(out.round, 3)
+    assert.equal(out.round, 4, 'round 4 is the consolidation')
     const asked = messages(w.rig, 'producer:r', 'needs_tests')
     assert.equal(asked.length, 1)
     assert.equal(asked[0].round, 2)
@@ -137,7 +139,7 @@ describe('the leaf unit', { concurrency: 4 }, () => {
       'reviewer|g|reviewer:g:1': [verdict({ findings: [finding('R1', { remedy: 'tests' })] })],
       'test-author|g|producer:r': [done('doubles 3', { mutations: [R_BITES] })],
       'reviewer|g|reviewer:g:2': [verdict({ fix: [fixed('R1')] })],
-      'test-author|au|producer:r': [done('doubles 5', { mutations: [] })],
+      'test-author|au|producer:r': [done('doubles 5', { mutations: [] }), done('nothing to consolidate')],
       'reviewer|au|reviewer:au:1': [verdict()],
     })
     const red = await w.run('r')
@@ -166,5 +168,51 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.equal(onAudit.thread.session, session)
     assert.ok(onAudit.carries.includes(sent), 'and carries the surviving mutations')
     assert.equal(audit.outcome, 'approved', JSON.stringify(audit))
+  })
+
+  // ------------------------------------------------------------------ consolidation
+
+  test("a cycle's approval opens one consolidation round, told what its judges asked to retire, and lands the leaner tests that still bite", T, async (t) => {
+    const w = cycleWorld(t)
+    seedRed(w, R_TEST_TWO)
+    const RETIRE = 'doubles 3 repeats the claim doubles 2 owns'
+    w.job('implementer|g#1', (cwd) => work(cwd, { 'src/r.mjs': R_SRC }, 'implement r'))
+    w.job('test-author|g#2', (cwd) => write(cwd, { 'test/r.test.mjs': R_TEST }))
+    w.rig.script({
+      'implementer|g|producer:g': [done()],
+      'reviewer|g|reviewer:g:1': [verdict({ findings: [finding('X1', { severity: 'critical', remedy: 'retire', claim: RETIRE })] })],
+      'test-author|g|producer:r': [done('merged the doubling cases', { mutations: [R_BITES] })],
+    })
+    const out = await w.run('g')
+    assert.equal(out.outcome, 'approved', JSON.stringify(out))
+    assert.equal(out.review_rounds, 1, 'a retire request blocks nothing')
+    const [asked] = messages(w.rig, 'producer:r', 'consolidate')
+    assert.equal(asked.round, 2)
+    assert.deepEqual(asked.payload.retire.map((r) => r.claim), [RETIRE])
+    const [author] = startsOf(w.rig, 'test-author', 'g')
+    assert.equal(author.thread.key, 'producer:r')
+    assert.ok(author.carries.includes(asked.seq))
+    const [approval] = approvals(w.rig, 'g')
+    assert.equal(approval.head_sha, headOf(w.rig, 'g'))
+    assert.equal(w.rig.git('show', approval.head_sha + ':test/r.test.mjs'), R_TEST.trim(), 'the consolidated tests land')
+  })
+
+  test('a consolidation that lets a break through is reverted, and the leaf lands the tests its review approved', T, async (t) => {
+    const w = cycleWorld(t)
+    seedRed(w, R_TEST_TWO)
+    const BLIND = R_TEST.replace("test('doubles 2', () => assert.equal(r(2), 4))", "test('zero', () => assert.equal(r(0), 0))")
+    w.job('implementer|g#1', (cwd) => work(cwd, { 'src/r.mjs': R_SRC }, 'implement r'))
+    w.job('test-author|g#2', (cwd) => write(cwd, { 'test/r.test.mjs': BLIND }))
+    w.rig.script({
+      'implementer|g|producer:g': [done()],
+      'reviewer|g|reviewer:g:1': [verdict()],
+      'test-author|g|producer:r': [done('kept only zero', { mutations: [R_BITES] })],
+    })
+    const out = await w.run('g')
+    assert.equal(out.outcome, 'approved', JSON.stringify(out))
+    const [approval] = approvals(w.rig, 'g')
+    assert.equal(approval.head_sha, headOf(w.rig, 'g'))
+    assert.equal(w.rig.git('show', approval.head_sha + ':test/r.test.mjs'), R_TEST_TWO.trim(), 'the reviewed tests land')
+    assert.match(w.rig.git('log', '-1', '--format=%s', approval.head_sha), /^Revert /, 'undone by a new commit, never rewritten')
   })
 })

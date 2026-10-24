@@ -220,7 +220,7 @@ describe('a retry after a review-loop stop', { concurrency: 4 }, () => {
     w.job('test-author|g#4', (cwd) => write(cwd, { 'test/r.test.mjs': R_TEST_SIX }))
     w.rig.script({
       'implementer|g|producer:g': [done()],
-      'test-author|g|producer:r': [1, 2, 3].map(() => done('pinned more', { mutations: [R_BITES] })),
+      'test-author|g|producer:r': [...[1, 2, 3].map(() => done('pinned more', { mutations: [R_BITES] })), done('nothing to consolidate')],
       'reviewer|g|reviewer:g:1': [verdict({ findings: [R1] })],
       'reviewer|g|reviewer:g:2': [verdict({ fix: [notFixed('R1')] })],
       'reviewer|g|reviewer:g:3': [verdict({ fix: [notFixed('R1')] })],
@@ -232,7 +232,7 @@ describe('a retry after a review-loop stop', { concurrency: 4 }, () => {
     retry(w, 'g')
     const second = await w.run('g')
     assert.equal(second.outcome, 'approved')
-    assert.equal(second.round, 4)
+    assert.equal(second.round, 5, 'round 5 is the consolidation')
     assert.equal(startsOf(w.rig, 'implementer', 'g').length, 1, 'no implementer round after the retry')
     const four = startsOf(w.rig, 'test-author', 'g').find((c) => c.round === 4)
     assert.ok(four, "round 4 goes to the cycle's test session")
@@ -257,6 +257,7 @@ describe('a retry after a review-loop stop', { concurrency: 4 }, () => {
       'reviewer|g|reviewer:g:2': [verdict({ fix: [notFixed('F1')] })],
       'reviewer|g|reviewer:g:3': [verdict({ fix: [notFixed('F1')] })],
       'reviewer|g|reviewer:g:4': [verdict({ fix: [fixed('F1'), fixed('R1')] })],
+      'test-author|g|producer:r': [done('nothing to consolidate')],
     })
     const first = await w.run('g')
     assert.equal(first.outcome, 'stopped')
@@ -264,8 +265,8 @@ describe('a retry after a review-loop stop', { concurrency: 4 }, () => {
     retry(w, 'g')
     const second = await w.run('g')
     assert.equal(second.outcome, 'approved')
-    assert.equal(second.round, 4)
-    assert.deepEqual(startsOf(w.rig, 'test-author', 'g'), [], 'no test round while a code finding is open')
+    assert.equal(second.round, 5, 'round 5 is the consolidation')
+    assert.deepEqual(startsOf(w.rig, 'test-author', 'g').filter((c) => c.round < 5), [], 'no test round while a code finding is open')
     const four = startsOf(w.rig, 'implementer', 'g').find((c) => c.round === 4)
     assert.ok(four, 'round 4 goes to the implementer')
     const found = messages(w.rig, 'producer:g', 'findings').filter((m) => m.round === 4)

@@ -238,7 +238,10 @@ names the property that earns it and the consumer that reads it, and goes when i
 - **Leanness is legible.** Whatever ran says what earned it; whatever did not run is stated. Cost
   is reported measured, never as a projected constant.
 - **Leanness never touches verdicts.** What shrinks is dispatches, tiers and phases; the
-  predicates a verdict is computed from never shrink once a check runs.
+  predicates a verdict is computed from never shrink once a check runs. Tests are the one input a
+  check may lose: a cycle's consolidation round retires tests the cycle approved, and it is
+  approved only while every break it declares and every break the cycle's audit held still bites
+  ([Rigor](#rigor)); otherwise it is reverted.
 - **No mechanism outlives its consumer.** A format change ships a one-shot migration, never a
   permanent second reader. `test/fast/liveness.test.mjs` enforces it ([Self-checks](#self-checks)).
 
@@ -704,7 +707,7 @@ committed; `lib/roles.mjs` refuses a bad one when a dispatch loads it.
 | analyst | judge | judge what it is handed: plan a survey, judge evidence into items, re-judge suspect items, derive a review's axes, name the ground a narrowed review has not located, rule as a prober, frame and assess a solutions sweep, draft an approach from a stance, answer an investigation or turn it into tasks | Read | — |
 | ruler | judge | rule whether a change moved a node's premise; rule whether a loop converges | Read | — |
 | reviewer | judge | rule every unit of a span: findings with severity, a ruling per criterion, per file, per claim | Read, Grep, Glob, Bash | read-only git |
-| auditor | judge | declare mutations an implementation's tests must catch | Read, Grep, Glob | — |
+| auditor | judge | declare mutations an implementation's tests must catch, and name tests to retire | Read, Grep, Glob | — |
 | planner | producer | write the spec of a folder develop owns, and settle its review | Read, Grep, Glob, Edit, Write | — |
 | implementer | producer | code one leaf as a focused series, or a fix round of it | Read, Grep, Glob, Edit, Write, Bash | the established build, typecheck and test commands; `git add`, `git rm`, `git commit`, `git status`, `git diff`, `git log` |
 | test-author | producer | write a leaf's or a cycle's tests and declare mutations | Read, Grep, Glob, Edit, Write | — |
@@ -782,8 +785,8 @@ schema, `{summary, unsearched}`: its findings are the `hit` records the tool ser
 went, and `unsearched` declares where the find pointed that it did not look. That declaration steers
 whether another round runs and is carried as the scout's own word; everything else in its coverage
 code observes from what its tools ran ([Searches](#searches)). A judge returns its
-rulings, one per unit, and its findings; an auditor, the mutations it declares and a ruling per
-unit, with no status. A program reads the stored return, and nothing reads an agent's word from
+rulings, one per unit, and its findings; an auditor, the mutations it declares, the tests it
+asks to retire and a ruling per unit, with no status. A program reads the stored return, and nothing reads an agent's word from
 anywhere else.
 
 ### Conversations
@@ -802,6 +805,7 @@ sent where is the routing table (`ROUTES`):
 | `failures` | code: a measurement of the leaf's round (`source: verification`), a merged head the leaf fails alone on (`source: integration`), or a rebase merge its round left unconcluded (`source: the rebase`) | the leaf's producer session; a verification failure on a green or an audit goes to the session the records name ([Rigor](#rigor)) | a fix round |
 | `findings`, remedy `tests`; `surviving_mutations` | a green's reviewer; an audit's measurement (code) | the cycle's test session (the red's test author) | tests added, or `declined` with why |
 | `needs_tests` | a green's implementer, as its status | the cycle's test session | tests added, or `declined` with why |
+| `consolidate` | code, when the review of a cycle's last member would approve it ([Rigor](#rigor)) | the cycle's test session | the cycle's tests made lean, with the breaks they must still catch declared, or nothing written |
 | `tests_ready` | code, once the test round is measured | the green's implementer session | a round against the new tests |
 | `declined` | the cycle's test session, declining an implementer's `needs_tests` | that implementer's session | a round without the tests, or `blocked` |
 | `needs_context` | a producer, as its status | the folder's planner session when the planner wrote the folder; otherwise the node parks for the user | a spec edit, checked, probed and prepared like any; the asker then receives `brief_changed` |
@@ -846,11 +850,13 @@ sent where is the routing table (`ROUTES`):
 - **The cycle's test author never sees the implementation's code.** Every call of the test session
   after the red is approved is denied `Read` on the files the green's series changed outside the
   cycle's tests: it works from the criteria, its own tests, the failures and the signatures.
-- **A test session only strengthens.** In every test round after the red is approved, the red's
-  approved version of each approved test file the round changed runs against the green head; an
-  approved case that fails there blocks, unless a fresh reviewer rules that case wrong, one unit per
-  such case. The series check flags a test case removed from an approved test file
-  (`test-removed`).
+- **A test session only strengthens, until it consolidates.** In every test round after the red is
+  approved but the cycle's consolidation round, the red's approved version of each approved test
+  file the round changed runs against the green head; an approved case that fails there blocks,
+  unless a fresh reviewer rules that case wrong, one unit per such case. The series check flags a
+  test case removed from an approved test file (`test-removed`). The consolidation round alone may
+  remove and merge approved cases: its guard is that what the cycle's tests catch still bites
+  ([Rigor](#rigor)).
 - **Context that failed once is not trusted twice.** A fix round resumes the producer's session.
   After a round that cleared none of its blockers — a review that answered prior blockers and ruled
   none of them `fixed`, or a measurement in which every failure of the round before fails again —
@@ -1630,6 +1636,26 @@ between `trivial` and `tdd`: `tdd`.
 
 Unsure between `tdd` and `tdd-pair`: `tdd` when the leaf is small, `tdd-pair` when it is not.
 
+**Tests are owned, not counted.** Every criterion that names behaviour is owned by a test that
+names the mistake it catches; one test may own several, and a criterion the typecheck, lint, the
+build or an existing test already owns gets no new test, its owner named in the author's return.
+Nothing sets a floor of tests per criterion, and the same rule — verbatim in the test-author's,
+the reviewer's and the auditor's roles — says what earns none:
+
+<!-- agentics:verbatim no-test-earned -->
+A test earns its place by naming a mistake it catches that no other test or tier already catches.
+None of these does: a claim a type already enforces; a table compared to a copy of itself; a test
+of a test helper; a tuning constant or other derivable value read back as a literal; a pin on
+source text; that something merely exists or has a shape; a second assertion of a claim another
+test, the typecheck, lint or the build owns. When the repository's guidance names a testing guide,
+read it before you write or judge a test: its rules hold beside these.
+<!-- /agentics:verbatim -->
+
+Feedback runs both ways: a judge that finds a test this covers raises it for retirement
+(`remedy: retire`, [Executors and review](#executors-and-review)), and an auditor declares only a
+break a competent author would plausibly make on that line, naming in `expect_failing` every test
+of the suite that catches it, so a break another test already kills asks for no new one.
+
 - **`tdd-pair` and `tdd-triad` are separate leaves** with `deps` (green on red, audit on green),
   each with its own branch, todo, review and resume action. Green is cut from red's branch and
   receives red's committed tests as artifacts, never red's return. No agent authors both a
@@ -1679,10 +1705,25 @@ Unsure between `tdd` and `tdd-pair`: `tdd` when the leaf is small, `tdd-pair` wh
     carried, then to the cycle's test session once only they remain. A test-author round is measured
     by the breaks it catches (the `green-tests` profile, [Verification](#verification)).
   - Either way the round writes test files and nothing else, never at the cost of a test the cycle
-    approved (`test-removed`). Its permissions admit only test files ([Role rules](#role-rules));
-    leaf-close commits only those, journals the commit as `authored`, and the series check holds
-    each such commit to the test-only rule and every other commit to the leaf's own role, so neither
-    producer writes the other's files.
+    approved (`test-removed`) but in the consolidation round below. Its permissions admit only test
+    files ([Role rules](#role-rules)); leaf-close commits only those, journals the commit as
+    `authored`, and the series check holds each such commit to the test-only rule and every other
+    commit to the leaf's own role, so neither producer writes the other's files.
+- **A cycle ends in one consolidation round.** When the review of a cycle's last member (the green
+  of a pair, the audit of a triad) would approve it, `leafReview` records a `consolidate` message to
+  the cycle's test session instead (`consolidationDue` in `lib/verdict.mjs`: once per leaf since its
+  latest replan), carrying every test the cycle's judges asked to retire — the `retire` of each
+  review record of a member and of each auditor return — and the mutations an audit holds. Its
+  round goes to the test session (leaf-open), which merges cases, shares fixtures and retires
+  red-step scaffolding and tests that earn nothing, and declares the breaks its tests must still
+  catch. It never holds the cycle up: leaf-close approves the leaf at the head as it stands when
+  the round returns another status than `done` or `done_with_concerns`, or writes nothing; measures a commit by the `consolidation`
+  profile — no approved case binds it, while its tests pass and every mutation it declared and every
+  one the audit held bites — and approves it there when it passes; and when it does not, reverts the
+  commit with a new one (`git revert`, journalled `authored`) and approves the tree the review
+  approved, the measured failures on the close record (`consolidation_dropped`). A revert git
+  refuses escalates `consolidation_unrevertable`. No review follows: the code did not move, and
+  the measurement is the guard.
 - **Review follows rigor.** `tdd-pair`, `tdd-triad` and any leaf that `provides` a contract get a
   review loop of their own; `trivial`, `tests-only` and `tdd` leaves are reviewed at integration;
   `verify` leaves write nothing to review.
@@ -1692,7 +1733,9 @@ Unsure between `tdd` and `tdd-pair`: `tdd` when the leaf is small, `tdd-pair` wh
   cleared none of its blockers, the next is a fresh session on the raised tier.
 
 **Why:** assurance should rise with the cost of a wrong reading, and the cheapest assurance that
-closes the specific hole is the right one.
+closes the specific hole is the right one. Tests are paid for again on every later read and run,
+so a test that catches nothing another tier does not is cost without assurance, and only a
+ratchet that can also retire keeps a suite at what it catches.
 
 ---
 
@@ -2604,8 +2647,8 @@ attached).
 | **preflight** | refuse what cannot run — an effort it cannot read (`unreadable`), a folder that is no node (`no_such_node`), an effort root that is a leaf (`root_is_leaf`), an execution whose envelope names another root (`wrong_root`), an execution holding a message no `withdrawn` names that this version has no template for (`messages_unrenderable`, [Conversations](#conversations)), and, writing a new envelope, a `base_ref` that names no commit (`no_base`) or a `commands_file` that is not readable JSON (`commands_unreadable`) — writing nothing; adopt or write the envelope (`execution.json`: base, dial, pace, and the commands the session wrote to `commands_file`); write the session's commands as command gotchas ([Gotchas](#gotchas)) — refusing `commands_unwritable`, naming each command the gotcha store refused, once the envelope is written, so a run again writes only what is missing; read every integration branch in scope for commits no record accounts for ([Outside work](#outside-work)), refusing `unreadable_branch` when git cannot read one; traceability; stop at `outside_work` before every other checkpoint, and never confirm past it, and then at a checkpoint not confirmed past ([Resume and checkpoints](#resume-and-checkpoints)), its lists (the overlapping executions, the gaps, the branches with their unaccounted commits) on its state line, for the session to read with `lib/status.mjs checkpoint`; on a resumed execution with no checkpoint, check whether the base moved under its leaves and write the ruler's brief and its record, and, with no checkpoint, write the brief on the drift of adopted records no ruling covers yet ([Landing and drift](#landing-and-drift)); free this execution's slots, its dead worktrees and merged leaves' worktrees (clean ones only — a dirty one is reported, never forced) |
 | **schedule** | compute what to launch from the records (`lib/schedule.mjs`, see [Scheduling](#scheduling)); park a folder the user writes that has nothing planned (`needs_design`); approve a leaf the resume ladder finds measured green, with no review loop of its own and no approval standing; what a pass records is recorded and the launch computed again, until a pass records nothing |
 | **leaf-open** | acquire a slot, asked once (`no_slot` goes back to the program, which waits); ensure the parent's integration branch (lazily, refreshed from its own parent, each branch of the chain under its own lock in turn) and cut or attach the leaf's branch and worktree, brought up to that parent's head — a round a `rebase` message waits for leaves a conflicting refresh in the worktree for its producer, and an open run again takes that merge in progress as its own ([The judge](#the-judge)); compute the round — the round of a dispatch this execution started and never got back, else one past the latest; only a producer's or an auditor's dispatch is a round — its role from the records, its thread (resumed, fresh, or fresh on a raise, [Conversations](#conversations)), its tier and its permissions from its role ([Role rules](#role-rules)); build its thread brief; record `retried` when the round resumes a thread after the user's `retry` cleared the leaf's stop, and `notes` when the round starts a thread this execution never dispatched ([Conversations](#conversations)); a refusal escalates `open_refused` |
-| **leaf-close** | first put right what a verify cut off in the worktree left ([Verification](#verification)); read the producer's stored return — a round closed again with no `dispatch`, over the work a retry measures first, has none to read and is measured as no producer's ([Resume and checkpoints](#resume-and-checkpoints)); none, or a producer's with no string `status`, holds the leaf on a `role` fault, and an auditor's, which carries no status, reads as `done`: a park, an escalation, a request for the planner (or the `needs_respec` park of a folder the user writes), a `needs_tests` or a `declined` for another session is recorded and routed without measuring; otherwise, a round that returned no commits included: measure nothing while a rebase merge the round opened is unconcluded (a `failures` message, `source: the rebase`, naming the unmerged paths; left so again at the same head, it escalates `merge_conflict`); commit a shell-less author's files its role may write (`authored`) (a close cut off after that commit finds it in git and journals it), and put every other uncommitted file back to the head; journal the series as `series-done`, from git, when the producer declared it done; measure by rigor — build, typecheck, its own tests, discriminator, declared mutations and named checks; write and delete the gotchas it returned, never a command one; compute the close decision and record it — the approval, the escalation, the next round's message (`failures`, `surviving_mutations`, `tests_ready`), a verify leaf's finding (the `needs_respec` park of a folder the user writes beside the leaf's escalation; under a planner's folder the finding is the route and the leaf is not escalated, [Replanning](#replanning)), `fix_without_commits`, carrying the measured failures, when an implementer's round sent the failures of the head it opened on returns that head unmoved and it still fails (`fixWithoutProgress` in `lib/verdict.mjs`), `verify_not_converging` when a fix repeats the close before it at a moved head; hand back `command_unknown` until an investigator of this execution has returned, and escalate it after; write the round's close record. What it reads of the rounds before spans executions, as a leaf's rounds do ([Resume and checkpoints](#resume-and-checkpoints)) |
-| **leaf-review** | read the reviewer's stored rulings over the units its brief listed; compute the review loop's exit (`reviewExit`) against what the round before left open; record the approval or the escalation, or the open findings as `findings` messages, one per thread, for the next round; write the review record; after a review round `askAfter` picks that ended in a fix, read the ruler's stored convergence ruling (`convergenceRuling`): `not_converging` escalates `review_not_converging`, `said` the ruler's dispatch, `converging` records nothing, and a return with no ruling holds the leaf on a `role` fault; and, once the session retried a leaf its review loop stopped, record the stopping review's open findings as the next round's `findings` messages (`reviewResumed`) |
+| **leaf-close** | first put right what a verify cut off in the worktree left ([Verification](#verification)); read the producer's stored return — a round closed again with no `dispatch`, over the work a retry measures first, has none to read and is measured as no producer's ([Resume and checkpoints](#resume-and-checkpoints)); none, or a producer's with no string `status`, holds the leaf on a `role` fault, and an auditor's, which carries no status, reads as `done`: a park, an escalation, a request for the planner (or the `needs_respec` park of a folder the user writes), a `needs_tests` or a `declined` for another session is recorded and routed without measuring; otherwise, a round that returned no commits included: measure nothing while a rebase merge the round opened is unconcluded (a `failures` message, `source: the rebase`, naming the unmerged paths; left so again at the same head, it escalates `merge_conflict`); commit a shell-less author's files its role may write (`authored`) (a close cut off after that commit finds it in git and journals it), and put every other uncommitted file back to the head; journal the series as `series-done`, from git, when the producer declared it done; measure by rigor — build, typecheck, its own tests, discriminator, declared mutations and named checks; write and delete the gotchas it returned, never a command one; compute the close decision and record it — the approval, the escalation, the next round's message (`failures`, `surviving_mutations`, `tests_ready`), a verify leaf's finding (the `needs_respec` park of a folder the user writes beside the leaf's escalation; under a planner's folder the finding is the route and the leaf is not escalated, [Replanning](#replanning)), `fix_without_commits`, carrying the measured failures, when an implementer's round sent the failures of the head it opened on returns that head unmoved and it still fails (`fixWithoutProgress` in `lib/verdict.mjs`), `verify_not_converging` when a fix repeats the close before it at a moved head; hand back `command_unknown` until an investigator of this execution has returned, and escalate it after; a cycle's consolidation round approves instead of any other decision, at its commit when it passes and on its revert otherwise ([Rigor](#rigor)); write the round's close record. What it reads of the rounds before spans executions, as a leaf's rounds do ([Resume and checkpoints](#resume-and-checkpoints)) |
+| **leaf-review** | read the reviewer's stored rulings over the units its brief listed; compute the review loop's exit (`reviewExit`) against what the round before left open; record the approval or the escalation, or the open findings as `findings` messages, one per thread, for the next round — an approval a cycle's last member owes its consolidation round records the `consolidate` message instead; write the review record, its `retire` findings kept; after a review round `askAfter` picks that ended in a fix, read the ruler's stored convergence ruling (`convergenceRuling`): `not_converging` escalates `review_not_converging`, `said` the ruler's dispatch, `converging` records nothing, and a return with no ruling holds the leaf on a `role` fault; and, once the session retried a leaf its review loop stopped, record the stopping review's open findings as the next round's `findings` messages (`reviewResumed`) |
 | **merge-batch** | under the branch lock, set aside for the judge each leaf or cycle whose contention facts no standing ruling covers ([The judge](#the-judge)); record `batch-started` with the head it starts from; merge every other approved child into one integration branch in dependency order; verify the merged head with the fast suite; bisect a red one; append the `batch` state line first, then `merged` and `merge-observed` for each child not merged before, so a batch run again never resets the merges its outcome names; remove each merged leaf's clean worktree, keeping its branch; send each leaf that fails alone a `failures` message (`source: integration`); hand a leaf's conflict to the judge when its executor can conclude a merge and no failed resolve of it stands; record what stops — any other conflict, a combination failure, a composite or a cycle failing alone, a batch that moved nothing, a batch that could not run; write the drift record and the ruler's brief. A batch that started and never recorded its outcome is reset to where it started and done again, so an unverified merge is never recorded as landed; one during which the user's checkout moved is reset and decides nothing (a `checkout` fault) |
 | **suite-gate** | on a composite whose children have all merged, under its branch lock: run the full suite and the criterion checks of its plan on its integration head, against the head it was cut from; record the measurement and a `gate` state line; escalate `fails_full_suite`, `fails_on_integration` or `suite_gate_failed`. It runs nothing where the repository does not split its tests and its plan names no check, or where a gate over the same checks already passed at that head in this execution ([The suite gate](#the-suite-gate)). A gate that passes says whether the integration review is earned, and records one that is not as `claims` with `review: not_earned`; one during which the user's checkout moved decides nothing (a `checkout` fault) |
 | **folder-review** | read the integration reviewer's stored rulings; record its claim rulings as `claims` at the head it judged, `said` the reviewer's dispatch (a re-rule, `rerule: true`, with the prior claims it left standing, [Executors and review](#executors-and-review)); record the one park they earn, a new record after the claims it follows even where an older park stood; a review that returned nothing holds the folder on a `role` fault |
@@ -2975,11 +3018,17 @@ and reviewed like any other.
     alone. A unit the reviewer left unruled (`unit:<u>`) is the reviewer's miss: it stays open for
     the next fresh reviewer, at the same producer round, and never goes to a producer, so an open
     set of those alone sends no message and goes straight to a fresh reviewer.
-  - Each finding names its `remedy`: `code` (the default) or `tests`. On a green, whose rounds go
+  - Each finding names its `remedy`: `code` (the default), `tests`, or `retire` — a test that
+    should go or merge into another, whatever severity the reviewer gave it never blocking here or
+    at integration (`retires` in `lib/verdict.mjs`). The review record keeps a round's `retire`
+    findings, and a cycle's consolidation round is handed them ([Rigor](#rigor)); elsewhere they
+    stand in the result. On a green, whose rounds go
     to an implementer or a test-author, a prior blocker whose remedy was not the reviewed round's
     producer's was **carried** past that round: it stays open, and counts toward neither
     escalation rule nor a raise, because nobody who could fix it was asked to.
-  - The leaf is approved when the open set is empty — a count the boundary computes.
+  - The leaf is approved when the open set is empty — a count the boundary computes — unless it is
+    a cycle's last member that owes its consolidation round: then that round opens, and its close
+    approves ([Rigor](#rigor)). No convergence ruling is asked over that exit.
   - It escalates when a fix round returns no commits or a blocked status, when the same finding is
     ruled `not_fixed`/`regressed` in two consecutive rounds, or when two consecutive rounds each
     rule every prior blocker fixed and still mint new blocking findings, or when the convergence
@@ -3017,7 +3066,8 @@ and reviewed like any other.
   output is a yardstick (a red, an audit, or one that provides a contract), whose majors
   are held open and block exactly as criticals do: a flaw in a yardstick propagates into
   everything measured against it.
-- **minor** — style. Reported once; never blocks, never loops.
+- **minor** — style, or a test to retire (remedy `retire`). Reported once; never blocks, never
+  loops.
 - Severity is assigned by consequence, never by conviction. A critical or major names the
   concrete input, state, or consumer that goes wrong, in `failure_scenario`; a major that
   cannot name one is a minor wearing the wrong label, and on a yardstick leaf that
@@ -3282,6 +3332,7 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
 | green | yes | the red leaf's tests pass now | no | when given |
 | green, a test-author round | yes | the red leaf's tests and the round's new ones pass now | required, this round's alone | when given |
 | audit | no series expected | no | required | — |
+| a cycle's consolidation round, on its green or audit | yes; no approved case binds it | no: its tests and the ones it changed pass now | required, beside an audit's held ones | a green's |
 
 - **Absent is never inferred, in either direction.** `absent` means the repository defines no such
   command; `failed` means a command ran and exited non-zero. A command nobody named and nobody
@@ -3356,9 +3407,11 @@ leaf's test files that add a case fail now and at base, and its upkeep files pas
 rule as a tdd leaf's; a green leaf's cycle tests pass; a green's test-author round's
 cycle tests and new tests pass, at least one mutation it declared this round, each biting, and each
 test file that adds a case one a biting mutation names; an audit's held mutations all bite over the
-cycle's tests; trivial, verify, tdd, tests-only and green need their
+cycle's tests; a consolidation round's tests run and pass, and every mutation it declared, at
+least one, and every one an audit held bites; trivial, verify, tdd, tests-only and green need their
 named checks and their own tests not to have failed). The profile is the leaf's rigor and role
-and, on a green, the measured round's producer (`profileOf(leaf, producer)`): leaf-close passes it
+and, on a green, the measured round's producer (`profileOf(leaf, producer)`; a consolidation
+round's is `consolidation`, `CONSOLIDATION` in `lib/verdict.mjs`): leaf-close passes it
 and the `verify-observed` line records it, so a resume judges a measurement as its close did. A
 named check fails for the change when it did not pass, unless it failed naming tests every one of
 which fails at its base too (`checkFailed`). A suite failed for the change only when one of its
@@ -4167,7 +4220,9 @@ test session alone ([Executors and review](#executors-and-review)); `commit` is 
 shell-less author's files are committed under. `mutations` are `{file, find, replace,
 expect_failing}`. The status is the only request a producer makes; [Conversations](#conversations)
 routes it. A return with no string `status` holds the leaf on a `role` fault. An auditor's return,
-`{mutations, units, text}`, carries no status and reads as `done`.
+`{mutations, units, retire?[{claim, evidence}], text}`, carries no status and reads as `done`;
+`retire` names the cycle tests it asks the consolidation round to retire or merge (restated in
+`roles/auditor.md`).
 
 ### Coverage block
 
@@ -4411,7 +4466,7 @@ threw.
   line).
 
 `{units[{unit, ruling: clean | findings, ids[], why}], findings[{id, severity: critical | major |
-minor, claim, evidence, failure_scenario, remedy?: code | tests}], fix_rulings[{id, status: fixed |
+minor, claim, evidence, failure_scenario, remedy?: code | tests | retire}], fix_rulings[{id, status: fixed |
 not_fixed | regressed, evidence}], claims[{claim, ruling: met | equivalent | under | over |
 deviates | spec_defect | cant_tell, evidence, failure_scenario, unit}], notes}` (`failure_scenario` is
 `''` on every claim but a drift that names its failure; `unit` is the `claim:<n>` of a narrowed
@@ -4419,8 +4474,10 @@ review's prior claim the entry restates, else `''`). The units are those the bri
 leaf review's criteria, changed files and failing approved cases, an integration review's decisions, the
 criteria of its children with no review of their own, and its changed files — and a unit with no
 ruling is open. A leaf review returns `claims: []`. `remedy` is who must change to fix a finding
-— the implementation (`code`, read when absent) or the cycle's tests (`tests`); `remedyOf` in
-`lib/verdict.mjs` reads it.
+— the implementation (`code`, read when absent) or the cycle's tests (`tests`) — or `retire`, a
+test that should go or merge, which never blocks (`retires`); `remedyOf` in `lib/verdict.mjs` reads
+it. A leaf review record keeps the round's `retire` findings as `retire[{claim, evidence}]`, which
+`leafReview` hands a cycle's consolidation round.
 
 ### Planner returns
 

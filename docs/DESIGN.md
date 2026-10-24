@@ -3540,9 +3540,20 @@ An `ended failed` or a `launch_failed` is a plugin fault: the session says so an
 once more, and the same fault again is reported as a plugin defect.
 
 **A stopped node named to develop is a question, not a launch.** Words that name a parked or
-escalated node (a pasted Next line, the viewer's prompt) take develop straight to asking the user
-about that node; its execution is relaunched only once the answer is recorded. A relaunch without
-the answer runs everything else and hands the same stop back at the end.
+escalated node (a pasted Next line, the viewer's prompt) take develop straight to settling that
+node; its execution is relaunched only once the stop is settled. A relaunch without it runs
+everything else and hands the same stop back at the end.
+
+**Who settles a stop.** The user owns decisions (L4), so a stop that needs one is theirs. A stop
+whose cause is mechanical is the session's, which settles it, notes what it ruled on the node and
+names it in its report: a host denial or transient (`blocked`), two leaves on one file
+(`locus_held`), a reviewer's miss (`review_incomplete`), a suite or verify failure that is only
+timeouts or load passing alone (retried once), a changed test file that only pins behaviour held at
+base (ruled a `net`), a file a node needs inside its own folder (added to its entry), and code that
+breaks behaviour the spec states (a `task` entry in the folder's own spec that fixes it, never a new
+sub-effort). None of these chooses anything the spec leaves open; `review_not_converging` and every
+stop that does go to the user. **Why:** a question whose answer the spec or the mechanism already
+gives costs the user a decision they have made, and the run a stop it did not need.
 
 A skill file holds the router and the steps; step detail lives in reference files loaded when the
 step is reached. A contract several files must state identically is a verbatim block, placed only

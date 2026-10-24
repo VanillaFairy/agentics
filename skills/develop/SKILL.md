@@ -341,8 +341,8 @@ Refresh the todo list (step 5) on each line. A re-armed watch prints again a lin
 stands: act on each once. Hold each line to `self-improve`'s signals: it decides when the plugin is the cause.
 
 - `<id> escalated <reason>` or `<id> parked <return>`: a stop of that node alone; the run goes on.
-  Read its text on the node's card (step 0) and ask the user at once (step 4b or 4c) until the
-  answer settles it. A re-spec's approval and compile clears a park; an escalation whose cause is
+  Read its text on the node's card (step 0). Settle it at once where step 4b or 4c makes it yours,
+  else ask the user at once until the answer settles it. A re-spec's approval and compile clears a park; an escalation whose cause is
   dealt with is cleared with `retry` (4b). The running program takes the node up at its next tick.
 - `host_stop <dispatch>: <cause> until <time>`: the host is unavailable; the run waits it out and
   resumes the call itself. Nothing to do.
@@ -394,15 +394,23 @@ dispatched; what it found is printed by
 
 When the user says work was done by hand, read `outside-work.md` too.
 
-**b. Escalations** — `{id, reason, said}`, each to the user: its text is on the node's card
-(step 0), read from the return `said` names. They are decisions, not information; do not resolve
-them yourself. Once a cause is dealt with, clear the stop, then relaunch (step 3):
+**b. Escalations** — `{id, reason, said}`: its text is on the node's card (step 0), read from the
+return `said` names. A stop with a mechanical cause is yours: settle it as the table says, note
+what you ruled (below) and name it in your report. Every other stop, and `review_not_converging`
+always, goes to the user: a decision, not information. Once a cause is dealt with, clear the stop,
+then relaunch (step 3):
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e> --node <id>
 ```
 
-`discriminator_undecidable`: a changed test file passes at base too. When the user rules it a regression
+| `reason` | yours when |
+|---|---|
+| `blocked`, `locus_held`, `review_incomplete` | always — a host denial or transient, two leaves on one file, a reviewer's miss: retry |
+| `fails_full_suite`, `verify_not_converging` | its failures are timeouts or load faults that pass alone: retry once; the same again is the user's |
+| `discriminator_undecidable` | the file only pins behaviour that held at base: rule it a net (below). One that should fail at base, for behaviour the leaf adds, is the user's |
+
+`discriminator_undecidable`: a changed test file passes at base too. To rule it a regression
 net over behaviour that already held, write `{nets: [{file, why}]}` with Write (`why` one line) and run
 `node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" net --repo . --effort <e> --node <id> --file <file>` before `retry`. It binds to the
 measured head; with every file a net the leaf's criterion checks pin the change, and it lands `undiscriminated`.
@@ -420,8 +428,10 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" note --repo . --effort <e> --node 
 **Faults** — `{id, channel}`: a plugin fault, never a question. Relaunch at once (step 3), asking
 nothing; a fault on the same node again is a plugin defect: take it through `self-improve`.
 
-**c. Parked nodes** — `{id, return, said}`, the question on the node's card (step 0). Ask the
-user each question, one topic at a time,
+**c. Parked nodes** — `{id, return, said}`, the question on the node's card (step 0). A park
+whose answer the spec already gives is yours, settled as its row below says, and named in your
+report: a file the node needs inside its own folder, and code that breaks behaviour the spec
+states. Ask the user every other question, one topic at a time,
 with your recommendation marked `(Recommended)`. Never answer for them. **The user answers once.**
 Open the question first; it prints `asked` and the `token` every question of that one
 `AskUserQuestion` call carries in its own text. Record the answer right after:
@@ -440,8 +450,8 @@ fault, its parent, a child or a consumer whose text it decides), have each ruled
 |---|---|
 | `needs_design` | none yet: run `agentics:design` on that folder; its Approve stage compiles it |
 | `needs_decision`, `contract_changed` | the nearest spec at or above the node that the user wrote: a Decisions row in the user's words, and its id in the `realises` of the entry that makes it true. A decision never goes into a spec develop's planner wrote |
-| `premise_mismatch`, `needs_respec` | the spec holding the node's entry: correct what the user rules wrong |
-| `integration_critical` | judge each drift claim the question lists (`[under]`, `[over]`, `[deviates]`). Behaviour-neutral, low regression risk (a name, a shape): write `{claims: [{claim, why}]}` with Write, each `claim` as listed, and run `node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" accept --repo . --effort <e> --node <id> --file <file>`: no spec edit, no re-review; tell the user what you accepted and why. Behaviour wrong: the folder's spec, a `task` entry that fixes it. Unsure, or a critical finding (never accepted): the folder's spec as the user rules; a re-spec over an unchanged head re-rules only what the edit touched |
+| `premise_mismatch`, `needs_respec` | the spec holding the node's entry: correct what the user rules wrong. A file the node needs inside its own folder is yours: add it to the entry's `expects` or `reads` |
+| `integration_critical` | judge each drift claim the question lists (`[under]`, `[over]`, `[deviates]`). Behaviour-neutral, low regression risk (a name, a shape): write `{claims: [{claim, why}]}` with Write, each `claim` as listed, and run `node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" accept --repo . --effort <e> --node <id> --file <file>`: no spec edit, no re-review; tell the user what you accepted and why. A critical, or a drift breaking behaviour the spec states: fixing the code to the spec is no decision. Add to the folder's own spec one `task` entry per fix, its criteria the failure scenarios, realising the decisions it restores, and tell the user; never a new sub-effort, whose design costs more than the fix. Only a fix that must choose behaviour the spec does not state is the user's, then the folder's spec as they rule. The next review is narrowed to what the fix moves |
 | `spec_defect` | the spec the question names: the claim cannot be met as written; the user rules how it changes. On this or `integration_critical`, a folder develop's planner wrote is never ruled: after the edit, relaunch, and the run reviews, prepares and compiles it |
 | `contract_drift` | merged work touched a contract the node consumes, and the planner could not take it: no ruler could rule, work already stood on the node's plan when it was ruled affected, or its replan faulted. The consumer's entry: the user rules it unaffected (then clear it with `retry` (b) and edit nothing: the ruling stands until those files change again, and a later ruler is handed it with the answer), re-designs it, or re-slices it |
 | `design_spend` | none: a folder develop's planner writes has spent on its design past its allowance, the question naming the numbers. The user goes on (clear it with `retry` (b); the next park comes one allowance later), cuts the scope or hands the work to a task (a re-spec of the entry in the parent spec) |

@@ -18,12 +18,12 @@ import { approvalState, recordApproval, recordPreparation } from '../lib/approva
 import { compileEffort } from '../lib/compile.mjs'
 import { renderMessage } from '../lib/conversation.mjs'
 import { append, fileFor, readLog, readRunLog, runState } from '../lib/ledger.mjs'
-import { programContext } from '../lib/programs/common.mjs'
+import { briefRoomOf, programContext } from '../lib/programs/common.mjs'
 import { rule } from '../lib/programs/rule.mjs'
 import { launch } from '../lib/run.mjs'
 import { rulerBrief } from '../lib/briefs/respec.mjs'
 import { respecBrief, respecSettle } from '../lib/respec.mjs'
-import { loadRole, tierFor } from '../lib/roles.mjs'
+import { BRIEF_BYTES, loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
 import { mainCheckout, pidAlive, posix, readJson, resultPath, runLogFile, specPath } from '../lib/store.mjs'
 import { programRig } from './harness/program-rig.mjs'
@@ -111,6 +111,30 @@ test('a change that cannot be ruled is refused with its next step and dispatches
   assert.equal(unchanged.why, respecBrief(rig.repo, E, 'api').why)
   assert.equal(rig.calls.length, 0)
   assert.equal(ledger(rig.repo, 'ruled').length, 0)
+})
+
+test('a ruler whose brief is past what it can read is sent it fitted, the specs as files to open, and rules', async (t) => {
+  const pad = (text, mark) => text.replace('## Design\n', '## Design\n\n' + Array.from({ length: 1200 }, (_, i) => mark + ' ' + i + ' ' + 'z'.repeat(100)).join('\n') + '\n')
+  const rig = programRig({ files: { 'CLAUDE.md': GUIDE + '\n' } })
+  t.after(() => rig.cleanup())
+  writeSpec(rig.repo, '.', pad(ROOT, 'ROOT_PAD'))
+  writeSpec(rig.repo, 'api', pad(API, 'API_PAD'))
+  for (const id of ['.', 'api']) assert.equal(recordApproval(rig.repo, E, id).ok, true)
+  assert.equal(compileEffort(rig.repo, E).ok, true)
+  writeSpec(rig.repo, 'api', pad(EDITS.wording.text, 'API_PAD'))
+  const brief = respecBrief(rig.repo, E, 'api')
+  assert.equal(brief.status, 'brief')
+  assert.ok(Buffer.byteLength(brief.text) > BRIEF_BYTES, 'the fixture: the whole brief is past the bound')
+
+  const run = rig.relaunch(rulerScript(rulingsOf(brief)))
+  const out = await rule(run.ctx, args('api'))
+  assert.notEqual(out.why, 'the ruler returned no rulings: brief_too_large', JSON.stringify(out))
+  assert.equal(run.calls.length, 1)
+  const [call] = run.calls
+  assert.ok(Buffer.byteLength(call.brief) <= briefRoomOf('ruler'), 'the brief sent fits')
+  assert.ok(!(call.brief.includes('API_PAD 7 ') && call.brief.includes('ROOT_PAD 7 ')), 'a spec past the room went as a file')
+  assert.match(call.brief, /it is the file .*\/briefs\//)
+  assert.ok(call.brief.includes('## Rulings'), 'its charge stays inline')
 })
 
 test("one ruler rules the change at its role's tier", async (t) => {

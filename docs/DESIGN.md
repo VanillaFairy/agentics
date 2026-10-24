@@ -558,10 +558,20 @@ its call recorded), so the estimate errs high. The runner refuses a fresh call w
 file and brief together hold more (`oversize`): nothing starts and nothing is recorded, and the call
 fails `brief_too_large`, a terminal class like `budget`, so a relaunch builds the brief again and
 meets the same refusal unless what it is built from changed. A resumed call is not checked: its
-session carries the brief, and a session past half its window is renewed instead (below). A program
-that can trim its brief fits it to the room the role leaves (`briefRoomOf` in
-`lib/programs/common.mjs`: the bound less the role's system prompt) before it dispatches; the probe
-does ([Probe](#probe)). The spend view flags a unit with a call whose session opened past the bound
+session carries the brief, and a session past half its window is renewed instead (below).
+
+**A brief fits by handing its parts as files.** Every role but the searchers carries Read, so `dispatch`
+fits the prompt of each fresh call of such a role, and its renewal briefs, to the room the role leaves
+(`briefRoomOf` in `lib/programs/common.mjs`: the bound less the role's system prompt), with one fit
+(`fitParts` in `lib/briefs/fit.mjs`): past the room, part after part is written under the run's
+`briefs/` (named by its key and digest) and replaced by a line saying which file holds it, until the
+prompt fits or only its charge is left. A plain brief's parts are its `## ` and `### ` sections
+(`sectionsOf`; what comes before the first is the charge, and a heading inside a fence is the fenced
+text's), given up largest first: a ruler's specs before its answers, a reviewer's yardstick spec before
+its units. A brief built for the fit is shaped (`{parts}`), each part naming its rank, what it says
+once it is a file, and what the file holds; the prober's is ([Probe](#probe)). The dispatch's result
+names what went as files (`handed`). The searchers (scout, historian, doc-researcher) carry no Read:
+their prompt is the round's brief and their charge the search's material, sent as it is. The spend view flags a unit with a call whose session opened past the bound
 as measured ([Spend view](#spend-view)), which is how an estimate that errs low shows.
 
 **One driver per session.** The host lets two processes drive one session at once and interleaves
@@ -1885,17 +1895,14 @@ locates and derives its axes as a full round does. Kept ground holds each place 
 a hit located again keeps its newer lines where it now stands, and a search block word for word the
 same is kept once, so a folder's rounds grow its ground only by places no round held before.
 
-**A prober's brief fits what it can read.** A prober carries Read, so everything in its brief but its
-charge can be handed as a place to open. Each brief is built whole first; past the room its role
-leaves (`briefRoomOf`), it hands its parts by reference instead of inline, one at a time and in this
-order, until it fits: the repository ground (each search's head and each hit's `- <place> — <note>`
-line), the document's citations (each file with the lines it cites), the settled specs (their files),
-the repository's guidance, a narrowed round's carried findings, the units, and last the artefact. The
-probe writes the guidance, the carried findings and each prober's units under the run's `briefs/`
-(`proberFiles`, each file named by its digest), and the artefact goes as its snapshot's text, whose
-line numbers are the ones findings cite; a narrowed round still hands its changed lines inline, with
-20 lines around each, each after its number. Each part given up says where its lines are and to open
-them with Read; the probe's `declared` names the parts each prober was handed so. What is left is the
+**A prober's brief fits what it can read.** The prober's brief is shaped for the one fit
+([The agent runner](#the-agent-runner)), its parts given up in this order: the repository ground (its
+places stay, each search's head and each hit's `- <place> — <note>` line), the document's citations
+(each file with the lines it cites stays), the settled specs (their files stay named), the
+repository's guidance, a narrowed round's carried findings, the units, and last the artefact, whose
+file holds its text, so Read numbers its lines as findings cite them; a narrowed round still hands its
+changed lines inline, with 20 lines around each, each after its number. The probe's `declared` names
+the parts each prober was handed as files. What is left is the
 charge itself, so a brief past the room after all that is a defect in the charge's text, which the
 runner refuses `brief_too_large`: the prober fails, the round records nothing, and in an execution the
 folder is held on a `role` fault naming the cause.

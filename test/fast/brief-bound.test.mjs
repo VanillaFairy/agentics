@@ -10,7 +10,8 @@ import assert from 'node:assert/strict'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { proberBrief, proberFiles } from '../../lib/briefs/probe.mjs'
+import { fitParts, joined, sectionsOf } from '../../lib/briefs/fit.mjs'
+import { proberBrief } from '../../lib/briefs/probe.mjs'
 import { hitBlocks } from '../../lib/citations.mjs'
 import { briefRoomOf } from '../../lib/programs/common.mjs'
 import { joinedGround } from '../../lib/programs/probe.mjs'
@@ -66,22 +67,29 @@ const at = (ground, room) => ({
   settled: [{ file: '.agentics/e/DESIGN.md', intent: 'SETTLED_INTENT_TOKEN '.repeat(200), decisions: '', design: '' }],
 })
 
+/** A prober's brief fitted to `room` by the shared fit, each file it hands kept in `files` by key. */
+function fitted({ room, ...given }) {
+  const files = {}
+  const out = fitParts(proberBrief(given).parts, room, (key, body) => { files[key] = body; return '/run/briefs/' + key + '.md' })
+  return { text: out.text, trimmed: out.handed.map((h) => h.key), files }
+}
+
 test("a prober's brief past its room hands the ground as places to open, every place still named", () => {
   const ground = groundOf(Array.from({ length: 40 }, (_, i) => hit(i + 1)))
-  const whole = proberBrief(at(ground, Infinity))
+  const whole = fitted(at(ground, Infinity))
   assert.deepEqual(whole.trimmed, [])
   const room = Buffer.byteLength(whole.text) - 1000
-  const fitted = proberBrief(at(ground, room))
-  assert.ok(Buffer.byteLength(fitted.text) <= room, 'it fits')
-  assert.deepEqual(fitted.trimmed, ['ground'], 'giving up the least it must')
-  assert.ok(!fitted.text.includes('EXCERPT_LINE_TOKEN'))
-  for (const b of ground.blocks) assert.ok(fitted.text.includes(b.head), 'still names ' + b.head)
-  assert.ok(fitted.text.includes('SETTLED_INTENT_TOKEN'), 'what fits is kept whole')
+  const small = fitted(at(ground, room))
+  assert.ok(Buffer.byteLength(small.text) <= room, 'it fits')
+  assert.deepEqual(small.trimmed, ['ground'], 'giving up the least it must')
+  assert.ok(!small.text.includes('EXCERPT_LINE_TOKEN'))
+  for (const b of ground.blocks) assert.ok(small.text.includes(b.head), 'still names ' + b.head)
+  assert.ok(small.text.includes('SETTLED_INTENT_TOKEN'), 'what fits is kept whole')
 })
 
-test("a prober's brief that cannot fit gives up every part it can, and is left for the runner to refuse", () => {
-  const out = proberBrief(at(groundOf([hit(1)]), 10))
-  assert.deepEqual(out.trimmed, ['ground', 'cited', 'settled'])
+test("a prober's brief that cannot fit hands every part but its charge as a file", () => {
+  const out = fitted(at(groundOf([hit(1)]), 10))
+  assert.deepEqual(out.trimmed, ['ground', 'cited', 'settled', 'units', 'artefact'])
   assert.ok(!out.text.includes('SETTLED_INTENT_TOKEN'))
   assert.ok(out.text.includes('.agentics/e/DESIGN.md'), 'the settled spec is named to read')
 })
@@ -127,27 +135,32 @@ test('a narrowed round over a large spec fits by handing its artefact and carrie
   const narrow = { changed: [{ start: 533, end: 533 }, { start: 697, end: 702 }], carried: carriedOf(106) }
   const at2 = {
     ...at(groundOf([hit(1)]), 60000), text, narrow, guidance: '## Repository guidance\n\n### CLAUDE.md\n\n' + 'g'.repeat(16000),
-    files: { artefact: '/store/snapshots/4dfef4d2.txt', carried: '/run/briefs/carried-1.md', units: '/run/briefs/units-1.md', guidance: '/run/briefs/guidance-1.md' },
   }
-  const out = proberBrief(at2)
+  const out = fitted(at2)
   assert.ok(Buffer.byteLength(out.text) <= at2.room, 'it fits')
   assert.ok(out.trimmed.includes('artefact') && out.trimmed.includes('carried'), JSON.stringify(out.trimmed))
-  assert.ok(out.text.includes('/store/snapshots/4dfef4d2.txt') && out.text.includes('/run/briefs/carried-1.md'))
+  assert.ok(out.text.includes('/run/briefs/artefact.md') && out.text.includes('/run/briefs/carried.md'))
+  assert.equal(out.files.artefact, text, "the artefact's file is its text, so Read numbers its lines as findings cite them")
   assert.match(out.text, /^\s+533\tline 533 /m, 'a changed line, at its own number')
   assert.match(out.text, /^\s+513\tline 513 /m, 'with the lines around it')
   assert.ok(!/^\s+100\tline 100 /m.test(out.text), 'a far unchanged line goes by the file')
 })
 
 test('a full round whose artefact alone is past the room hands it as the file to read', () => {
-  const out = proberBrief({ ...at(groundOf([hit(1)]), BRIEF_BYTES - 6000), text: bigSpec(2000), files: { artefact: '/store/snapshots/big.txt' } })
+  const out = fitted({ ...at(groundOf([hit(1)]), BRIEF_BYTES - 6000), text: bigSpec(2000) })
   assert.ok(Buffer.byteLength(out.text) <= BRIEF_BYTES - 6000)
   assert.ok(out.trimmed.includes('artefact'))
   assert.ok(!out.text.includes('FAR_TEXT_TOKEN'))
 })
 
-test("a prober's files hold its guidance, its carried findings and its units, one line each", () => {
-  const files = proberFiles({ guidance: 'G', narrow: { changed: [], carried: carriedOf(2) }, units: ['contract@intent'], sections: SECTIONS })
-  assert.equal(files.guidance, 'G')
-  assert.equal(files.carried.split('\n').length, 2)
-  assert.equal(files.units, '- contract@intent — section "Intent", lines 1-2')
+test("a plain brief's sections go as files, largest first, its charge and a fenced heading's text kept whole", () => {
+  const spec = '~~~~markdown\n## Not a section of the brief\n' + 'S'.repeat(5000) + '\n~~~~'
+  const text = ['# Rule this', '', 'Return the rulings.', '', '## The change', '', 'small', '', '## The specs', '', '### a.md', '', spec].join('\n')
+  const parts = sectionsOf(text)
+  assert.deepEqual(parts.map((p) => p.key), ['charge', 'The change', 'The specs', 'a.md'], 'a heading inside a fence is the fenced text\'s')
+  assert.equal(joined(parts), text, 'the parts join back to the brief')
+  const out = fitParts(parts, 1000, (key) => '/run/briefs/' + key + '.md')
+  assert.deepEqual(out.handed.map((h) => h.key), ['a.md'])
+  assert.ok(out.text.startsWith('# Rule this'))
+  assert.ok(out.text.includes('### a.md') && out.text.includes('/run/briefs/a.md.md'))
 })

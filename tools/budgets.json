@@ -5,8 +5,8 @@
     "roles/doc-researcher.md": 39,
     "roles/historian.md": 39,
     "roles/scout.md": 38,
-    "skills/design/SKILL.md": 618,
-    "skills/develop/SKILL.md": 524,
+    "skills/design/SKILL.md": 620,
+    "skills/develop/SKILL.md": 526,
     "skills/develop/landing.md": 65,
     "skills/develop/respec.md": 30,
     "skills/develop/outside-work.md": 65,
@@ -16,13 +16,13 @@
     "skills/challenge-idea/SKILL.md": 261,
     "skills/task/SKILL.md": 195,
     "skills/self-improve/SKILL.md": 145,
-    "roles/planner.md": 235,
+    "roles/planner.md": 237,
     "roles/implementer.md": 99,
     "roles/test-author.md": 98,
     "roles/investigator.md": 48,
     "roles/analyst.md": 99,
     "roles/ruler.md": 66,
-    "roles/reviewer.md": 114,
+    "roles/reviewer.md": 116,
     "roles/auditor.md": 53
   }
 }

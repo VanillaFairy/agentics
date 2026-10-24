@@ -53,8 +53,9 @@ landing it. Design: `docs/DESIGN.md#execution-modes`, `docs/DESIGN.md#execution`
   away or accepted out loud) or `note` (advisory). To **settle** a finding is to incorporate it
   into the spec or to discard it.
 - **claim ruling**: `met`, `equivalent` (same behaviour, another name or shape) or `accepted` (the
-  session's call on a drift) pass; `under`, `over`, `deviates` (drift) park; `spec_defect` (can't
-  be met as written); `cant_tell` (the evidence doesn't decide it, never a pass).
+  session's call on a drift) pass; `under`, `over`, `deviates` (drift) park when they name what
+  goes wrong, else wait for landing; `spec_defect` (can't be met as written); `cant_tell` (the
+  evidence doesn't decide it, never a pass, waits for landing).
 - **observation, ruling, declaration, verdict**: an observation is what code can recompute; a
   ruling is a judgment, made per unit by the user or by an agent that did not produce the work; a
   declaration is a producer's word about its own work, which may steer what runs next but never
@@ -74,9 +75,10 @@ landing it. Design: `docs/DESIGN.md#execution-modes`, `docs/DESIGN.md#execution`
 user owns decisions and their branch. **The principles.** P1: fidelity at the chosen level, then
 cost, then time. P2: code does what is deterministic; models only judge. P3: state is derived;
 records are written as things happen. P4: everything earns its place. P5: faults are fixed in their
-class, where they live. **And three rules for specs:** no status goes into a spec and no render is
+class, where they live. **And four rules for specs:** no status goes into a spec and no render is
 edited by hand; one writer per folder at a time, under the effort lock; when an effort changes
-what the project's docs describe, its plan carries the entry that updates them.
+what the project's docs describe, its plan carries the entry that updates them; a value nobody
+chose (a delay, a weight, a count) is written `default <value>`, and a default is not a claim.
 <!-- /agentics:verbatim -->
 
 ## Arguments

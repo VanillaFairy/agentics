@@ -4717,6 +4717,14 @@ A spec that still writes `locus:` is refused by the spec check, naming the migra
 default, applies with `--yes`, and a second run finds nothing to do; it exits 1 while a spec is
 refused, a compile failed or a withdrawal was refused.
 
+`tools/migrate-messages.mjs`, run once after upgrading past a release that dropped a message kind
+(5.6.1 dropped `continue_search` with the search rounds), withdraws in every effort each message
+this version has no template for and no `withdrawn` names yet, one `withdrawn` event per node and
+execution, so preflight no longer refuses the execution holding them and no session is told them
+again. It lists the ones no `dispatched` carried, which no session ever saw. It dry-runs by default,
+applies with `--yes`, and a second run finds nothing to do; it exits 1 while the ledger refused a
+withdrawal.
+
 `tools/migrate-glob-literal.mjs`, run once after upgrading to 5.5.0, reports on stored evidence
 scopes now that the search glob dialect reads brackets literally; it writes nothing. Stored query
 scopes are read in the new dialect as they stand. It lists each item whose stored query result

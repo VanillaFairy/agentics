@@ -19,7 +19,7 @@ test('drift from adopted work is ruled first, on its own ruler thread, before an
   const side = join(w.rig.repo, '.claude', 'worktrees', 'side')
   w.rig.git('worktree', 'add', '-q', '-b', 'side', side, 'HEAD')
   const sha = work(side, { 'src/api.txt': 'moved\n' }, 'a, by hand')
-  const seq = append(w.rig.repo, E, 'events', { kind: 'merged', node: 'a', execution: '', into: 'agentics/e1', merged_sha: sha, head_sha: sha, by: 'user', commits: [sha] }).seqs[0]
+  const seq = append(w.rig.repo, E, 'events', { kind: 'merged', node: 'a', execution: '', into: 'side', merged_sha: sha, head_sha: sha, by: 'user', commits: [sha] }).seqs[0]
   w.script(
     { ['ruler|.|ruler:adopted:' + seq]: [rulings(ruling('b', 'unaffected', 'b reads api as before'))] },
     { [IMPL('p')]: [done()], [IMPL('b')]: [done()] },

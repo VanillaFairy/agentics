@@ -19,9 +19,10 @@ import { preflight } from '../lib/boundaries/execution.mjs'
 import { executionContext } from '../lib/boundaries/records.mjs'
 import { append, executionLog } from '../lib/ledger.mjs'
 import { hashSpec } from '../lib/spec.mjs'
-import { specPath } from '../lib/store.mjs'
+import { revParse, specPath } from '../lib/store.mjs'
 import { trace } from '../lib/traceability.mjs'
 import { addNodes, readTree } from '../lib/tree.mjs'
+import { ensureIntegration } from '../lib/integration.mjs'
 import { COMMANDS, STAMP, commitIn, git, leaf, root } from './harness/boundary-fixture.mjs'
 import {
   E, STAMP2, ADD, world, ctxOf, commandsFile, envPath, envelopeOf, stateOf, journalOf, stateKind, head,
@@ -248,6 +249,20 @@ test("a planner's folder edited past its preparation is planned again, so the de
   assert.equal(append(r, E, 'ledger', [{ kind: 'prepared', folder: 'p', hash: hashSpec('# p\n'), review: 'y', by: 'planner' }]).ok, true)
   const prepared = await preflight(ctxOf(r), { commands_file: commandsFile(t) })
   assert.equal(prepared.checkpoint && prepared.checkpoint.reason, 'blocking_gaps', 'once its plan is prepared, the gap is its plan\'s')
+})
+
+test('an effort branch gone with merges recorded into it checkpoints integration_lost, naming where the merge is held, and is never cut again from base', async (t) => {
+  const r = world(t, [root(), leaf('a', { expects: [ADD] })])
+  // The effort's work, landed by hand into main; then the effort branch deleted.
+  const merged = commitIn(r, { 'src/a.mjs': 'export const a = 1\n' }, 'the effort, merged by hand')
+  const branch = 'agentics/' + E
+  assert.equal(append(r, E, 'events', [{ kind: 'merged', node: 'a', execution: '', into: branch, merged_sha: merged, head_sha: merged }]).ok, true)
+  const out = await preflight(ctxOf(r), { commands_file: commandsFile(t) })
+  assert.equal(out.checkpoint && out.checkpoint.reason, 'integration_lost')
+  assert.deepEqual(stateKind(r, 'checkpoint')[0].lost.map((l) => [l.branch, l.exists, l.merged_sha, l.reachable_from]), [[branch, false, merged, ['main']]])
+  const cut = ensureIntegration(r, E, '.', envelopeOf(r))
+  assert.equal(cut.ok, false, 'the branch is not cut again from base')
+  assert.equal(revParse(r, 'refs/heads/' + branch), '')
 })
 
 test('plan_only checkpoints parked', async (t) => {

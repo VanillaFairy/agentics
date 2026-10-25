@@ -24,15 +24,19 @@ const NODES = [
 ]
 
 let sides = 0
+/** The side branch each side commit is on: the branch its `merged` record names, which holds it. */
+const sideOf = new Map()
 /** A commit touching `files`, on a side branch so the base does not move: its sha. */
 function sideCommit(r, files) {
   const name = 'side' + ++sides
   const path = join(r, '.claude', 'worktrees', name)
   git(r, 'worktree', 'add', '-q', '-b', name, path, 'HEAD')
-  return commitIn(path, files, 'by hand')
+  const sha = commitIn(path, files, 'by hand')
+  sideOf.set(sha, name)
+  return sha
 }
 
-const MERGED = (sha) => ({ kind: 'merged', node: 'a', execution: '', into: 'agentics/e1', merged_sha: sha, head_sha: sha, by: 'user', commits: [sha] })
+const MERGED = (sha) => ({ kind: 'merged', node: 'a', execution: '', into: sideOf.get(sha), merged_sha: sha, head_sha: sha, by: 'user', commits: [sha] })
 const OUTSIDE = (sha) => ({ kind: 'outside', node: '.', execution: '', commits: [sha], by: 'user' })
 const OWN_MERGE = (sha) => { const { by, ...own } = MERGED(sha); return own }
 const API = { 'src/api.mjs': 'export const api = 2\n' }

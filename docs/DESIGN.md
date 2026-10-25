@@ -579,7 +579,9 @@ fits the prompt of each fresh call of such a role, and its renewal briefs, to th
 prompt fits or only its charge is left. A plain brief's parts are its `## ` and `### ` sections
 (`sectionsOf`; what comes before the first is the charge, and a heading inside a fence is the fenced
 text's), given up largest first: a ruler's specs before its answers, a reviewer's yardstick spec before
-its units. A brief built for the fit is shaped (`{parts}`), each part naming its rank, what it says
+its units. A fresh call's thread messages are parts of their own, never read into the brief's last
+section: a message no returned call carried is what the call is for and stays inline, and one a
+returned call answered goes as a file before any part of the brief. A brief built for the fit is shaped (`{parts}`), each part naming its rank, what it says
 once it is a file, and what the file holds; the prober's is ([Probe](#probe)). The dispatch's result
 names what went as files (`handed`). The searchers (scout, historian, doc-researcher) carry no Read:
 their prompt is the round's brief and their charge the search's material, sent as it is. The spend view flags a unit with a call whose session opened past the bound

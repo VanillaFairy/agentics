@@ -249,6 +249,12 @@ test('a planner settling a review is handed the spec and every finding by its id
   assert.ok(text.includes('incorporated'))
 })
 
+test('a planner settling findings that arrive as messages is told so, never that there are none', () => {
+  const text = plannerBrief(planner({ mode: 'settle', spec: '# The api layer\n' }))
+  assert.ok(text.includes('message after this brief'))
+  assert.ok(!text.includes('(none)'))
+})
+
 test("a planner answering a producer is handed the spec and the producer's request", () => {
   const spec = '# The api layer\n'
   const request = { node: 'api/parse', status: 'needs_context', text: 'Which encoding do config files use?' }

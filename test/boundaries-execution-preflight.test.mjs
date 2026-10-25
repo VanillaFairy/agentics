@@ -265,6 +265,14 @@ test('an effort branch gone with merges recorded into it checkpoints integration
   assert.equal(revParse(r, 'refs/heads/' + branch), '')
 })
 
+test('preflight refuses a landed effort, landed, writing no envelope', async (t) => {
+  const r = world(t, [root(), leaf('a', { expects: [ADD] })])
+  assert.equal(append(r, E, 'events', [{ kind: 'landed', node: '.', execution: '', into: 'main', merged_sha: head(r), by: 'session' }]).ok, true)
+  const out = await preflight(ctxOf(r), { commands_file: commandsFile(t) })
+  assert.equal(out.error && out.error.kind, 'landed')
+  assert.equal(existsSync(envPath(r)), false)
+})
+
 test('plan_only checkpoints parked', async (t) => {
   const r = world(t, NO_GAPS)
   const out = await preflight(ctxOf(r), { plan_only: true, commands_file: commandsFile(t) })

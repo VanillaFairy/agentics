@@ -5,7 +5,9 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { land } from '../lib/boundary.mjs'
+import { land, recordLanding } from '../lib/boundary.mjs'
+import { nextAction } from '../lib/next.mjs'
+import { readTree } from '../lib/tree.mjs'
 import { append } from '../lib/ledger.mjs'
 import { renderLanding } from '../lib/render.mjs'
 import { pinTree } from '../lib/search/pin.mjs'
@@ -103,4 +105,40 @@ test("landing removes the effort's pinned search trees", () => {
   const landed = land(r, 'e1', 'merge')
   assert.equal(landed.ok, true, landed.error)
   assert.ok(!existsSync(pinned.root), 'the pinned tree went with the effort')
+})
+
+test('an effort whose work the user merged by hand is recorded landed with no token and no effort branch, what did not land listed', () => {
+  const r = repo()
+  const seeded = seedTree(r, 'e1', [
+    { id: '.', kind: 'composite', title: 'the change', defines: [{ id: 'D1', text: 'do it' }] },
+    { id: 'a', kind: 'leaf', title: 'do a', rigor: 'tdd', expects: ['a.txt'], decisions: ['D1'], acceptance: [{ text: 'a works', check: 'x', decisions: ['D1'] }] },
+    { id: 'b', kind: 'leaf', title: 'do b', rigor: 'tdd', expects: ['b.txt'], decisions: ['D1'], acceptance: [{ text: 'b works', check: 'x', decisions: ['D1'] }] },
+  ])
+  assert.equal(seeded.ok, true, JSON.stringify(seeded.problems))
+  // a merged into the effort branch, which the user merged into main by hand and then deleted.
+  git(r, 'checkout', '-q', '-b', 'agentics/e1')
+  writeFileSync(join(r, 'a.txt'), 'a\n')
+  git(r, 'add', '-A')
+  git(r, 'commit', '-q', '-m', 'a')
+  const head = git(r, 'rev-parse', 'HEAD')
+  git(r, 'checkout', '-q', 'main')
+  git(r, 'merge', '-q', '--no-ff', '-m', 'by hand', 'agentics/e1')
+  git(r, 'branch', '-D', 'agentics/e1')
+  // b merged into a branch that is gone and that main never took; b's folder also parked.
+  const lost = git(r, 'commit-tree', '-p', head, '-m', 'b', git(r, 'rev-parse', 'HEAD^{tree}'))
+  append(r, 'e1', 'events', [
+    { kind: 'merged', node: 'a', execution: '', into: 'agentics/e1', merged_sha: head, head_sha: head },
+    { kind: 'merged', node: 'b', execution: '', into: 'agentics/e1', merged_sha: lost, head_sha: lost },
+    { kind: 'parked', node: '.', execution: '', return: 'premise_mismatch', question: 'q' },
+  ])
+
+  assert.equal(recordLanding(r, 'e1', lost).error.kind, 'not_in_branch', 'a head main does not hold is no landing')
+  const out = recordLanding(r, 'e1', head.slice(0, 8))
+  assert.equal(out.ok, true, JSON.stringify(out.error))
+  assert.equal(out.merged_sha, head)
+  assert.deepEqual(out.left_out.map((x) => x.node), ['b'])
+  assert.deepEqual(out.closed.map((x) => x.node), ['.'])
+  assert.equal(readTree(r, 'e1').status.get('.').status, 'landed')
+  assert.match(nextAction(r, 'e1').why, /has landed/)
+  assert.equal(recordLanding(r, 'e1', head).already, true, 'recorded once')
 })

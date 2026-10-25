@@ -63,3 +63,16 @@ yourself. Where a `why` says a worktree could not be removed, once the user has 
 it, run the check again, ask with its `token` as in 3, and on `Land` run the same `--action merge`:
 it merges nothing and sweeps again. Nothing under
 `.agentics/<effort>/` is removed: it is the only record of what was decided and done.
+
+## Already in the user's branch
+
+When the user says the effort's work is already in their branch (merged by hand, the effort branch
+gone, or a run stopped at `integration_lost` whose merges their branch holds) and the effort is to
+close as landed:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" land --repo . --effort <e> --action record --head <sha>
+```
+
+`<sha>` is the merged head they name. It moves no branch and asks nothing. Report `left_out` (merges
+their branch does not hold) and `closed` (nodes closed unfinished) as it printed them.

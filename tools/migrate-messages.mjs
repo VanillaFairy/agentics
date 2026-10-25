@@ -7,14 +7,15 @@
 // For each effort of the repository, every `message` this version has no template for and no
 // `withdrawn` event names yet is withdrawn: one `withdrawn` event per node and execution, naming
 // their seqs, so no session is told them again and preflight no longer refuses the execution
-// holding them. A message no `dispatched` carried is listed as undelivered. The default is a dry
+// holding them. A message no `dispatched` carried is listed as undelivered. A kind `DROPPED` maps to
+// a migration of its own is left to that migration and listed with it. The default is a dry
 // run; `--yes` writes. A second run finds nothing to withdraw, and writes nothing.
 
 import { readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { renders, withdrawnEvent } from '../lib/conversation.mjs'
+import { WITHDRAW_TOOL, migrationOf, renders, unrenderable, withdrawnEvent } from '../lib/conversation.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
 import { effortsRoot, mainCheckout, safeSlug } from '../lib/store.mjs'
 
@@ -31,7 +32,8 @@ export function withdrawalsOf(events) {
   const done = new Set(events.filter((e) => e.kind === 'withdrawn').flatMap((e) => e.messages || []))
   const carried = new Set(events.filter((e) => e.kind === 'dispatched').flatMap((e) => e.carries || []))
   const groups = new Map()
-  for (const m of events.filter((e) => e.kind === 'message' && !renders(e.msg) && !done.has(e.seq))) {
+  const due = (e) => e.kind === 'message' && !renders(e.msg) && !done.has(e.seq) && migrationOf(e.msg) === WITHDRAW_TOOL
+  for (const m of events.filter(due)) {
     const key = JSON.stringify([m.node || '', m.execution || ''])
     if (!groups.has(key)) groups.set(key, { node: m.node || '', execution: m.execution || '', messages: [], kinds: new Set(), undelivered: [] })
     const g = groups.get(key)
@@ -49,9 +51,11 @@ export function withdrawalsOf(events) {
 /** What the migration does to `repo`, and with `yes`, does it. */
 export function migrate(repo, { yes = false } = {}) {
   const root = mainCheckout(resolve(String(repo)))
-  const out = { withdrawn: [], refused: [] }
+  const out = { withdrawn: [], elsewhere: [], refused: [] }
   for (const effort of dirsOf(effortsRoot(root)).filter(safeSlug).sort()) {
-    for (const w of withdrawalsOf(readLog(root, effort, 'events').entries)) {
+    const events = readLog(root, effort, 'events').entries
+    for (const msg of unrenderable(events).filter((k) => migrationOf(k) !== WITHDRAW_TOOL)) out.elsewhere.push({ effort, msg, tool: migrationOf(msg) })
+    for (const w of withdrawalsOf(events)) {
       const { node, execution, messages } = w.event
       out.withdrawn.push({ effort, node, execution, messages, kinds: w.kinds, undelivered: w.undelivered })
       if (!yes) continue
@@ -69,6 +73,7 @@ function reportOf(r, yes) {
       w.effort + ' ' + (w.node || '(root)') + (w.execution ? ' in execution ' + w.execution : '') +
       (w.undelivered.length ? '; never delivered: ' + w.undelivered.join(', ') : ''))
   }
+  for (const x of r.elsewhere) lines.push('left ' + x.msg + ' messages in ' + x.effort + ' to node ' + x.tool)
   for (const x of r.refused) lines.push('refused ' + x.effort + ' ' + x.node + ': ' + x.why)
   const n = r.withdrawn.reduce((s, w) => s + w.messages.length, 0)
   lines.push(n + ' message(s)' + (yes ? ' withdrawn' : ' to withdraw; nothing written (run again with --yes)'))
@@ -89,6 +94,6 @@ if (isMain) {
     const yes = argv.includes('--yes')
     const r = migrate(at >= 0 ? argv[at + 1] : '.', { yes })
     console.log(reportOf(r, yes))
-    process.exitCode = r.refused.length ? 1 : 0
+    process.exitCode = r.refused.length || r.elsewhere.length ? 1 : 0
   }
 }

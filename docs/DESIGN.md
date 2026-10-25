@@ -823,11 +823,15 @@ sent where is the routing table (`ROUTES`):
   returns, once per node, thread, round and `msg` — and the call that delivers it names it in
   `carries`. In an execution it is a node event naming its execution; one recorded with an empty
   execution (only the migration writes one) is delivered by the next execution that runs its
-  thread. A version that drops a message kind ships the migration that withdraws every message of
-  that kind (`withdrawn`, `withdrawnEvent` in `lib/conversation.mjs`): a thread's messages are those
-  no `withdrawn` names (`threadMessages`), and preflight refuses an execution holding any other
-  message it has no template for (`messages_unrenderable`), so no session's prompt is built over a
-  kind this version cannot say. A declined request that was not an implementer's `needs_tests` is no message: sending
+  thread. A dropped message kind is withdrawn (`withdrawn`, `withdrawnEvent` in
+  `lib/conversation.mjs`): a thread's messages are those no `withdrawn` names (`threadMessages`), and
+  preflight refuses an execution holding any other message it has no template for
+  (`messages_unrenderable`), so no session's prompt is built over a kind this version cannot say.
+  The refusal names the command that clears it: `migrationOf` maps each kind to the migration that
+  handles it, `tools/migrate-messages.mjs`, which withdraws any kind, unless `DROPPED` maps the kind
+  to a migration of its own because dropping it took more than its messages. A release that drops a
+  kind therefore needs no migration of its own unless it needs more than the withdrawal, and then
+  adds its `DROPPED` row. A declined request that was not an implementer's `needs_tests` is no message: sending
   the same request again would end the conversation, so it escalates `tests_declined`. A resumed
   call is sent every message on its thread no `dispatched` line carried yet, batched into one
   prompt; a message is delivered once a `dispatched` line carries it, and a carrier that never
@@ -4721,9 +4725,10 @@ refused, a compile failed or a withdrawal was refused.
 (5.6.1 dropped `continue_search` with the search rounds), withdraws in every effort each message
 this version has no template for and no `withdrawn` names yet, one `withdrawn` event per node and
 execution, so preflight no longer refuses the execution holding them and no session is told them
-again. It lists the ones no `dispatched` carried, which no session ever saw. It dry-runs by default,
-applies with `--yes`, and a second run finds nothing to do; it exits 1 while the ledger refused a
-withdrawal.
+again. It lists the ones no `dispatched` carried, which no session ever saw. A kind `DROPPED` maps
+to a migration of its own is left to it and listed with it. It dry-runs by default,
+applies with `--yes`, and a second run finds nothing to do; it exits 1 while such a kind is left or
+the ledger refused a withdrawal.
 
 `tools/migrate-glob-literal.mjs`, run once after upgrading to 5.5.0, reports on stored evidence
 scopes now that the search glob dialect reads brackets literally; it writes nothing. Stored query

@@ -22,6 +22,7 @@ import { readTree } from '../lib/tree.mjs'
 import { preflight } from '../lib/boundaries/execution.mjs'
 import { dispatch } from '../lib/programs/common.mjs'
 import { migrate, rename } from '../tools/migrate-expects.mjs'
+import { migrate as withdrawRun } from '../tools/migrate-messages.mjs'
 import { executionRig } from './harness/program-rig.mjs'
 
 delete process.env.NODE_TEST_CONTEXT
@@ -97,6 +98,8 @@ test('needs_locus messages are withdrawn once, so a planner thread holding them 
   assert.equal(readTree(rig.repo, rig.effort).status.get('a').status, 'merged', 'the fixture: a is merged')
   const refused = preflight(rig.xc, {})
   assert.deepEqual([refused.ok, refused.error && refused.error.kind], [false, 'messages_unrenderable'], 'the run refuses before any unit throws on them')
+  assert.match(refused.error.message, /run node "[^"]+\/tools\/migrate-expects\.mjs" --repo /, 'the refusal names the migration that handles needs_locus')
+  assert.deepEqual(withdrawRun(rig.repo, { yes: true }).withdrawn, [], 'the withdrawal migration leaves needs_locus to migrate-expects')
   const planner = () => dispatch(rig.ctx, { role: 'planner', schema: 'planner_write', node: '.', thread: 'planner:.', round: 3, brief: 'Write it.' })
   await assert.rejects(planner(), /no template for message "needs_locus"/, 'the fixture: the thread cannot be dispatched on')
 

@@ -5,6 +5,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 
 import { readLog } from '../lib/ledger.mjs'
 import { preflight } from '../lib/boundaries/execution.mjs'
@@ -30,7 +31,10 @@ test('continue_search messages are withdrawn once, so an execution holding them 
   const dry = migrate(rig.repo)
   assert.deepEqual(dry.withdrawn.map((w) => [w.messages, w.kinds, w.undelivered]), [[sent, ['continue_search'], [sent[2]]]])
   assert.equal(readLog(rig.repo, rig.effort, 'events').entries.filter((e) => e.kind === 'withdrawn').length, 0, 'a dry run writes nothing')
-  assert.deepEqual(migrate(rig.repo, { yes: true }).refused, [])
+  // The refusal's command, run as it stands, is the remedy.
+  const named = /run node "([^"]+)" --repo "([^"]+)" --yes, then start again$/.exec(refused.error.message)
+  assert.ok(named, 'the refusal names one command: ' + refused.error.message)
+  execFileSync(process.execPath, [named[1], '--repo', named[2], '--yes'], { encoding: 'utf8' })
   assert.deepEqual(migrate(rig.repo, { yes: true }).withdrawn, [], 'a second run withdraws nothing')
 
   rig = rig.relaunch()

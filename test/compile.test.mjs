@@ -215,6 +215,24 @@ test('a spec edited since approval is left out, and the graph keeps its last app
   assert.deepEqual(sizes(repo), before)
 })
 
+test("a folder whose spec is edited since approval still takes what its parent's re-approved entry says of it", () => {
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  write(repo, 'api', API.replace('Parse keys case-insensitively', 'Parse keys any way at all'))
+  const parse = nodes(repo).get('api/parse')
+
+  const root = ROOT.replace('- **api** — sub-effort · realises: D1, D2 ·', '- **api** — sub-effort · realises: D1, D2, D3 ·')
+  write(repo, '.', root)
+  approve(repo, '.')
+  const out = compiled(repo)
+  assert.ok(out.skipped.some((s) => s.folder === 'api'), 'the fixture: api is edited since approval')
+  assert.deepEqual(nodes(repo).get('api').decisions, entryOf(root, 'api').realises)
+  assert.equal(nodes(repo).get('api').title, parseSpec(API, { file: 'DESIGN.md' }).title, 'its own spec still says the rest')
+  assert.deepEqual(nodes(repo).get('api/parse'), parse, 'the nodes below it stay as approved')
+})
+
 test('a spec that no longer checks in its place is refused at its file and line', () => {
   const repo = effort()
   approve(repo, '.')

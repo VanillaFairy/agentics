@@ -1182,7 +1182,9 @@ no approved or prepared spec, a design node; a task, a leaf; and a task whose ow
 folder holds such a spec (task promotion), a composite that carries the task's criteria and must
 realise every decision the task did. It appends only what changed, through `addNodes` with
 `by: 'compile'`, and records the hash it built from, so a second run appends nothing. A spec
-edited since approval is left out, and develop keeps the last approved graph. When a spec is
+edited since approval is left out, and develop keeps the last approved graph, but its folder's own
+node still takes what its parent's entry says of it (`realises`, `after`, contracts, ground,
+context): those are the parent spec's to say. When a spec is
 approved again with other text, compile parks every consumer of a contract it provides
 (`contract_changed`), gives every node realising a changed decision a `decision_changed`
 revision, parks the folder when work under it was dispatched (`spec_changed`), and retires the

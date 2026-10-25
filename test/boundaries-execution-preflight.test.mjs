@@ -12,12 +12,14 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { preflight } from '../lib/boundaries/execution.mjs'
 import { executionContext } from '../lib/boundaries/records.mjs'
-import { executionLog } from '../lib/ledger.mjs'
+import { append, executionLog } from '../lib/ledger.mjs'
+import { hashSpec } from '../lib/spec.mjs'
+import { specPath } from '../lib/store.mjs'
 import { trace } from '../lib/traceability.mjs'
 import { addNodes, readTree } from '../lib/tree.mjs'
 import { COMMANDS, STAMP, commitIn, git, leaf, root } from './harness/boundary-fixture.mjs'
@@ -230,6 +232,22 @@ test('a decision no child realises checkpoints blocking_gaps, the gaps on its li
   assert.deepEqual(lines[0].gaps, expected)
   assert.equal(out.checkpoint.seq, lines[0].seq)
   assert.equal(out.checkpoint.detail, lines[0].detail)
+})
+
+test("a planner's folder edited past its preparation is planned again, so the decisions its children miss checkpoint nothing", async (t) => {
+  const defines = [{ id: 'D1', text: 'x' }, { id: 'D2', text: 'y' }]
+  const r = world(t, [root({ defines }), { id: 'p', kind: 'composite', title: 'p', author: 'planner', decisions: ['D1', 'D2'] },
+    leaf('p/a', { expects: [ADD] }), leaf('b', { decisions: ['D2'], acceptance: [{ text: 'b works', check: 'node --test', decisions: ['D2'] }] })])
+  mkdirSync(dirname(specPath(r, E, 'p')), { recursive: true })
+  writeFileSync(specPath(r, E, 'p'), '# p\n')
+  assert.equal(append(r, E, 'ledger', [{ kind: 'prepared', folder: 'p', hash: '00000000', review: 'x', by: 'planner' }]).ok, true)
+  assert.deepEqual(gapsOf(r).map((g) => [g.decision, g.at]), [['D2', 'p']], 'the fixture: p hands D2 to no child')
+  const out = await preflight(ctxOf(r), { commands_file: commandsFile(t) })
+  assert.equal(out.checkpoint, null)
+
+  assert.equal(append(r, E, 'ledger', [{ kind: 'prepared', folder: 'p', hash: hashSpec('# p\n'), review: 'y', by: 'planner' }]).ok, true)
+  const prepared = await preflight(ctxOf(r), { commands_file: commandsFile(t) })
+  assert.equal(prepared.checkpoint && prepared.checkpoint.reason, 'blocking_gaps', 'once its plan is prepared, the gap is its plan\'s')
 })
 
 test('plan_only checkpoints parked', async (t) => {

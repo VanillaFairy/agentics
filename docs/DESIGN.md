@@ -1832,7 +1832,8 @@ request's items, written by develop and approved by the user. Before anything is
 `lib/traceability.mjs` computes over the compiled tree:
 
 - decisions no child realises — a **blocking gap** (a `design` node with no spec yet is frontier,
-  not a gap);
+  not a gap, and so is a planner's folder whose spec is edited past its compile, which the execution
+  plans again: its new plan is traced once it compiles);
 - criteria that trace to no decision — reported, for the user to accept or remove.
 
 The integration review receives the decision list of the subtree it reviews, and the folder's spec

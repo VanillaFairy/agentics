@@ -497,6 +497,18 @@ test('runs lists the project commands a task\'s work runs; it is a task\'s field
   refusedAt(problemsOf(onSubEffort), lineOf(onSubEffort, '- **planner-part**'), /runs/)
 })
 
+test('checkFolder applies compile\'s contract rule effort-wide: a task may deliver its sub-effort\'s contract, an unrelated entry may not', () => {
+  const at = (text) => checkFolder(effortOnDisk({ '.': ROOT, 'store-layout': text }), 'e1', 'store-layout').problems
+  assert.deepEqual(at(SUB.replace('provides: store-api (lib/store.mjs)', 'provides: store-paths (lib/store.mjs)')), [],
+    'store-layout promises store-paths at lib/store.mjs; its task paths delivers it there')
+  const past = SUB.replace('provides: store-api (lib/store.mjs)', 'provides: store-paths (lib/other.mjs)')
+  assert.ok(at(past).some((p) => p.line === lineOf(past, '**paths**') && /store-paths/.test(p.problem)), JSON.stringify(at(past)))
+
+  const twice = ROOT.replace('· consumes: store-paths ·', '· provides: store-paths (lib/store.mjs) ·')
+  const problems = checkFolder(effortOnDisk({ '.': twice }), 'e1', '.').problems
+  assert.ok(problems.some((p) => p.line === lineOf(twice, '- **spec-parser**') && /store-paths/.test(p.problem)), JSON.stringify(problems))
+})
+
 test('the CLI prints {folder, problems} under its digest, and exits 0 even with problems', () => {
   const repo = effortOnDisk({ '.': ROOT, 'store-layout': swap(SUB, '| store-layout.D1 |', '| D4 | x | y |') })
   const clean = cli('check', '--repo', repo, '--effort', 'e1', '--folder', '.')

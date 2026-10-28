@@ -280,16 +280,13 @@ test('a task with a bad rigor is refused at approval, at the entry\'s line (I3)'
   assert.deepEqual(readLog(repo, E, 'nodes').entries, [])
 })
 
-test('a refusal only the whole tree can see (two entries providing the same contract) comes back at the entry\'s line', () => {
+test('a second provider of a contract outside its promiser is refused at the entry\'s line, by the spec check before compile', () => {
   const text = ROOT.replace('- **reload** — task · realises: D3 · after: api · rigor: tdd',
     '- **reload** — task · realises: D3 · after: api · provides: config-api (src/reload.js) · rigor: tdd')
   const repo = effort({ '.': text, api: API })
-  approve(repo, '.')
-  approve(repo, 'api')
-  const out = compileEffort(repo, E)
+  const out = recordApproval(repo, E, '.')
   assert.equal(out.ok, false)
-  assert.ok(out.problems.some((p) => /DESIGN\.md$/.test(p.file) && p.line === lineIn(text, '- **reload**') && /config-api/.test(p.problem)),
-    JSON.stringify(out.problems))
+  assert.match(out.error, new RegExp('DESIGN\\.md:' + lineIn(text, '- **reload**') + ' .*config-api'))
   assert.deepEqual(readLog(repo, E, 'nodes').entries, [])
 })
 

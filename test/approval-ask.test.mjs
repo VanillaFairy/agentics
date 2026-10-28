@@ -20,9 +20,9 @@ const FIXTURES = fileURLToPath(new URL('./fixtures/compile/', import.meta.url))
 const read = (name) => readFileSync(join(FIXTURES, name), 'utf8').replace(/\r\n/g, '\n')
 const ROOT = read('root.md')
 const API = read('api.md')
-// An api entry claims the contract the parent's api entry already provides: the spec checks clean,
-// and compile refuses the second provider.
-const SECOND_PROVIDER = API.replace('reads: src/api/types.js', 'reads: src/api/types.js · provides: config-api (src/api/parse.js)')
+// The api folder's task restating the contract its entry promises, at a path outside the promise:
+// compile refuses the second provider, and so does the spec check before it.
+const SECOND_PROVIDER = API.replace('reads: src/api/types.js', 'reads: src/api/types.js · provides: config-api (src/reload.js)')
 const E = 'e1'
 
 function effort(t, api) {
@@ -51,13 +51,13 @@ test('a spec compile would refuse gets no token, and names what compile refuses'
   assert.equal(preview.ok, false)
   const st = askState(repo, E, 'api')
   assert.equal(st.token, '')
-  assert.deepEqual(st.problems, preview.problems)
+  for (const p of preview.problems) assert.ok(st.problems.some((q) => q.problem.includes(p.problem)), JSON.stringify(st.problems))
 })
 
 test('approving a spec compile would refuse is refused before anyone is asked, and records nothing', async (t) => {
   const repo = effort(t, SECOND_PROVIDER)
   const out = await approveAct(repo, E, 'api', { env: {}, stdinIsTTY: true, ask: neverAsk })
   assert.equal(out.ok, false)
-  assert.equal(out.error.kind, 'compile_refused')
+  assert.match(JSON.stringify(out.error), /config-api/)
   assert.deepEqual(readLog(repo, E, 'ledger').entries.filter((l) => l.kind === 'approved' && l.folder === 'api'), [])
 })

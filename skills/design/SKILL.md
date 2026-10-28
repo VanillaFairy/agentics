@@ -43,7 +43,7 @@ or agent can talk to the user.
   root folder, `<folder id with / written as .>.D<n>` below it. Only the user authors decisions. A
   contract is a decision.
 - **contract**: a named interface one entry `provides` and others `consumes`. Names are unique
-  across the effort.
+  across the effort; an entry below its promiser may deliver it there, at its paths or under them.
 - **approved**: the spec's current hash equals the hash on its latest `approved` ledger line,
   written only once the user's answer chose to approve it. **prepared**: the same against a
   `prepared` line, written only after a planner-written spec passed its autonomous review.
@@ -198,7 +198,7 @@ which its implementer is otherwise denied); a test check runs the tests that dec
 clearly affects, and from the gray area fast tests only, never big ones. A `green` task's criteria
 add no behaviour: each it states is pinned by a criterion of its red, in a test file red
 expects. A `dropped` entry's decisions are recorded as not realised, accepted; a `deferred` entry
-compiles to nothing. A contract's name is effort-unique.
+compiles to nothing. A contract's name is effort-unique; the task delivering a sub-effort's contract may restate it, at its paths or under them.
 
 Past a handful of tasks, gather the ones that belong together by concern (a subsystem, an area of
 the code, work reviewed side by side) under `### <name> — group · after: …`, its title on the next

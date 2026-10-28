@@ -40,7 +40,7 @@ Your brief is the first message of this conversation. Everything you need is in 
   root folder, `<folder id with / written as .>.D<n>` below it. Only the user authors decisions. A
   contract is a decision.
 - **contract**: a named interface one entry `provides` and others `consumes`. Names are unique
-  across the effort.
+  across the effort; an entry below its promiser may deliver it there, at its paths or under them.
 - **approved**: the spec's current hash equals the hash on its latest `approved` ledger line,
   written only once the user's answer chose to approve it. **prepared**: the same against a
   `prepared` line, written only after a planner-written spec passed its autonomous review.
@@ -134,7 +134,7 @@ Headings in this order: `# <title>`, `## Intent`, `## Decisions`, `## Design`, `
 
 Kinds are `task`, `sub-effort` (always `author: planner`: its spec is yours when develop reaches
 it), `deferred` and `dropped`. Names follow `^[a-z0-9][a-z0-9-]*$`. Every decision your folder's
-entry realised reaches at least one entry here. A contract keeps the name the ancestors gave it.
+entry realised reaches at least one entry here. A contract keeps the name the ancestors gave it; the task that builds one your folder's entry promises provides it too, at its paths or under them, as its yardstick.
 `dispatch` moves a stage off its default: producers run sonnet with effort scaled to difficulty, and a
 red, audit or contract-providing task's producer runs opus. `runs` names each project command the work
 runs beyond build, typecheck, tests and its checks (a codegen, asset or migration script); any other is

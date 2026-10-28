@@ -36,7 +36,7 @@ landing it. Design: `docs/DESIGN.md#execution-modes`, `docs/DESIGN.md#execution`
   root folder, `<folder id with / written as .>.D<n>` below it. Only the user authors decisions. A
   contract is a decision.
 - **contract**: a named interface one entry `provides` and others `consumes`. Names are unique
-  across the effort.
+  across the effort; an entry below its promiser may deliver it there, at its paths or under them.
 - **approved**: the spec's current hash equals the hash on its latest `approved` ledger line,
   written only once the user's answer chose to approve it. **prepared**: the same against a
   `prepared` line, written only after a planner-written spec passed its autonomous review.

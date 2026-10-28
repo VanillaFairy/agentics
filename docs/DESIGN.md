@@ -285,7 +285,7 @@ thing in every prompt.
   root folder, `<folder id with / written as .>.D<n>` below it. Only the user authors decisions. A
   contract is a decision.
 - **contract**: a named interface one entry `provides` and others `consumes`. Names are unique
-  across the effort.
+  across the effort; an entry below its promiser may deliver it there, at its paths or under them.
 - **approved**: the spec's current hash equals the hash on its latest `approved` ledger line,
   written only once the user's answer chose to approve it. **prepared**: the same against a
   `prepared` line, written only after a planner-written spec passed its autonomous review.
@@ -1043,7 +1043,7 @@ owns the record, its validation and every node's derived status.
 | `reads[]` | leaf: files it builds against and never writes |
 | `runs[]` | leaf: the project commands its work runs beyond the established ones and its criterion checks (a codegen, an asset or migration script), each a literal prefix its implementer is allowed (`Bash(<command>:*)`); absent when none was written |
 | `deps[]` | node ids whose outputs this node consumes |
-| `provides[]`, `consumes[]` | named contracts (`{name, paths[]}`); the prefixes drive [drift detection](#landing-and-drift) |
+| `provides[]`, `consumes[]` | named contracts (`{name, paths[]}`); the prefixes drive [drift detection](#landing-and-drift). A contract's providers form one line: a node may deliver a contract an ancestor promises, at its paths or under them, and is its yardstick; any other second provider is refused (`contractProblems` in `lib/tree.mjs`, which compile and the spec check both apply effort-wide), and a consumer resolves to the promise, the shallowest provider (`promiserOf`) |
 | `shared[]` | composite: designated shared files for its subtree (the [coupled lane](#coupled-work)) |
 | `rigor` | leaf: see [Rigor](#rigor) |
 | `role` | leaf: `none`, `red`, `green`, `audit` |

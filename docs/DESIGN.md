@@ -1109,7 +1109,8 @@ nothing outside compile calls `addNodes`.
     runs/.claims/                 one short lock per program and scope, taken to claim a run
     evidence/                     the evidence item store
                                   ([Evidence item store](#evidence-item-store)): items.jsonl,
-                                  returns/<stamp>[-<n>]-<kind>.json, snapshots/<hash>.txt
+                                  returns/<stamp>[-<n>]-<kind>.json, snapshots/<hash>.txt,
+                                  anchors/<fnv>.json (a discardable cache of pinned text)
   <effort>/
     DESIGN.md                     the root folder's spec
     <sub-effort>/DESIGN.md        one folder per sub-effort, nested as the plan nests them
@@ -2430,8 +2431,14 @@ Whenever evidence is about to be used — before a survey plans, before a re-rev
 is written, when `evidence.md` is rendered — each relevant item's state is derived on read, never
 stored:
 
-1. **Anchor check** (deterministic, `checkAnchors`). A committed span is mapped through
-   `git diff -U0 -M <at>` to the working tree, so renames are followed and uncommitted edits count;
+1. **Anchor check** (deterministic, `checkAnchors`). Content decides first, with no git
+   (`spanByContent`): a span whose file hashes as the text it pins stands in place, and one whose
+   window — its lines and a line of context each side, at least two of its lines non-blank — was
+   unique in that text and is unique in the current file stands where it is now. Anything else goes
+   to the diff, so a copy elsewhere never hides an edit to the span's own lines, and a block moved
+   away from its context is judged as the diff maps it. A commit's pinned text is read once and kept
+   in `anchors/`, a cache any check may rebuild; losing it costs a `git show`. Otherwise a committed
+   span is mapped through `git diff -U0 -M <at>` to the working tree, so renames are followed and uncommitted edits count;
    a snapshot span is diffed with `git diff --no-index` against its saved text. Both pass
    `--ignore-cr-at-eol`. A hunk wholly above the span shifts it; a hunk overlapping it changes it;
    a pure insertion counts as inside only between two of its lines. A query is re-run and its

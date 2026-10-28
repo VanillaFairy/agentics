@@ -108,6 +108,30 @@ test('watch on a live run whose heartbeat went stale says it is unresponsive, no
     '; it is not stopped, so do not start it again while it lives\nstopped: start the same command again to resume run ' + RUN + '\n')
 })
 
+test('a stall is a line naming how long the main thread was held, from when, and where to look', () => {
+  assert.deepEqual(runWatchLines([{ kind: 'stalled', ms: 61500, since: '2026-01-01T00:00:00.000Z', seq: 7 }], 0).lines,
+    ['stalled: synchronous work held the main thread 62s from 2026-01-01T00:00:00.000Z; the records around seq 7 name it'])
+})
+
+test('watch on a run that beats while its main thread has not turned says it is busy, never unresponsive', { timeout: 30000 }, async (t) => {
+  const r = repo(t)
+  const now = Date.now()
+  writeJson(runJsonPath(r, RUN), { run: RUN, pid: process.pid, heartbeat_at: new Date(now + 600000).toISOString(), loop_at: new Date(now - 600000).toISOString() })
+  appendRun(r, RUN, [{ kind: 'run', program: 'survey' }])
+  const child = spawn(process.execPath, [CLI, 'watch', '--repo', r, '--run', RUN], { env: { ...process.env, NODE_TEST_CONTEXT: '' } })
+  const exited = new Promise((resolve) => child.on('close', resolve))
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill()
+    await exited
+  })
+  let out = ''
+  await new Promise((resolve) => child.stdout.on('data', (d) => { out += d; if (out.includes('\n')) resolve() }))
+  appendRun(r, RUN, [ended(2)])
+  assert.equal(await exited, 0)
+  assert.match(out, /^busy: pid \d+ beats, but its main thread has not turned since /)
+  assert.ok(!out.includes('unresponsive'), out)
+})
+
 test('--since prints records appended before the watch started (a run)', (t) => {
   const r = repo(t)
   writeJson(runJsonPath(r, RUN), { run: RUN, pid: process.pid, heartbeat_at: new Date().toISOString() })

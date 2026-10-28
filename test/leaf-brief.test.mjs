@@ -119,7 +119,8 @@ test("the part of its spec's Design a task's entry cites is handed in the brief,
   mkdirSync(join(repo, '.agentics/e1'), { recursive: true })
   writeFileSync(join(repo, '.agentics/e1/DESIGN.md'), ['# Ports', '', '## Intent', '', 'Ports.', '', '## Decisions', '',
     '| id | decision | why |', '|---|---|---|', '| D1 | Ports are typed. | Callers check. |', '', '## Design', '',
-    '### Ports (`ports.ts`)', '', 'PORTS_TOKEN interface Proximity { tileOf(): Tile }', '', '### Save', '', 'SAVE_TOKEN', '',
+    '### Ports (`ports.ts`)', '', '```ts', 'interface Carries { payload(): Carried }', '### not a heading: inside the fence',
+    'PORTS_TOKEN interface Proximity { tileOf(): Tile }', '```', '', '### Save', '', 'SAVE_TOKEN', '',
     '## Plan', '', task('named', 'Bring `ports.ts` to the Design\'s "Ports" block, whole.'),
     task('whole', 'Declare them exactly as this spec\'s Design states.'), task('none', 'Write them.'), '',
     '## Open questions', '', '## Evidence', ''].join('\n'))

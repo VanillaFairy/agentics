@@ -4292,7 +4292,9 @@ measured before any producer round ([Resume and checkpoints](#resume-and-checkpo
 names each document, spec part or contract the brief told the producer to follow or match that
 neither its brief nor its worktree held: a declaration of what it worked without, never a ruling. A
 return that names any stops before it is measured, at every rigor, escalated `unread_reference`
-with them as its `detail`: work matched against a guess never merges. `status` is
+with them as its `detail`: work matched against a guess never merges. The reviewer's side of the
+same rule (`roles/reviewer.md`): a unit held to a document neither its brief nor the worktree carries
+is never ruled clean, but a major finding naming it. `status` is
 `done | done_with_concerns | blocked | needs_context | needs_tests | decompose | unsplittable |
 premise_mismatch | needs_decision | contract_changed | declined`; for any but `done`, `text` says what was established, tried and needed, its first line
 the gist. `needs_tests` is offered to a green's implementer alone and `declined` to the cycle's

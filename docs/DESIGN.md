@@ -359,8 +359,8 @@ the user becomes a park or an escalation the session's watch picks up ([Progress
 an answer the user gave reaches a program only as the `answered` ledger line the session recorded
 ([The user's word](#the-users-word)). An agent is where judgment happens, and nowhere else.
 
-A program's process carries the run's heartbeat and every live call's stream on one event loop, so
-work that spawns git again and again runs in a child the program awaits: a check
+A program's process carries every live call's stream on one event loop, so work that spawns git
+again and again runs in a child the program awaits: a check
 (`lib/measure.mjs`), and a probe round's anchor checks, its review scope computed by
 `childCall` (`lib/child-call.mjs`) and its carried findings handed to `recordProbe` rather than
 checked again.
@@ -979,12 +979,20 @@ watch began, or between two of its re-arms, is printed all the same: the run's l
 execution's log spans every run of it, so develop's watch passes the effort's `seq` it read before
 the start instead ([Progress](#progress)); a re-armed watch prints again a line that still stands. A
 run is alive while its pid lives and its heartbeat — `heartbeat_at` in `run.json`, rewritten every
-10 seconds — is fresh, written within the last 120 seconds, longer than any lock wait or git call
-stalls the loop. A blocked event loop stops the heartbeat and not the run, so a run whose heartbeat
-went stale is still alive while its pid is a node process running a `run.mjs` (`runProcess` in
-`lib/host.mjs`, read only then): `runState` reads it `live` with `beating: false`, a start is refused
-`run_live`, and the watch prints `unresponsive: pid <pid> still runs <run> but has not beaten since
-<heartbeat_at>; …` once, and `beating again: <run>` if it does. One without `ended` whose pid is
+10 seconds — is fresh, written within the last 120 seconds. A worker thread of the run's process
+beats (`startHeart` in `lib/heart.mjs`), so synchronous work on the main thread — a git call, a lock
+wait, a rename retried — never stales it; each beat also writes `loop_at`, the main thread's last
+turn of its event loop, which that thread marks every second. A stale heartbeat therefore means the
+process itself froze: a run whose heartbeat went stale is still alive while its pid is a node
+process running a `run.mjs` (`runProcess` in `lib/host.mjs`, read only then): `runState` reads it
+`live` with `beating: false`, a start is refused `run_live`, and the watch prints `unresponsive: pid
+<pid> still runs <run> but has not beaten since <heartbeat_at>; …` once, and `beating again: <run>`
+if it does. A run that beats while `loop_at` is stale reads `turning: false`, and the watch prints
+`busy: …` once and `turning again: <run>` after: the main thread is held, the process is not hung.
+A turn that comes more than 15 seconds late is recorded `stalled {ms, since}` in the run's log once
+the thread turns, which the watch prints, so the records beside it name what held the thread. At its
+start a run removes the files `writeWhole` staged under its home whose writer's pid is gone
+(`sweepStaged` in `lib/store.mjs`): a process killed between a write and its rename leaves one. One without `ended` whose pid is
 gone, or whose pid the system gave another program, shows as stopped, and starting the same command
 again resumes it. A run started with `detached` outlives both
 a headless session's exit and a background session's stop, and the host's own job does not kill it
@@ -1578,7 +1586,9 @@ is cleared by `retry`.
 while every decision id stays realised; anything else is user-bound. `lib/tree.mjs` `addNodes`
 enforces it for every writer: a batch may state or change a `defines` entry only from compile, as
 the approved copy on the ledger states it; a changed contract is admitted only from compile, on a
-node whose entry sits in a spec the user approved; and a decision a leaf or a design node realised
+node whose entry sits in a spec the user approved — but a contract added to what a node consumes,
+which declares a dependency and moves no provider, is admitted from any replan, while one it
+consumed must stay, at its paths; and a decision a leaf or a design node realised
 before must be realised by one after, unless a `dropped` entry of a spec the user approved gave it
 up. The planner returns `needs_decision` or `contract_changed` instead. Replans append
 `replanned` events; nothing is rewritten, and merged work stays. A replan that leaves a leaf exactly
@@ -2062,7 +2072,10 @@ execution journaled (`sweepTrees`); a dirty one is never forced, and preflight r
    dispatch that returned nothing holds the folder on a `role` fault, and any other status parks
    the folder (`needs_decision`, `contract_changed`, `premise_mismatch`) or
    escalates it (`plan_<status>`) on the planner's return. It then parses the spec with its
-   ancestors' decisions in view. A Decisions row parks the folder `needs_decision`, because only
+   ancestors' decisions in view and, when that finds nothing, compiles it dry as its preparation
+   would sign it (`compileEffort` with `previewAs: 'prepared'`), so a refusal of the tree's guards
+   — a consumed contract dropped or re-pathed, a provided one changed — reaches the planner while it
+   can revise or return `contract_changed`, not after a review round is spent. A Decisions row parks the folder `needs_decision`, because only
    the user states decisions; any other problem goes back to the planner's session as a `problems`
    message, and the same problems again escalate `spec_refused`.
 2. **Attack.** Before each round the folder's design spend is held to its allowance (below). The
@@ -4540,11 +4553,11 @@ directory; `sessions` every session the search's thread ran in; `rounds` each ro
 
 A run's home is `runs/<run>/`, or for an execution's run, `<effort>.<stamp>`, that execution's
 directory (`runHome`), whose log is its `state.jsonl`. Its `run.json` is `{run, program, scope,
-scope_key, args, args_digest, raw, session, pid, started_at, heartbeat_at}`: `args` the resolved
+scope_key, args, args_digest, raw, session, pid, started_at, heartbeat_at, loop_at?}`: `args` the resolved
 arguments, `raw` the flags as given, `scope_key` and `args_digest` the digests of `scope` and
 `args`, and `session` the `CLAUDE_CODE_SESSION_ID` of the session that last started the run, `''`
 when none did, which is what ties the run's headless sessions to the session that asked for them.
-It is rewritten whole, `heartbeat_at` every 10 seconds while the run's process lives.
+It is rewritten whole, `heartbeat_at` and `loop_at` every 10 seconds while the run's process lives.
 `result.json` is the program's result with `run` and `cost`.
 A search keeps its files in `searches/<search key>/` (the key's `:` written `~`): `calls.jsonl`, the
 call log; `server-<digest>.json`, the tool server's spec; `mcp-<digest>.json`, its MCP config

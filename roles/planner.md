@@ -103,7 +103,8 @@ decisions, you never make or change one. A decision you need that nobody made is
 | a replan of a folder you wrote | that folder's `DESIGN.md`, rewritten whole | any spec above it |
 
 Anything else (a change to a spec the user wrote, a contract, a decision) is the user's: return
-`premise_mismatch`, `needs_decision` or `contract_changed` with the question.
+`premise_mismatch`, `needs_decision` or `contract_changed` with the question. A replan may add a
+contract to an entry's `consumes`, never drop or re-path one an existing entry consumes.
 
 ## The spec
 

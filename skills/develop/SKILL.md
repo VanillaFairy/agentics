@@ -357,6 +357,8 @@ stands: act on each once. Hold each line to `self-improve`'s signals: it decides
 - `stopped: …`: the run's process is gone. Start the same command again: it resumes.
 - `paused: …` and `resumed: …`: a pause (below) taking hold and ending. Nothing to do.
 - `unresponsive: …`: the process lives but stopped beating, a plugin defect: take it through `self-improve`.
+- `busy: …`, `turning again: …`, `stalled: …`: synchronous work held the run's main thread. Nothing to
+  do; a `stalled` over minutes is a spend of time for `self-improve`, its seq naming where.
 
 **Pausing a live run**, when the user asks or a plugin fix must land before more work starts: what
 runs finishes and records, nothing new starts, and the run ends `stopped: pause`. The pause stands
@@ -423,6 +425,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e> --node
 |---|---|
 | `blocked`, `locus_held`, `review_incomplete` | always — a transient, two leaves on one file, a reviewer's miss: retry |
 | `command_denied` | always — the work runs a project command its entry's `runs` does not name (`detail`): add it there, have the edit ruled (`respec.md`), then retry; never retry first |
+| `compile_refused`, `prepare_refused` | a planner-written folder's — retry: its planner is sent the refusals (`detail`) and revises, or returns `contract_changed`, which parks for the user. A problem in a spec the user wrote is a re-spec (`respec.md`) |
 | `unread_reference` | always — the producer could not read what `detail` names: when the node's brief now carries it, retry; else put the text in the entry or in the Design part it cites, have the edit ruled (`respec.md`), then retry |
 | `fails_full_suite`, `verify_not_converging` | its failures are timeouts or load faults that pass alone: retry once; the same again is the user's |
 | `discriminator_undecidable` | the file only pins behaviour that held at base: rule it a net (below). One that should fail at base, for behaviour the leaf adds, is the user's |

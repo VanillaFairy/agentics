@@ -402,7 +402,19 @@ test('a replan may not drop or re-path a contract a node consumes', () => {
   assert.equal(out.ok, true, JSON.stringify(out.problems))
 })
 
-const group = (id, extra = {}) => ({ id, kind: 'group', title: 'gather ' + id, ...extra })
+test('a replan may add a contract a node consumes, an existing one kept as it was; dropping one beside the addition is still refused', () => {
+  const r = repo()
+  assert.equal(seedTree(r, 'e1', [root(), leaf('a', { provides: [{ name: 'api', paths: ['src/a.js'] }] }),
+    leaf('k', { provides: [{ name: 'kinds', paths: ['src/k/'] }] }),
+    leaf('b', { consumes: [{ name: 'api', paths: ['src/a.js'] }] })]).ok, true)
+  const added = addNodes(r, 'e1', [leaf('b', { consumes: [{ name: 'api', paths: ['src/a.js'] }, { name: 'kinds', paths: ['src/k/'] }] })], { by: 'compile', approved: new Map() })
+  assert.equal(added.ok, true, JSON.stringify(added.problems))
+  const swapped = addNodes(r, 'e1', [leaf('b', { consumes: [{ name: 'kinds', paths: ['src/k/'] }] })], { by: 'compile', approved: new Map() })
+  assert.equal(swapped.ok, false)
+  assert.match(swapped.problems.map((p) => p.problem).join(), /drop or re-path a contract this node consumes \(api\)/)
+})
+
+const group =(id, extra = {}) => ({ id, kind: 'group', title: 'gather ' + id, ...extra })
 
 test('a group sits in a folder and holds only tasks: its owner is the folder, and its units merge there', () => {
   const nodes = tree(root(), group('g'), leaf('g/a'), leaf('g/b', { deps: ['g/a'] }), leaf('c'))

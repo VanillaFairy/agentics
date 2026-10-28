@@ -715,12 +715,14 @@ test('a settle that needs a decision parks the folder on its dispatch', async (t
 
 // ================================================================== preparing
 
-test('a compile refusal at preparation escalates compile_refused', async (t) => {
+test('a spec compile would refuse goes back to its planner at the check, before any review; the same refusal again escalates spec_refused', async (t) => {
   const refused = folderSpec({ after: ' · after: /nowhere' })
-  const w = world(t, { steps: clean(refused), writes: { 1: refused } })
+  const w = world(t, { steps: planner(written, written), writes: { 1: refused } })
   const out = await w.run()
   assert.equal(out.outcome, 'stopped')
-  assert.deepEqual(escalations(w.rig).map((e) => e.reason), ['compile_refused'])
+  assert.equal(messages(w.rig, 'problems').length, 1, 'the planner was told what compile refuses')
+  assert.deepEqual(escalations(w.rig).map((e) => e.reason), ['spec_refused'])
+  assert.equal(under(w.rig, 'probe:').length, 0, 'no review round was spent on it')
   assert.equal(nodeOf(w.rig, 'p').kind, 'design')
 })
 

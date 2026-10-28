@@ -198,6 +198,27 @@ test('spec-check: a written spec is checked and records nothing', (t) => {
   assert.deepEqual(everything(xc), before, 'a clean check records nothing')
 })
 
+test('spec-check: a rewrite compile would refuse (a consumed contract dropped) goes back to the planner before any review, naming the guard', (t) => {
+  const root = ROOT_SPEC.replace('- **q** — task · realises: D1 · rigor: tdd · expects: src/q.mjs', '- **q** — task · realises: D1 · rigor: tdd · expects: src/q.mjs · provides: api (src/q.mjs)')
+  const consuming = folderSpec({ after: ' · consumes: api' })
+  const xc = rig(t, { root, spec: consuming })
+  assert.equal(recordPreparation(xc.repo, E, 'p', { review: REVIEW }).ok, true)
+  assert.equal(compileEffort(xc.repo, E).ok, true)
+  assert.deepEqual(nodeOf(xc, 'p/x').consumes.map((c) => c.name), ['api'])
+
+  put(xc.repo, 'p', folderSpec({ title: 'Add x again.' }))
+  assert.deepEqual(problemsOf(xc), [], 'the spec alone checks clean')
+  const dispatch = planner(xc, 1, { status: 'written' })
+  const out = specCheck(xc, { folder: 'p', dispatch })
+  assert.equal(out.status, 'problems')
+  const sent = messages(xc, 'problems')
+  assert.equal(sent.length, 1)
+  assert.match(sent[0].payload.problems.map((p) => p.problem).join(), /drop or re-path a contract this node consumes \(api\)/)
+
+  put(xc.repo, 'p', folderSpec({ title: 'Add x again.', after: ' · consumes: api' }))
+  assert.equal(specCheck(restarted(xc), { folder: 'p', dispatch: planner(xc, 2, { status: 'written' }) }).status, 'checked', 'kept, it checks clean')
+})
+
 test('spec-check: a settled return reads as written', (t) => {
   const xc = rig(t)
   const dispatch = planner(xc, 1, { status: 'settled', dispositions: [] })

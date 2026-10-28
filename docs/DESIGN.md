@@ -1697,7 +1697,11 @@ of the suite that catches it, so a break another test already kills asks for no 
   tip, once the last member is approved, so the effort branch is never red.
 - **Mutations are declarations.** A test-author or auditor declares `{file, find, replace,
   expect_failing}` in its return; leaf-close applies them in code and restores the file. A
-  `find` matching zero or several times refuses, pointing at the declaration.
+  `find` matching zero or several times refuses, pointing at the declaration. A declaration is
+  written against the committed blob and a checkout may hold the file with other line endings
+  (`core.autocrlf`), so a `find` that does not occur as written is matched in the file's own line
+  endings, and `replace` is written in them (`substitute` in `lib/verify.mjs`); excerpts handed to
+  agents carry no carriage returns (`rangeExcerpts` in `lib/citations.mjs`).
 - **A mutation once applied is never dropped.** A leaf measured by its mutations (`tests-only`,
   `audit`) is measured, every round, on each mutation an earlier round of it applied, beside the
   round's own declarations (`heldMutations` in `lib/verdict.mjs`, from the journal), so a mutation

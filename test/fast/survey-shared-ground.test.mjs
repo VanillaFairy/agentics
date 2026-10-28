@@ -27,6 +27,14 @@ function tree(t) {
 
 // ------------------------------------------------------------------ the common ground
 
+test('a CRLF checkout is excerpted without carriage returns, so an agent quoting it quotes the blob', (t) => {
+  const root = tree(t)
+  writeFileSync(join(root, 'src', 'c.mjs'), lines('gamma', 4).replace(/\n/g, '\r\n'))
+  const text = rangeExcerpts(root, [{ path: 'src/c.mjs', start: 2, end: 3 }])
+  assert.match(text, /gamma line 2$/m)
+  assert.equal(text.includes('\r'), false, JSON.stringify(text))
+})
+
 test('a named range is read once, numbered, under its path and length', (t) => {
   const text = rangeExcerpts(tree(t), [{ path: 'src/a.mjs', start: 3, end: 5 }])
   assert.ok(text.startsWith('### src/a.mjs:3-5 (of '), text)

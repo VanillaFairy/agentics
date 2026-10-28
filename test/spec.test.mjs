@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import {
-  ENTRY_KEYS, ENTRY_KINDS, GRADES, SECTIONS, checkFolder, checkSpec, entryId, hashSpec, parseSpec,
+  ENTRY_KEYS, ENTRY_KINDS, GRADES, SECTIONS, checkFolder, checkSpec, citedDesign, entryId, hashSpec, parseSpec,
 } from '../lib/spec.mjs'
 import { specPath } from '../lib/store.mjs'
 
@@ -369,6 +369,33 @@ test('author and shared on a task are refused at its entry', () => {
 test('a task with no criterion is refused at its entry', () => {
   const text = swap(swap(ROOT, '- [ ] every refusal names a line', ''), '- [ ] HUMAN: the messages read well', '')
   refusedAt(problemsOf(text), lineOf(text, '- **spec-parser**'), /criteri/)
+})
+
+test('a task citing a Design part the Design does not hold is refused at its entry; a ### heading or a passage inside it is not', () => {
+  const cite = (words) => problemsOf(swap(ROOT, '  Each refusal names its line.', '  ' + words)).filter((p) => /cites/.test(p.problem))
+  const ghost = swap(ROOT, '  Each refusal names its line.', '  Match the Design\'s "Ghost" block.')
+  refusedAt(problemsOf(ghost), lineOf(ghost, '- **spec-parser**'), /cites the Design's "Ghost".*does not hold/)
+  assert.deepEqual(cite('Match the Design\'s "Layout" block, whole.'), [], 'a ### heading')
+  assert.deepEqual(cite('Keep the Design\'s "one DESIGN.md per folder" rule.'), [], 'a passage inside the Design')
+  assert.deepEqual(cite('Declare it exactly as this spec\'s Design states.'), [], 'the Design whole')
+  const empty = swap(swap(ROOT, '### Layout', ''), 'One folder per sub-effort, one `DESIGN.md` per folder.', '')
+  const emptied = empty.replace(/```text[\s\S]*?```\n/, '')
+  const cited = swap(emptied, '  Each refusal names its line.', '  As this spec\'s Design states.')
+  refusedAt(problemsOf(cited), lineOf(cited, '- **spec-parser**'), /cites this spec's Design, which is empty/)
+})
+
+test('citedDesign carries the ### part a task names, or the whole Design when it names the Design alone', () => {
+  const spec = (context) => {
+    const parsed = parseSpec(swap(ROOT, '  Each refusal names its line.', '  ' + context), { file: 'DESIGN.md' })
+    return citedDesign(parsed, parsed.entries.find((e) => e.name === 'spec-parser'))
+  }
+  const part = spec('Match the Design\'s "Layout" block.')
+  assert.deepEqual(part.parts.map((p) => p.heading), ['Layout'])
+  assert.match(part.parts[0].text, /^### Layout\n\nOne folder per sub-effort/)
+  const whole = spec('As this spec\'s Design states.')
+  assert.deepEqual(whole.parts.map((p) => p.heading), [''])
+  assert.match(whole.parts[0].text, /### Layout[\s\S]*# not a heading/)
+  assert.deepEqual(spec('No citation here.').parts, [])
 })
 
 test('a planner-written spec with a Decisions row is refused at the row', () => {

@@ -741,7 +741,12 @@ in the sections `Task`, `Acceptance criteria`, `Decisions realised`, `Expected f
 `Evidence`, `Gotchas`, `Measures`, `Commands`, `Worktree` and `Repository guidance`: the node, the
 decisions it realises, the files it expects to change (a prediction, never a limit) and those it
 reads, a test round of a green or an audit also the test files the red's branch changed
-(`cycleTests` in `lib/integration.mjs`); then, under `Effort files` and only when there are any,
+(`cycleTests` in `lib/integration.mjs`); then, under `Spec Design` and only when its entry cites
+the Design of the spec that holds it (`designCitedBy` and `citedDesign` in `lib/spec.mjs`), each
+`### ` part of that Design the entry names, or the whole Design when it names the Design alone or a
+passage no heading answers to, from the text compile last kept for the folder: a producer, and the
+reviewer handed its brief, can never be told to match a document its worktree does not hold; then,
+under `Effort files` and only when there are any,
 the text of each file under the effort's store (`.agentics/<effort>/`, its `.state/` records
 excepted) that the leaf reads or its intent or context cites, read from the main checkout: the store
 is gitignored, so no worktree holds it, and the producer is confined to its worktree. Like any
@@ -3919,7 +3924,11 @@ which also needs a criterion; `label` on either, the node's visible name. A node
 parents; the label names the work done there in free text for people, at most 16 characters so
 it fits a node's block in the viewer (`foundations/world/world-red` is shown as `World tests`). The
 viewer draws the label, and the last id segment where none was written. A checked box is refused.
-Headings and forms inside a fenced block are prose.
+Headings and forms inside a fenced block are prose. A task's title and context cite the spec's
+Design as `the Design` (the capitalised word), and a part of it as `the Design's "<name>"`, `"<name>"
+block of the Design` or `Design › <name>`, where `<name>` is a `### ` heading of the Design or its
+start before a space or a bracket; its brief carries what it cites ([Briefs and returns](#briefs-and-returns)).
+A task citing a name the Design does not hold, or a Design that is empty, is refused at its entry.
 
 A group:
 

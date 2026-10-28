@@ -76,9 +76,10 @@ Where the facts do not settle it, ask the user once, with the lines you read.
 ## Step 3 — Stop the run
 
 For a fault only. A spend signal does not stop a run doing real work: let what is in flight finish,
-and take the correction through step 4 at the next natural stop or between runs.
+and take the correction through step 4 at the next natural stop or between runs; `lib/boundary.mjs
+pause --repo . --run <run>` makes one (develop step 3), and `resume` ends it.
 
-There is no stop command. Read `pid` from `.agentics/<e>/.state/executions/<stamp>/run.json` and end
+A fault cannot wait for a pause. Read `pid` from `.agentics/<e>/.state/executions/<stamp>/run.json` and end
 its process tree: `taskkill /PID <pid> /T /F` on Windows, `pkill -TERM -P <pid>` and then
 `kill -TERM <pid>` elsewhere. The watch prints `stopped: …`. Nothing is lost: a relaunch resumes
 the open execution, and a call cut off mid-way resumes in its own session.

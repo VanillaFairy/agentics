@@ -355,7 +355,18 @@ stands: act on each once. Hold each line to `self-improve`'s signals: it decides
   `ended failed` or `ended launch_failed` is a plugin fault: say so and start the same command once
   more; the same fault again is a plugin defect: take it through `self-improve`.
 - `stopped: …`: the run's process is gone. Start the same command again: it resumes.
+- `paused: …` and `resumed: …`: a pause (below) taking hold and ending. Nothing to do.
 - `unresponsive: …`: the process lives but stopped beating, a plugin defect: take it through `self-improve`.
+
+**Pausing a live run**, when the user asks or a plugin fix must land before more work starts: what
+runs finishes and records, nothing new starts, and the run ends `stopped: pause`. The pause stands
+over any relaunch until `resume`, which starts a run that has ended again with its own arguments
+and prints its `{run, pid, log, result_file}`; arm the watch on it as after a start.
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" pause --repo . --run <run>
+node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" resume --repo . --run <run>
+```
 
 **Resuming** is starting again. After a stop, a fault, an answer or a kill, from this session or
 another, the same start on the same folder resumes the open execution, and each task picks up at

@@ -2941,7 +2941,9 @@ controls the limit.
 When the user set a token target (`budget`), the program starts no new leaf once what is left of it
 — the target less the tokens the execution's calls returned, over all its runs — is spent, or is
 below the tokens the execution measured per merged leaf: a count deciding when, never what (L2).
-`pause` is a launch flag that does the same once the run's first merge unit settles. Either way the
+`pause` is a launch flag that does the same once the run's first merge unit settles; the session's
+`pause` call ([Session calls](#session-calls)) stops a live run at once, launching nothing, a merge
+included, until `resume`. Either way the
 units in flight finish, folders are still planned and merges still run, and the run ends `stopped:
 budget` or `stopped: pause`. While a merge runs, no leaf that consumes a contract starts: its drift
 is known only once that merge is ruled on. A leaf that failed alone on an integration head is
@@ -3796,7 +3798,9 @@ is derived from it) · `message {thread, from, msg, payload, round}` (a message 
 thread's session, [Conversations](#conversations); its `execution` is `''` only on one the migration
 recorded, and no status is derived from it) · `withdrawn {messages[], why}` (the seqs of messages a
 migration retired because the version that reads them has no template for their kind, with the
-messages' `execution`; no session is told them again, and no status is derived from it). A boundary appends an event only while it is not
+messages' `execution`; no session is told them again, and no status is derived from it) · `paused
+{by}` and `resumed {by}` (node `''`, the session's pause of the execution it names and its end,
+`pause` and `resume` under [Session calls](#session-calls); no status is derived from them). A boundary appends an event only while it is not
 already the node's word (`freshRecords` in `lib/boundaries/records.mjs`, [Boundaries](#boundaries)).
 
 ### Snapshot
@@ -4193,13 +4197,13 @@ or still being released, is refused, and the taker waits.
 
 ### Session calls
 
-- **Owner:** `land`, `landAct`, `adoptAct`, `acceptDrift`, `retry` and `note` in `lib/boundary.mjs`, which holds those
+- **Owner:** `land`, `landAct`, `adoptAct`, `acceptDrift`, `retry`, `note`, `pauseRun` and `resumeRun` in `lib/boundary.mjs`, which holds those
   and their CLI alone, and `adopt` in `lib/adopt.mjs`, which `adoptAct` and the CLI call: any other
   verb exits 1 with `{error: program_failed}`.
 - **Restated in:** `skills/develop/SKILL.md`, its landing reference and its `outside-work.md`.
 
 Every other boundary is a function the `execute` program calls in-process
-(`lib/boundaries/*.mjs`); its result is a value, and its shape lives in its own module. Five are
+(`lib/boundaries/*.mjs`); its result is a value, and its shape lives in its own module. These are
 the session's, called as CLIs:
 
 - **land** — `check`: `into` (the user's checked-out branch), `effort_branch`, `effort_head` (the
@@ -4263,6 +4267,18 @@ the session's, called as CLIs:
   acceptances kept) and `by: session`; then, if `integrationPark` over the claims as they now stand
   still earns a park, that park with the same `said`. With no park left the newer event stands and
   the folder reads `integrated`.
+- **pause** — `pause --repo <r> --run <run>`: an execution's run (`<effort>.<stamp>`) told to start
+  nothing new. One `paused` event under that execution (`pauseExecution`), unless one already
+  stands. The running program reads it at its next tick, and each of its leaves before its next round
+  or review (`pausedAt` in `lib/boundaries/execution.mjs`): what runs finishes and records, nothing
+  new is launched, a merge included, and the run ends `stopped: pause` once nothing runs, resumable.
+  The pause stands over a relaunch until `resume`. Prints `{ok, paused, already, run, live}`
+  (`paused` the event's seq) or `{ok: false, error}`: `unknown_run`, `not_an_execution`, `closed`.
+- **resume** — `resume --repo <r> --run <run>`: a `resumed` event after the standing pause
+  (`resumeExecution`; `resumed: 0` when none stands); a live run goes on at its next tick, and a
+  run that is no longer live is started again, detached, with the arguments its run.json records
+  but those that shape only a new execution or stop it (`relaunchArgv`): `{ok, resumed, run,
+  relaunched}`, `relaunched` what `run.mjs` prints for a start, or null for a live run.
 - **retry** — `retry --node <id>…`: `{retried[], error}`; each `replanned {reason:
   retry_escalated}` names the open execution holding the node (the latest open one whose root is
   the node or above it), or `''`.

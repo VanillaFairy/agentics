@@ -20,6 +20,7 @@
 
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { pauseRun, resumeRun } from '../lib/boundary.mjs'
 import { append } from '../lib/ledger.mjs'
 import { acquireAsync, releaseSlots } from '../lib/locks.mjs'
 import { dispatchKey } from '../lib/store.mjs'
@@ -123,6 +124,36 @@ describe('the execute program', { concurrency: 4 }, () => {
       assert.equal(cost.by_model[model].tokens, m.tokens, model)
       assert.ok(Math.abs(cost.by_model[model].usd - m.usd) < 1e-9, model)
     }
+  })
+
+  test('a session pause on a live run starts nothing new while what runs finishes, and a resume starts the run again where it stood', T, async (t) => {
+    const w = world(t, { spec: chainSpec('a', 'b') })
+    const { rig } = w
+    w.script({ [IMPL('a')]: [done()], [IMPL('b')]: [done()] }, rootReview(1, claim('D1 holds')))
+    let paused = null
+    w.before.push((call) => { if (call.node === 'a' && !paused) paused = pauseRun(rig.repo, rig.run) })
+
+    const first = await w.start(['--effort', E])
+    assert.equal(first.ok, true, JSON.stringify(first))
+    assert.equal(paused.ok, true, JSON.stringify(paused))
+    assert.equal(first.result.stopped, 'pause')
+    assert.equal(statusOf(rig, 'a'), 'approved', "a's call in flight finished and recorded; its merge never started")
+    assert.equal(dispatchedOf(rig, 'b').length, 0, 'b never called')
+    assert.ok(first.result.notes.some((n) => n.startsWith('paused by the session (#' + paused.paused + ')')), JSON.stringify(first.result.notes))
+    assert.equal(pauseRun(rig.repo, rig.run).already, true, 'a standing pause is not written again')
+
+    const held = await w.start(['--effort', E])
+    assert.equal(held.result.stopped, 'pause', 'a plain relaunch while the pause stands starts nothing')
+    assert.equal(dispatchedOf(rig, 'b').length, 0)
+
+    let relaunched = null
+    const resumed = await resumeRun(rig.repo, rig.run, { launchRun: (o) => { relaunched = o; return w.start(o.argv.slice(1, -3)) } })
+    assert.equal(resumed.ok, true, JSON.stringify(resumed))
+    assert.ok(resumed.resumed > paused.paused)
+    assert.deepEqual(relaunched.argv, ['execute', '--effort', E, '--repo', rig.repo, '--detach'], 'started again as it was given')
+    assertComplete(resumed.relaunched.result)
+    assert.equal(statusOf(rig, 'b'), 'merged')
+    assert.equal((await resumeRun(rig.repo, rig.run, { launchRun: async () => ({ ok: true }) })).resumed, 0, 'nothing stands to resume')
   })
 
   test('budget: a leaf the target cannot cover at the measured tokens per merged leaf is not started', T, async (t) => {

@@ -670,7 +670,9 @@ failed a completed return is kept on disk, a continuation part is kept nowhere a
 no output, and the call still does not count as returned.
 
 **Confinement and what it leaves.** An agent runs in its worktree, may edit only the paths it was
-allowed and may run only its role's commands. An agent of a program run outside an execution runs
+allowed and may run only its role's commands; an implementer also runs its leaf's criterion checks
+and the project commands its entry names in `runs` (`roleCommands` in `lib/roles.mjs`), each split
+by `commandParts` like any other. An agent of a program run outside an execution runs
 in the checkout the program reads (`--root`), the `review` program's reviewer in its throwaway
 worktree, and none of them is allowed a path to write. Prevention ends where the repository's own
 commands begin: a build or test script a producer runs is the project's code, and what it writes
@@ -1035,6 +1037,7 @@ owns the record, its validation and every node's derived status.
 | `ground[]`, `ground_known` | paths the node's evidence lives in; `false` earns a survey before planning |
 | `expects[]` | leaf: the files the planner expects it to change, optional and empty for a `verify` leaf: a prediction the scheduler, drift detection and the brief read, never a permission ([Role rules](#role-rules)) |
 | `reads[]` | leaf: files it builds against and never writes |
+| `runs[]` | leaf: the project commands its work runs beyond the established ones and its criterion checks (a codegen, an asset or migration script), each a literal prefix its implementer is allowed (`Bash(<command>:*)`); absent when none was written |
 | `deps[]` | node ids whose outputs this node consumes |
 | `provides[]`, `consumes[]` | named contracts (`{name, paths[]}`); the prefixes drive [drift detection](#landing-and-drift) |
 | `shared[]` | composite: designated shared files for its subtree (the [coupled lane](#coupled-work)) |
@@ -3883,9 +3886,10 @@ root and `<folder id with / as .>.D<n>` below it. Open questions: `- **blocking:
 
 Kinds: `sub-effort`, `task`, `deferred`, `dropped`. Keys: `realises`, `after` (a name in the same
 plan, or `/a/b` from the root folder), `provides` (`<name> (<path>, …)`), `consumes`, `ground`;
-`author` (`you` or `planner`) and `shared` on a sub-effort; `rigor`, `role`, `expects` (optional), `reads` and
-`dispatch` (`producer=<model>/<effort>, reviewer=<model>/<effort>`) on a task, which also needs a
-criterion; `label` on either, the node's visible name. A node's id is its path and carries its
+`author` (`you` or `planner`) and `shared` on a sub-effort; `rigor`, `role`, `expects` (optional), `reads`,
+`runs` (the project commands the work runs beyond its role's and its checks, each named literally
+and without `*`: ``runs: `npm run asset:rename` ``) and `dispatch` (`producer=<model>/<effort>, reviewer=<model>/<effort>`) on a task,
+which also needs a criterion; `label` on either, the node's visible name. A node's id is its path and carries its
 parents; the label names the work done there in free text for people, at most 16 characters so
 it fits a node's block in the viewer (`foundations/world/world-red` is shown as `World tests`). The
 viewer draws the label, and the last id segment where none was written. A checked box is refused.

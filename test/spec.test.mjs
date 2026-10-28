@@ -483,6 +483,20 @@ test('checkFolder refuses a task whose node compile would refuse: no rigor, an u
   assert.deepEqual(checkFolder(at(SUB), 'e1', 'store-layout').problems, [], 'the unmutated fixture stays clean')
 })
 
+test('runs lists the project commands a task\'s work runs; it is a task\'s field, and a command with * is refused', () => {
+  const RUNS = ' · runs: `npm run asset:rename`, npm run assets:gen'
+  const named = SUB.replace('rigor: tdd', 'rigor: tdd' + RUNS)
+  assert.deepEqual(entry(parseSpec(named, { file: 'DESIGN.md' }), 'paths').runs, ['npm run asset:rename', 'npm run assets:gen'])
+  const at = (text) => checkFolder(effortOnDisk({ '.': ROOT, 'store-layout': text }), 'e1', 'store-layout').problems
+  assert.deepEqual(at(named), [])
+
+  const star = SUB.replace('rigor: tdd', 'rigor: tdd · runs: npm run *')
+  assert.ok(at(star).some((p) => p.line === lineOf(star, '**paths**') && /runs/.test(p.problem)), JSON.stringify(at(star)))
+
+  const onSubEffort = swap(ROOT, '· shared: package.json', '  · shared: package.json' + RUNS)
+  refusedAt(problemsOf(onSubEffort), lineOf(onSubEffort, '- **planner-part**'), /runs/)
+})
+
 test('the CLI prints {folder, problems} under its digest, and exits 0 even with problems', () => {
   const repo = effortOnDisk({ '.': ROOT, 'store-layout': swap(SUB, '| store-layout.D1 |', '| D4 | x | y |') })
   const clean = cli('check', '--repo', repo, '--effort', 'e1', '--folder', '.')

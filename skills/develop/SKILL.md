@@ -250,7 +250,7 @@ put it>.
 
 ## Plan
 
-- **<name>** — task · realises: D1 · label: <the work> · rigor: <rigor> · expects: <path>, … · reads: <path>, …
+- **<name>** — task · realises: D1 · label: <the work> · rigor: <rigor> · expects: <path>, … · reads: <path>, … · runs: <command>, …
   <title: one imperative line>
   <context: self-contained, for an executor who never saw this conversation>
   - [ ] <criterion> — check: `<command>`
@@ -266,7 +266,8 @@ No survey ran: the request named its ground.
   added. Every `Dn` is realised by an entry.
 - **Plan**: a `task` for each item triage found atomic with known ground, rigor per
   `docs/DESIGN.md#rigor`, every criterion naming its check (the tests the change clearly affects,
-  and from the gray area fast tests only, never big ones) or starting `HUMAN:`; a removal's tasks as
+  and from the gray area fast tests only, never big ones) or starting `HUMAN:`, and in `runs` each project
+  command the work runs beyond build, tests and its checks (codegen, an asset script); a removal's tasks as
   triage planned them; otherwise one `sub-effort` with `author: planner` realising the items it covers.
 - **Evidence**: when the ground is unknown, say so and name the sub-effort whose survey will find it.
 

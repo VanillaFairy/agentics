@@ -7,6 +7,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { EFFORTS, MODELS, loadRole, producerTier, raiseTier, reviewerTier, roleCommands, tierFor } from '../../lib/roles.mjs'
+import { rolePermissions } from '../../lib/permissions.mjs'
+import { leafOf, parseSpec } from '../../lib/spec.mjs'
 import { isYardstick, normalizeNode } from '../../lib/tree.mjs'
 
 const role = (name) => loadRole(name).role
@@ -161,6 +163,20 @@ test('an implementer gains each criterion check that is a command', () => {
     ],
   })
   assert.deepEqual(roleCommands(commandsOf('git add'), COMMANDS, l), ['git add', 'node --test test/parse.test.mjs', 'npm run build:docs'])
+})
+
+test("an implementer may run the project commands its leaf's entry runs; a test-author may not", () => {
+  const spec = parseSpec([
+    '# t', '## Intent', '## Decisions', '## Design', '## Plan',
+    '- **rename** — task · rigor: trivial · runs: `npm run asset:rename`',
+    '  Rename the art',
+    '  - [ ] no old id remains — check: `npm run build`',
+    '## Open questions', '## Evidence',
+  ].join('\n'))
+  const l = normalizeNode(leafOf('rename', spec.entries[0]))
+  const { allowed } = rolePermissions({ commands: roleCommands(IMPLEMENTER, COMMANDS, l) })
+  assert.ok(allowed.includes('Bash(npm run asset:rename:*)'), JSON.stringify(allowed))
+  assert.equal(roleCommands(role('test-author'), COMMANDS, l).includes('npm run asset:rename'), false)
 })
 
 test('an implementer without a leaf gains no criterion check', () => {

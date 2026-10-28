@@ -176,6 +176,15 @@ test('run.mjs refuses a probe with no artefact', async (t) => {
   assert.match(out.error.message, /--artifact/)
 })
 
+test('run.mjs refuses a probe whose --since is not snapshot:<8 hex>, before dispatching anything', async (t) => {
+  for (const since of ['0a1b2c3d', 'snapshot:0a1b2c3', 'snapshot:0A1B2C3D', 'snap:0a1b2c3d']) {
+    const { out, calls } = await attached(t, 'probe', ['--artifact', 'doc.md', '--since', since])
+    assert.deepEqual([out.ok, out.error.kind], [false, 'bad_arg'], since)
+    assert.match(out.error.message, /snapshot:<8 hex digits>/, since)
+    assert.equal(calls.length, 0, since)
+  }
+})
+
 test('a probe started by run.mjs probes the file it names, under the guidance of the repository root', async (t) => {
   const { written, calls } = await assertResultWritten(t, 'probe', ['--artifact', 'doc.md'], { script: PROBE_SCRIPT })
   assert.equal(written.artifact, 'doc.md')

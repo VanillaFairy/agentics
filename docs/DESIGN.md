@@ -438,6 +438,7 @@ the program the resolved values:
 | `enum` | one of the program's values | that value |
 | `effort`, `folder`, `run` | a name | the name, once `resolveHandle` finds it (a folder inside the `effort` argument) |
 | `ref` | a ref or a sha | the commit's sha, read in `--root` |
+| `snapshot` | `snapshot:<8 hex digits>`, as a probe returns it | that handle; a bare hash or any other form is `bad_arg` |
 
 An absent argument takes its default, else its kind's empty value. A missing required argument
 refuses `missing_arg`; a value its kind refuses, an unknown flag, a flag without its value and a

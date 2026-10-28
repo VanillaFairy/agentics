@@ -552,7 +552,9 @@ When it ends, the runner appends `returned {dispatch, session, status, cause, us
 opened, cost_total, cost_usd, denials}` — a host stop records
 `host_stop` instead ([Host stops](#host-stops)) — `status` `returned`, `part`, `failed` or `cut_off`, and `cause` naming why a call that did not
 return failed or was cut off. A call that returned has its output written whole to
-`returns/<dispatch>.json` first, so a `returned` line with status `returned` always has its whole
+`returns/<dispatch>.json` first (`writeWhole` in `lib/store.mjs`, the one writer of a file replaced
+whole: staged beside it and renamed over it, a rename Windows refuses while another process holds
+the file open — `EPERM`, `EACCES`, `EBUSY` — tried again for about a second first), so a `returned` line with status `returned` always has its whole
 return on disk. `usage` is the host's own figure summed over every model turn of the call, which
 cost reads; `context` is what the call's last model turn read — the input, cache-read and
 cache-written tokens of the stream's last `assistant` event that carries `message.usage` — and
@@ -3864,7 +3866,9 @@ unknown. It is a measurement, and it gates nothing.
 `executions/<stamp>/live/<dispatch>.json`, rewritten whole by the runner while the dispatch runs and
 removed when it returns: `{turns, tool: {name, target}, at}` — the turns so far, the latest tool
 call's name and target (`target` the call's file, command, pattern, path or url, `''` when it names
-none), and when it was made. The `node` view prints it `last <name> <target>`.
+none), and when it was made. The `node` view prints it `last <name> <target>`. It is a view: a write
+or removal of it that fails is dropped, the last one standing until the next turn's, and never ends
+the call.
 
 ### Spec format
 

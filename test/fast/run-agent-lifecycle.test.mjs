@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { classifyCall, parseStream, runAgent } from '../../lib/runner.mjs'
-import { dispatchKey, returnPath, sessionOf } from '../../lib/store.mjs'
+import { dispatchKey, livePath, returnPath, sessionOf } from '../../lib/store.mjs'
 import { memoryLog } from './harness/memory-log.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -420,4 +420,27 @@ test('tool_used survives a cut-off once', async () => {
   const second = await runAgent(makeCall({ resume: true }), r.ports)
   assert.equal(second.status, 'returned')
   assert.deepEqual(ofKind(r.log.entries(), 'tool_used').map((e) => e.input.query), ['before the cut', 'after the resume'])
+})
+
+// ------------------------------------------------------------------ the live view
+
+test('a live file that cannot be written leaves the call running to its return', async () => {
+  const r = rig({ script: [{ pid: 4242, lines: contextIn(S) }] })
+  const live = livePath(DIR, D)
+  const refused = []
+  const write = r.ports.fsx.writeJson
+  r.ports.fsx.writeJson = (path, value) => {
+    if (path === live) {
+      refused.push(path)
+      throw Object.assign(new Error('EPERM: operation not permitted, rename'), { code: 'EPERM' })
+    }
+    write(path, value)
+  }
+  r.ports.fsx.remove = (path) => {
+    if (path === live) throw Object.assign(new Error('EBUSY: resource busy'), { code: 'EBUSY' })
+  }
+  const out = await runAgent(makeCall(), r.ports)
+  assert.ok(refused.length > 0, 'the stream named a tool, so the live file was written')
+  assert.equal(out.status, 'returned')
+  assert.ok(r.store.has(returnPath(DIR, D)), 'the return is kept')
 })

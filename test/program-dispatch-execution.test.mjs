@@ -687,6 +687,21 @@ test('stepped gives the step records match accepts, oldest first', async (t) => 
   assert.equal(stepped(w.ctx, (e) => e.key === 'nothing').length, 0)
 })
 
+test('a step value past the inline size is kept in a file of the run\'s home, the log record small, and replayed from it', async (t) => {
+  const w = world(t)
+  const big = { items: Array.from({ length: 400 }, (_, i) => ({ id: 'item-' + i, claim: 'x'.repeat(80) })) }
+  let ran = 0
+  assert.deepEqual(await step(w.ctx, 'pool', () => { ran++; return big }), big)
+  const rec = ofKind(w, 'step').find((e) => e.key === 'pool')
+  assert.ok(rec.value_file && rec.value === undefined, JSON.stringify(rec).slice(0, 200))
+  assert.ok(JSON.stringify(rec).length < 300, 'the record names the file, not the value')
+  assert.deepEqual(JSON.parse(readFileSync(join(w.ctx.dir, rec.value_file), 'utf8')).value, big)
+  assert.deepEqual(await step(w.relaunch().ctx, 'pool', () => { ran++; return null }), big, 'a relaunch replays it from the file')
+  assert.equal(ran, 1)
+  assert.equal(await step(w.ctx, 'small', () => 'inline'), 'inline')
+  assert.equal(ofKind(w, 'step').find((e) => e.key === 'small').value, 'inline')
+})
+
 test("stepped under scoped gives the scope's step records by the keys the scope named", async (t) => {
   const w = world(t)
   const scope = scoped(w.ctx, 'probe:f:1')

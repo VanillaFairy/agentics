@@ -495,7 +495,12 @@ from the store, so one it cannot read is a failed dispatch (`return_unreadable`)
 recording items, writing a context, settling — is a `step {key, value}` record: a relaunch reads
 the value back instead of acting again, and a step cut off before its record runs again, so each
 is safe to repeat. A context may carry `replayAfter`, a seq: then only a step recorded after it is
-read back, because what was journaled before a unit began is another unit's answer.
+read back, because what was journaled before a unit began is another unit's answer. A value past
+16 KB (a survey's evidence pool runs to a megabyte) is written to `steps/<digest>.json` in the
+run's home and the record names it (`value_file`, `bytes`), so the log stays small; a record whose
+file is gone is no answer. A log is read only as far as it grew since the same process last read
+it (`readLog` in `lib/ledger.mjs`): its earlier lines are parsed once, its entries frozen, and a
+file whose earlier bytes changed or that shrank is parsed whole again.
 
 **Results.** `lib/run.mjs` writes the result to `result.json` in the run's home with `run` and
 `cost` added — `{dispatches, by_model, tokens, usd, unmeasured}` over the home's `returned` lines,
@@ -4078,7 +4083,7 @@ model turn's and `opened` its first's, `null` when unmeasured), one per call the
 written when the call ends; `host_stop {dispatch, cause, until}`; `checkout_changed {dispatch,
 paths[]}`; `thread_renewed {thread, gen, why: too_large | session_missing | context_exceeded |
 prompt_changed | cwd_changed | raised}`; `step {key,
-value}`; `batch {target, merged[], head_sha, verified, failed_alone[], combination[], conflict}`,
+value}` or `step {key, value_file, bytes}`; `batch {target, merged[], head_sha, verified, failed_alone[], combination[], conflict}`,
 landing before the batch's `merged` events; `gate {target, head_sha, passed, checks}`, `checks` the digest of the criterion checks it ran, one per suite gate
 that ran; `checkpoint {reason, detail, executions?, gaps?, branches?, lost?}` (the lists the checkpoint found, `branches` the `[{branch, commits}]` of an `outside_work` one, `lost` the `[{branch, exists, node, merged_sha, reachable_from}]` of an `integration_lost` one;
 `lib/status.mjs checkpoint` prints them); `checkpoint-confirmed {reason, gaps?, executions?}`, the

@@ -52,6 +52,17 @@ test('a return with no status holds the round', () => {
   assert.equal(po({ ret: { status: 3, text: TEXT } }).next, 'held', 'a status that is not a string is no status')
 })
 
+test('a done return naming a document it could not read escalates unread_reference at every rigor, never measured', () => {
+  const ret = { status: 'done_with_concerns', text: TEXT, concerns: ['shapes guessed'], unread: ['the Design\'s "Ports" block', ' '] }
+  for (const leaf of [node({ rigor: 'trivial' }), PLAIN, GREEN]) {
+    const out = po({ leaf, ret })
+    assert.equal(out.next, 'stop', leaf.rigor)
+    assert.deepEqual(out.records, [escalated(leaf.id, 'unread_reference', 'the Design\'s "Ports" block', 'd7')], leaf.rigor)
+  }
+  assert.equal(po({ ret: { status: 'done', text: TEXT, unread: [] } }).next, 'measure', 'an empty list reads nothing unread')
+  assert.equal(po({ ret: { status: 'done', text: TEXT, unread: ['', '  '] } }).next, 'measure', 'blank lines name nothing')
+})
+
 test("an auditor's return, which carries no status, is measured", () => {
   assert.equal(po({ leaf: AUDIT, role: 'auditor', ret: AUDITOR_RETURN }).next, 'measure')
 })

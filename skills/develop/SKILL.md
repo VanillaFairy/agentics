@@ -412,6 +412,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e> --node
 |---|---|
 | `blocked`, `locus_held`, `review_incomplete` | always — a transient, two leaves on one file, a reviewer's miss: retry |
 | `command_denied` | always — the work runs a project command its entry's `runs` does not name (`detail`): add it there, have the edit ruled (`respec.md`), then retry; never retry first |
+| `unread_reference` | always — the producer could not read what `detail` names: when the node's brief now carries it, retry; else put the text in the entry or in the Design part it cites, have the edit ruled (`respec.md`), then retry |
 | `fails_full_suite`, `verify_not_converging` | its failures are timeouts or load faults that pass alone: retry once; the same again is the user's |
 | `discriminator_undecidable` | the file only pins behaviour that held at base: rule it a net (below). One that should fail at base, for behaviour the leaf adds, is the user's |
 

@@ -108,6 +108,8 @@ names the tests that must fail under it. Put gotchas you hit and resolved in `go
 gotchas you found no longer hold in `gotchas_stale`, concerns in `concerns`. An ambiguity you
 found in a criterion is a finding: put it in `concerns`, or return `needs_decision` when you
 cannot write the test without the answer.
+A document, spec part or contract the brief tells you to follow or match that neither the brief
+nor your worktree holds goes in `unread`, one line each; never guess its content and call it done.
 A round that answers a request (a review's `tests` findings, surviving mutations, `needs_tests`)
 may return `declined` when the tests it asks for would be wrong or already stand; why in `text`.
 

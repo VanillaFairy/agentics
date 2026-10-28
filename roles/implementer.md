@@ -97,3 +97,5 @@ hit and resolved (traps about the environment rather than the work, not already 
 `gotchas`, ids of gotchas you found no longer hold in `gotchas_stale`, mutations you declare in
 `mutations`, and concerns, which the reviewer attacks first, in `concerns`. Never report the
 work as correct. Write nothing to any file for anyone to read.
+A document, spec part or contract the brief tells you to follow or match that neither the brief
+nor your worktree holds goes in `unread`, one line each; never guess its content and call it done.

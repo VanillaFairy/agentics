@@ -81,10 +81,10 @@ function assertAuditorShape(ret) {
  * A round as the runner leaves it: `dispatched` and, unless `returned` is false, `returned`, through
  * the execution's log, and the return written where the runner keeps it unless the test means none.
  */
-export function stored(w, { node: id, role, round = 1, thread = 'producer:' + id, ret, carries = [], dispatch, returned = 'returned', cause }) {
+export function stored(w, { node: id, role, round = 1, thread = 'producer:' + id, ret, carries = [], dispatch, returned = 'returned', cause, denials }) {
   const key = dispatch || 'd-' + id.replace(/[^A-Za-z0-9]/g, '-') + '-' + (role || 'none') + '-r' + round
   w.xc.log.append('dispatched', { dispatch: key, node: id, round, thread, role, model: 'sonnet', effort: 'medium', carries })
-  if (returned) w.xc.log.append('returned', { dispatch: key, status: returned, ...(cause ? { cause } : {}) })
+  if (returned) w.xc.log.append('returned', { dispatch: key, status: returned, ...(cause ? { cause } : {}), ...(denials ? { denials } : {}) })
   if (ret !== undefined && ret !== null) {
     if (role === 'auditor') assertAuditorShape(ret)
     mkdirSync(dirname(returnPath(w.xc.dir, key)), { recursive: true })

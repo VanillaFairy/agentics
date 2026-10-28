@@ -672,7 +672,9 @@ no output, and the call still does not count as returned.
 **Confinement and what it leaves.** An agent runs in its worktree, may edit only the paths it was
 allowed and may run only its role's commands; an implementer also runs its leaf's criterion checks
 and the project commands its entry names in `runs` (`roleCommands` in `lib/roles.mjs`), each split
-by `commandParts` like any other. An agent of a program run outside an execution runs
+by `commandParts` like any other. A producer that returns `blocked` after the host denied it a
+command stops as `command_denied`, the denied command lines its `detail` (read from the call's
+`denials`): its entry is missing a `runs`, a spec gap that no retry clears. An agent of a program run outside an execution runs
 in the checkout the program reads (`--root`), the `review` program's reviewer in its throwaway
 worktree, and none of them is allowed a path to write. Prevention ends where the repository's own
 commands begin: a build or test script a producer runs is the project's code, and what it writes
@@ -3682,7 +3684,8 @@ everything else and hands the same stop back at the end.
 
 **Who settles a stop.** The user owns decisions (L4), so a stop that needs one is theirs. A stop
 whose cause is mechanical is the session's, which settles it, notes what it ruled on the node and
-names it in its report: a host denial or transient (`blocked`), two leaves on one file
+names it in its report: a transient (`blocked`), a command the work runs that its entry does not
+name (`command_denied`: added to the entry's `runs`, the edit ruled, then retried), two leaves on one file
 (`locus_held`), a reviewer's miss (`review_incomplete`), a suite or verify failure that is only
 timeouts or load passing alone (retried once), a changed test file that only pins behaviour held at
 base (ruled a `net`), a file a node needs inside its own folder (added to its entry), and code that

@@ -39,20 +39,22 @@ function effort(t) {
   return repo
 }
 
-/** How many times `fn` reads `path` through fs.readFileSync, the reader every log and JSON file goes through. */
+/** How many times `fn` opens `path` to read it: a log through fs.openSync, a JSON file through fs.readFileSync. */
 function readsOf(path, fn) {
-  const real = fs.readFileSync
+  const real = { readFileSync: fs.readFileSync, openSync: fs.openSync }
   const want = posix(path)
   let n = 0
-  fs.readFileSync = function (p, ...rest) {
-    if (typeof p === 'string' && posix(p) === want) n += 1
-    return real.call(this, p, ...rest)
+  for (const name of Object.keys(real)) {
+    fs[name] = function (p, ...rest) {
+      if (typeof p === 'string' && posix(p) === want) n += 1
+      return real[name].call(this, p, ...rest)
+    }
   }
   syncBuiltinESMExports()
   try {
     fn()
   } finally {
-    fs.readFileSync = real
+    Object.assign(fs, real)
     syncBuiltinESMExports()
   }
   return n
@@ -62,9 +64,8 @@ const journalOf = (repo) => fileFor(repo, E, 'journal:' + X).path
 
 test("a snapshot reads each execution's records once", (t) => {
   const repo = effort(t)
-  // A snapshot also asks `seqMax`, which rebuilds its counter from every log on disk: not a read of the records.
-  const forSeq = readsOf(journalOf(repo), () => seqMax(repo, E))
-  assert.equal(readsOf(journalOf(repo), () => snapshotOf(repo, E)) - forSeq, 1)
+  // A log unchanged since it was last read is not read again, whoever asks: `seqMax`'s rebuild included.
+  assert.equal(readsOf(journalOf(repo), () => { seqMax(repo, E); snapshotOf(repo, E) }), 1)
 })
 
 test("one node's entry reads each execution's records once", (t) => {

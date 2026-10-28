@@ -322,3 +322,38 @@ test('the pool is read in the checkout the survey runs in', async (t) => {
 test('the pool is read in the tree the survey is handed', async (t) => {
   await poolInWorktree(t, (rig, wt) => survey(rig.ctx, ARGS({ tree: treeOf(wt) })))
 })
+
+// --- items the caller rests on ------------------------------------------------------------------
+
+test("a caller's items are known ground with no ground of its own, of any kind, and buy no scout they answer", async (t) => {
+  const PROBED = 'PROBED-71c a probe found this'
+  let ids = []
+  const { rig, result } = await surveyOver(t, (repo) => {
+    ids = [...seed(repo, [seedItem({ topic: 'probed', claim: PROBED })], PROBE), ...seed(repo, [seedItem({ topic: 'known', claim: KNOWN })])]
+  }, script({ planned: [] }), { ground: [], get items() { return ids } })
+  assert.deepEqual(rig.calls.map((c) => c.thread.key), ['plan'])
+  assert.deepEqual([...result.reused].sort(), [...ids].sort())
+  for (const claim of [PROBED, KNOWN]) assert.ok(planBrief(rig).includes(claim), claim)
+  assert.ok(readFileSync(result.context, 'utf8').includes(PROBED), 'the context holds the inherited item')
+})
+
+test("a stale item a caller rests on that no survey recorded is never a topic to search again", async (t) => {
+  let ids = []
+  const { rig, result } = await surveyOver(t, (repo) => {
+    ids = seed(repo, [seedItem({ topic: 'cache', claim: STALE, ground: ['src/cache'] })], PROBE)
+    makeStale(repo, ...ids)
+  }, script({ planned: [LOADER] }), { ground: [], get items() { return ids } })
+  assert.ok(!planBrief(rig).includes(STALE))
+  assert.deepEqual(result.passed, [])
+  assert.deepEqual(scoutThreads(rig), ['scout:loader'])
+})
+
+test('an item a caller rests on that a re-judge here fails is reported as invalidated', async (t) => {
+  const base = programRig({ files: FILES })
+  t.after(() => base.cleanup())
+  const [id] = seed(base.repo, [seedItem({ topic: 'old', claim: SUSPECT })])
+  editLine(base.repo, 11, EDIT)
+  const rig = base.relaunch({ 'analyst||rejudge:1': rulings([rule(id, 'fails')]), ...script({ planned: [] }) })
+  const result = await survey(rig.ctx, ARGS({ ground: [], items: [id] }))
+  assert.deepEqual(result.invalidated, [id])
+})

@@ -20,7 +20,7 @@ import { guidanceOf, leafBrief } from '../lib/brief.mjs'
 import { plannerBrief } from '../lib/briefs/execute.mjs'
 import { PLAN_AXIS, STANDING_AXES } from '../lib/briefs/probe.mjs'
 import { renderMessage } from '../lib/conversation.mjs'
-import { changedParts, sectionsOf, unitsOf } from '../lib/evidence.mjs'
+import { changedParts, recordCites, recordItems, sectionsOf, unitsOf } from '../lib/evidence.mjs'
 import { commandsOf } from '../lib/gotchas.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
 import { writePermissions } from '../lib/permissions.mjs'
@@ -376,12 +376,26 @@ test('a folder whose ground is unknown is surveyed first, nested under survey:<f
   assert.equal(out.outcome, 'prepared')
   const context = stepValue(w.rig, prefix + 'context')
   assert.ok(context && context.context, 'the survey wrote its context file')
-  assert.deepEqual(out.survey, { complete: true, context: context.context })
+  assert.deepEqual(out.survey, { complete: true, context: context.context, invalidated: [] })
   const surveyed = under(w.rig, prefix)
   assert.deepEqual([...new Set(surveyed.map((c) => c.thread.key))].sort(), [prefix + 'judge:1', prefix + 'plan', prefix + 'scout:adder'])
   const first = w.rig.calls.findIndex((c) => c.role.name === 'planner')
   const lastSurvey = w.rig.calls.map((c) => c.thread.key.startsWith(prefix)).lastIndexOf(true)
   assert.ok(first > lastSurvey, 'the planner\'s first call follows the survey')
+})
+
+test("a folder's survey starts from what its nearest citing ancestor rests on", async (t) => {
+  const w = world(t, { known: false, steps: (rig) => ({ ...surveying('survey:p:' + basisOf(rig) + '/'), ...clean() }), writes: { 1: S1 } })
+  const CITED = 'CITED-5e2 add is exported from src/add.mjs'
+  const seeded = recordItems(w.rig.repo, '20250101-000000-survey', [{ question: 'the root survey', topic: 'adder', ground: ['src'], kind: 'behaviour',
+    claim: CITED, spans: [{ path: 'src/add.mjs', start: 1, end: 1 }], queries: [], sources: [], rests_on: [] }])
+  assert.equal(seeded.ok, true, JSON.stringify(seeded))
+  assert.equal(recordCites(w.rig.repo, w.rig.xc.effort, '.', { items: seeded.ids }).ok, true)
+  const basis = basisOf(w.rig)
+  await w.run()
+  assert.deepEqual(stepValue(w.rig, 'inherited:p:' + basis), seeded.ids)
+  const [plan] = under(w.rig, 'survey:p:' + basis + '/plan')
+  assert.ok(plan.brief.includes(CITED), "the survey's planner is told what the root rests on")
 })
 
 test("a folder's changed files are material for the survey's searches", async (t) => {

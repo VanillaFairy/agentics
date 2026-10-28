@@ -2039,7 +2039,10 @@ the searches of its survey and of every probe round run over a detached worktree
 and made again when it is gone, so a relaunch searches the tree the plan began on while leaves merge
 elsewhere. The artefact, its snapshot and its record stay in the main checkout. For a folder whose
 ground is unknown the program first runs a survey (nested as `survey:<folder>:<basis>`, so a
-replanned or retried folder surveys afresh), handed the change from the base to the pinned sha, and
+replanned or retried folder surveys afresh), handed the change from the base to the pinned sha and
+the items the folder's nearest live ancestor with a citation rests on (its latest `cites` line,
+journaled as the step `inherited:<folder>:<basis>`; that citation already holds what its own
+ancestors' did, so the list does not grow with depth), and
 the planner's brief (`plannerBrief` in `lib/briefs/execute.mjs`) carries the text of its context
 file. Landing removes the effort's clean pinned trees, and preflight removes those no plan of an open
 execution journaled (`sweepTrees`); a dirty one is never forced, and preflight reports it. The review's steps:
@@ -2468,13 +2471,18 @@ The `survey` program gathers evidence for one question and never concludes.
 
 1. **Reuse.** When the caller names its `ground`, the program reads the items of earlier surveys
    whose ground overlaps it (`itemsFor`) and whose anchors lie on it (`bearsOn`: a span's path or
-   a query's scope overlapping a ground path; an item with neither, by its own ground) into its own
+   a query's scope overlapping a ground path; an item with neither, by its own ground); when it
+   names `items` (in-process only: the ids it already rests on), it reads those too, of any kind
+   (`itemsById`). Both go into its own
    log as a `step` (`pool`), and again after the re-judge (`pool:after`) when any was suspect, so
    a relaunch sees what the run saw. An item grounded broadly whose anchors all lie elsewhere is
    neither re-judged nor reused. Standing items become known ground; suspect ones are re-judged,
    twenty to a call, the calls side by side; stale ones, and any not standing after the re-judge,
    make their topic a **stale candidate**, carrying what it used to claim — unless a newer standing
-   item superseded them. A re-judge that fails records nothing, so its items' topics are candidates.
+   item superseded them. Only an item a survey recorded, with a ground, makes a candidate: an expired
+   source or a sweep's item has no topic a scout could search again, and would otherwise become a
+   search of the whole repository. A caller's item a re-judge here leaves not standing is listed in
+   the result's `invalidated`, since the folder that cites it lost that ground too. A re-judge that fails records nothing, so its items' topics are candidates.
    A pool that cannot be read fails the `pool` channel, and nothing is reused; one that cannot be
    read again after the re-judge fails it too, and every item that was suspect makes a candidate.
 2. **Plan.** One analyst decomposes the question into topics, listed in the order the question
@@ -4432,7 +4440,7 @@ directory; `sessions` every session the search's thread ran in; `rounds` each ro
   shown), `read_file` (a file the session wrote: what it has already read itself, which the planner
   plans around and no searcher is shown), `max_topics` (default 8), `intelligence` (`low | normal | max`, default `normal`), `pace`
   (`frugal | balanced | fast`, default `balanced`), `ground`, `search_budget` (`--search-budget`, dollars per search; 0 none). Returns `{question, topics[{key,
-  subtree, again}], ground, items[{id, topic, kind, state}], reused[], unrecorded[], passed[], context,
+  subtree, again}], ground, items[{id, topic, kind, state}], reused[], invalidated[], unrecorded[], passed[], context,
   risks[{topic, n}], history, docs, coverage}`: `context` is the path of the one file holding its
   digest, then every item it returns in full, the judges' risks and the history and docs searches'
   findings; an `again` topic is a stale candidate the plan adopted, searched again for its stale

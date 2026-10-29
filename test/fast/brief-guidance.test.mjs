@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { guidanceOf } from '../../lib/brief.mjs'
+import { fenced } from '../../lib/briefs/size.mjs'
 
 /** A directory holding `files` (repo-relative path → text). */
 function tree(t, files) {
@@ -23,7 +24,7 @@ function tree(t, files) {
   return root
 }
 
-const block = (path, text) => '### ' + path + '\n\n' + text
+const block = (path, text) => '### ' + path + '\n\n' + fenced(text)
 const doc = (...blocks) => ['## Repository guidance', ...blocks].join('\n\n')
 
 test('the root CLAUDE.md is the guidance by default', (t) => {

@@ -659,16 +659,26 @@ body of text crowds out the rest, and the whole may hold what the role leaves of
 `dispatch` composes every fresh call's prompt from its parts and checks them before anything starts
 (`oversizedPart` in `lib/briefs/size.mjs`): a part past its budget, or else a whole past the room, is
 refused `brief_too_large`, the result naming the part (`part`, the whole's largest when the whole is
-over), its `bytes`, and the `budget` it would have to meet — beside the rest, for the whole. Nothing
-is sent or recorded. A plain brief's parts are its `## ` and `### ` sections (`sectionsOf`; what comes
-before the first is its `charge`, and a heading inside a fence is the fenced text's); a fresh call's
-thread messages are parts of their own; a brief built in parts is shaped (`{parts}`, each `{key,
-text}`), as the prober's is ([Probe](#probe)). Under budget the prompt is the brief exactly as built.
-A session the runner renews mid-call is briefed with the thread's fresh brief, held to the runner's
-whole bound alone (`oversize`).
-Where the refusal lands is the dispatching unit's: a leaf round's goes to the leaf's planner to split
-([Replanning](#replanning)); any other ends its program on the failure, as any failed dispatch does
-(a `role` fault in an execution) — a program's brief past its budget is a defect in what built it.
+over), who can make it smaller (`owner`), the `file` it is when it is one, its `bytes`, and the
+`budget` it would have to meet — beside the rest, for the whole. Nothing is sent or recorded. A plain
+brief's parts are its `## ` and `### ` sections (`sectionsOf`; what comes before the first is its
+`charge`, and a heading inside a fence is the fenced text's); a fresh call's thread messages are
+parts of their own; a brief built in parts is shaped (`{parts}`, each `{key, text, file?}`), as the
+prober's is ([Probe](#probe)). Under budget the prompt is the brief exactly as built. A session the
+runner renews mid-call is briefed with the thread's fresh brief, held to the runner's whole bound
+alone (`oversize`).
+
+**A refusal goes to whoever owns the part.** One table beside the part names says who can make each
+part smaller (`OWNERS` and `ownerOf` in `lib/briefs/size.mjs`), by the `## ` section a part sits
+under — kept open, for a section that embeds a document, over that document's own headings — or a
+shaped part's key:
+
+| owner | its parts | a refusal naming one |
+|---|---|---|
+| `work` | a leaf's own work: its Task, criteria, decisions, expected files and reads, its cited Design part, what it consumes, its effort files, evidence, gotchas, measures, commands; a folder's spec a planner or reviewer reads | in a leaf's dispatch (its round, its reviewer, its convergence ruler), a `decompose` to the folder's planner, or `needs_respec` in a folder the user wrote ([Replanning](#replanning)); elsewhere, as `user` |
+| `user` | the repository's guidance, one part per file; a changed spec's diff, the user's answers and the specs a ruler reads whole, one part per spec; a probed artefact | a stop for the user naming the file and its size: in an execution `escalated brief_too_large` (`dispatchFailed` in `lib/boundaries/records.mjs`), which the user settles by shrinking or splitting the file |
+| `code` | everything else: the charge, thread messages, a probe's ground and settled specs, rendered records | a defect of its builder: a `role` fault whose detail carries the part, its bytes and budget |
+
 The spend view flags a unit with a call whose session opened past the bound as measured
 ([Spend view](#spend-view)), which is how an estimate that errs low shows.
 
@@ -875,7 +885,10 @@ spec](#a-changed-spec)). Each carries the repository's guidance from `guidanceOf
 `lib/brief.mjs`: every `CLAUDE.md` from the repository's root down to each root the program reads
 (the root alone when it names none), root first and each file once, then each file
 `.agentics/config.json` lists under `guidance`, in its order, a listed file that is missing shown as
-not found. Nothing else in a program builds a prompt; a message it sends is `renderMessage`'s.
+not found. Each file is fenced under its path (`fenced` in `lib/briefs/size.mjs`, a fence longer than
+any it holds), so its own headings never read as the brief's and it is one part of the brief, the
+user's ([The agent runner](#the-agent-runner)). Nothing else in a program builds a prompt; a message
+it sends is `renderMessage`'s.
 
 A search's scout is briefed by `lib/briefs/search.mjs`. Its **charge** (`scoutCharge`) — the
 domain's tool protocol, the find, the scope, the labels and the program's material fenced as data
@@ -1677,9 +1690,11 @@ independently correct.
 ### Replanning
 
 A leaf's producer or a planner returns one of these instead of finishing; a ruler's `affected`
-([Landing and drift](#landing-and-drift)) is handled as a `premise_mismatch`, and a round whose brief
-is refused `brief_too_large` ([The agent runner](#the-agent-runner)) as a `decompose`, the refusal
-its text (`tooLarge` in `lib/programs/execute/leaf.mjs`):
+([Landing and drift](#landing-and-drift)) is handled as a `premise_mismatch`, and a dispatch of a
+leaf refused `brief_too_large` for a part of the leaf's own work ([The agent
+runner](#the-agent-runner)) as a `decompose`, the refusal its text (`tooLarge` in
+`lib/programs/execute/leaf.mjs`); a part only the user can shrink, such as a `CLAUDE.md`, never
+reaches the planner, whose own brief carries the same file:
 
 | return | meaning | who acts |
 |---|---|---|

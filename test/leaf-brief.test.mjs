@@ -278,8 +278,8 @@ test('standing evidence whose ground meets the leaf is excerpted', (t) => {
 test("the guidance is the CLAUDE.md files of the expected files' directories", (t) => {
   const repo = effort(t, { 'CLAUDE.md': 'root rules\n', 'src/api/CLAUDE.md': 'api rules\n', 'src/ui/CLAUDE.md': 'ui rules\n' })
   const s = sectionsOf(brief(repo).text)['Repository guidance']
-  assert.ok(s.includes('### CLAUDE.md\n\nroot rules'))
-  assert.ok(s.includes('### src/api/CLAUDE.md\n\napi rules'))
+  assert.ok(s.includes('### CLAUDE.md\n\n~~~~\nroot rules\n~~~~'))
+  assert.ok(s.includes('### src/api/CLAUDE.md\n\n~~~~\napi rules\n~~~~'))
   assert.ok(!s.includes('ui rules'), 'a directory no expected file sits in')
   assert.ok(s.indexOf('### CLAUDE.md') < s.indexOf('### src/api/CLAUDE.md'), 'root first')
 })
@@ -333,5 +333,5 @@ test('the guidance files the repository config lists are shown', (t) => {
   const repo = effort(t, { 'docs/style.md': 'style rules\n' })
   mkdirSync(dirname(configPath(repo)), { recursive: true })
   writeFileSync(configPath(repo), JSON.stringify({ guidance: ['docs/style.md'] }))
-  assert.ok(sectionsOf(brief(repo).text)['Repository guidance'].includes('### docs/style.md\n\nstyle rules'))
+  assert.ok(sectionsOf(brief(repo).text)['Repository guidance'].includes('### docs/style.md\n\n~~~~\nstyle rules\n~~~~'))
 })

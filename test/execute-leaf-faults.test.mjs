@@ -95,26 +95,43 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.deepEqual(stopsOn(w.rig, 'f'), [], 'nor the folder')
   })
 
-  // Repository guidance past what one part of a brief may hold makes the leaf's brief one no producer is sent.
+  // Repository guidance past what one part of a brief may hold: the user's file, which no plan shrinks.
   const HUGE_GUIDANCE = { 'CLAUDE.md': 'g'.repeat(PART_BYTES + 1) + '\n' }
+  // A task whose own intent is past what one part of a brief may hold: the leaf's own work.
+  const hugeLeaf = (id) => {
+    const [head, ...rest] = leafEntry(id, { expects: ['src/' + id + '.txt'] })
+    return [head, '  ' + 'w'.repeat(PART_BYTES + 1), ...rest]
+  }
+  const PLANNED = specText([['- **f** — sub-effort · realises: D1 · author: planner', '  Fold f', '']])
 
-  test("a leaf whose brief is past its budget, under a planner's folder, goes to that planner to split, nothing sent", T, async (t) => {
-    const root = specText([['- **f** — sub-effort · realises: D1 · author: planner', '  Fold f', '']])
-    const sub = specText([leafEntry('b', { expects: ['src/b.txt'] })], { decisions: false })
-    const w = world(t, { spec: { '.': root, f: sub }, files: HUGE_GUIDANCE })
+  test("a leaf whose own task is past its budget, under a planner's folder, goes to that planner to split, nothing sent", T, async (t) => {
+    const w = world(t, { spec: { '.': PLANNED, f: specText([hugeLeaf('b')], { decisions: false }) } })
     w.rig.script({})
     const out = await w.run('f/b')
     assert.equal(w.rig.calls.length, 0, 'no producer is started')
     assert.equal(out.outcome, 'route')
     assert.equal(out.route.folder, 'f')
     assert.deepEqual([out.route.request.node, out.route.request.status], ['f/b', 'decompose'])
-    assert.ok(out.route.request.text.includes('"CLAUDE.md"'), out.route.request.text)
+    assert.ok(out.route.request.text.includes('"Task"'), out.route.request.text)
     assert.deepEqual(faultsOf(w.rig, 'f/b'), [])
     assert.deepEqual(stopsOn(w.rig, 'f/b'), [])
   })
 
-  test('a leaf whose brief is past its budget, in a folder the user wrote, parks needs_respec, nothing sent', T, async (t) => {
-    const w = world(t, { files: HUGE_GUIDANCE })
+  test("a leaf whose repository guidance is past its budget escalates brief_too_large naming the file, never its planner's", T, async (t) => {
+    const w = world(t, { spec: { '.': PLANNED, f: specText([leafEntry('b', { expects: ['src/b.txt'] })], { decisions: false }) }, files: HUGE_GUIDANCE })
+    w.rig.script({})
+    const out = await w.run('f/b')
+    assert.equal(w.rig.calls.length, 0, 'no producer is started')
+    assert.equal(out.outcome, 'stopped')
+    assert.equal(out.route, undefined, 'no planner is asked to split what it cannot shrink')
+    const stops = stopsOn(w.rig, 'f/b')
+    assert.deepEqual(stops.map((s) => [s.kind, s.reason]), [['escalated', 'brief_too_large']])
+    assert.ok(stops[0].detail.includes('"CLAUDE.md"') && stops[0].detail.includes(String(PART_BYTES)), stops[0].detail)
+    assert.deepEqual(faultsOf(w.rig), [])
+  })
+
+  test('a leaf whose own task is past its budget, in a folder the user wrote, parks needs_respec, nothing sent', T, async (t) => {
+    const w = world(t, { leaves: [hugeLeaf('b')] })
     w.rig.script({})
     const out = await w.run('b')
     assert.equal(w.rig.calls.length, 0, 'no producer is started')

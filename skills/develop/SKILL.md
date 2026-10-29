@@ -428,6 +428,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e> --node
 | `compile_refused`, `prepare_refused` | a planner-written folder's — retry: its planner is sent the refusals (`detail`) and revises, or returns `contract_changed`, which parks for the user. A problem in a spec the user wrote is a re-spec (`respec.md`) |
 | `unread_reference` | always — the producer could not read what `detail` names: when the node's brief now carries it, retry; else put the text in the entry or in a Design part its `cites` names, have the edit ruled (`respec.md`), then retry |
 | `fails_full_suite`, `verify_not_converging` | its failures are timeouts or load faults that pass alone: retry once; the same again is the user's |
+| `brief_too_large` | never — `detail` names a part of a brief, its file and bytes, past what one agent is briefed with, and only the user shrinks it: a guidance file (a `CLAUDE.md`, a `guidance` entry of the config) they cut or split; a spec, a re-spec (c) that splits it. Then retry |
 | `git_hung` | never — a git hung past its ceiling twice at the same head: the user's machine (antivirus scanning the repository, a network drive); retry once they dealt with it |
 | `discriminator_undecidable` | on a tdd leaf it comes only after the file went back to the producer once and still passes at base; on a red, at once. A file that only pins behaviour that held at base: rule it a net (below). One that should fail at base, for behaviour the leaf adds: note what it must assert, then retry. The user's only when you cannot tell which |
 
@@ -483,8 +484,7 @@ fault, its parent, a child or a consumer whose text it decides), have each ruled
 `rule` program: read `respec.md` beside this skill and follow it.
 
 A park no re-spec cleared (a `contract_drift` ruled unaffected, a `design_spend` the user goes on
-past) is cleared with `retry` (b). Then
-relaunch (step 3).
+past) is cleared with `retry` (b). Then relaunch (step 3).
 
 **d. Blocked** — `{blocked_by, leaves_n}`: how many tasks were never dispatched because a node they
 depend on, or whose files they share, did not land. Name that node as the root cause; do not

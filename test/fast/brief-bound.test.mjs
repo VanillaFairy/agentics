@@ -11,7 +11,8 @@ import assert from 'node:assert/strict'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { joined, oversizedPart, sectionsOf } from '../../lib/briefs/size.mjs'
+import { dispatchFailed } from '../../lib/boundaries/records.mjs'
+import { fenced, joined, oversizedPart, ownerOf, sectionsOf } from '../../lib/briefs/size.mjs'
 import { proberBrief } from '../../lib/briefs/probe.mjs'
 import { hitBlocks } from '../../lib/citations.mjs'
 import { briefRoomOf } from '../../lib/programs/common.mjs'
@@ -139,4 +140,38 @@ test("a plain brief's parts are its sections keyed by their headings, a fenced h
   assert.deepEqual(parts.map((p) => p.key), ['charge', 'The change', 'The specs', 'a.md'])
   assert.equal(joined(parts), text)
   assert.deepEqual(sectionsOf('## Task\n\nDo it.').map((p) => p.key), ['Task'], 'a brief that opens on a heading has no charge before it')
+})
+
+test('a guidance file is one part whatever headings or fences it holds, the file the user owns', () => {
+  const own = '## Task\n\nrules\n\n~~~~ a fence the file never closes\n\n### More\n\nstill the file'
+  const text = ['## Task', '', 'Do it.', '', '## Repository guidance', '', '### CLAUDE.md', '', fenced(own)].join('\n')
+  const parts = sectionsOf(text)
+  assert.deepEqual(parts.map((p) => [p.key, ownerOf(p), p.file || '']), [['Task', 'work', ''], ['Repository guidance', 'user', ''], ['CLAUDE.md', 'user', 'CLAUDE.md']])
+  assert.equal(joined(parts), text)
+})
+
+test("an embedded spec's own headings stay the part of the section that holds it", () => {
+  const parts = sectionsOf('## Your charge\n\nWrite it.\n\n## The spec as it stands\n\n# Spec\n\n## Intent\n\nwhy\n\n## Plan\n\nwhat')
+  assert.deepEqual(parts.map((p) => [p.key, ownerOf(p)]), [['Your charge', 'code'], ['The spec as it stands', 'work'], ['Intent', 'work'], ['Plan', 'work']])
+})
+
+test('a refusal names who can make its part smaller and the file it is', () => {
+  const brief = (task, file) => sectionsOf(['## Task', '', task, '', '## Repository guidance', '', '### CLAUDE.md', '', fenced(file), '', '## The span', '', 'x'].join('\n'))
+  const big = 'b'.repeat(PART_BYTES + 1)
+  assert.deepEqual(['owner', 'file'].map((k) => oversizedPart(brief(big, 'r'), Infinity)[k]), ['work', ''])
+  const user = oversizedPart(brief('t', big), Infinity)
+  assert.deepEqual([user.owner, user.file, user.part], ['user', 'CLAUDE.md', 'CLAUDE.md'])
+  assert.equal(oversizedPart(sectionsOf('## The span\n\n' + big), Infinity).owner, 'code')
+})
+
+test("a failed dispatch escalates for the user when its brief's part is not code's, and is otherwise a fault naming what failed", () => {
+  const at = { nodes: new Map(), events: [], state: [] }
+  const refused = (owner) => ({ status: 'failed', cause: 'brief_too_large', owner, message: 'the brief\'s part "CLAUDE.md" is 9 bytes and may hold 8' })
+  const [user] = dispatchFailed('a/b', 'the planner dispatch d', refused('user'), at)
+  assert.deepEqual([user.kind, user.fields.reason], ['escalated', 'brief_too_large'])
+  assert.ok(user.fields.detail.includes(refused('user').message), user.fields.detail)
+  assert.equal(dispatchFailed('a/b', 'the planner dispatch d', refused('work'), at)[0].kind, 'escalated')
+  const [code] = dispatchFailed('a/b', 'the planner dispatch d', refused('code'), at)
+  assert.deepEqual([code.kind, code.fields.channel], ['fault', 'role'])
+  assert.ok(code.fields.detail.includes('brief_too_large') && code.fields.detail.includes(refused('code').message), code.fields.detail)
 })

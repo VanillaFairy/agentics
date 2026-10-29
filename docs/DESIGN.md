@@ -3637,13 +3637,17 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
   did.
 - A test that could not be launched at base is `test_unrunnable`; a suite failure that cannot be
   placed against a test file raises `suite_failures_unnamed`.
-- **A changed test file either adds a test case or keeps existing ones working.** Each file of the
-  leaf's own diff is classified by its added lines: one declaring a test case (`TEST_CASE_PATTERNS`
-  in `lib/verify.mjs`, a closed set like the test-file patterns) that the diff does not also remove
-  adds one. A file adding none is upkeep — a call site given a new argument — and passes at base by
-  construction, so no commit could make it discriminate. The classification is on each
-  discriminator entry (`adds_test`) and in the notes, so the verdict and a resume read it off the
-  journal line. A caller's named tests are the cycle's and each counts as adding one.
+- **A changed test file either adds a test case or keeps existing ones working, as its producer
+  declares.** Whether a file adds a case is no pattern over its text: the producer names each test
+  file of the leaf's diff that adds none in its return's `upkeep` ([Producer
+  returns](#producer-returns)) — a call site given a new argument — and leaf-close hands verify those
+  files (`upkeep`), with each file an earlier measurement of the leaf recorded adding none at the
+  blob it holds at the head (`upkeepAt` in `lib/verdict.mjs`), so a relaunch that measures a head
+  before any round keeps the declaration, and an edit of the file voids it. Every other file of the
+  diff adds one: a missing declaration costs the stricter question. A file under measurement the
+  leaf's diff did not touch (a cycle's test a green's test round left alone) adds none, and a
+  caller's named tests on a green each count as adding one. The reading is on each discriminator
+  entry (`adds_test`) and in the notes, so the verdict and a resume read it off the journal line.
 - **A leaf runs the tests it is told to, and no others.** Its own tests are the test files its
   diff changed, plus the cycle's test files for a green or an audit, each run through the
   `test_one` template (`suite_scope: scoped`; `none`, with `suite: not_run`, when there are none).
@@ -3689,7 +3693,7 @@ biting mutation names it in `expect_failing`.
 
 A file's class is the first that fits (`classesOf`): a **net**, a file ruled a regression net
 ([Executors and review](#executors-and-review)); **upkeep**, a file that adds no test case
-(`adds_test: false`) — existing tests kept working, which pass at base by construction, so no commit
+(`adds_test: false`, as its producer declares, [Verification](#verification)) — existing tests kept working, which pass at base by construction, so no commit
 could make one discriminate; **static-pin**, a file that adds a case to a change the typecheck
 rejects at base (`static_on_base`: every changed test file passed at base, and the established
 typecheck, or a criterion check that runs it, failed there with them restored and passes now — that
@@ -4402,7 +4406,8 @@ nothing ran); `suite_output_tail` (only when the suite failed);
 `failing_tests[{file, id}]`; `baseline_failing[{file, id}]` (failing tests that fail at the base
 too); `discriminator[{test_id, blob, adds_test, failed_on_base, passes_now}]` (`blob` the file's
 blob at the measured head, what a ruling over the file is keyed by; `adds_test` false for a
-file of the leaf's own diff that adds no test case; an entry without it is read as adding one);
+file declared upkeep or one the leaf's own diff did not touch; an entry without it is read as adding
+one);
 `static_on_base[{kind, command, failed_on_base}]` (on a tdd leaf whose every changed test file held
 at base, the established typecheck, `kind: typecheck`, and each criterion check that runs it, `kind:
 check`, each run at base with the tests under measurement restored; empty otherwise);
@@ -4415,7 +4420,8 @@ file runs in its place at the head); `notes`; `error` (`null` or `{kind, message
 `base_checkout_refused`, `test_unrunnable`, `tree_not_restored`; and `measure`'s own, a child that
 gave no payload `measure_failed` and a checkout the watch could not read `watch_failed`);
 `journal` (`null` or `{written, error}`). `node lib/verify.mjs --options -` reads its options, one
-JSON object, on standard input — `key`, `approved[{file, sha}]` (the red's approved version of
+JSON object, on standard input — `key`, `upkeep[]` (the test files read as adding no case),
+`approved[{file, sha}]` (the red's approved version of
 each cycle test file), `expects[]`, `fences{sha: rule}`, `exclude[]` (a cycle member's predecessors'
 approved heads) and `resolves[]` (the paths the judge sent the leaf's rebase rounds) among them — and prints the payload as one
 JSON line, or, exiting 1, `{error}` for a throw — with `code: 'git_hung'` and the git's `label` for
@@ -4583,9 +4589,13 @@ measured before any producer round ([Resume and checkpoints](#resume-and-checkpo
   `lib/boundaries/leaf-close.mjs` (what each status decides).
 - **Restated in:** `roles/implementer.md`, `roles/test-author.md`, `roles/investigator.md`;
   `leafOpen` in `lib/boundaries/leaf-open.mjs`, whose `deny_read` (`greenSource`) decides which
-  `unread` entry is dropped.
+  `unread` entry is dropped; `leafClose`, which hands `upkeep` to verify through `upkeepAt` in
+  `lib/verdict.mjs`.
 
-`{status, text, concerns[], unread[{kind, path, what}]?, gotchas[], gotchas_stale[], mutations[], commit?}`.
+`{status, text, concerns[], unread[{kind, path, what}]?, gotchas[], gotchas_stale[], mutations[], upkeep[]?, commit?}`.
+`upkeep` names each test file of the leaf's diff that adds no test case, only keeping existing
+tests working, spelled as `unread`'s paths are (`repoPath`): a declaration the discriminator reads
+([What a verdict is computed from](#what-a-verdict-is-computed-from)); a file it leaves out adds one.
 `unread` names each document, spec part or contract the brief told the producer to follow or match
 that neither its brief nor its worktree held, typed: `kind` `doc` or `source`, its `path`, and `what`
 of it: a declaration of what it worked without, never a ruling. A return that names any stops before

@@ -189,17 +189,25 @@ describe('leaf-close and the measurement', { concurrency: 4 }, () => {
     assert.equal(moved.decision.reason, 'discriminator_sent_back', 'the ruling binds to the head it was made at; the retry gives the producer its turn again')
   })
 
-  test("a red's test file that only keeps compiling passes at base and now, and the red goes to review with no round sent", SLOW, async (t) => {
+  test("a red's test file declared upkeep passes at base and now, and the red goes to review with no round sent; the declaration holds while the file does", SLOW, async (t) => {
     const w = world(t, [root(),
       lf('r', { rigor: 'tdd-pair', role: 'red', expects: ['test/r.test.mjs', 'test/add.test.mjs'] }),
       lf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], expects: ['src/r.mjs'] })])
     const o = open(w, 'r')
     const upkeep = git(o.worktree, 'show', 'HEAD:test/add.test.mjs') + '\n// a fake of add, given the new method so it typechecks\n'
     commit(o.worktree, { 'test/r.test.mjs': R_TEST, 'test/add.test.mjs': upkeep }, 'Pin r')
-    const { out } = await run(w, { node: 'r', role: 'test-author', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
+    const ret = { ...DONE, upkeep: ['./test/add.test.mjs'] }
+    const { out } = await run(w, { node: 'r', role: 'test-author', round: 1, ret, base_sha: o.base_sha, head_before: o.base_sha })
     assert.deepEqual(observed(w, 'r')[0].discriminator.map((d) => [d.test_id, d.adds_test]), [['test/add.test.mjs', false], ['test/r.test.mjs', true]])
     assert.equal(out.decision.next, 'review', JSON.stringify(out.decision))
     assert.deepEqual(msgs(w, 'failures', 'r'), [])
+    // A later head where only the red's own test moved, measured with no round's return: a relaunch.
+    const before = head(o.worktree)
+    commit(o.worktree, { 'test/r.test.mjs': R_TEST + '// renamed a case\n' }, 'Tidy r')
+    assert.equal(append(w.r, E, 'events', [{ kind: 'replanned', node: 'r', execution: w.stamp, reason: 'retry_escalated', by: 'session' }]).ok, true)
+    const again = await close(w, { node: 'r', round: 1, dispatch: '', base_sha: o.base_sha, head_before: before })
+    assert.equal(again.decision.next, 'review', JSON.stringify(again.decision))
+    assert.equal(observed(w, 'r').at(-1).discriminator.find((d) => d.test_id === 'test/add.test.mjs').adds_test, false)
   })
 
   test("a red's file of cases over what held at base escalates on round one; a net over it, retried, sends the red to review", SLOW, async (t) => {

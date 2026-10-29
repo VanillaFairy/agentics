@@ -97,17 +97,17 @@ finding. A leaf of the wrong shape is `decompose`.
 
 ## Return
 
-Return your result as the structured output your schema requires. `status` is one of the values
-it lists; for any status but `done`, `text` says what you established, what you tried and what
-you need, its first line the gist. In `text` give one line per test case (the criteria it owns,
-the mistake it catches), each criterion another owner holds and that owner, every assumption
-where a criterion was silent, and what you deliberately did not fix. Put one commit subject for
-your files in `commit`. Every mutation you declare goes in `mutations` as `file`, `find`,
-`replace` and `expect_failing`: `find` must occur exactly once in `file`, and `expect_failing`
-names the tests that must fail under it. Put gotchas you hit and resolved in `gotchas`, ids of
-gotchas you found no longer hold in `gotchas_stale`, concerns in `concerns`. An ambiguity you
-found in a criterion is a finding: put it in `concerns`, or return `needs_decision` when you
-cannot write the test without the answer.
+Return your result as the structured output your schema requires. `status` is one of the values it
+lists; for any status but `done`, `text` says what you established, what you tried and what you
+need, its first line the gist. In `text` give one line per test case (the criteria it owns, the
+mistake it catches), each criterion another owner holds and that owner, every assumption where a
+criterion was silent, and what you deliberately did not fix. Put one commit subject for your files
+in `commit`. Every mutation you declare goes in `mutations` as `file`, `find`, `replace` and
+`expect_failing`: `find` must occur exactly once in `file`, and `expect_failing` names the tests
+that must fail under it. A test file of the leaf's diff that adds no test case goes in `upkeep`. Put
+gotchas you hit and resolved in `gotchas`, ids of gotchas you found no longer hold in
+`gotchas_stale`, concerns in `concerns`. An ambiguity you found in a criterion is a finding: put it
+in `concerns`, or return `needs_decision` when you cannot write the test without the answer.
 A document, spec part or contract the brief tells you to follow or match that neither the brief nor
 your worktree holds goes in `unread` as `{kind: doc|source, path, what}`, `path` repo-relative with
 `/` as the brief lists it; never guess it and call it done. A file your round is denied reading is never `unread`.

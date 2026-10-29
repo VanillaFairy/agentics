@@ -8,7 +8,7 @@ import { join } from 'node:path'
 
 import { normalizeNode } from '../lib/tree.mjs'
 import { measurementOk } from '../lib/verdict.mjs'
-import { addsTestCase, verify, parseArgs, checksFor } from '../lib/verify.mjs'
+import { verify, parseArgs, checksFor } from '../lib/verify.mjs'
 import {
   BUILD, cycle, EXECUTION, git, mutations, options, order, rev, SUITE, TEST_ONE,
 } from './harness/verify-fixture.mjs'
@@ -186,7 +186,7 @@ test('a tests-only leaf runs the discriminator and its declared mutations', (t) 
   assert.equal(payload.mutations[0].bites, true)
 })
 
-test('a tdd leaf that only keeps another test file up to date records it as upkeep, and passes', (t) => {
+test('a tdd leaf that only keeps another test file up to date, declared upkeep, records it so and passes; undeclared it adds a case', (t) => {
   // The field case: a constructor gains an argument, and the leaf passes it at every existing
   // call site in a test file that adds no test of its own. That file passes at base as well, by
   // construction, and no commit could make it fail there.
@@ -196,41 +196,18 @@ test('a tdd leaf that only keeps another test file up to date records it as upke
   git(worktree, 'commit', '-qam', 'test: pass the new argument at the base call site')
   const head = rev(worktree, 'HEAD')
 
-  const payload = verify(options({ worktree, base, head, extra: ['--rigor', 'tdd', '--expects', 'test/base.test.mjs'] }))
+  const given = options({ worktree, base, head, extra: ['--rigor', 'tdd', '--expects', 'test/base.test.mjs'] })
+  const payload = verify({ ...given, upkeep: ['test/base.test.mjs'] })
 
   assert.equal(payload.stop_reason, 'completed', payload.notes)
   const byFile = Object.fromEntries(payload.discriminator.map((d) => [d.test_id, d]))
   const blob = (file) => rev(worktree, head + ':' + file)
   assert.deepEqual(byFile['test/widget.test.mjs'], { test_id: 'test/widget.test.mjs', blob: blob('test/widget.test.mjs'), adds_test: true, failed_on_base: true, passes_now: true })
   assert.deepEqual(byFile['test/base.test.mjs'], { test_id: 'test/base.test.mjs', blob: blob('test/base.test.mjs'), adds_test: false, failed_on_base: false, passes_now: true })
-  assert.match(payload.notes, /1 of 2 test file\(s\) add a test case; upkeep, adding none: test\/base\.test\.mjs/)
+  assert.match(payload.notes, /1 of 2 test file\(s\) add a test case; upkeep or untouched, adding none: test\/base\.test\.mjs/)
   assert.deepEqual(measurementOk(payload, normalizeNode({ id: 'w1', kind: 'leaf', rigor: 'tdd', expects: ['src/'] })).failures, [])
-})
-
-test('addsTestCase: an added declaration adds a test case; a call site, a moved test or a regex does not', () => {
-  const diff = (...lines) => ['diff --git a/t b/t', '--- a/t', '+++ b/t', '@@ -1 +1 @@', ...lines].join('\n')
-  const adds = [
-    ["+test('a new case', () => {})"],
-    ["+  it('a new case', async () => {"],
-    ['+it.each([1, 2])(\'case %i\', (n) => {})'],
-    ['+test.each`a | b`(\'table\', () => {})'],
-    ['+def test_new_case():'],
-    ['+func TestNewCase(t *testing.T) {'],
-    ['+#[test]'],
-    ['+    @Test'],
-    ['+    [Fact]'],
-  ]
-  const none = [
-    ['-  new DeckSource(cards)', '+  new DeckSource(cards, id)'],
-    ["-test('moved', () => {})", "+test('moved', () => {})"],
-    ['+const ok = /x/.test(name)'],
-    ['+  // call it (once)'],
-    ["+it.skip('later', () => {})"],
-    [],
-  ]
-  for (const lines of adds) assert.equal(addsTestCase(diff(...lines)), true, lines.join(' | '))
-  for (const lines of none) assert.equal(addsTestCase(diff(...lines)), false, lines.join(' | '))
-  assert.equal(addsTestCase("+++ b/test('header', () => {})\n"), false, 'nothing before the first hunk is a line of the file')
+  const undeclared = verify(given).discriminator.find((d) => d.test_id === 'test/base.test.mjs')
+  assert.equal(undeclared.adds_test, true, 'a file nobody declared upkeep is held to the whole question')
 })
 
 test('named checks travel only as base64, and every option parses', () => {

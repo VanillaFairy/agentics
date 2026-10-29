@@ -5,7 +5,7 @@
 //
 //   measureKey   one key per measurement input — the head, the worktree's status, the base, the
 //                mode, the rigor, the role, the producer, the commands, the mutations, the tests,
-//                the checks, the approved files, the expected files, the fences — and none
+//                the checks, the approved files, the expected files, the fences, the upkeep — and none
 //                for where or for whom the measurement is taken
 //   measure      the payload comes from a `lib/verify.mjs` child over a real linked worktree; the
 //                line it journals carries the key; the same key is not measured again, unless what
@@ -91,6 +91,7 @@ const CHANGES = [
   ['the approved files', { approved: [{ file: 'test/a.test.mjs', sha: 's1' }] }],
   ['the expected files', { expects: ['src/a.mjs', 'src/b.mjs'] }],
   ['the fences', { fences: { abc1234: ['src/a.mjs'] } }],
+  ['the files read as upkeep', { upkeep: ['test/a.test.mjs'] }],
 ]
 for (const [what, change] of CHANGES) {
   test('measureKey changes with ' + what, () => {

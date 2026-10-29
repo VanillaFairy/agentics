@@ -17,7 +17,7 @@ import assert from 'node:assert/strict'
 import {
   CONSOLIDATION, auditGap, closeDecision, consolidationDue, greenRoundRole, heldMutations, integrationPark, measurementOk,
   ownFailing, profileOf, reviewExit,
-  netsIn, netsOf, suiteFailed, undiscriminated,
+  netsIn, netsOf, suiteFailed, undiscriminated, upkeepAt,
 } from '../../lib/verdict.mjs'
 import { normalizeNode } from '../../lib/tree.mjs'
 
@@ -334,6 +334,14 @@ test('a net stands wherever its file holds the blob it was ruled over, and a lea
   assert.deepEqual(netsOf(later, 'x').find((n) => n.file === 'test/x.test.mjs').why, 'ruled again', 'the latest ruling of a file at a blob stands')
 })
 
+
+test('a file is upkeep where its round declares it, or where an earlier measurement read it so at the blob it holds now', () => {
+  const earlier = [{ discriminator: [upkeep(true), disc(true, true)] }]
+  const blobs = new Map([['test/y.test.mjs', 'blob of test/y.test.mjs'], ['test/x.test.mjs', 'blob of test/x.test.mjs']])
+  assert.deepEqual(upkeepAt([], earlier, blobs), ['test/y.test.mjs'], 'a relaunch with no return keeps the declaration')
+  assert.deepEqual(upkeepAt([], earlier, new Map([['test/y.test.mjs', 'edited']])), [], 'an edit of the file voids it')
+  assert.deepEqual(upkeepAt(['test/z.test.mjs'], [], new Map()), ['test/z.test.mjs'])
+})
 
 test('...but not when a test does not pass now, which an implementer can move', () => {
   assert.equal(closeDecision(m({ discriminator: [disc(true, false)] }), LEAVES.tdd).next, 'fix')

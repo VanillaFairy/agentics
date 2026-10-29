@@ -5,7 +5,8 @@
 // What is pinned here:
 //
 //   requeues, routes and faults  by cause: no slot, needs_context, a
-//                                failed dispatch, and a throw inside the unit
+//                                failed dispatch, and a throw inside the unit, but a hung
+//                                git, which rejects as GitHung
 //   a relaunch                   rebuilt from the records
 //
 // The rig, the scripted answers and the worlds the parts share are in
@@ -22,7 +23,7 @@ import { heldOf } from '../lib/boundaries/records.mjs'
 import { renderMessage } from '../lib/conversation.mjs'
 import { append } from '../lib/ledger.mjs'
 import { acquireAsync } from '../lib/locks.mjs'
-import { closePath, configPath, returnPath, writeJson } from '../lib/store.mjs'
+import { GitHung, closePath, configPath, returnPath, writeJson } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
 import {
   T, E, leafEntry, specText, YARD, bLeaf, git, work, world, ofKind, stateOf, faultsOf, startsOf, approvals,
@@ -163,6 +164,14 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.equal(faults[0].channel, 'program')
     assert.ok(heldOf(stateOf(w.rig)).has('b'))
     assert.deepEqual(stopsOn(w.rig), [])
+  })
+
+  test('a git hung inside the unit rejects as GitHung for the git_hung stop, recording no program fault', T, async (t) => {
+    const w = world(t)
+    w.rig.script({ [IMPL]: [done()] })
+    w.job('implementer|b#1', () => { throw new GitHung(['status'], 1) })
+    await assert.rejects(w.run('b'), (err) => err instanceof GitHung && err.label === 'git status')
+    assert.deepEqual(faultsOf(w.rig), [])
   })
 
   test('a throw inside the unit whose fault cannot be recorded still ends the leaf faulted', T, async (t) => {

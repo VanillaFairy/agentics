@@ -1094,3 +1094,17 @@ test("a unit whose git hung past its ceiling holds its node on a git_hung stop, 
   const faults = w.rig.log.entries().filter((e) => e.kind === 'fault' && e.node === 'p')
   assert.deepEqual(faults.map((f) => f.channel), ['git_hung'], JSON.stringify(faults))
 })
+
+test('a ruler on a moved base whose git hung holds the nodes it rules on a git_hung stop, never a program fault', async (t) => {
+  const w = world(t, { steps: clean(), writes: { 1: S1 } })
+  assert.equal((await w.run()).outcome, 'prepared', 'the fixture: p is planned and compiled')
+  const settles = (outcome) => async () => ({ outcome, survey: null })
+  const units = {
+    planFolder: settles('prepared'), runLeaf: settles('stopped'), mergeUnit: settles('done'), reviewUnit: settles('reviewed'),
+    ruleUnit: async () => { throw new GitHung(['log', 'x'], 1) },
+  }
+  const seen = { notes: [], leaves: new Map(), reviews: [], reviewsLost: [], surveysLost: [], drift: [], failed: [], stopped: '' }
+  await runUnits(w.ctx, w.rig.xc, {}, { stale: { nodes: ['p'], record: {}, brief: '' } }, seen, units)
+  const faults = w.rig.log.entries().filter((e) => e.kind === 'fault' && e.node === 'p')
+  assert.deepEqual(faults.map((f) => f.channel), ['git_hung'], JSON.stringify(faults))
+})

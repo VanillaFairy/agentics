@@ -419,7 +419,11 @@ an awaited one resolves failed with the same message. A hang is the environment'
 the plugin's: in an execution the unit's node is held for the run by a `git_hung` stop, which the
 session relaunches past, and the same hang (the same git, at the same head of the node's branch) on
 the node again since it was cleared escalates `git_hung` as no progress (`hungRecords` in
-`lib/boundaries/records.mjs`); a run outside one records it on the `git_hung` channel.
+`lib/boundaries/records.mjs`); a run outside one records it on the `git_hung` channel. No catch
+reads a hang as an answer (`rethrowHung` in `lib/store.mjs`): the leaf unit rejects with a `GitHung`
+its catch-all would otherwise record as a `program` fault, a ruler's throw on a moved base or on
+adopted work holds its nodes by `git_hung`, and leaf-close's read of the worktree takes a refusal,
+never a hang, for an empty unborn worktree.
 
 ### Programs
 

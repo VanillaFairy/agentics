@@ -197,6 +197,25 @@ test('resolve of a conflict sends a rebase round: the open leaves the merge in p
   assert.equal(done.decision.next, 'approve', JSON.stringify(done.decision))
 })
 
+test('a rebase round reopened before it returned keeps a conflicting refresh for its producer, even after it aborted the merge', SLOW, async (t) => {
+  const rig = executionRig(t, { spec: SPEC })
+  const c = readyLeaf(rig, 'x/c', { 'src/c.mjs': 'export const c = 1\n', 'src/both.mjs': 'export const both = "c"\n' })
+  const a = readyLeaf(rig, 'x/a', { 'src/a.mjs': 'export const a = 1\n', 'src/both.mjs': 'export const both = "a"\n' })
+  approve(rig, c)
+  await merge(rig, 'x', c)
+  approve(rig, a)
+  rig.script({ [rulerKey('conflict', a)]: [rulings(['integration', 'resolve'])] })
+  await merge(rig, 'x', a)
+  const opened = await leafOpen(rig.xc, { node: 'x/a', intelligence: 'normal' })
+  assert.equal(opened.round, 2)
+  rig.log.append('dispatched', { node: 'x/a', dispatch: dispatchKey({ node: 'x/a', role: 'implementer', thread: 'producer:x/a', round: 2 }), round: 2, thread: 'producer:x/a', role: 'implementer' })
+  git(a.worktree, 'merge', '--abort')
+
+  const again = await leafOpen(rig.xc, { node: 'x/a', intelligence: 'normal' })
+  assert.deepEqual([again.status, again.round], ['opened', 2], JSON.stringify(again.stops || []))
+  assert.ok(readFileSync(join(a.worktree, 'src/both.mjs'), 'utf8').includes('<<<<<<<'), 'the reopened round is handed the conflict again')
+})
+
 test("a leaf a resolve sent a rebase opens the rebase round, never resuming what its last round left", SLOW, async (t) => {
   const rig = executionRig(t, { spec: SPEC })
   const c = readyLeaf(rig, 'x/c', { 'src/c.mjs': 'export const c = 1\n', 'src/both.mjs': 'export const both = "c"\n' })

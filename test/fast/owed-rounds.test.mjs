@@ -1,5 +1,6 @@
 // test/fast/owed-rounds.test.mjs — lib/programs/execute.mjs `owedRounds`: the approved leaves a merge
-// sent a round that no run has opened, which a relaunch takes up instead of merging them again.
+/// sent a round that no run has opened, which a relaunch takes up instead of merging them again; and
+// lib/tree.mjs `rebaseOwed`, the rebase a leaf still owes.
 //
 // Design: docs/DESIGN.md#merging.
 
@@ -7,7 +8,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { mergeable, owedRounds } from '../../lib/programs/execute.mjs'
-import { normalizeNode } from '../../lib/tree.mjs'
+import { normalizeNode, rebaseOwed } from '../../lib/tree.mjs'
 
 const leaf = (id, extra = {}) => normalizeNode({ id, kind: 'leaf', title: id, rigor: 'trivial', expects: ['src/' + id + '.mjs'], decisions: ['D1'], ...extra })
 const tree = (nodes, events, approved) => ({
@@ -36,4 +37,18 @@ test('a cycle with one member owed a round or held stays out of the merge whole;
   const item = { children: [{ id: 'r' }, { id: 'g' }, { id: 'a' }, { id: 'b' }], cycles: [['r', 'g']] }
   assert.deepEqual(mergeable(item, (id) => id === 'r'), { children: [{ id: 'a' }, { id: 'b' }], cycles: [] }, 'the red is owed: the green waits with it')
   assert.deepEqual(mergeable(item, (id) => id === 'b'), { children: [{ id: 'r' }, { id: 'g' }, { id: 'a' }], cycles: [['r', 'g']] })
+})
+
+test('a rebase is owed until the leaf is approved or merged after it, a round opened for it and never returned included', () => {
+  const events = [dispatched('a', 1, 1), message('a', 'rebase', 2, 2)]
+  assert.equal(rebaseOwed(events, 'a').seq, 2)
+  events.push(dispatched('a', 2, 3))
+  assert.equal(rebaseOwed(events, 'a').seq, 2, 'the round opened for it has not settled it')
+  events.push({ kind: 'approved', node: 'a', seq: 4 })
+  assert.equal(rebaseOwed(events, 'a'), null)
+  events.push(message('a', 'rebase', 3, 5))
+  assert.equal(rebaseOwed(events, 'a').seq, 5, 'a later conflict owes its own')
+  events.push({ kind: 'merged', node: 'a', seq: 6 })
+  assert.equal(rebaseOwed(events, 'a'), null)
+  assert.equal(rebaseOwed(events, 'b'), null)
 })

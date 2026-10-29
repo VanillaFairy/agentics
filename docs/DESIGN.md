@@ -2948,7 +2948,10 @@ trigger and ruling dispatch (`said`).
 **The rebase round.** A round that a `rebase` message waits for refreshes the leaf's branch from its
 parent's head and, on a conflict, leaves the merge in progress in the worktree (`mergeForRebase` in
 `lib/merge.mjs`) for the producer to resolve and conclude with `git add` and `git commit`; its base
-is the head it merges, so its series is its own work over it. An open run again finds the merge in
+is the head it merges, so its series is its own work over it. A leaf owes the rebase until it is
+approved or merged after the message (`rebaseOwed` in `lib/tree.mjs`), and the round that waits for
+it is the leaf's latest, opened or not: a round reopened before it returned keeps a conflicting
+refresh too, even one its producer aborted. An open run again finds the merge in
 progress and takes it as its own; every other round refuses a conflicting refresh (`open_refused`).
 leaf-close measures nothing while the merge is in progress ([Boundaries](#boundaries)).
 

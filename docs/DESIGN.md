@@ -4558,7 +4558,10 @@ it is measured, at every rigor, escalated `unread_reference` with them as its `d
 against a guess never merges. A path the round was denied reading is kept from it by design, so
 leaf-close drops an entry whose `path` exactly equals one its `dispatched` line records in
 `deny_read` (leaf-open records it: a cycle's test round is denied the green's source); nothing else
-of an entry is matched, and no other entry is dropped. The reviewer's side of the
+of an entry is matched, and no other entry is dropped. An entry that is a line of text, as a return
+stored before `unread` was typed holds, is dropped when blank, or when a cycle's test round whose
+`dispatched` line records no `deny_read` returned exactly a path of the green's source as it stands
+(`greenSource` in `lib/boundaries/leaf-open.mjs`); any other is kept. The reviewer's side of the
 same rule (`roles/reviewer.md`): a unit held to a document neither its brief nor the worktree carries
 is never ruled clean, but a major finding naming it. `status` is
 `done | done_with_concerns | blocked | needs_context | needs_tests | decompose | unsplittable |

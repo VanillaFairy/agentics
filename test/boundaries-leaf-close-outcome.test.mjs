@@ -76,6 +76,17 @@ test('an unread entry is dropped only when its path is exactly one the round was
   assert.equal(po({ leaf: GREEN, role: 'test-author', ret: ret([source]) }).next, 'stop', 'a round denied nothing has no entry dropped, whatever its role')
 })
 
+test('a line of text in unread is dropped when blank, or when it is exactly a path a pre-deny_read round was denied', () => {
+  const ret = (unread) => ({ status: 'done_with_concerns', text: TEXT, unread })
+  const legacyDenyRead = ['src/core/critters/RoamBrain.ts']
+  assert.equal(po({ leaf: GREEN, role: 'test-author', ret: ret(['', '  ']) }).next, 'measure', 'a blank line names nothing')
+  assert.equal(po({ leaf: GREEN, role: 'test-author', legacyDenyRead, ret: ret([' src/core/critters/RoamBrain.ts']) }).next, 'measure')
+  assert.equal(po({ leaf: GREEN, role: 'test-author', denyRead: legacyDenyRead, ret: ret(['src/core/critters/RoamBrain.ts']) }).next, 'stop', 'a line of text is no typed entry')
+  for (const line of ['src/core/critters/RoamBrain.ts — the brain', 'the Ports part of the Design']) {
+    assert.equal(po({ leaf: GREEN, role: 'test-author', legacyDenyRead, ret: ret([line]) }).next, 'stop', line)
+  }
+})
+
 test("an auditor's return, which carries no status, is measured", () => {
   assert.equal(po({ leaf: AUDIT, role: 'auditor', ret: AUDITOR_RETURN }).next, 'measure')
 })
@@ -247,6 +258,16 @@ describe('leaf-close before it measures', { concurrency: 4 }, () => {
     const open = cycle(t)
     const gap = await run(open.w, { ...round, base_sha: open.green.base_sha, head_before: open.greenHead })
     assert.deepEqual(gap.out.stops.map((s) => s.reason), ['unread_reference'])
+  })
+
+  test("a line of text a return stored before unread was typed is dropped only when it is exactly the green's source", SLOW, async (t) => {
+    const round = (unread) => ({ node: 'g', role: 'test-author', round: 2, thread: 'producer:r', ret: { status: 'done_with_concerns', text: TEXT, unread } })
+    const source = cycle(t)
+    const dropped = await run(source.w, { ...round([' src/r.mjs ', '']), base_sha: source.green.base_sha, head_before: source.greenHead })
+    assert.notEqual(dropped.out.decision.reason, 'unread_reference', JSON.stringify(dropped.out.decision))
+    const prose = cycle(t)
+    const kept = await run(prose.w, { ...round(['src/r.mjs, the implementation']), base_sha: prose.green.base_sha, head_before: prose.greenHead })
+    assert.deepEqual(kept.out.stops.map((s) => s.reason), ['unread_reference'])
   })
 
   test('a dispatch with no stored return holds the leaf on a role fault, and nothing is measured', SLOW, async (t) => {

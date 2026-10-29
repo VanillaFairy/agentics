@@ -24,6 +24,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { driftOf, mergeBatch } from '../lib/boundaries/merge.mjs'
 import { ensureLeaf } from '../lib/integration.mjs'
+import { verify } from '../lib/verify.mjs'
 import { append as appendTo, executionLog, fileFor } from '../lib/ledger.mjs'
 import { branchOf, readJson, worktreeOf } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
@@ -143,6 +144,20 @@ test('a cycle whose tip conflicts on a file its implementer writes is handed to 
   assert.deepEqual(plain.conflicts, [], 'no rebase: the member is left as it was cut')
   const rebased = ensureLeaf(w.r, E, 'g', { from: r.head_sha, parentBranch: branchOf(E, '.'), cycleMember: true, rebase: true })
   assert.deepEqual(rebased.conflicts, ['src/r.mjs'], 'the conflict is in the worktree for the implementer to resolve')
+
+  // Concluded, the series starts at the folder head it took, never at the merge: the green's own
+  // commit stays in it, and the red's test commit, left out by name, is judged by no one here.
+  writeFileSync(join(rebased.worktree, 'src/r.mjs'), 'export const r = () => 1\n')
+  git(rebased.worktree, 'add', 'src/r.mjs')
+  git(rebased.worktree, 'commit', '-q', '--no-edit')
+  const after = ensureLeaf(w.r, E, 'g', { from: r.head_sha, parentBranch: branchOf(E, '.'), cycleMember: true })
+  assert.equal(after.base, headOf(w.r, '.'), 'the base is the folder head the rebase took')
+  const measured = verify({
+    worktree: after.worktree, mode: 'order', base: after.base, exclude: [r.head_sha], rigor: 'tdd-pair', role: 'green',
+    buildAbsent: true, typecheckAbsent: true, suiteAbsent: true, suiteFastAbsent: true, expects: ['src/r.mjs'], tests: [], checks: [],
+  })
+  const series = (measured.series_findings || []).filter((f) => f.blocking).map((f) => f.check)
+  assert.deepEqual(series, [], JSON.stringify(measured.series_findings))
 })
 
 test('a conflict holds back its own unit and what is built on it; an unrelated sibling after it still merges', SLOW, async (t) => {

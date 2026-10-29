@@ -1333,7 +1333,11 @@ work, and the series check leaves it out. A cycle member takes its parent only a
 the merge as its base: it is cut from its predecessor's head, which the parent does not hold, so a
 later refresh would count its predecessor's commits as its own. The one exception is a rebase round of
 the cycle's tip, which a conflict sent: it takes the parent's head so its implementer can resolve the
-conflict, and its series is measured from what that merge brought (`MERGE_HEAD`).
+conflict, and its series is measured from what that merge brought (`MERGE_HEAD`) and, once concluded,
+from the parent head it took (`leafBase`), never from the merge itself. A cycle member's series
+always leaves out its predecessors' approved heads by name (verify's `exclude`): their commits ride
+on its branch but were judged under their own role, so the series check reads only the member's
+own, each commit by itself.
 
 The base is read off the branch, never carried from the call that made it (`leafBase` in
 `lib/integration.mjs`): the oldest commit on the leaf's first-parent line, from where it left its

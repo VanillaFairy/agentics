@@ -99,13 +99,23 @@ test('no test-removed when the approved file is unchanged', (t) => {
 
 // ---------------------------------------------------------------- approved_failing
 
-test('approved_failing names an approved case that fails at the head', (t) => {
+test('approved_failing names an approved case that fails at the head, is on the journalled verify-observed, and the run leaves the worktree as it found it', (t) => {
   const r = round(t, { 'src/widget.mjs': SOURCE_BYE, [FILE]: WIDGET_TEST_BYE })
-  const payload = verify(asked(r))
+
+  const payload = verify(asked(r, { ...journaling(r), key: 'k-0002' }))
+
   assert.ok(Array.isArray(failing(payload)))
   assert.ok(failing(payload).some((e) => e.file === FILE && String(e.id).includes(CASE)),
     'the approved case that now fails is named')
-  assert.ok(failing(payload).every((e) => e.file === FILE), 'every entry is the approved file\'s')
+  assert.ok(failing(payload).every((e) => e.file === FILE), "every entry is the approved file's")
+
+  const [line] = journal(r)
+  assert.deepEqual(line.approved_failing, failing(payload), 'the round has approved cases failing, and the journalled line carries them')
+
+  const atHead = git(r.worktree, 'show', r.head + ':' + FILE).stdout
+  assert.equal(LF(readFileSync(join(r.worktree, FILE), 'utf8')), LF(atHead), "running the approved version leaves the head's text in the worktree")
+  assert.equal(git(r.worktree, 'status', '--porcelain').stdout.trim(), '', 'and the worktree clean')
+  assert.equal(rev(r.worktree, 'HEAD'), r.head, 'and HEAD where it was')
 })
 
 test('approved_failing is empty when every approved case passes', (t) => {
@@ -113,15 +123,6 @@ test('approved_failing is empty when every approved case passes', (t) => {
   const payload = verify(asked(r))
   assert.deepEqual(failing(payload), [])
   assert.deepEqual(removals(payload), [])
-})
-
-test('running the approved version leaves the worktree as it found it', (t) => {
-  const r = round(t, { 'src/widget.mjs': SOURCE_BYE, [FILE]: WIDGET_TEST_BYE })
-  verify(asked(r))
-  const atHead = git(r.worktree, 'show', r.head + ':' + FILE).stdout
-  assert.equal(LF(readFileSync(join(r.worktree, FILE), 'utf8')), LF(atHead), 'the worktree holds the head\'s text')
-  assert.equal(git(r.worktree, 'status', '--porcelain').stdout.trim(), '')
-  assert.equal(rev(r.worktree, 'HEAD'), r.head)
 })
 
 test('an approved file the head deleted loses every case, and its failing cases are named', (t) => {
@@ -149,16 +150,6 @@ test('an approved file that fails naming no case is one entry with an empty id',
   const r = round(t, { [FILE]: WIDGET_TEST + EXTRA_CASE })
   const payload = verify(asked(r, { testOne: 'node -e "process.exit(1)" {file}' }))
   assert.deepEqual(failing(payload), [{ file: FILE, id: '' }])
-})
-
-// ---------------------------------------------------------------- the journal
-
-test('approved_failing is on the journalled verify-observed', (t) => {
-  const r = round(t, { 'src/widget.mjs': SOURCE_BYE, [FILE]: WIDGET_TEST_BYE })
-  const payload = verify(asked(r, { ...journaling(r), key: 'k-0002' }))
-  assert.ok(failing(payload).length > 0, 'the round has approved cases failing')
-  const [line] = journal(r)
-  assert.deepEqual(line.approved_failing, failing(payload))
 })
 
 // ---------------------------------------------------------------- the CLI

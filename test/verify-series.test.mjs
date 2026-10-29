@@ -70,7 +70,7 @@ test('a path that is no working tree at all is refused before anything runs', (t
 
 // ---------------------------------------------------------------- the green series
 
-test('a green series: build passes, suite passes, and the new test discriminates', (t) => {
+test('a green series: build passes, suite passes, the new test discriminates, and the worktree is left on its branch, clean', (t) => {
   const { worktree, base, head } = order(t)
 
   const payload = verify(options({ worktree, base, head }))
@@ -85,16 +85,13 @@ test('a green series: build passes, suite passes, and the new test discriminates
     { test_id: 'test/widget.test.mjs', blob: rev(worktree, head + ':test/widget.test.mjs'), base_blob: '', adds_test: true, failed_on_base: true, passes_now: true },
   ])
   assert.ok(payload.notes.includes(BUILD), 'the commands actually run are named')
-})
+  assert.deepEqual(payload.mutations, [],
+    'an order declaring no mutation records an empty list and runs nothing: every order written before this field existed is this case')
 
-test('the worktree is left on its branch, clean, whatever the discriminator checked out', (t) => {
-  const { worktree, base, head } = order(t)
-
-  verify(options({ worktree, base, head }))
-
-  assert.equal(git(worktree, 'branch', '--show-current').stdout.trim(), BRANCH)
-  assert.equal(git(worktree, 'status', '--porcelain').stdout.trim(), '')
-  assert.equal(rev(worktree, 'HEAD'), head)
+  assert.equal(git(worktree, 'branch', '--show-current').stdout.trim(), BRANCH,
+    'the worktree is left on its branch, whatever the discriminator checked out')
+  assert.equal(git(worktree, 'status', '--porcelain').stdout.trim(), '', 'and clean')
+  assert.equal(rev(worktree, 'HEAD'), head, 'at the head it was handed')
 })
 
 test('the discriminator restores its own uncommitted work, whatever another tree stashes meanwhile', (t) => {

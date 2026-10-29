@@ -4534,7 +4534,9 @@ the session's, called as CLIs:
   error: {kind, message}}`, writing nothing: `not_a_leaf`, `not_undecidable` (the leaf's standing
   stop is not that escalation), `no_measurement`, `bad_file` (not that shape, or a file listed
   twice), `no_nets`, `not_measured` (no such changed test file), `not_a_net` (it discriminates, or
-  does not pass now), `no_reason`; an unresolved file refuses `unknown_file`. On success one `nets`
+  does not pass now), `no_reason`, `no_blob` (the measurement records no blob of the file, so a net
+  would stand nowhere: retry, and rule on the next measurement); an unresolved file refuses
+  `unknown_file`. On success one `nets`
   event is appended under the escalation's execution, each net keyed by its file's blob in that
   measurement, so a commit that changes the file voids it and one that leaves it alone does not;
   `all` when the leaf's nets leave no file of that measurement to discriminate. `retry` then clears

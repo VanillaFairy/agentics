@@ -12,7 +12,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { acceptDrift, land, landAct } from '../lib/boundary.mjs'
+import { acceptDrift, land, landAct, ruleNets } from '../lib/boundary.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
 import { dispatchKey, executionDir, returnPath, revParse, writeJson } from '../lib/store.mjs'
 import { readTree, standingReview, unsettledClaims } from '../lib/tree.mjs'
@@ -452,4 +452,21 @@ test('net through the CLI refuses a leaf not escalated discriminator_undecidable
   assert.equal(call(r, 'net', '--node', 'c', '--file', join(r, 'nope.json')).error.kind, 'unknown_file')
   assert.equal(call(r, 'net', '--node', 'c', '--file', file, '--execution', OLDER).error.kind, 'bad_arg')
   assert.equal(readTree(r, E).events.length, before, 'nothing written')
+})
+
+test('net refuses a file its measurement holds no blob of, writing nothing: a net keyed by none would stand nowhere', (t) => {
+  const r = seeded(t)
+  execution(r, OLDER, '.')
+  const measured = (blob) => {
+    append(r, E, 'journal:' + OLDER, { kind: 'verify-observed', node: 'b', head_sha: 'a'.repeat(40), discriminator: [{ test_id: 'test/b.test.mjs', blob, adds_test: true, failed_on_base: false, passes_now: true }] })
+    append(r, E, 'events', { kind: 'escalated', node: 'b', execution: OLDER, reason: 'discriminator_undecidable', detail: '' })
+  }
+  const ruling = { nets: [{ file: 'test/b.test.mjs', why: 'pins what held at base' }] }
+  measured('')
+  const before = readTree(r, E).events.length
+  assert.equal(ruleNets(r, E, 'b', ruling).error.kind, 'no_blob')
+  assert.equal(readTree(r, E).events.length, before, 'nothing written')
+  measured('b'.repeat(40))
+  assert.equal(ruleNets(r, E, 'b', ruling).ok, true, 'measured with its blob, the same file is ruled')
+  assert.deepEqual(eventsOf(r, 'nets').map((e) => e.nets.map((n) => n.blob)), [['b'.repeat(40)]])
 })

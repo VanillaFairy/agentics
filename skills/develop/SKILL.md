@@ -434,7 +434,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e> --node
 `discriminator_undecidable`: a changed test file passes at base too. To rule it a regression
 net over behaviour that already held, write `{nets: [{file, why}]}` with Write (`why` one line) and run
 `node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" net --repo . --effort <e> --node <id> --file <file>` before `retry`. It stands
-while the file keeps that content; with every file a net the leaf's criterion checks pin the change, and it lands `undiscriminated`.
+while the file keeps that content; with every file a net the leaf's criterion checks pin the change, and it lands `undiscriminated`. Refused `no_blob`: retry, and rule at its next stop.
 
 **Leave a note on the node** whenever you establish why it stopped, the user rules on it, or you
 touch its branch by hand, before you relaunch. One paragraph, plain words; the next session

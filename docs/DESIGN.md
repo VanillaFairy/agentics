@@ -4118,8 +4118,7 @@ fix, answers?}]}`, one per unit of the brief.
   in `lib/programs/common.mjs` (reads `dispatched`, `returned`, `message` and `thread_renewed`, and
   writes `thread_renewed` for a call it starts in a fresh session); `search` in
   `lib/programs/search/search.mjs` (reads `tool_used`, `dispatched` and `returned`);
-  `measure` in `lib/measure.mjs` (reads `verify-observed` by `key`); `tools/migrate-v5.mjs` (writes
-  `closed`, `ended` and `message`).
+  `measure` in `lib/measure.mjs` (reads `verify-observed` by `key`).
 
 An execution's records go through its log port: its node events (`dispatched`, `message` and the
 rest, [Node record and events](#node-record-and-events)) to the effort's event log, its
@@ -4775,58 +4774,6 @@ which `recordCommands` writes as the investigator's.
 
 ## Migration from 4.x
 
-`tools/migrate-v5.mjs` is the one-shot move of a repository's 4.x effort store to this design. The
-default is a dry run, `--yes` applies, and a second run changes nothing: each part recognises its
-own work. A record the ledger refuses stops the run there: it prints `{applied, …, error}` — how
-many records it appended and why it stopped — exits 1, and the next run finishes the rest. It never
-deletes. Every part appends at a new `seq`, so it takes only what keeps every derived status as it
-was. An effort is refused whole while its lock's holder (judged by `holderGone` in `lib/store.mjs`,
-as every lock's is) or a 4.x job of any of its executions is a live process.
-
-- **Executions.** A 4.x execution is one whose state holds no `run` line. Each that has an
-  `execution.json` and no `closed` line gets `closed {status: migrated}` and `ended {result:
-  {status: migrated, file: '', complete: false}}`. A 5.0 `execute` over the same folder starts a
-  new execution: the resume ladder salvages every leaf's committed work from its branch, and
-  unfinished leaves start new sessions. What a 4.x dispatch had not committed is reported and
-  adopted by nobody, as on any resume.
-- **Stops.** Every escalation and park that is still its node's open stop and whose `said` names a
-  4.x file is stated again: the file's text becomes a stored return of its own, `{status:
-  migrated, text}`, under the dispatch key `migrated-<node key>-<seq>` (each `_` of the key
-  spelled `-`; `migrated-root-<seq>` for the root) in `executions/<its stamp>/returns/`, and a
-  fresh `escalated` or `parked` event, the same in every field but `said`, names it. The stop's
-  status and question are unchanged, and nothing reads a 4.x file again. A stop whose event names no
-  execution, whose file cannot be read, or whose stored return is already there with other bytes is
-  refused and keeps its 4.x `said`.
-- **Reviews.** A `claims` event that still stands is appended again with each `verdict` as `ruling`,
-  its 4.x `said` stated again as a stored return, as a stop's is, so nothing reads a 4.x file again.
-  When its said file cannot be stated again it is refused, as a stop's is, and the event is appended
-  all the same with each `verdict` as `ruling` and its 4.x `said` kept: only the text is lost. A
-  folder not yet approved whose latest `reviewed` line at its current hash is complete gets one line
-  marking it incomplete (`remaining: ['migrated: a 5.0 review rules units']`), so its gate waits for
-  a 5.0 review that rules units; the line keeps the review's ambiguities and the sections that name
-  them, and rules no section clean. A leaf not merged or approved keeps its open review findings,
-  while no later 4.x round of that leaf (a `dispatched` event naming no thread) was dispatched after
-  the round its latest fixes file was written for — a 5.0 round never read a 4.x fixes file: each
-  review entry of that file, carried ones included, is recorded as a `findings` message from code at
-  that file's round, with an empty execution, on the thread 5.0 routes it to (on a green or an audit
-  a `tests` finding to `producer:<red>`, on an audit the rest to `auditor:<audit>`, otherwise
-  `producer:<leaf>`); the next execution that runs the thread delivers it. A migrated green whose
-  latest 4.x review left only `tests` findings thus opens its first round on the cycle's test
-  session, as 4.x would have: its first round goes by `greenRoundRole` over the messages, as any
-  green's. Verification and integration failures are measured again.
-- **Threads.** A 4.x dispatch has no session and no thread, so it is never a round: a leaf's next
-  call opens a fresh session, as for any session the host no longer holds
-  ([The agent runner](#the-agent-runner)), and a 4.x execution's `closes/` and `reviews/` are
-  never read.
-- **Left on disk.** Everything in a 4.x execution but `execution.json`, `state.jsonl`,
-  `journal.jsonl` and `returns/` — its jobs, cards, fixes files, said files, briefs, closes,
-  reviews, merges and gates, `stale-*` files and anything else — and the effort's
-  `.state/reports/` are read by nothing; the tool lists them, each with why, for the user to
-  remove.
-- **Evidence.** Each item's latest `judged` line, when it still judges the item's latest revision,
-  is appended again with its `verdict` as `ruling`, and nothing reads the old field.
-- **Settings.** `.agentics/config.json` keeps its keys; the runner's keys take their defaults.
-
 `tools/migrate-legacy.mjs` is the one-shot copy of a repository's 3.2.0 layout into `.agentics/`:
 each effort's files into its `.state/`, its design documents into its `.legacy/`, and its slot
 configuration into `config.json`. It never deletes: it lists the committed files it copied for the
@@ -4836,29 +4783,7 @@ id, its branch, its worktree and the store's files named after it. `tools/migrat
 is the one-shot move of every worktree under `.claude/worktrees/` holding an `agentics/` branch to
 the bounded directory that branch names, with `git worktree move`, uncommitted work and all. Each
 refuses a target that exists, dry-runs by default, applies with `--yes`, and does nothing the
-second time; a 3.x or early-4.x store runs them in that order before `migrate-v5`.
-
-`tools/migrate-v56.mjs` is the one-shot move of a store whose searches ran in a shape
-[Searches](#searches) does not read. An old-shape search is a searcher's dispatch on a search
-thread (`scout:*`, `common`, `locate`, `history`, `docs`, `research:*` or `repo`, under any scope)
-whose search directory (`searchDir(<home>, <thread>)`) holds no `server-*.json` spec in the shape
-of [Search tool server spec](#search-tool-server-spec): a 5.4.1 round search and a 5.5.0 search alike, finished
-or not, since a finished one would replay its stored return under the same dispatch key and read as
-`done` with no hits. A stopped program run holding one gets `fault {node: '', channel: program}`
-(`migrate-v56: <n> of its searches are in a shape 5.6.0 does not read; start the program again`)
-and `ended {result: {status: failed, file: '', complete: false}}`, so its next claim mints a new run
-that searches afresh; a run whose latest segment the 5.4.1 search migration already faulted
-gets nothing more. In each open execution, a folder holding one under
-`probe:<folder>:<n>` or `survey:<folder>[:<basis>]` gets `replanned {node: <folder>, reason:
-retry_escalated, by: migration}`, which plans it afresh under a new basis, wherever that record,
-applied in a dry run, leaves every node's derived status (`deriveStatus`), the answer of every
-`affected` ruling (`rulingAnswered`) and every review's standing (`standingReview`) as they were; a
-ruling that is not `affected` stands outright, so no replan moves it. Every other folder is listed
-with what the record would change and the user's options — `retry` from the session, which accepts
-those changes, or discard the execution. Finished programs' results are left as they are. A live
-home is refused. It dry-runs by default, applies with `--yes`, reads each part from disk again as it
-writes it, never deletes, and a second run appends nothing; it exits 1 while a folder is listed, a
-home is refused, or the ledger refused a record, and the next run finishes the rest.
+second time; a 3.x or early-4.x store runs them in that order.
 
 `tools/migrate-expects.mjs`, run once after upgrading to 6.0.0, renames a task's `locus:` field to
 `expects:` in every spec of the repository's efforts. Code checks that the rewritten text differs

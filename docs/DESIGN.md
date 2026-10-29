@@ -3239,7 +3239,8 @@ and reviewed like any other.
     set of those alone sends no message and goes straight to a fresh reviewer. One policy holds for
     every judge's misses, a reviewer's and a contention or conflict ruler's alike (`missedAgain` in
     `lib/verdict.mjs`): a unit an earlier reviewer of the same producer round, since the leaf was
-    cleared, left unruled too escalates `review_incomplete`. A question has finitely many units, so
+    cleared, left unruled too escalates `review_incomplete`; every review record counts, past a
+    reviewer dispatch that faulted and left none. A question has finitely many units, so
     the fresh judges end on a state: each rules a unit no judge ruled before, or misses one a judge
     already missed. A retry of that stop clears the leaf, so the next reviewer is fresh and no
     earlier reviewer's miss counts against it; when the stopping review left only such misses open,

@@ -425,7 +425,10 @@ its catch-all would otherwise record as a `program` fault, a ruler's throw on a 
 adopted work holds its nodes by `git_hung`, and leaf-close's read of the worktree takes a refusal,
 never a hang, for an empty unborn worktree. A check's own reads and its watch let a hang through,
 and a hang inside the check's child comes back typed and is thrown again (`measure`, [Verify
-payload](#verify-payload)), never an `environment_broken` measurement.
+payload](#verify-payload)), never an `environment_broken` measurement. The runner's watch on the
+user's checkout throws a hang where it would fail the call `watch_failed` — after the call, once the
+call's end and the return it paid for are kept — and a step a program reports lost when it fails
+(a draft's record, the survey's read of its pool, the solutions' record) is no loss on a hang.
 
 ### Programs
 

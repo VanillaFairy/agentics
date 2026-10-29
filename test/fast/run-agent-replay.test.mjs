@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 
 import { fnv1a } from '../../lib/plan-digest.mjs'
 import { runAgent } from '../../lib/runner.mjs'
-import { dispatchKey, returnPath, sessionOf } from '../../lib/store.mjs'
+import { GitHung, dispatchKey, returnPath, sessionOf } from '../../lib/store.mjs'
 import { memoryLog } from './harness/memory-log.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -249,6 +249,19 @@ test('a watch that fails on a part stores nothing and returns no output', async 
   assert.equal(out.output, null, 'a return cut off mid-continuation is not handed back as whole')
   assert.equal(r.store.has(returnPath(DIR, D)), false, 'nothing is stored for a part')
   assert.deepEqual(statusesOf(r.mine()), ['part', 'failed'])
+})
+
+test('a watch whose git hung throws GitHung: before the call nothing starts, after it the call ends failed with its return kept', async () => {
+  const hung = () => { throw new GitHung(['status'], 1) }
+  const early = rig({ script: [{ pid: 4242, lines: streamIn(S) }] })
+  early.ports.watch = { before: hung, after: () => ({ moved: [], changed: [] }) }
+  await assert.rejects(runAgent(makeCall(), early.ports), GitHung)
+  assert.deepEqual([early.spawns.length, early.mine()], [0, []])
+  const late = rig({ script: [{ pid: 4242, lines: streamIn(S) }] })
+  late.ports.watch = { before: () => ({}), after: hung }
+  await assert.rejects(runAgent(makeCall(), late.ports), GitHung)
+  assert.deepEqual(statusesOf(late.mine()), ['failed'])
+  assert.ok(late.store.has(returnPath(DIR, D)), 'the return it paid for is kept')
 })
 
 // ------------------------------------------------------------------ progress

@@ -4557,8 +4557,10 @@ of it: a declaration of what it worked without, never a ruling. A return that na
 it is measured, at every rigor, escalated `unread_reference` with them as its `detail`: work matched
 against a guess never merges. A path the round was denied reading is kept from it by design, so
 leaf-close drops an entry whose `path` exactly equals one its `dispatched` line records in
-`deny_read` (leaf-open records it: a cycle's test round is denied the green's source); nothing else
-of an entry is matched, and no other entry is dropped. An entry that is a line of text, as a return
+`deny_read` (leaf-open records it: a cycle's test round is denied the green's source), both read as
+the brief lists paths, repo-relative with `/`: a leading `./`, backslashes and the worktree's root are
+spelling, case is not (`repoPath` in `lib/boundaries/leaf-close.mjs`); nothing else of an entry is
+matched, and no other entry is dropped. An entry that is a line of text, as a return
 stored before `unread` was typed holds, is dropped when blank, or when a cycle's test round whose
 `dispatched` line records no `deny_read` returned exactly a path of the green's source as it stands
 (`greenSource` in `lib/boundaries/leaf-open.mjs`); any other is kept. The reviewer's side of the

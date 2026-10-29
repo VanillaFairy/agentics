@@ -69,8 +69,13 @@ test('an unread entry is dropped only when its path is exactly one the round was
   const denyRead = ['src/core/critters/RoamBrain.ts']
   const source = { kind: 'source', path: 'src/core/critters/RoamBrain.ts', what: 'denied; mutation placed in steering.ts instead' }
   assert.equal(po({ leaf: GREEN, role: 'test-author', denyRead, ret: ret([source]) }).next, 'measure', 'withheld by design, not a reference it was told to match')
-  const near = [{ ...source, path: './src/core/critters/RoamBrain.ts' }, { ...source, path: 'src/core/critters/roambrain.ts' }, { ...source, path: 'src/core/critters' }]
-  for (const u of near) assert.equal(po({ leaf: GREEN, role: 'test-author', denyRead, ret: ret([u]) }).next, 'stop', 'no near match drops: ' + u.path)
+  const worktree = 'C:\\work\\game\\.agentics\\.worktrees\\g'
+  const spelled = ['./src/core/critters/RoamBrain.ts', 'src\\core\\critters\\RoamBrain.ts', worktree + '\\src\\core\\critters\\RoamBrain.ts', 'c:/work/game/.agentics/.worktrees/g/src/core/critters/RoamBrain.ts']
+  for (const path of spelled) {
+    assert.equal(po({ leaf: GREEN, role: 'test-author', denyRead, worktree, ret: ret([{ ...source, path }]) }).next, 'measure', 'the same path, spelled otherwise: ' + path)
+  }
+  const near = [{ ...source, path: 'src/core/critters/roambrain.ts' }, { ...source, path: 'src/core/critters' }, { ...source, path: 'C:/elsewhere/src/core/critters/RoamBrain.ts' }]
+  for (const u of near) assert.equal(po({ leaf: GREEN, role: 'test-author', denyRead, worktree, ret: ret([u]) }).next, 'stop', 'no near match drops: ' + u.path)
   const spec = { kind: 'doc', path: '.agentics/e1/roamers/DESIGN.md', what: 'the Ports part of the Design' }
   assert.equal(po({ leaf: GREEN, role: 'test-author', denyRead, ret: ret([source, spec]) }).next, 'stop', 'a document it was told to follow')
   assert.equal(po({ leaf: GREEN, role: 'test-author', ret: ret([source]) }).next, 'stop', 'a round denied nothing has no entry dropped, whatever its role')

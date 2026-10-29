@@ -577,7 +577,7 @@ By the result's `status`:
 - `compile_refused`: its `problems` name file and line; the fix is an edit, ruled again.
 - `refused`, by its `next`: `user_approves`, the never-compiled path above; `fix_spec`, edit what
   `problems` name; `rule_parent_first`, rule the spec `why` names first; `rule_it`, start `rule`
-  again; `nothing`, it is approved as it stands.
+  again; `shrink_brief`, do what `why` ends on, then rule; `nothing`, it is approved as it stands.
 
 ### Move on. Gate: the user picks
 

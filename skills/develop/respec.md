@@ -22,5 +22,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" rule --repo . --detach --effort <e> --f
 - `compile_refused` — its `problems` name file and line: the fix is an edit, ruled again.
 - `refused` — by its `next`: `user_approves`, show the change, then ask and approve as the skill's
   step 2 does and compile as its step 3 does; `fix_spec`, edit what `problems` name;
-  `rule_parent_first`, rule the spec `why` names; `rule_it`, rule it again; `planner`, leave it to
+  `rule_parent_first`, rule the spec `why` names; `rule_it`, rule it again; `shrink_brief`, a part
+  of the ruler's brief is past what it reads, never fixed by ruling again: do what `why` ends on,
+  the user's word on how a spec they wrote is cut; `planner`, leave it to
   the run, which reviews and prepares the edit at its next tick; `nothing`: approved.

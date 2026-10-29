@@ -113,7 +113,7 @@ test('a change that cannot be ruled is refused with its next step and dispatches
   assert.equal(ledger(rig.repo, 'ruled').length, 0)
 })
 
-test('a ruler whose brief is past what it can read is never sent it: the change is refused, its largest part named', async (t) => {
+test('a ruler whose brief is past what it can read is never sent it: the change is refused for the user to shrink the spec it names', async (t) => {
   const pad = (text, mark) => text.replace('## Design\n', '## Design\n\n' + Array.from({ length: 1200 }, (_, i) => mark + ' ' + i + ' ' + 'z'.repeat(100)).join('\n') + '\n')
   const rig = programRig({ files: { 'CLAUDE.md': GUIDE + '\n' } })
   t.after(() => rig.cleanup())
@@ -129,8 +129,9 @@ test('a ruler whose brief is past what it can read is never sent it: the change 
   const run = rig.relaunch(rulerScript(rulingsOf(brief)))
   const out = await rule(run.ctx, args('api'))
   assert.equal(run.calls.length, 0, 'no ruler is started')
-  assert.deepEqual([out.status, out.next], ['refused', 'rule_it'])
-  assert.ok(out.why.includes('brief_too_large') && out.why.includes('"'), out.why)
+  assert.deepEqual([out.status, out.next], ['refused', 'shrink_brief'], 'ruling it again would build the same brief')
+  const spec = brief.parts.specs.find((s) => s.text.includes('API_PAD')).path
+  assert.ok(out.why.includes('"' + spec + '"') && out.why.endsWith('the user shrinks or splits ' + spec + ', then it is ruled again'), out.why)
   assert.equal(ledger(run.repo, 'ruled').length, 0)
 })
 

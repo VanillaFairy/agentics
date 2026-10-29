@@ -676,7 +676,7 @@ shaped part's key:
 | owner | its parts | a refusal naming one |
 |---|---|---|
 | `work` | a leaf's own work: its Task, criteria, decisions, expected files and reads, its cited Design part, what it consumes, its effort files, evidence, gotchas, measures, commands; a folder's spec a planner or reviewer reads | in a leaf's dispatch (its round, its reviewer, its convergence ruler), a `decompose` to the folder's planner, or `needs_respec` in a folder the user wrote ([Replanning](#replanning)); elsewhere, as `user` |
-| `user` | the repository's guidance, one part per file; a changed spec's diff, the user's answers and the specs a ruler reads whole, one part per spec; a probed artefact | a stop for the user naming the file and its size: in an execution `escalated brief_too_large` (`dispatchFailed` in `lib/boundaries/records.mjs`), which the user settles by shrinking or splitting the file |
+| `user` | the repository's guidance, one part per file; a changed spec's diff, the user's answers and the specs a ruler reads whole, one part per spec; a probed artefact | a stop for the user naming the file and its size: in an execution `escalated brief_too_large` (`dispatchFailed` in `lib/boundaries/records.mjs`), from `rule` `shrink_brief` ([A changed spec](#a-changed-spec)); the user settles it by shrinking or splitting the file |
 | `code` | everything else: the charge, thread messages, a probe's ground and settled specs, rendered records | a defect of its builder: a `role` fault whose detail carries the part, its bytes and budget |
 
 The spend view flags a unit with a call whose session opened past the bound as measured
@@ -1372,7 +1372,10 @@ prompt, pointing it at no file; the ruler returns a ruling per unit (`ruler_resp
 question its owner must answer, and a `fix` when the new text itself dictates the edit — and the
 program writes the rulings to the brief's rulings file and settles. A choice of the user's ruled
 `unaffected`, or an `answered` ruling citing no answer the brief held, is refused. Rulings that settling refuses go
-back to the ruler's session as a `refusals` message, until a refusal repeats.
+back to the ruler's session as a `refusals` message, until a refusal repeats. A brief past what the
+ruler may read ([The agent runner](#the-agent-runner)) is never sent, and ruling again would build
+the same one: the program is refused `shrink_brief`, its `why` the part, its file and size, ending
+on who makes it smaller — the user, who shrinks or splits the spec or guidance file it names.
 
 Rulings are bound to a **basis**: a digest of the text ruled, the units and the nodes' revisions,
 the other specs the brief names, the work under the spec, the stops it would clear and the answers
@@ -4309,7 +4312,7 @@ answer, written[], retired[], flagged[], spared[], parked[], answered[]}`, `{sta
 folder, hash, ruled, affected[{node, why, question, fix}]}` (`affected` the units no answer
 settles, a node or a `decision:`, `contract:` or `park:` unit), `{status: compile_refused, folder,
 hash, ruled, problems[]}` or `{status: refused, next: user_approves | fix_spec | rule_parent_first
-| rule_it | planner | nothing, why, problems[]}`, each with its coverage block: a ruler that
+| rule_it | shrink_brief | planner | nothing, why, problems[]}`, each with its coverage block: a ruler that
 returned nothing, or whose rulings settling refused the same way twice, fails `ruler`. The ruler
 returns `ruler_respec`, `{rulings: [{node, ruling: unaffected | answered | affected, why, question,
 fix, answers?}]}`, one per unit of the brief.

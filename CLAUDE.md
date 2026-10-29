@@ -48,7 +48,9 @@ second; the script reruns a failed run's failures before calling any of them red
   runner confines every agent to its worktree, its paths and its commands; what it cannot
   prevent, it detects.
 - **Runtime text holds instructions and contracts; reasons live in DESIGN.md.** Every skill and role
-  file has a size budget in `tools/budgets.json`, enforced by the `size-budget` lint rule.
+  file has a size budget in `tools/budgets.json`, enforced by the `size-budget` lint rule. A budget
+  binds: text that needs room makes it by cutting a clause elsewhere in the same file, never by
+  raising the number. Raise one only for a new duty the file did not have, and say which in the commit.
 - **A format change ships a one-shot migration script, never a permanent second reader**
   (`tools/migrate-*.mjs`).
 - `docs/superpowers/` is gitignored scratch for the vf-superpowers planning skills; nothing in

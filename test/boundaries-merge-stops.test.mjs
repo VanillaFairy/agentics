@@ -23,6 +23,7 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { driftOf, mergeBatch } from '../lib/boundaries/merge.mjs'
+import { ensureLeaf } from '../lib/integration.mjs'
 import { append as appendTo, executionLog, fileFor } from '../lib/ledger.mjs'
 import { branchOf, readJson, worktreeOf } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
@@ -136,6 +137,12 @@ test('a cycle whose tip conflicts on a file its implementer writes is handed to 
   assert.deepEqual(stopsOf(out), [], 'the judge rules before anyone asks the user')
   assert.deepEqual(out.conflict, { id: 'g', head: g.head_sha, paths: ['src/r.mjs'] })
   assert.notEqual(statusOf(w.r, 'g'), 'escalated')
+
+  // Its rebase round takes the folder's head, though a cycle member otherwise takes it only at the cut.
+  const plain = ensureLeaf(w.r, E, 'g', { from: r.head_sha, parentBranch: branchOf(E, '.'), cycleMember: true })
+  assert.deepEqual(plain.conflicts, [], 'no rebase: the member is left as it was cut')
+  const rebased = ensureLeaf(w.r, E, 'g', { from: r.head_sha, parentBranch: branchOf(E, '.'), cycleMember: true, rebase: true })
+  assert.deepEqual(rebased.conflicts, ['src/r.mjs'], 'the conflict is in the worktree for the implementer to resolve')
 })
 
 test('a conflict holds back its own unit and what is built on it; an unrelated sibling after it still merges', SLOW, async (t) => {
@@ -154,6 +161,39 @@ test('a conflict holds back its own unit and what is built on it; an unrelated s
   assert.deepEqual(out.conflict, { id: 'n', head: n.head_sha, paths: ['README.md'] })
   assert.equal(statusOf(w.r, 'o'), 'merged')
   assert.notEqual(statusOf(w.r, 'p'), 'merged', 'p is built on n, so it waits with it')
+})
+
+test('a cycle member handed without its tip waits: nothing of the cycle merges, verifies or stops', SLOW, async (t) => {
+  const w = world(inTest(t), [root(),
+    leaf('r', { rigor: 'tdd-pair', role: 'red', expects: ['test/r.test.mjs'] }),
+    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], expects: ['src/r.mjs'] })])
+  const r = await ready(w, 'r', { 'test/r.test.mjs': R_TEST }, 'Pin r')
+  const pre = headOf(w.r, '.')
+  const recorded = stateOf(w.r).length
+  const out = await mergeBatch(w.xc, { target: '.', children: handed(r), cycles: [['r', 'g']] })
+
+  assert.equal(out.status, 'waiting')
+  assert.deepEqual(out.merged, [])
+  assert.deepEqual(stopsOf(out), [], 'no merge_no_progress, no fails_on_integration')
+  assert.equal(headOf(w.r, '.'), pre)
+  assert.equal(stateOf(w.r).length, recorded, 'no batch-started, no measurement')
+})
+
+test('the same children at the same heads onto the same head are batched once; another try records nothing', SLOW, async (t) => {
+  const w = world(inTest(t), [root(),
+    leaf('m', { rigor: 'trivial', expects: ['README.md'] }),
+    leaf('n', { rigor: 'trivial', expects: ['README.md'], deps: ['m'] })])
+  const m = await ready(w, 'm', { 'README.md': 'from m\n' }, 'Say m')
+  const n = await ready(w, 'n', { 'README.md': 'from n\n' }, 'Say n')
+  assert.deepEqual(ids((await batch(w, handed(m, n))).merged), ['m'])
+  const first = await batch(w, handed(n))
+  assert.equal(first.conflict.id, 'n', 'the first try at the head m left')
+  const recorded = stateOf(w.r).length
+  const again = await batch(w, handed(n))
+  assert.deepEqual(again.merged, [])
+  assert.equal(again.conflict, null, 'n was handed a conflict once already, at this very head')
+  assert.equal(again.status, 'repeated')
+  assert.equal(stateOf(w.r).length, recorded, 'nothing recorded: the program waits for something to change')
 })
 
 test('a batch that merged nothing and saw nothing fail escalates merge_no_progress', SLOW, async (t) => {

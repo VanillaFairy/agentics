@@ -46,7 +46,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseLog, analyzeSeries, baseMerges } from '../../lib/commit-series.mjs'
+import { parseLog, analyzeSeries, mergesOf } from '../../lib/commit-series.mjs'
 
 const SHA_A = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 const SHA_B = 'b2c3d4e5f60718293a4b5c6d7e8f90123456789a'
@@ -753,9 +753,8 @@ test('a clean CRLF series of a test round produces no findings', () => {
   assert.deepEqual(analyzeSeries(parseLog(text), { writes: 'tests' }), [])
 })
 
-test('a merge whose later parents the base holds is a refresh; one that brings in outside work is not', () => {
-  // rev-list --parents <base>..HEAD: SHA_A and SHA_C are the leaf's, SHA_B merged the parent
-  // (SHA_D, in the base) in, SHA_E merged SHA_C, which the range holds.
+test('every commit with a second parent is a merge, whatever its parents hold', () => {
+  // rev-list --parents <base>..HEAD: SHA_B merged the parent (SHA_D) in, SHA_E merged SHA_C.
   const text = crlf([
     SHA_E + ' ' + SHA_B + ' ' + SHA_C,
     SHA_C + ' ' + SHA_D,
@@ -763,6 +762,17 @@ test('a merge whose later parents the base holds is a refresh; one that brings i
     SHA_A + ' ' + SHA_D,
   ].join('\n') + '\n')
 
-  assert.deepEqual([...baseMerges(text)], [SHA_B])
-  assert.deepEqual([...baseMerges('')], [])
+  assert.deepEqual([...mergesOf(text)].sort(), [SHA_B, SHA_E].sort())
+  assert.deepEqual([...mergesOf('')], [])
+})
+
+test("a merge that lists nothing beyond git's remerge is no empty commit and owes no subject style; one that lists a file is judged by it", () => {
+  const subject = "Merge branch 'agentics/widget--a-long-folder-name' into agentics/widget--w2 and more"
+  const clean = { sha: SHA_B, subject, trailers: '', files: [], merge: true }
+  assert.deepEqual(analyzeSeries([clean], { writes: 'no-tests' }), [])
+  const resolved = { ...clean, files: ['test/widget.test.mjs'] }
+  const hits = analyzeSeries([resolved], { writes: 'no-tests' }).filter((f) => f.check === 'role-breach')
+  assert.deepEqual(hits.map((f) => f.sha), [SHA_B], 'a resolution is the merge author\'s change')
+  assert.deepEqual(analyzeSeries([{ ...clean, merge: false }], { writes: 'all' }).map((f) => f.check).sort(),
+    ['and-subject', 'empty-commit', 'subject-length'], 'the same commit as no merge is held to all three')
 })

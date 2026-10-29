@@ -1377,8 +1377,9 @@ a group is cut from that folder.
 A leaf follows its parent the same way. Every leaf-open merges the parent's integration head into
 a leaf branch that does not hold it, and that head becomes the leaf's base: the series is still
 the leaf's own commits, a tdd leaf's new tests still fail at its base, and whatever reached the
-parent since the cut is in the tree the leaf is measured on. The refresh merge is not the leaf's
-work, and the series check leaves it out. A cycle member takes its parent only at the cut, with
+parent since the cut is in the tree the leaf is measured on. A clean refresh merge changes nothing
+of the leaf's own, and the series check, which reads a merge by what it changed beyond git's remerge,
+finds nothing in it; a resolution is the leaf's work. A cycle member takes its parent only at the cut, with
 the merge as its base: it is cut from its predecessor's head, which the parent does not hold, so a
 later refresh would count its predecessor's commits as its own. The one exception is a rebase round of
 the cycle's tip, which a conflict sent: it takes the parent's head so its implementer can resolve the
@@ -4298,9 +4299,10 @@ JSON object, on standard input — `key`, `approved[{file, sha}]` (the red's app
 each cycle test file), `expects[]` and `fences{sha: rule}` among them — and prints the payload as one
 JSON line. The series checks
 come from `lib/commit-series.mjs`: `empty-series`, `empty-commit`, `role-breach`, `test-removed`,
-`wip-subject`, `checkpoint-commit`, `and-subject`, `subject-length`. They run over `base..HEAD`
-less every merge whose later parents the base holds: a refresh from the parent, not the leaf's
-work. `role-breach` judges the series' net diff against what the leaf's role may change
+`wip-subject`, `checkpoint-commit`, `and-subject`, `subject-length`. They run over `base..HEAD`,
+each merge read by its remerge diff (`log --remerge-diff`): what it changed beyond git's own remerge
+of its parents — a resolution, an extra edit, a removal — so a clean refresh lists nothing and is no
+empty commit, and a merge owes no subject style, its subject being git's. `role-breach` judges the series' net diff against what the leaf's role may change
 ([Role rules](#role-rules)), and each commit the program made for a shell-less author against its
 own fence (a test round's commit on a green or an audit, held to test files); `test-removed`
 flags a test case removed from a test file the cycle approved. `tests_rewritten[]` names the test

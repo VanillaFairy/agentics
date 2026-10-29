@@ -130,3 +130,27 @@ test('an existing test the series rewrote outside what the leaf expects is named
   assert.deepEqual(breaches(payload), [])
   assert.deepEqual(leaf(c, { expects: ['src/widget.mjs', 'test/base.test.mjs'] }).tests_rewritten, [], 'a test the leaf expects to change is no rewrite')
 })
+
+// ---------------------------------------------------------------- merges
+
+/** Commit `changes` on main, in the repository's own checkout. Gives its sha. */
+const onMain = (c, changes, message) => commit(c.dir, changes, message)
+
+test("a clean refresh merge lists nothing beyond git's remerge, and is no empty commit", (t) => {
+  const c = order(t)
+  const moved = onMain(c, { 'src/other.mjs': 'export const other = 1\n' }, 'feat: other')
+  assert.equal(git(c.worktree, 'merge', '-q', '--no-edit', 'main').status, 0)
+  const payload = leaf(c, { base: moved })
+  assert.deepEqual(payload.series_findings.filter((f) => f.blocking), [], JSON.stringify(payload.series_findings))
+})
+
+test("a merge's resolution of a fenced test file is its own author's change, judged by the leaf's role", (t) => {
+  const c = cycle(t)
+  const fenced = commit(c.worktree, { 'test/base.test.mjs': PASSING }, 'test(w3): rework the base suite')
+  const moved = onMain(c, { 'test/base.test.mjs': PASSING + '// main\n' }, 'test: touch the base suite')
+  git(c.worktree, 'merge', '-q', '--no-edit', 'main')
+  const merge = commit(c.worktree, { 'test/base.test.mjs': PASSING + '// both\n' }, 'merge main')
+  const hits = breaches(green(c, { fences: { [fenced]: 'tests' }, exclude: [moved] }))
+  assert.deepEqual(hits.filter((f) => f.sha === merge).length, 1, JSON.stringify(hits))
+  assert.deepEqual(hits.filter((f) => f.sha === fenced), [], 'the test round wrote inside its fence')
+})

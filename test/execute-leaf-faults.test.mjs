@@ -24,6 +24,7 @@ import { renderMessage } from '../lib/conversation.mjs'
 import { append } from '../lib/ledger.mjs'
 import { acquireAsync } from '../lib/locks.mjs'
 import { GitHung, closePath, configPath, returnPath, writeJson } from '../lib/store.mjs'
+import { PART_BYTES } from '../lib/roles.mjs'
 import { readTree } from '../lib/tree.mjs'
 import {
   T, E, leafEntry, specText, YARD, bLeaf, git, work, world, ofKind, stateOf, faultsOf, startsOf, approvals,
@@ -92,6 +93,34 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.equal(out.route.request.text, ASKED)
     assert.deepEqual(stopsOn(w.rig, 'f/b'), [], 'the leaf is not parked')
     assert.deepEqual(stopsOn(w.rig, 'f'), [], 'nor the folder')
+  })
+
+  // Repository guidance past what one part of a brief may hold makes the leaf's brief one no producer is sent.
+  const HUGE_GUIDANCE = { 'CLAUDE.md': 'g'.repeat(PART_BYTES + 1) + '\n' }
+
+  test("a leaf whose brief is past its budget, under a planner's folder, goes to that planner to split, nothing sent", T, async (t) => {
+    const root = specText([['- **f** — sub-effort · realises: D1 · author: planner', '  Fold f', '']])
+    const sub = specText([leafEntry('b', { expects: ['src/b.txt'] })], { decisions: false })
+    const w = world(t, { spec: { '.': root, f: sub }, files: HUGE_GUIDANCE })
+    w.rig.script({})
+    const out = await w.run('f/b')
+    assert.equal(w.rig.calls.length, 0, 'no producer is started')
+    assert.equal(out.outcome, 'route')
+    assert.equal(out.route.folder, 'f')
+    assert.deepEqual([out.route.request.node, out.route.request.status], ['f/b', 'decompose'])
+    assert.ok(out.route.request.text.includes('"CLAUDE.md"'), out.route.request.text)
+    assert.deepEqual(faultsOf(w.rig, 'f/b'), [])
+    assert.deepEqual(stopsOn(w.rig, 'f/b'), [])
+  })
+
+  test('a leaf whose brief is past its budget, in a folder the user wrote, parks needs_respec, nothing sent', T, async (t) => {
+    const w = world(t, { files: HUGE_GUIDANCE })
+    w.rig.script({})
+    const out = await w.run('b')
+    assert.equal(w.rig.calls.length, 0, 'no producer is started')
+    assert.equal(out.outcome, 'stopped')
+    assert.deepEqual(stopsOn(w.rig).map((s) => [s.kind, s.return]), [['parked', 'needs_respec']])
+    assert.deepEqual(faultsOf(w.rig), [])
   })
 
   test("a relaunch routes a needs_context round again while the leaf is unrevised, and opens the next round once a plan revised it", T, async (t) => {

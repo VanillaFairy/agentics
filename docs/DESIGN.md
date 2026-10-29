@@ -666,8 +666,9 @@ thread messages are parts of their own; a brief built in parts is shaped (`{part
 text}`), as the prober's is ([Probe](#probe)). Under budget the prompt is the brief exactly as built.
 A session the runner renews mid-call is briefed with the thread's fresh brief, held to the runner's
 whole bound alone (`oversize`).
-Where the refusal lands is the dispatching unit's: it ends its program on the failure, as any failed
-dispatch does (a `role` fault in an execution).
+Where the refusal lands is the dispatching unit's: a leaf round's goes to the leaf's planner to split
+([Replanning](#replanning)); any other ends its program on the failure, as any failed dispatch does
+(a `role` fault in an execution) — a program's brief past its budget is a defect in what built it.
 The spend view flags a unit with a call whose session opened past the bound as measured
 ([Spend view](#spend-view)), which is how an estimate that errs low shows.
 
@@ -1652,7 +1653,9 @@ any fails:
 6. **Decided.** Its brief carries every decision the executor needs.
 7. **Fits one executor.** Brief + expected files + reads fit the executor model's context budget
    with headroom for its turns, computed by script from file sizes, at the bytes a token a first
-   read measured (`BYTES_PER_TOKEN` in `lib/roles.mjs`), and the model's limit.
+   read measured (`BYTES_PER_TOKEN` in `lib/roles.mjs`), and the model's limit. The brief itself
+   is checked again when a round builds it: one past its budget is never sent, and the leaf goes
+   to its planner as a `decompose` ([Replanning](#replanning)).
 
 Conditions 2, 4 and 7 are computed by `lib/atomicity.mjs`; 1, 3, 5 and 6 are judgment and are
 never reported by a script, because a script that claimed to check "one concern" would be a script
@@ -1674,7 +1677,9 @@ independently correct.
 ### Replanning
 
 A leaf's producer or a planner returns one of these instead of finishing; a ruler's `affected`
-([Landing and drift](#landing-and-drift)) is handled as a `premise_mismatch`:
+([Landing and drift](#landing-and-drift)) is handled as a `premise_mismatch`, and a round whose brief
+is refused `brief_too_large` ([The agent runner](#the-agent-runner)) as a `decompose`, the refusal
+its text (`tooLarge` in `lib/programs/execute/leaf.mjs`):
 
 | return | meaning | who acts |
 |---|---|---|

@@ -4577,10 +4577,8 @@ leaf-close drops an entry whose `path` exactly equals one its `dispatched` line 
 `deny_read` (leaf-open records it: a cycle's test round is denied the green's source), both read as
 the brief lists paths, repo-relative with `/`: a leading `./`, backslashes and the worktree's root are
 spelling, case is not (`repoPath` in `lib/boundaries/leaf-close.mjs`); nothing else of an entry is
-matched, and no other entry is dropped. An entry that is a line of text, as a return
-stored before `unread` was typed holds, is dropped when blank, or when a cycle's test round whose
-`dispatched` line records no `deny_read` returned exactly a path of the green's source as it stands
-(`greenSource` in `lib/boundaries/leaf-open.mjs`); any other is kept. The reviewer's side of the
+matched, and no other entry is dropped. A return stored before `unread` was typed is typed by
+`tools/migrate-to-1.mjs` ([Migrations](#migrations)). The reviewer's side of the
 same rule (`roles/reviewer.md`): a unit held to a document neither its brief nor the worktree carries
 is never ruled clean, but a major finding naming it. `status` is
 `done | done_with_concerns | blocked | needs_context | needs_tests | decompose | unsplittable |

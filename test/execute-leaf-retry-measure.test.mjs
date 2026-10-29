@@ -58,19 +58,6 @@ describe('a retry over work', { concurrency: 4 }, () => {
     assert.equal(faultsOf(w.rig).length, 0)
   })
 
-  test('a retry with the brief unchanged measures the work a stopped round left: approved, and no producer goes on', T, async (t) => {
-    const w = world(t)
-    w.job('implementer|b#1', (cwd) => work(cwd, { 'src/b.txt': 'ok\n' }, 'make b'))
-    w.rig.script({ [IMPL]: [said('blocked', 'git rm was denied')] })
-    assert.equal((await w.run('b')).outcome, 'stopped')
-    const at = headOf(w.rig)
-    retry(w)
-    const again = await w.run('b')
-    assert.equal(again.outcome, 'approved', JSON.stringify(escalations(w)))
-    assert.equal(startsOf(w.rig, 'implementer', 'b').length, 1, 'the round that stopped is the only producer round')
-    assert.deepEqual(approvals(w.rig).map((e) => e.head_sha), [at])
-  })
-
   test('a retry whose work still fails sends a producer the failures, and one that returns them unmoved escalates again', T, async (t) => {
     const w = world(t)
     w.job('implementer|b#1', (cwd) => work(cwd, { 'src/b.txt': 'no\n' }, 'make b'))

@@ -89,11 +89,6 @@ const noSessionEnv = () => {
 const adoptCli = (w, map, action, input = '') => spawnSync(process.execPath,
   [BOUNDARY, 'adopt', '--repo', w.r, '--effort', E, '--folder', 'c', '--map-file', map, '--action', action],
   { encoding: 'utf8', env: noSessionEnv(), input, timeout: 30_000 })
-const rootWorktree = (w) => {
-  const path = worktreeOf(w.r, E, '.')
-  git(w.r, 'worktree', 'add', '-q', path, branchOf(E, '.'))
-  return path
-}
 /** A mapping that acts cleanly: a done leaf and a handover. */
 const cleanMapping = (w) => {
   const one = commitIn(w.wt, { 'src/a.mjs': '1\n' }, 'one')
@@ -362,14 +357,6 @@ test('a refused word creates no branch for a handover either', async (t) => {
   assert.equal(events(w.r).filter((e) => e.kind === 'noted').length, 0)
 })
 
-test('adoptAct never asks about a mapping its check refuses', async (t) => {
-  const w = world(t)
-  const { opts, prompts } = terminal('anything')
-  const out = await adoptAct(w.r, E, 'c', w.mapFile({ outside: [{ commits: ['deadbeefdeadbeef'] }] }), opts)
-  assert.equal(out.ok, false)
-  assert.equal(prompts.length, 0)
-})
-
 test('a folder branch that moved while the word was asked refuses head_moved and writes nothing', async (t) => {
   const w = world(t)
   const one = commitIn(w.wt, { 'src/a.mjs': '1\n' }, 'one')
@@ -411,10 +398,9 @@ test('a source branch deleted after the check refuses unknown_branch and writes 
 
 // ---------------------------------------------------------------- the CLI
 
-test('the adopt verb checks through the CLI: one JSON object, exit 0, and refuses a flag it does not take', (t) => {
+test('the adopt verb checks through the CLI: one JSON object, exit 0, refuses a flag it does not take, and takes a typed token only from an interactive console', (t) => {
   const w = world(t)
-  const one = commitIn(w.wt, { 'src/a.mjs': '1\n' }, 'one')
-  const map = w.mapFile({ done: [{ node: 'c/a', commits: [one] }] })
+  const map = cleanMapping(w)
   const run = (...args) => spawnSync(process.execPath, [BOUNDARY, 'adopt', ...args], { encoding: 'utf8' })
   const ok = run('--repo', w.r, '--effort', E, '--folder', 'c', '--map-file', map, '--action', 'check')
   assert.equal(ok.status, 0, ok.stderr)
@@ -427,21 +413,14 @@ test('the adopt verb checks through the CLI: one JSON object, exit 0, and refuse
   const missing = run('--repo', w.r, '--effort', E, '--folder', 'c', '--map-file', join(w.r, 'no-such.json'), '--action', 'check')
   assert.equal(missing.status, 0)
   assert.equal(JSON.parse(missing.stdout).error.kind, 'unknown_file')
-})
-
-test('the adopt verb with --action act and nobody to give the word writes nothing', (t) => {
-  const w = world(t)
-  const one = commitIn(w.wt, { 'src/a.mjs': '1\n' }, 'one')
-  const map = w.mapFile({ done: [{ node: 'c/a', commits: [one] }] })
   const before = events(w.r).length
-  const env = { ...process.env }
-  delete env.CLAUDE_CODE_SESSION_ID
-  const out = spawnSync(process.execPath, [BOUNDARY, 'adopt', '--repo', w.r, '--effort', E, '--folder', 'c', '--map-file', map, '--action', 'act'],
-    { encoding: 'utf8', env, input: '', timeout: 30_000 })
-  assert.equal(out.status, 0, out.stderr)
-  const printed = JSON.parse(out.stdout)
-  assert.equal(printed.ok, false)
+  const piped = adoptCli(w, map, 'act', printed.token + '\n')
+  assert.equal(piped.status, 0, piped.stderr)
+  const refused = JSON.parse(piped.stdout)
+  assert.equal(refused.ok, false, 'a token piped on stdin is not the user')
+  assert.equal(refused.error.kind, 'answer_unverifiable')
   assert.equal(events(w.r).length, before)
+  assert.equal(revParse(w.r, 'refs/heads/' + branchOf(E, 'c/b')), '')
 })
 
 // ---------------------------------------------------------------- an action that is not check or act
@@ -457,33 +436,7 @@ test('an action other than check or act refuses bad_arg and writes nothing: no r
   assert.equal(revParse(w.r, 'refs/heads/' + branchOf(E, 'c/b')), '')
 })
 
-test('the adopt verb with an action other than check or act prints bad_arg, exits 0 and writes nothing', (t) => {
-  const w = world(t)
-  const map = cleanMapping(w)
-  const before = events(w.r).length
-  const out = adoptCli(w, map, 'acts')
-  assert.equal(out.status, 0, out.stderr)
-  const printed = JSON.parse(out.stdout)
-  assert.equal(printed.ok, false)
-  assert.equal(printed.error.kind, 'bad_arg')
-  assert.equal(events(w.r).length, before)
-  assert.equal(revParse(w.r, 'refs/heads/' + branchOf(E, 'c/b')), '')
-})
-
 // ---------------------------------------------------------------- who may give the word
-
-test('the adopt verb takes a typed token only from an interactive console: piped on stdin it is answer_unverifiable', (t) => {
-  const w = world(t)
-  const map = cleanMapping(w)
-  const before = events(w.r).length
-  const out = adoptCli(w, map, 'act', tokenOf(w, 'c', map) + '\n')
-  assert.equal(out.status, 0, out.stderr)
-  const printed = JSON.parse(out.stdout)
-  assert.equal(printed.ok, false)
-  assert.equal(printed.error.kind, 'answer_unverifiable')
-  assert.equal(events(w.r).length, before)
-  assert.equal(revParse(w.r, 'refs/heads/' + branchOf(E, 'c/b')), '')
-})
 
 test("in a session, an 'Adopt' to the question holding the token records every event by the user", async (t) => {
   const w = world(t)
@@ -519,21 +472,6 @@ test("adoptAct over a mapping its check refuses returns the check's refusals and
   assert.equal(out.ok, false)
   assert.deepEqual(out.refusals, checked.refusals)
   assert.equal(prompts.length, 0)
-})
-
-// ---------------------------------------------------------------- what the folder's cut holds
-
-test("a hand merge of the parent into the folder does not make the parent's branch the folder's work", (t) => {
-  const w = world(t)
-  commitIn(rootWorktree(w), { 'docs/parent.md': 'p\n' }, 'parent moved on')
-  git(w.wt, 'merge', '--no-ff', '--no-edit', branchOf(E, '.'))
-  const map = w.mapFile({ done: [{ node: 'c/a', branch: branchOf(E, '.') }] })
-  const before = events(w.r).length
-  const out = adopt(w.r, E, 'c', map, 'act', { by: 'user' })
-  assert.equal(out.ok, false)
-  assert.deepEqual(out.refusals.map((x) => [x.entry, x.kind]), [['done[0]', 'not_on_folder_branch']])
-  assert.equal(events(w.r).length, before)
-  assert.notEqual(statusOf(w.r, 'c/a'), 'merged')
 })
 
 // ---------------------------------------------------------------- a handed-over cycle member stays openable

@@ -49,25 +49,6 @@ const passed = (payload) => payload.checks.every((c) => c.status === 'passed')
 
 // ------------------------------------------------------------------ measure
 
-test('a failing measurement is reused while the node has no retry', SLOW, async (t) => {
-  const { dir, xc, opts } = rig(t, [check('AGENTICS_T16_NONE')])
-  const first = await measure(xc, opts)
-  assert.equal(first.payload.stop_reason, 'completed', JSON.stringify(first.payload.error))
-  assert.equal(passed(first.payload), false)
-  const again = await measure(xc, opts)
-  assert.equal(again.reused, true)
-  assert.equal(lines(dir).length, 1)
-})
-
-test('retry on the node makes its next check measure again', SLOW, async (t) => {
-  const { dir, xc, opts } = rig(t, [check('AGENTICS_T16_AGAIN')])
-  await measure(xc, opts)
-  retry(dir, EFFORT, NODE, EXECUTION)
-  const again = await measure(xc, opts)
-  assert.equal(again.reused, false)
-  assert.equal(lines(dir).length, 2)
-})
-
 test('a check measured after the retry is reused again', SLOW, async (t) => {
   const { dir, xc, opts } = rig(t, [check('AGENTICS_T16_AFTER')])
   await measure(xc, opts)
@@ -95,16 +76,20 @@ test('a retry of another node leaves the measurement reused', SLOW, async (t) =>
 
 test('the fixed environment passes once the user retries the node', SLOW, async (t) => {
   const name = 'AGENTICS_T16_FIXED'
-  const { xc, opts } = rig(t, [check(name)])
-  assert.equal(passed((await measure(xc, opts)).payload), false)
+  const { dir, xc, opts } = rig(t, [check(name)])
+  const first = await measure(xc, opts)
+  assert.equal(first.payload.stop_reason, 'completed', JSON.stringify(first.payload.error))
+  assert.equal(passed(first.payload), false)
   fix(t, name)
   const unretried = await measure(xc, opts)
   assert.equal(unretried.reused, true, 'the fix alone changes no key')
   assert.equal(passed(unretried.payload), false)
-  retry(xc.repo, EFFORT, NODE, EXECUTION)
+  assert.equal(lines(dir).length, 1, 'a failing measurement reused journals nothing')
+  retry(dir, EFFORT, NODE, EXECUTION)
   const retried = await measure(xc, opts)
   assert.equal(retried.reused, false)
   assert.equal(passed(retried.payload), true, JSON.stringify(retried.payload.checks))
+  assert.equal(lines(dir).length, 2, 'the retry measured again')
 })
 
 // ------------------------------------------------------------------ a leaf's close

@@ -97,17 +97,6 @@ test('the worktree is left on its branch, clean, whatever the discriminator chec
   assert.equal(rev(worktree, 'HEAD'), head)
 })
 
-test('uncommitted work in the worktree survives the discriminator', (t) => {
-  const { worktree, base, head } = order(t)
-  writeFileSync(join(worktree, 'src', 'scratch.txt'), 'not committed\n')
-
-  const payload = verify(options({ worktree, base, head }))
-
-  assert.equal(payload.stop_reason, 'completed')
-  assert.match(git(worktree, 'status', '--porcelain').stdout, /scratch\.txt/,
-    'the work set aside came back — uncommitted work is nobody else\'s to discard')
-})
-
 test('the discriminator restores its own uncommitted work, whatever another tree stashes meanwhile', (t) => {
   const { dir, worktree, base, head } = order(t)
   writeFileSync(join(worktree, 'src', 'scratch.txt'), 'not committed\n')

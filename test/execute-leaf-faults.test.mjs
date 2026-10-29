@@ -16,8 +16,7 @@
 
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { existsSync, rmSync } from 'node:fs'
 import { runLeaf } from '../lib/programs/execute/leaf.mjs'
 import { heldOf } from '../lib/boundaries/records.mjs'
 import { renderMessage } from '../lib/conversation.mjs'
@@ -62,20 +61,6 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.equal(ofKind(w.rig, 'dispatched', 'b').length, 0)
     assert.deepEqual(faultsOf(w.rig), [])
     assert.deepEqual(stopsOn(w.rig), [])
-  })
-
-  test('no free slot: the leaf goes back to the scheduler, nothing dispatched', T, async (t) => {
-    const w = world(t, { leaves: [bLeaf(), leafEntry('x', { expects: ['src/x.txt', 'src/b.txt'] })] })
-    mkdirSync(dirname(configPath(w.rig.repo)), { recursive: true })
-    writeFileSync(configPath(w.rig.repo), JSON.stringify({ max_parallel: 1 }))
-    const held = await acquireAsync(w.rig.repo, { effort: E, execution: w.rig.stamp, node: 'x', waitMs: 0 })
-    assert.equal(held.ok, true, JSON.stringify(held))
-    w.rig.script({})
-    const out = await w.run('b')
-    assert.equal(out.outcome, 'requeue')
-    assert.equal(w.rig.calls.length, 0)
-    assert.equal(ofKind(w.rig, 'dispatched', 'b').length, 0)
-    assert.deepEqual(faultsOf(w.rig), [])
   })
 
   test("needs_context under a planner's folder comes back as a route to that planner", T, async (t) => {

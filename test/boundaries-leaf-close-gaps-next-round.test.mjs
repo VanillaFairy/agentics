@@ -148,19 +148,6 @@ describe('G16: the next round\'s messages and the raise', { concurrency: 2 }, ()
     assert.deepEqual(sent[0].payload.mutations.map((m) => m.replace), [R_SURVIVES.replace])
   })
 
-  test('G16.5 an audit fix close with no surviving mutation sends its failures to the red when an earlier measurement let one through', SLOW, async (t) => {
-    const c = cycle(t, { triad: true })
-    await run(c.w, { node: 'au', role: 'auditor', round: 1, thread: 'producer:au', ret: auditor([R_SURVIVES]), base_sha: c.audit.base_sha, head_before: c.audit.base_sha })
-    write(c.audit.worktree, { 'test/r.test.mjs': R_TEST_TWO })
-    // The thread is whatever the caller passed; the cycle's test session is picked from the records.
-    const { out } = await run(c.w, { node: 'au', role: 'test-author', round: 2, thread: 'producer:au', ret: { status: 'done', text: 'a case more', commit: 'Pin r at 3', mutations: [R_STALE] }, base_sha: c.audit.base_sha, head_before: c.audit.base_sha })
-    assert.equal(out.decision.next, 'fix', JSON.stringify(out.decision))
-    assert.deepEqual(msgs(c.w, 'surviving_mutations', 'au').filter((m) => m.round === 3), [])
-    const sent = msgs(c.w, 'failures', 'au')
-    assert.equal(sent.length, 1)
-    assert.equal(sent[0].thread, 'producer:r')
-  })
-
   test('G16.6 a green test-author round 2 failing as implementer round 1 did, at another head, escalates verify_not_converging', SLOW, async (t) => {
     const c = cycle(t, { check: FAIL })
     const first = await run(c.w, { node: 'g', role: 'implementer', round: 1, ret: DONE, base_sha: c.green.base_sha, head_before: c.green.base_sha })

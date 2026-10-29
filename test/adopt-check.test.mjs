@@ -208,8 +208,15 @@ test("a hand merge of the parent into the folder brings in commits the folder's 
   const w = world(t)
   const fromParent = commitIn(rootWorktree(w), { 'docs/parent.md': 'p\n' }, 'parent moved on')
   git(w.wt, 'merge', '--no-ff', '--no-edit', branchOf(E, '.'))
-  const out = checkOf(w, { done: [{ node: 'c/a', commits: [fromParent] }, { node: 'c/b', branch: branchOf(E, '.') }] })
+  const doc = { done: [{ node: 'c/a', commits: [fromParent] }, { node: 'c/b', branch: branchOf(E, '.') }] }
+  const out = checkOf(w, doc)
   assert.deepEqual(kinds(out), [['done[0]', 'not_on_folder_branch'], ['done[1]', 'not_on_folder_branch']])
+  const before = readLog(w.r, E, 'events').entries.length
+  const acted = adopt(w.r, E, 'c', w.mapFile(doc), 'act', { by: 'user' })
+  assert.equal(acted.ok, false, 'an act over the refused mapping refuses too')
+  assert.deepEqual(kinds(acted), kinds(out))
+  assert.equal(readLog(w.r, E, 'events').entries.length, before, 'and writes nothing')
+  assert.notEqual(readTree(w.r, E).status.get('c/a').status, 'merged')
 })
 
 test("a branch that carried a refresh from the parent into the folder adopts its own commits, never the parent's", (t) => {

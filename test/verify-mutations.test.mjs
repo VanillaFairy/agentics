@@ -3,33 +3,9 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 
 import { verify } from '../lib/verify.mjs'
 import { git, mutations, options, order } from './harness/verify-fixture.mjs'
-
-test('a regression net that catches its own mutation bites, and the tree is put back', (t) => {
-  // The right question for a regression net, which is excused the base question. The
-  // fixture's test asserts `label() === 'hi'`; breaking the source is what makes it fail, and
-  // a net that fails under the break is a net.
-  const { worktree, base, head } = order(t)
-
-  const payload = verify(options({ worktree, base, head, extra: mutations([
-    { file: 'src/widget.mjs', find: "'hi'", replace: "'bye'",
-      expect_failing: ['test/widget.test.mjs'] },
-  ]) }))
-
-  assert.equal(payload.mutations.length, 1)
-  assert.equal(payload.mutations[0].applied, true)
-  assert.equal(payload.mutations[0].bites, true)
-  assert.deepEqual(payload.mutations[0].observed_failing, ['test/widget.test.mjs'])
-  assert.equal(payload.stop_reason, 'completed')
-
-  assert.equal(git(worktree, 'status', '--porcelain').stdout.trim(), '',
-    'a deliberate break left in the tree sends the next fix round after a defect nobody wrote')
-  assert.equal(readFileSync(join(worktree, 'src', 'widget.mjs'), 'utf8').includes("'hi'"), true)
-})
 
 test('a net that survives the break it exists to catch does NOT bite', (t) => {
   // The finding this check exists to produce: the tests pass, they passed at base, and they would

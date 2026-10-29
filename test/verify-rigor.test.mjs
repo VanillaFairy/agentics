@@ -3,7 +3,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { normalizeNode } from '../lib/tree.mjs'
@@ -181,9 +181,16 @@ test('a tests-only leaf runs the discriminator and its declared mutations', (t) 
     ...mutations([{ file: 'src/widget.mjs', find: "'hi'", replace: "'bye'", expect_failing: ['test/widget.test.mjs'] }]),
   ] }))
 
+  assert.equal(payload.stop_reason, 'completed')
   assert.equal(payload.discriminator.length, 1)
   assert.equal(payload.discriminator[0].passes_now, true)
-  assert.equal(payload.mutations[0].bites, true)
+  assert.equal(payload.mutations.length, 1)
+  assert.equal(payload.mutations[0].applied, true)
+  assert.equal(payload.mutations[0].bites, true, 'a net that fails under the break it guards is a net')
+  assert.deepEqual(payload.mutations[0].observed_failing, ['test/widget.test.mjs'])
+  assert.equal(git(worktree, 'status', '--porcelain').stdout.trim(), '',
+    'a deliberate break left in the tree sends the next fix round after a defect nobody wrote')
+  assert.equal(readFileSync(join(worktree, 'src', 'widget.mjs'), 'utf8').includes("'hi'"), true, 'the tree is put back')
 })
 
 test('a tdd leaf that only keeps another test file up to date, declared upkeep, records it so and passes; undeclared it adds a case', (t) => {

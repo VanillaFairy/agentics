@@ -2152,13 +2152,17 @@ and its own citations alone. What each prober declared it never attacked (`not_r
 snapshotted fails `record`. A round whose findings the store refused fails no channel: its new
 findings are listed in `unrecorded`, and its snapshot is empty.
 
-**A recorded round keeps the units it left open** beside its snapshot (`<hash>.open.json`). A
-narrowed round whose `since` kept open units widens its changed ranges by the whole of every section
-those units name (`reopened` in `lib/programs/probe.mjs`), says so in `declared`, and attacks them on
-every axis, so a partial round is finished by the next narrowed one instead of a whole round that
-would re-find, under new ids, what the user already settled; an artefact unchanged since such a
-round is attacked in those sections rather than taking the no-agent path. A section an open unit
-names that the text no longer has makes the round whole.
+**A recorded round keeps its unit rulings** beside its snapshot (`<hash>.rulings.json`): each
+section unit (`<axis>@<section>`) that holds a ruling, anchored to its section's text
+(`sectionUnits` in `lib/evidence.mjs`). A narrowed round computes its units over the
+[review delta](#review-delta) against them: a ruling stands while its section reads the same,
+wherever it now sits. Every section a unit of the delta rules with no earlier ruling — an axis no
+round attacked it on, a section new or renamed, a unit the `since` round left open — widens the
+changed ranges by the whole section (`widenedScope` in `lib/programs/probe.mjs`), says so in
+`declared`, and is attacked on that axis, so a partial round is finished by the next narrowed one
+instead of a whole round that would re-find, under new ids, what the user already settled; an
+artefact unchanged since such a round is attacked in those sections rather than taking the
+no-agent path.
 
 **A recorded round keeps its ground** beside its snapshot (`<hash>.ground.json`): the repository axes
 it probed, the guidance they rest on, the places it located and their excerpts. A narrowed round

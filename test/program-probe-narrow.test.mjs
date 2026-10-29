@@ -13,9 +13,9 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { recordDisposition, reviewedFromResult } from '../lib/approval.mjs'
-import { carriedFindings, changedParts, liveItems, recordProbe, reviewScope, sectionsOf, unitsOf } from '../lib/evidence.mjs'
+import { carriedFindings, changedParts, liveItems, recordProbe, reviewScope, sectionUnits, sectionsOf, unitsOf } from '../lib/evidence.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
-import { locateMaterial, probe } from '../lib/programs/probe.mjs'
+import { keepRulings, locateMaterial, probe } from '../lib/programs/probe.mjs'
 import { evidenceReturnsDir, evidenceSnapshotsDir } from '../lib/store.mjs'
 import { closedSearch, closingRound, hitTurn } from './fast/harness/scout.mjs'
 import { programRig } from './harness/program-rig.mjs'
@@ -130,6 +130,8 @@ function recordLast(rig, path, findings) {
   const { snapshot } = reviewScope(rig.repo, file)
   const rec = recordProbe(rig.repo, { file, snapshot, from: [{ findings }], bundle: [STANDING.join('+')] })
   assert.equal(rec.recorded, true, JSON.stringify(rec))
+  // As a whole round over the standing axes keeps them: every unit ruled.
+  keepRulings(rig.repo, snapshot, sectionUnits(STANDING, readFileSync(file, 'utf8')))
   return { since: snapshot, rec }
 }
 
@@ -499,13 +501,16 @@ test('an artefact unchanged since a partial round is attacked where that round l
   assert.deepEqual(result.units.open, [])
 })
 
-test('a section a partial round left open that the text no longer has makes the round whole', async (t) => {
+test('a section renamed since a partial round is attacked whole, its rename the only change beside the edit', async (t) => {
   const renamed = editLine(EDITED, 11, '## Shape')
   const w = await partialThenEdited(t, { edited: renamed })
-  const run = w.rig.relaunch({ 'analyst||relocate': relocated([]), ...fullScript(renamed) }, '20260101-000002-second')
+  const changed = widened(renamed, w.scope.changed, ['shape'])
+  const units = unitsOf(STANDING, changedParts(sectionsOf(renamed), changed))
+  const run = w.rig.relaunch({ 'analyst||relocate': relocated([]), 'analyst||prober:1': [{ output: proberOut(units) }] }, '20260101-000002-second')
   const result = await probe(run.ctx, argsFor(w.rig.repo, ART, { since: w.since }))
-  assert.equal(result.scope.full, true)
-  assert.equal(result.units.total, unitsOf(STANDING, sectionsOf(renamed)).length)
+  assert.equal(result.scope.full, false, 'no unit of a section the text no longer has is ruled: it is gone')
+  assert.deepEqual(result.scope.changed, changed)
+  assert.deepEqual(result.units, { total: units.length, ruled: units.length, open: [] })
 })
 
 // --- an unchanged artefact ---------------------------------------------------------------------

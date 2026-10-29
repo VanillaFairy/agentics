@@ -4287,7 +4287,10 @@ fix, answers?}]}`, one per unit of the brief.
   (reads a run's `ended`); `claim` and `callsOf` in `lib/run.mjs` (read `run`, and `returned`'s
   usage and cost, for a run's `costOf` and the effort's cost report in `lib/status.mjs`); `dispatch`
   in `lib/programs/common.mjs` (reads `dispatched`, `returned`, `message` and `thread_renewed`, and
-  writes `thread_renewed` for a call it starts in a fresh session); `search` in
+  writes `thread_renewed` for a call it starts in a fresh session, and hands the runner the
+  `denyRead` that `dispatched` records as `deny_read`, which `leafOpen` in
+  `lib/boundaries/leaf-open.mjs` computes); `leafClose` in `lib/boundaries/leaf-close.mjs` (reads
+  `dispatched`'s `deny_read`); `search` in
   `lib/programs/search/search.mjs` (reads `tool_used`, `dispatched` and `returned`);
   `measure` in `lib/measure.mjs` (reads `verify-observed` by `key`).
 
@@ -4548,7 +4551,9 @@ measured before any producer round ([Resume and checkpoints](#resume-and-checkpo
 
 - **Owner:** the `producer` schema in `lib/schemas.mjs`; `producerOutcome` in
   `lib/boundaries/leaf-close.mjs` (what each status decides).
-- **Restated in:** `roles/implementer.md`, `roles/test-author.md`, `roles/investigator.md`.
+- **Restated in:** `roles/implementer.md`, `roles/test-author.md`, `roles/investigator.md`;
+  `leafOpen` in `lib/boundaries/leaf-open.mjs`, whose `deny_read` (`greenSource`) decides which
+  `unread` entry is dropped.
 
 `{status, text, concerns[], unread[{kind, path, what}]?, gotchas[], gotchas_stale[], mutations[], commit?}`.
 `unread` names each document, spec part or contract the brief told the producer to follow or match

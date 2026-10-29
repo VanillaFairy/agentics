@@ -11,6 +11,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 import { leafBrief, measuresFor } from '../lib/brief.mjs'
+import { oversizedPart, sectionsOf as partsOf } from '../lib/briefs/size.mjs'
+import { PART_BYTES } from '../lib/roles.mjs'
 import { recordItems } from '../lib/evidence.mjs'
 import { writeGotcha } from '../lib/gotchas.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
@@ -257,6 +259,20 @@ test('gotchas reach the brief for its role and expected files only', (t) => {
   assert.doesNotMatch(impl, /for implementers in docs/)
   assert.doesNotMatch(impl, /for test authors/)
   assert.match(sectionsOf(brief(repo, 'parse', { role: 'test-author' }).text).Gotchas, /When for test authors/)
+})
+
+test("a leaf's evidence and gotchas are code's, bounded as the brief is built and what they left out declared", (t) => {
+  const repo = effort(t)
+  const many = Math.ceil((PART_BYTES * 2) / 1000)
+  for (let i = 0; i < many; i++) writeGotcha(repo, E, pitfall('case ' + i + ' ' + 'y'.repeat(1000), ['implementer'], ['src/api/']), {})
+  const evidence = Array.from({ length: many }, (_, i) => ({ topic: 't', kind: 'code', claim: 'claim ' + i + ' ' + 'z'.repeat(1000), anchors: [] }))
+  const text = brief(repo, 'parse', { evidence }).text
+  const over = oversizedPart(partsOf(text), Infinity)
+  assert.ok(!over || over.owner !== 'code', over && over.message)
+  const at = sectionsOf(text)
+  assert.match(at.Evidence, /left out to fit this brief: \d+ more evidence items/)
+  assert.match(at.Gotchas, /left out to fit this brief: the gotchas /)
+  assert.ok(Buffer.byteLength(at.Evidence) <= PART_BYTES && Buffer.byteLength(at.Gotchas) <= PART_BYTES)
 })
 
 test('standing evidence whose ground meets the leaf is excerpted', (t) => {

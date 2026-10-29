@@ -393,6 +393,17 @@ test('a fix close that repeats the last one at a moved head does not converge; a
   assert.equal(fixNotConverging(null, { failures }, 'h2'), false)
 })
 
+test('a fix that removed some of the failing diagnostics converges; the same diagnostics again, timings aside, do not', () => {
+  const tsc = (...lines) => [{ check: 'typecheck', claim: 'the typecheck command exited non-zero', evidence: ['typecheck output tail:', ...lines, 'Done in 4.2s'].join('\n') }]
+  const clash = "src/core/critters/Roamer.ts(12,3): error TS2415: Class 'Roamer' incorrectly extends base class 'Entity'."
+  const fakes = ["src/core/critters/CritterBurrow.test.ts(63,7): error TS2353: 'nearestShyTile' does not exist.",
+    "src/core/critters/CritterBurrow.test.ts(64,7): error TS2353: 'evaPace' does not exist."]
+  const previous = { decision: { next: 'fix', failures: tsc(clash, ...fakes) }, head_sha: 'h1' }
+  assert.equal(fixNotConverging(previous, { failures: tsc(...fakes) }, 'h2'), false, 'one diagnostic of three gone is progress')
+  const again = { failures: tsc(clash, ...fakes).map((f) => ({ ...f, evidence: f.evidence.replace('4.2s', '3.9s') })) }
+  assert.equal(fixNotConverging(previous, again, 'h2'), true, 'the same diagnostics at a moved head')
+})
+
 test('a fix round made no progress only when it was sent the failures of the head it returned unmoved', () => {
   const previous = { decision: { next: 'fix', failures: [{ check: 'suite', claim: 'test x fails' }] }, head_sha: 'h1' }
   assert.equal(fixWithoutProgress(previous, 'h1', 'h1'), true)

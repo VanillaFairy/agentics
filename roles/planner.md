@@ -206,8 +206,7 @@ entry against its decisions' text.
 Weigh cost in every tie: a pair is two producers, a review loop and a consolidation round. Unsure
 between trivial and tdd: tdd, unless the typecheck already fixes the shape and the task wires
 existing parts: trivial. Between tdd and tdd-pair: tdd when small, and tdd whenever the types fix
-the shape and the unit is wiring, even a contract's. A cycle's tasks share one rigor and have
-disjoint loci; that disjointness is the whole separation.
+the shape and the unit is wiring, even a contract's. A cycle's tasks share one rigor.
 
 ## Writing
 

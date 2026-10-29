@@ -3767,8 +3767,8 @@ everything else and hands the same stop back at the end.
 **Who settles a stop.** The user owns decisions (L4), so a stop that needs one is theirs. A stop
 whose cause is mechanical is the session's, which settles it, notes what it ruled on the node and
 names it in its report: a transient (`blocked`), a command the work runs that its entry does not
-name (`command_denied`: added to the entry's `runs`, the edit ruled, then retried), two leaves on one file
-(`locus_held`), a reviewer's miss (`review_incomplete`), a suite or verify failure that is only
+name (`command_denied`: added to the entry's `runs`, the edit ruled, then retried), a reviewer's miss
+(`review_incomplete`), a suite or verify failure that is only
 timeouts or load passing alone (retried once), a changed test file that only pins behaviour held at
 base (ruled a `net`), a file a node needs inside its own folder (added to its entry), and code that
 breaks behaviour the spec states (a `task` entry in the folder's own spec that fixes it, never a new

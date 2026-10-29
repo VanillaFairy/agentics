@@ -423,7 +423,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e> --node
 
 | `reason` | yours when |
 |---|---|
-| `blocked`, `locus_held`, `review_incomplete` | always — a transient, two leaves on one file, a reviewer's miss: retry |
+| `blocked`, `review_incomplete` | always — a transient, a reviewer's miss: retry |
 | `merge_no_progress`, `no_progress` | the run ended with this unit settling over and over with nothing recorded: read its records and the run's notes; a cause in the plugin goes to `self-improve`; then retry |
 | `command_denied` | always — the work runs a project command its entry's `runs` does not name (`detail`): add it there, have the edit ruled (`respec.md`), then retry; never retry first. Ad-hoc lines (a script, `cat`, `sed`) reach here only when refused twice: leave a note telling it to use Edit and Write, then retry |
 | `compile_refused`, `prepare_refused` | a planner-written folder's — retry: its planner is sent the refusals (`detail`) and revises, or returns `contract_changed`, which parks for the user. A problem in a spec the user wrote is a re-spec (`respec.md`) |

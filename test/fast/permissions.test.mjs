@@ -8,6 +8,9 @@
 //   rolePermissions    the worktree by that rule, never `.agentics/`, Read denials, Bash rules and GIT_DENY
 //   roleAdmits         the series' role check agrees with the rules path for path
 //   writePermissions   exactly the listed files, their glob characters literal
+//   commandParts       where a line runs one command after another
+//   deniedClass        whose a denied line is: the spec's (unlisted), the producer's (adhoc), the plugin's (mismatch)
+//   runsProblem        a runs entry is one plain project command
 //   TEST_PATTERNS      one table: every name an entry matches is a test path the rules treat as one;
 //                      a name no entry matches is neither
 //
@@ -16,7 +19,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { GIT_DENY, roleAdmits, rolePermissions, writePermissions, writesOf } from '../../lib/permissions.mjs'
+import { GIT_DENY, commandParts, deniedClass, roleAdmits, rolePermissions, runsProblem, writePermissions, writesOf } from '../../lib/permissions.mjs'
 import { TEST_PATTERNS, isTestPath } from '../../lib/store.mjs'
 
 /** A permission pattern as the host reads it, gitignore-style: `**` spans folders, `*` stays in one, `[..]` is one of a set. */
@@ -207,4 +210,62 @@ test('a file entry matches the last segment of a path, not a folder it sits unde
       assert.equal(isTestPath('src/a/' + name + '/0.js'), false, `${name} as a folder`)
     }
   }
+})
+
+test('a line is split where the shell runs one command after another, never inside quotes, escapes or redirects', () => {
+  assert.deepEqual(commandParts('cd pkg && npm run gen'), ['cd pkg', 'npm run gen'])
+  assert.deepEqual(commandParts('npm test 2>&1 | tail -5'), ['npm test 2>&1', 'tail -5'])
+  assert.deepEqual(commandParts('npm run watch & npm test'), ['npm run watch', 'npm test'])
+  assert.deepEqual(commandParts('(cd x && npm test) || true'), ['cd x', 'npm test', 'true'])
+  assert.deepEqual(commandParts('echo "a;b" \'c|d\''), ['echo "a;b" \'c|d\''])
+  assert.deepEqual(commandParts(String.raw`grep a\;b f`), [String.raw`grep a\;b f`])
+  assert.ok(commandParts('echo `git rev-parse HEAD`').includes('git rev-parse HEAD'), 'a backquoted command is one of its own')
+  assert.ok(commandParts('echo $(cat "f(1)")').includes('cat "f(1)"'), 'a paren inside quotes does not end the substitution')
+})
+
+test('a denied line is a gap in runs only when a project command no grant names is in it', () => {
+  const grants = ['npm run gen', 'npm test']
+  assert.equal(deniedClass('npm run build', grants), 'unlisted')
+  assert.equal(deniedClass('npm run gen && npm run build', grants), 'unlisted')
+  assert.equal(deniedClass('FOO=1 npm run build > log', grants), 'unlisted', 'bare of its wrapping, it is still named nowhere')
+})
+
+test("a denied line the producer's own tools or one plain line would do is the producer's to change", () => {
+  const grants = ['npm run gen']
+  for (const line of ['cat a.ts', 'sed -i s/a/b/ a.ts', 'python -c "print(1)"', 'node -e "1"', 'for f in *; do npm run gen; done',
+    'cd pkg && npm run gen', 'FOO=1 npm run gen', 'npm run gen > out.txt']) {
+    assert.equal(deniedClass(line, grants), 'adhoc', line)
+  }
+})
+
+test('a denied line every part of which is granted as it stands is a disagreement with the host', () => {
+  assert.equal(deniedClass('npm run gen', ['npm run gen']), 'mismatch')
+  assert.equal(deniedClass('npm run gen -- --watch', ['npm run gen']), 'mismatch')
+})
+
+test('runs names one plain project command, never a rule that would admit more', () => {
+  for (const ok of ['npm run gen', 'npx prisma generate', 'node scripts/gen.mjs', 'pnpm dlx tsx gen.ts', 'make schema']) {
+    assert.equal(runsProblem(ok), '', ok)
+  }
+  for (const bad of ['', 'make *', 'npm run gen && rm -rf build', 'npm run gen | tee log', 'make > log', 'make &', 'echo $(id)',
+    'FOO=1 make', 'bash scripts/x.sh', 'sh -c make', 'git push', 'cat a', 'python -c x', 'npx', 'node', 'pnpm dlx', 'uvx']) {
+    assert.notEqual(runsProblem(bad), '', JSON.stringify(bad))
+  }
+})
+
+test("a heredoc's lines are its command's input, never commands of their own", () => {
+  const line = "python3 - <<'EOF'\nopen('src/a.mjs').read()\nEOF\nnpm test"
+  assert.deepEqual(commandParts(line), ["python3 - <<'EOF'\nopen('src/a.mjs').read()\nEOF", 'npm test'])
+  assert.equal(deniedClass("python3 - <<'EOF'\nprint(1)\nEOF", []), 'adhoc')
+})
+
+test('a denied line is read against each command a compound grant runs, and a part that runs nothing is not classed', () => {
+  assert.equal(deniedClass('cd sub && npm test', ['npm run build && npm test']), 'adhoc')
+  assert.equal(deniedClass('(cd a && npm test) 2>&1 | tail -5', ['npm test']), 'adhoc')
+  assert.equal(deniedClass('X=1; npm test', ['npm test']), 'mismatch')
+  assert.equal(deniedClass('echo $((1+2))', []), 'adhoc', 'arithmetic is no command')
+})
+
+test('a here-string is no heredoc: the lines after it are commands', () => {
+  assert.equal(deniedClass('grep x <<< foo\nnpm run evil', []), 'unlisted')
 })

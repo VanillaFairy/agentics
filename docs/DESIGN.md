@@ -97,7 +97,13 @@ preflight reads before anything runs and the adopt check reports, [Outside work]
 Work escalates on a state, never on a count. The states are three: a decision only the user can
 make; a claim an independent ruling (L3) finds cannot be met as written; and no progress — the
 same state again, or an independent ruling that a loop is not converging. A count may decide when
-to ask; it never decides the answer. A search ends on a round of its scout that stops widening it — one that hits fewer than two new
+to ask; it never decides the answer. Code sends a producer back for more work through one guard
+(`sendBack` in `lib/boundaries/loop-guard.mjs`), over the node's send-backs since it was last
+cleared — its latest replan, a retry among them, or its own revision. The guard stops a loop on
+one of three states: work sent back at a head the node was already sent back at, returned unmoved;
+the same failures as the kind's last send-back at a moved head; or an exact state any earlier
+send-back of the kind held. Each send-back records the state it was sent in (`guard`), so the
+next is compared by what the records hold. A search ends on a round of its scout that stops widening it — one that hits fewer than two new
 places (a file, commit or URL no earlier round hit) — on a round whose scout declares nothing left unsearched with its guard quiet,
 or on a round the host or a dollar budget the user set stopped. The guard's window is the one count in a search: a stall detector the
 tool server owns, never a cap on calls that find something new. An external stop — a usage limit, a host error, a crash, the user — leaves work in progress, resumed from the records.
@@ -107,7 +113,9 @@ the execute program's units, `lib/search/`, `lib/run.mjs`, skills and roles); th
 lint rule (no loop in a program, `lib/search/` or `lib/run.mjs` that a counter ends — a condition, or
 an `if` that leaves the loop, comparing a counter the loop increments to a number, a SCREAMING_CASE
 name or a `max`/`limit`/`cap` name), the guard's `STALL_WINDOW` its one named exemption; the
-convergence predicates in `lib/verdict.mjs`, which compare states; `handle` in
+convergence predicates in `lib/verdict.mjs`, which compare states; `sendBack` in
+`lib/boundaries/loop-guard.mjs`, and the `send-back-guard` lint rule, which lets no other code build
+a message that hands a producer more work; `handle` in
 `lib/search/server.mjs`, whose loop guard refuses a session's tools once `STALL_WINDOW` calls in a
 row showed nothing new; `askAfter` in `lib/programs/converge.mjs`, which schedules a convergence
 ruling; the runner's classification of host failures as stops, and its terminal `budget` class,
@@ -679,13 +687,20 @@ no output, and the call still does not count as returned.
 **Confinement and what it leaves.** An agent runs in its worktree, may edit only the paths it was
 allowed and may run only its role's commands; an implementer also runs its leaf's criterion checks
 and the project commands its entry names in `runs` (`roleCommands` in `lib/roles.mjs`), each split
-by `commandParts` like any other. A producer that returns `blocked` after the host denied it a
-command stops as `command_denied`, the denied command lines its `detail` (read from the call's
-`denials`): its entry is missing a `runs`, a spec gap that no retry clears. When every denied line
-is ad hoc (`adHocCommand` in `lib/permissions.mjs`: file tools such as `cat`, `sed` or `git`, shell control
-such as `eval` or a loop, even around a project command, or an interpreter given an inline script), the producer wanted a tool its role has: the lines go back to
-it as a `failures` message (`source: the permission check`) and the round goes on; the same lines
-refused again stop as `command_denied`. An agent of a program run outside an execution runs
+by `commandParts`, the one parser of command lines: split where the shell runs one command after
+another, a subshell's, a substitution's and a backquoted command's parts their own, a heredoc's
+lines its command's input. A producer that returns `blocked` after the host denied it commands has
+each denied line read against what the round was granted (`deniedClass` in `lib/permissions.mjs`):
+a project command no grant names, even bare of assignments and redirects, stops as
+`command_not_in_runs`, the lines and what the producer said its `detail` — its entry is missing a
+`runs`, a spec gap no retry clears; a line that is ad hoc — a file tool such as `cat`, `sed` or
+`git`, shell control such as `eval` or a loop, an inline script, or a granted command wrapped in a
+`cd`, an assignment or a redirect — goes back to the producer as a `failures` message (`source: the
+permission check`), and blocked on ad-hoc lines again, any lines, it stops as `blocked` with what it
+said; a line granted as it stands that the host denied anyway is a `program` fault, the plugin's
+rules and the host's disagreeing. A `runs` entry is one plain project command (`runsProblem`): no
+chain, pipe, background, substitution, redirect or assignment, nothing the role's tools do, and no
+bare interpreter or package runner, whose prefix rule would admit any script or package. An agent of a program run outside an execution runs
 in the checkout the program reads (`--root`), the `review` program's reviewer in its throwaway
 worktree, and none of them is allowed a path to write. Prevention ends where the repository's own
 commands begin: a build or test script a producer runs is the project's code, and what it writes
@@ -2740,7 +2755,7 @@ attached).
 | **preflight** | refuse what cannot run — an effort it cannot read (`unreadable`), a folder that is no node (`no_such_node`), an effort root that is a leaf (`root_is_leaf`), a landed effort (`landed`), an execution whose envelope names another root (`wrong_root`), an execution holding a message no `withdrawn` names that this version has no template for (`messages_unrenderable`, [Conversations](#conversations)), and, writing a new envelope, a `base_ref` that names no commit (`no_base`) or a `commands_file` that is not readable JSON (`commands_unreadable`) — writing nothing; adopt or write the envelope (`execution.json`: base, dial, pace, and the commands the session wrote to `commands_file`); write the session's commands as command gotchas ([Gotchas](#gotchas)) — refusing `commands_unwritable`, naming each command the gotcha store refused, once the envelope is written, so a run again writes only what is missing; read every integration branch in scope for commits no record accounts for ([Outside work](#outside-work)), refusing `unreadable_branch` when git cannot read one; traceability; stop at `integration_lost` ([Outside work](#outside-work)) and then at `outside_work` before every other checkpoint, and never confirm past either, and then at a checkpoint not confirmed past ([Resume and checkpoints](#resume-and-checkpoints)), its lists (the overlapping executions, the gaps, the branches with their unaccounted commits) on its state line, for the session to read with `lib/status.mjs checkpoint`; on a resumed execution with no checkpoint, check whether the base moved under its leaves and write the ruler's brief and its record, and, with no checkpoint, write the brief on the drift of adopted records no ruling covers yet ([Landing and drift](#landing-and-drift)); free this execution's slots, its dead worktrees and merged leaves' worktrees (clean ones only — a dirty one is reported, never forced) |
 | **schedule** | compute what to launch from the records (`lib/schedule.mjs`, see [Scheduling](#scheduling)); park a folder the user writes that has nothing planned (`needs_design`); approve a leaf the resume ladder finds measured green, with no review loop of its own and no approval standing; what a pass records is recorded and the launch computed again, until a pass records nothing |
 | **leaf-open** | acquire a slot, asked once (`no_slot` goes back to the program, which waits); ensure the parent's integration branch (lazily, refreshed from its own parent, each branch of the chain under its own lock in turn) and cut or attach the leaf's branch and worktree, brought up to that parent's head — a round a `rebase` message waits for leaves a conflicting refresh in the worktree for its producer, and an open run again takes that merge in progress as its own ([The judge](#the-judge)); compute the round — the round of a dispatch this execution started and never got back, else one past the latest; only a producer's or an auditor's dispatch is a round — its role from the records, its thread (resumed, fresh, or fresh on a raise, [Conversations](#conversations)), its tier and its permissions from its role ([Role rules](#role-rules)); build its thread brief; record `retried` when the round resumes a thread after the user's `retry` cleared the leaf's stop, and `notes` when the round starts a thread this execution never dispatched ([Conversations](#conversations)); a refusal escalates `open_refused` |
-| **leaf-close** | first put right what a verify cut off in the worktree left ([Verification](#verification)); read the producer's stored return — a round closed again with no `dispatch`, over the work a retry measures first, has none to read and is measured as no producer's ([Resume and checkpoints](#resume-and-checkpoints)); none, or a producer's with no string `status`, holds the leaf on a `role` fault, and an auditor's, which carries no status, reads as `done`: a park, an escalation, a request for the planner (or the `needs_respec` park of a folder the user writes), a `needs_tests` or a `declined` for another session is recorded and routed without measuring, and so is a return naming what it could not read (`unread`), escalated `unread_reference` ([Producer returns](#producer-returns)); otherwise, a round that returned no commits included: measure nothing while a rebase merge the round opened is unconcluded (a `failures` message, `source: the rebase`, naming the unmerged paths; left so again at the same head, it escalates `merge_conflict`); commit a shell-less author's files its role may write (`authored`) (a close cut off after that commit finds it in git and journals it), and put every other uncommitted file back to the head; journal the series as `series-done`, from git, when the producer declared it done; measure by rigor — build, typecheck, its own tests, discriminator, declared mutations and named checks; write and delete the gotchas it returned, never a command one; compute the close decision and record it — the approval, the escalation, the next round's message (`failures`, `surviving_mutations`, `tests_ready`), a verify leaf's finding (the `needs_respec` park of a folder the user writes beside the leaf's escalation; under a planner's folder the finding is the route and the leaf is not escalated, [Replanning](#replanning)), `fix_without_commits`, carrying the measured failures, when an implementer's round sent the failures of the head it opened on returns that head unmoved and it still fails (`fixWithoutProgress` in `lib/verdict.mjs`), `verify_not_converging` when a fix repeats the close before it at a moved head; hand back `command_unknown` until an investigator of this execution has returned, and escalate it after; a cycle's consolidation round approves instead of any other decision, at its commit when it passes and on its revert otherwise ([Rigor](#rigor)); write the round's close record. What it reads of the rounds before spans executions, as a leaf's rounds do ([Resume and checkpoints](#resume-and-checkpoints)) |
+| **leaf-close** | first put right what a verify cut off in the worktree left ([Verification](#verification)); read the producer's stored return — a round closed again with no `dispatch`, over the work a retry measures first, has none to read and is measured as no producer's ([Resume and checkpoints](#resume-and-checkpoints)); none, or a producer's with no string `status`, holds the leaf on a `role` fault, and an auditor's, which carries no status, reads as `done`: a park, an escalation, a request for the planner (or the `needs_respec` park of a folder the user writes), a `needs_tests` or a `declined` for another session is recorded and routed without measuring, and so is a return naming what it could not read (`unread`), escalated `unread_reference` ([Producer returns](#producer-returns)); otherwise, a round that returned no commits included: measure nothing while a rebase merge the round opened is unconcluded (a `failures` message, `source: the rebase`, naming the unmerged paths; at a head the leaf was sent back at already, the rebase's among them, it escalates `merge_conflict`); commit a shell-less author's files its role may write (`authored`) (a close cut off after that commit finds it in git and journals it), and put every other uncommitted file back to the head; journal the series as `series-done`, from git, when the producer declared it done; measure by rigor — build, typecheck, its own tests, discriminator, declared mutations and named checks; write and delete the gotchas it returned, never a command one; compute the close decision and record it — the approval, the escalation, the next round's message (`failures`, `surviving_mutations`, `tests_ready`), a verify leaf's finding (the `needs_respec` park of a folder the user writes beside the leaf's escalation; under a planner's folder the finding is the route and the leaf is not escalated, [Replanning](#replanning)), every send-back through the loop guard (`sendBack` in `lib/boundaries/loop-guard.mjs`, [L2](#l2--states-end-work-counts-dont)): `fix_without_commits`, carrying the measured failures, when the round returned a head the leaf was already sent back at, unmoved — a test round's redeclared mutations count as moving it — and it still fails, `verify_not_converging` when the failures repeat the last verification send-back at a moved head; hand back `command_unknown` until an investigator of this execution has returned, and escalate it after; a cycle's consolidation round approves instead of any other decision, at its commit when it passes and on its revert otherwise ([Rigor](#rigor)); write the round's close record. What it reads of the rounds before spans executions, as a leaf's rounds do ([Resume and checkpoints](#resume-and-checkpoints)) |
 | **leaf-review** | read the reviewer's stored rulings over the units its brief listed; compute the review loop's exit (`reviewExit`) against what the round before left open; record the approval or the escalation, or the open findings as `findings` messages, one per thread, for the next round — an approval a cycle's last member owes its consolidation round records the `consolidate` message instead; write the review record, its `retire` findings kept; after a review round `askAfter` picks that ended in a fix, read the ruler's stored convergence ruling (`convergenceRuling`): `not_converging` escalates `review_not_converging`, `said` the ruler's dispatch, `converging` records nothing, and a return with no ruling holds the leaf on a `role` fault; and, once the session retried a leaf its review loop stopped, record the stopping review's open findings as the next round's `findings` messages (`reviewResumed`) |
 | **merge-batch** | under the branch lock, set aside for the judge each leaf or cycle whose contention facts no standing ruling covers ([The judge](#the-judge)); record `batch-started` with the head it starts from; merge every other approved child into one integration branch in dependency order; verify the merged head with the fast suite; bisect a red one; append the `batch` state line first, then `merged` and `merge-observed` for each child not merged before, so a batch run again never resets the merges its outcome names; remove each merged leaf's clean worktree, keeping its branch; send each leaf that fails alone a `failures` message (`source: integration`); hand a leaf's conflict to the judge when its executor can conclude a merge and no failed resolve of it stands; record what stops — any other conflict, a combination failure, a composite or a cycle failing alone, a batch that moved nothing, a batch that could not run; write the drift record and the ruler's brief. A batch that started and never recorded its outcome is reset to where it started and done again, so an unverified merge is never recorded as landed; one during which the user's checkout moved is reset and decides nothing (a `checkout` fault) |
 | **suite-gate** | on a composite whose children have all merged, under its branch lock: run the full suite and the criterion checks of its plan on its integration head, against the head it was cut from; record the measurement and a `gate` state line; escalate `fails_full_suite`, `fails_on_integration` or `suite_gate_failed`. It runs nothing where the repository does not split its tests and its plan names no check, or where a gate over the same checks already passed at that head in this execution ([The suite gate](#the-suite-gate)). A gate that passes says whether the integration review is earned, and records one that is not as `claims` with `review: not_earned`; one during which the user's checkout moved decides nothing (a `checkout` fault) |
@@ -3083,16 +3098,21 @@ and reviewed like any other.
 - **Verification failures** send a fix round its failures as a `failures` message (`source:
   verification`), to the producer's session — on a green or an audit, to the session the records
   name ([Rigor](#rigor)). A round that returns no commits is measured like any other: the branch
-  as it stands is the leaf's progress, whoever made it and whatever the round was told. It
-  escalates (`fix_without_commits`, the measured failures in its detail) only when the close before
-  it measured the very head it opened on and sent it those failures, and the head still fails: the
-  producer was asked to fix what it found nothing to change in. A round that opened after a retry,
-  a brief change or commits made by hand was sent no failures of its head, so its failures go to
-  the next round. Two consecutive measurements failing
-  identically escalate (`verify_not_converging`). lib/verdict.mjs escalates what no commit of
+  as it stands is the leaf's progress, whoever made it and whatever the round was told. Every such
+  send-back goes through the loop guard ([L2](#l2--states-end-work-counts-dont)): failures at a
+  head the leaf was already sent back at escalate `fix_without_commits`, the measured failures in
+  the detail — the producer was asked to fix what it found nothing to change in; a round that
+  opened over commits made by hand, after a retry or a revision, was sent nothing at its head. The
+  same failures as the last verification send-back, at a moved head, escalate
+  `verify_not_converging`: a failure is its check, its claim and what its evidence names failed —
+  each compiler diagnostic as `file:code`, its line dropped, as often as it is named, and each
+  failing test — so an edit that only moved a diagnostic is no progress, and one of three gone is.
+  Surviving mutations an audit sends its cycle's tests escalate `verify_not_converging` when the
+  same survivors were sent before. lib/verdict.mjs escalates what no commit of
   the leaf can move — a discriminator that is the only failing fact on a `tdd` leaf once its producer
   was sent the same files back (`discriminator_sent_back`, a fix round telling it the test passes at
-  base and must fail without its change; `sentBack` read off the round before's close), or on a `red`
+  base and must fail without its change; every file a discriminator send-back named since the leaf
+  was cleared counts as sent), or on a `red`
   leaf whose only failing fact is a file that adds a case and passes at base and now beside the tests
   that fail as they must (`discriminator_undecidable`) — and any environment error by its kind. A
   tdd leaf whose every changed test file passes at base and now is not undecidable when the change
@@ -3584,7 +3604,7 @@ measured as it stands, as no producer's work, and the decision goes where the ro
 approved; reviewed by a fresh reviewer, handed no producer's account, whose span starts at the head
 the last review judged, or at the base; or a fix round sent the `failures` (beside the `retried`
 message), routed by the close record's own role and status, which leaf-open's next round reads
-too; a producer that returns those failures' head unmoved escalates `fix_without_commits`. The
+too; a producer that returns those failures' head unmoved escalates `fix_without_commits` (the loop guard). The
 re-close's record replaces the round's, so a relaunch finds the head it left and goes on from its
 decision; a review loop stopped at another head than the round's close now stands at is over, so
 its findings wait for no producer, and a reviewer that judged such a head is not resumed. Where
@@ -3770,7 +3790,7 @@ everything else and hands the same stop back at the end.
 **Who settles a stop.** The user owns decisions (L4), so a stop that needs one is theirs. A stop
 whose cause is mechanical is the session's, which settles it, notes what it ruled on the node and
 names it in its report: a transient (`blocked`), a command the work runs that its entry does not
-name (`command_denied`: added to the entry's `runs`, the edit ruled, then retried), a reviewer's miss
+name (`command_not_in_runs`: added to the entry's `runs`, the edit ruled, then retried), a reviewer's miss
 (`review_incomplete`), a suite or verify failure that is only
 timeouts or load passing alone (retried once), a changed test file that only pins behaviour held at
 base (ruled a `net`), a file a node needs inside its own folder (added to its entry), and code that
@@ -3851,9 +3871,11 @@ finished review leaves open, its own and the prior's it did not rule fixed) (`ru
 with the ruling it had and its reason, and `rerule: true` marks a narrowed review, which ruled only
 what moved since the review before it; `failure_scenario` is kept only on a drift that names one, the one that parks; each
 ruling's evidence is in the reviewer's stored return) · `noted {by, text}` (what a session learned about the node; no status
-is derived from it) · `message {thread, from, msg, payload, round}` (a message code delivers to a
+is derived from it) · `message {thread, from, msg, payload, round, guard?}` (a message code delivers to a
 thread's session, [Conversations](#conversations); its `execution` is `''` only on one the migration
-recorded, and no status is derived from it) · `withdrawn {messages[], why}` (the seqs of messages a
+recorded, and no status is derived from it; a send-back carries `guard {kind, key, at}`, the loop
+it belongs to, its state and the head it was sent at, which the loop guard compares the next by,
+[L2](#l2--states-end-work-counts-dont)) · `withdrawn {messages[], why}` (the seqs of messages a
 migration retired because the version that reads them has no template for their kind, with the
 messages' `execution`; no session is told them again, and no status is derived from it) · `paused
 {by}` and `resumed {by}` (node `''`, the session's pause of the execution it names and its end,

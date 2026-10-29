@@ -105,13 +105,13 @@ describe('leaf-close and the decision', { concurrency: 4 }, () => {
     assert.equal(msgs(c.w, 'failures', 'au').length, 0)
   })
 
-  test('an audit is measured on every mutation an earlier round applied', SLOW, async (t) => {
+  test('an audit is measured on every mutation an earlier round applied, and the same survivors again stop the loop', SLOW, async (t) => {
     const c = cycle(t, { triad: true })
     const first = { mutations: [R_SURVIVES], units: [], text: 'x + 2 doubles 2 too' }
     await run(c.w, { node: 'au', role: 'auditor', round: 1, thread: 'producer:au', ret: first, base_sha: c.audit.base_sha })
     const easy = { file: 'src/r.mjs', find: '(x) =>', replace: '() =>', expect_failing: ['test/r.test.mjs'] }
     const { out } = await run(c.w, { node: 'au', role: 'test-author', round: 2, thread: 'producer:r', ret: { status: 'done', text: 'tried another', mutations: [easy] }, base_sha: c.audit.base_sha })
-    assert.equal(out.decision.next, 'fix', 'the surviving mutation is still measured, so dropping it does not pass')
+    assert.deepEqual([out.decision.next, out.decision.reason], ['stop', 'verify_not_converging'], 'the surviving mutation is still measured, so dropping it does not pass')
     const latest = observed(c.w, 'au').at(-1)
     const survivor = latest.mutations.find((m) => m.find === R_SURVIVES.find)
     assert.ok(survivor && survivor.applied && !survivor.bites, 'the earlier mutation is measured again and still gets through')

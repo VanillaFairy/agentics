@@ -157,7 +157,7 @@ test('a unit the ruler cannot rule escalates to the user', SLOW, async (t) => {
 
 // ================================================================== conflict and the rebase round
 
-test('resolve of a conflict sends a rebase round: the open leaves the merge in progress, the close waits until it is concluded', SLOW, async (t) => {
+test('resolve of a conflict sends a rebase round: the open leaves the merge in progress, and a round that returns it unconcluded stops', SLOW, async (t) => {
   const rig = executionRig(t, { spec: SPEC })
   const c = readyLeaf(rig, 'x/c', { 'src/c.mjs': 'export const c = 1\n', 'src/both.mjs': 'export const both = "c"\n' })
   const a = readyLeaf(rig, 'x/a', { 'src/a.mjs': 'export const a = 1\n', 'src/both.mjs': 'export const both = "a"\n' })
@@ -184,8 +184,9 @@ test('resolve of a conflict sends a rebase round: the open leaves the merge in p
 
   const close = () => leafClose(rig.xc, { node: 'x/a', role: 'implementer', round: 2, thread: 'producer:x/a', dispatch: '', head_before: opened.head_sha, base_sha: opened.base_sha })
   const waiting = await close()
-  assert.deepEqual([waiting.decision.next, waiting.decision.reason], ['fix', 'merge_unconcluded'])
+  assert.deepEqual([waiting.decision.next, waiting.decision.reason], ['stop', 'merge_conflict'], 'it returned the head it was sent the rebase at')
   assert.ok(waiting.decision.failures[0].claim.includes('src/both.mjs'))
+  assert.ok(kinds(rig, 'escalated').some((e) => e.node === 'x/a' && e.reason === 'merge_conflict'))
 
   writeFileSync(join(a.worktree, 'src/both.mjs'), 'export const both = "a and c"\n')
   git(a.worktree, 'add', 'src/both.mjs')

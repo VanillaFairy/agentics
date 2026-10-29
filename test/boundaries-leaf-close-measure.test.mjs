@@ -186,7 +186,7 @@ describe('leaf-close and the measurement', { concurrency: 4 }, () => {
     commit(o.worktree, { 'test/more.test.mjs': MORE_TEST + '// more\n' }, 'Touch the net')
     retry()
     const moved = await close(w, { node: 'a', round: 2, dispatch: '', base_sha: o.base_sha, head_before: before })
-    assert.equal(moved.decision.reason, 'discriminator_undecidable', 'the ruling binds to the head it was made at')
+    assert.equal(moved.decision.reason, 'discriminator_sent_back', 'the ruling binds to the head it was made at; the retry gives the producer its turn again')
   })
 
   test("a red's test file that only keeps compiling passes at base and now, and the red goes to review with no round sent", SLOW, async (t) => {

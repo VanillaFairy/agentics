@@ -1053,4 +1053,8 @@ test('a unit that settles with nothing recorded is not launched again on the sam
   assert.equal(new Set(calls).size, calls.length, 'no unit ran twice: ' + calls.join(', '))
   assert.ok(seen.notes.some((n) => n.startsWith('plan:p settled with nothing recorded')), seen.notes.join('\n'))
   assert.ok(ticked, 'a timer ran before the loop ended')
+  // L1: the run does not end over a unit it never moved without a stop that says so.
+  const stop = readTree(w.rig.repo, E).events.filter((e) => e.kind === 'escalated' && e.node === 'p').at(-1)
+  assert.deepEqual([stop && stop.reason], ['no_progress'], 'the idle unit is stopped with a reason')
+  assert.match(stop.detail, /settled with nothing recorded/)
 })

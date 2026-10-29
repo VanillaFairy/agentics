@@ -3855,7 +3855,12 @@ migration retired because the version that reads them has no template for their 
 messages' `execution`; no session is told them again, and no status is derived from it) · `paused
 {by}` and `resumed {by}` (node `''`, the session's pause of the execution it names and its end,
 `pause` and `resume` under [Session calls](#session-calls); no status is derived from them). A boundary appends an event only while it is not
-already the node's word (`freshRecords` in `lib/boundaries/records.mjs`, [Boundaries](#boundaries)).
+already the node's word (`freshRecords` in `lib/boundaries/records.mjs`, [Boundaries](#boundaries)); a
+`judged` at a head is the node's word only until the session retries it, so the ruling a retried
+node is given again at the same head is recorded and read. When the tick loop has nothing left to
+run and nothing waiting, every unit that last settled with nothing recorded is stopped,
+`merge_no_progress` for a merge and `no_progress` for any other, so a run never ends over work it
+never reached without a stop that names it (L1).
 
 ### Snapshot
 

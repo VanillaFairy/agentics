@@ -3239,26 +3239,19 @@ and reviewed like any other.
   Failures an earlier send-back held, but not the last, stop nothing: that state is lossy, and the
   send-back asks the leaf's convergence ruler before its round opens. Surviving mutations an audit sends its cycle's tests escalate `verify_not_converging` when the
   same survivors were sent before. lib/verdict.mjs escalates what no commit of
-  the leaf can move — a discriminator that is the only failing fact on a `tdd` leaf once its producer
-  was sent the same files back (`discriminator_sent_back`, a fix round telling it the test passes at
-  base and must fail without its change; every file a discriminator send-back named since the leaf
-  was cleared counts as sent), or on a `red`
-  leaf whose only failing fact is a file that adds a case and passes at base and now beside the tests
-  that fail as they must (`discriminator_undecidable`) — and any environment error by its kind. A
-  tdd leaf whose every changed test file passes at base and now is not undecidable when the change
-  is one the typecheck rejects at base: the established typecheck, or a criterion check that runs
-  it, run at base with the leaf's test files restored, fails there and passes now
-  (`static_on_base`, `staticallyPinned` in `lib/verdict.mjs`). That check is its discriminator, and
-  its test files are held to passing now. A test file that failed at base is never waived, so a
-  behaviour change keeps its test-first discriminator. Such a file may be ruled a
-  regression net over behaviour that held at base (`net`, [Session calls](#session-calls)): by the
+  the leaf can move — on a `tdd` or `red` leaf, discriminator failures that are each a file of class
+  adds passing at base and now ([What a verdict is computed from](#what-a-verdict-is-computed-from)):
+  a test over behaviour that already holds (`discriminator_undecidable`); a tdd leaf's producer is
+  first sent such files back once (`discriminator_sent_back`, a fix round telling it the test passes
+  at base and must fail without its change; every file a discriminator send-back named since the
+  leaf was cleared counts as sent) — and any environment error by its kind. Such a file may be ruled
+  a regression net over behaviour that held at base (`net`, [Session calls](#session-calls)): by the
   session when the file only pins that behaviour ([Skills](#skills), who settles a stop), else by the
-  user. At
-  the head that ruling names, and at any later head of the leaf where the file's content is the same
-  (a rebase for a conflict elsewhere, a fix round that left the file alone; `netsAt`, through
-  `sameBlob`), the file is held to `passes_now` alone, as upkeep is; when
-  every changed test file that adds a case is a net, at least one criterion check must have run, and
-  the leaf is reported `undiscriminated` in the result and named to its folder's integration review.
+  user. At the head that ruling names, and at any later head of the leaf where the file's content is
+  the same (a rebase for a conflict elsewhere, a fix round that left the file alone; `netsAt`,
+  through `sameBlob`), the file is of class net; a leaf whose nets leave no file of class adds or
+  static-pin is reported `undiscriminated` in the result and named to its folder's integration
+  review.
 - **Review** is a fresh reviewer each round (`reviewer:<leaf>:<n>`, `n` counting this execution's
   reviews of the leaf), handed its producer's leaf brief, the span, the producer's return (its
   concerns first), the units it must rule — each criterion (`criterion:<n>`), each changed file
@@ -3678,18 +3671,40 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
 ### What a verdict is computed from
 
 `lib/verdict.mjs` is the one home of the measurement verdict. `measurementOk(m, leaf)` derives pass
-or fail from the observations against the leaf's profile (every profile needs a completed
-measurement, no failed build or typecheck and no blocking series finding; then per profile: a tdd
-leaf's test files that add a test case fail at base and pass now, and its upkeep files pass now —
-when none adds one, every file is held to the whole discriminator; a tests-only leaf's tests pass,
-every held mutation bites and each test file that adds a case is one a biting mutation names; a red
-leaf's test files that add a case fail now and at base, and its upkeep files pass now, under the same
-rule as a tdd leaf's; a green leaf's cycle tests pass; a green's test-author round's
-cycle tests and new tests pass, and each test file that adds a case fails at the round's base (the
-red's stubs) or is named by a biting mutation it redeclared; an audit's held mutations all bite over
-the cycle's tests; a consolidation round's tests run and pass, and every mutation it redeclared and
-every one an audit held bites; trivial, verify, tdd, tests-only and green need their
-named checks and their own tests not to have failed). The profile is the leaf's rigor and role
+or fail from the observations against the leaf's profile. Every profile needs a completed
+measurement, no failed build or typecheck and no blocking series finding. Then each changed test
+file under measurement is of one class, and the profile asks of it the facts of its cell in one
+table (`DISCRIMINATOR` in `lib/verdict.mjs`): what it does now, and a proof, any one of which shows
+it bites — `base`, it failed at base with the tests under measurement restored, or `mutation`, a
+biting mutation names it in `expect_failing`.
+
+| profile | adds | upkeep | net | static-pin |
+|---|---|---|---|---|
+| tdd | passes now; base | passes now | passes now | passes now |
+| red | fails now; base | passes now | passes now | as adds |
+| tests-only | passes now; mutation | passes now | as adds | as adds |
+| green | passes now | as adds | as adds | as adds |
+| green, a test-author round | passes now; base or mutation | passes now | as adds | as adds |
+
+A file's class is the first that fits (`classesOf`): a **net**, a file ruled a regression net
+([Executors and review](#executors-and-review)); **upkeep**, a file that adds no test case
+(`adds_test: false`) — existing tests kept working, which pass at base by construction, so no commit
+could make one discriminate; **static-pin**, a file that adds a case to a change the typecheck
+rejects at base (`static_on_base`: every changed test file passed at base, and the established
+typecheck, or a criterion check that runs it, failed there with them restored and passes now — that
+check is the leaf's discriminator; a test file that failed at base is never waived, and no static
+check is asked over one, so a behaviour change keeps its test-first rule); **adds**, any other. A
+class a row leaves out is held as `adds`: a net or a pin buys nothing where it was never asked.
+
+Beside the table, per leaf: a tdd, red or tests-only leaf adds a test case — one whose every
+changed test file is upkeep added none, unless the typecheck rejects its change at base (`new-test`);
+a tdd leaf with a net and no file of class adds or static-pin left has nothing that discriminates,
+so at least one criterion check must have run; a tests-only leaf declares at least one mutation, and
+every held one bites; a red leaf's suite fails, only in its own test files; a green leaf's cycle
+tests are measured; a green's test-author round's declared mutations bite; an audit's held mutations
+all bite over the cycle's tests; a consolidation round's tests run and pass, and every mutation it
+redeclared and every one an audit held bites; trivial, verify, tdd, tests-only and green need their
+named checks and their own tests not to have failed. The profile is the leaf's rigor and role
 and, on a green, the measured round's producer (`profileOf(leaf, producer)`; a consolidation
 round's is `consolidation`, `CONSOLIDATION` in `lib/verdict.mjs`): leaf-close passes it
 and the `verify-observed` line records it, so a resume judges a measurement as its close did. A

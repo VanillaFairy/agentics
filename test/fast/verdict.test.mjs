@@ -147,8 +147,8 @@ const ROWS = [
   ['an upkeep file that does not pass now', m({ discriminator: [disc(true, true), upkeep(false)] }), {
     tdd: ['discriminator'],
   }],
-  ['only upkeep files: nothing discriminates, so each is held to the whole question', m({ discriminator: [upkeep(true)] }), {
-    tdd: ['discriminator'],
+  ['only upkeep files: the leaf added no test case', m({ discriminator: [upkeep(true)], mutations: [bites] }), {
+    tdd: ['new-test'], 'tests-only': ['new-test'], green: true, 'green-tests': true,
   }],
   ['a red measurement beside an upkeep file that passes at base and now', m({ ...red, discriminator: [disc(true, false), upkeep(true)] }), {
     red: true,
@@ -157,7 +157,7 @@ const ROWS = [
     red: ['discriminator'],
   }],
   ['a red leaf with only an upkeep file: it added no test to fail', m({ discriminator: [upkeep(true)] }), {
-    red: ['discriminator', 'suite'],
+    red: ['new-test', 'suite'],
   }],
   ['a broken measurement', m({ stop_reason: 'environment_broken', error: { kind: 'suite_failures_unnamed', message: 'm' },
     discriminator: [disc(true, true)] }), { tdd: ['environment'], verify: ['environment'] }],
@@ -286,6 +286,13 @@ test('a tdd change the typecheck rejects at base is discriminated by the check t
   // A behaviour change keeps the test-first rule: a test file that failed at base is never waived.
   const behaviour = typed({ discriminator: [disc(true, false), disc(false, true, 'test/z.test.mjs')], static_on_base: [{ kind: 'typecheck', command: 'npx tsc --noEmit', failed_on_base: true }] })
   assert.equal(closeDecision(behaviour, LEAVES.tdd).next, 'fix')
+  const forced = m({ discriminator: [upkeep(true)], typecheck: 'passed', static_on_base: [{ kind: 'typecheck', command: 'npx tsc --noEmit', failed_on_base: true }] })
+  assert.equal(closeDecision(forced, LEAVES.tdd).next, 'approve', 'test files the compiler forced the change into add no case, and need none')
+})
+
+test('a tdd leaf whose every changed test file is declared upkeep goes back to its producer to add a case', () => {
+  const d = closeDecision(m({ discriminator: [upkeep(true)] }), LEAVES.tdd)
+  assert.deepEqual([d.next, d.failures.map((f) => f.check)], ['fix', ['new-test']])
 })
 
 test('a file the user ruled a regression net is held to passes_now alone, beside a criterion check', () => {
@@ -301,6 +308,8 @@ test('with every changed test file ruled a net, a leaf with no criterion check t
   const d = closeDecision(m({ discriminator: [disc(false, true)] }), LEAVES.tdd, '', { nets: ['test/x.test.mjs'] })
   assert.equal(d.reason, 'discriminator_undecidable')
   assert.ok(d.failures.some((f) => /no criterion check ran/.test(f.claim)))
+  const beside = measurementOk(m({ discriminator: [disc(false, true), upkeep(true)] }), LEAVES.tdd, '', { nets: ['test/x.test.mjs'] })
+  assert.ok(beside.failures.some((f) => /no criterion check ran/.test(f.claim)), 'an upkeep file beside the nets discriminates nothing either')
 })
 
 test('a net ruling stands at its head alone, and a leaf approved there reads undiscriminated', () => {

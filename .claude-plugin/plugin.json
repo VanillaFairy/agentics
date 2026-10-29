@@ -1,7 +1,7 @@
 {
   "name": "agentics",
   "description": "Code-orchestrated design, investigation and development over a generic codebase. All work is one execution tree: decomposed until atomic, executed by readiness in framework-owned worktrees, verified and reviewed by rigor, landed only on the user's go.",
-  "version": "6.14.3",
+  "version": "6.14.4",
   "author": {
     "name": "VanillaFairy"
   },

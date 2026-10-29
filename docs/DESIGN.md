@@ -994,8 +994,10 @@ process running a `run.mjs` (`runProcess` in `lib/host.mjs`, read only then): `r
 <pid> still runs <run> but has not beaten since <heartbeat_at>; …` once, and `beating again: <run>`
 if it does. A run that beats while `loop_at` is stale reads `turning: false`, and the watch prints
 `busy: …` once and `turning again: <run>` after: the main thread is held, the process is not hung.
-A turn that comes more than 15 seconds late is recorded `stalled {ms, since}` in the run's log once
-the thread turns, which the watch prints, so the records beside it name what held the thread. At its
+A turn that comes more than 15 seconds late is recorded `stalled {ms, since, spent[{label, n, ms}]}`
+in the run's log once the thread turns, which the watch prints: `spent` is the synchronous git time
+counted meanwhile by subcommand (`noteSync` and `takeSync` in `lib/store.mjs`), the largest first,
+so the line names what held the thread. At its
 start a run removes the files `writeWhole` staged under its home whose writer's pid is gone
 (`sweepStaged` in `lib/store.mjs`): a process killed between a write and its rename leaves one. One without `ended` whose pid is
 gone, or whose pid the system gave another program, shows as stopped, and starting the same command
@@ -1212,8 +1214,10 @@ realise every decision the task did. It appends only what changed, through `addN
 edited since approval is left out, and develop keeps the last approved graph, but its folder's own
 node still takes what its parent's entry says of it (`realises`, `after`, contracts, ground,
 context): those are the parent spec's to say. When a spec is
-approved again with other text, compile parks every consumer of a contract it provides
-(`contract_changed`), gives every node realising a changed decision a `decision_changed`
+approved again with other text, compile parks every consumer of a contract whose definition the
+edit changed (`contract_changed`) — the entries that provide it with their paths, and the Design's
+`### ` parts naming it or those paths, or the whole Design when none does (`contractDefinition` in
+`lib/spec.mjs`), compared with the text it last compiled; a plan-only edit parks no consumer — gives every node realising a changed decision a `decision_changed`
 revision, parks the folder when work under it was dispatched (`spec_changed`), and retires the
 entries it no longer lists — refusing, by name, one with dispatched or merged work. A parked node
 whose spec was approved or prepared after the park gets a new revision (`answered`), which clears
@@ -4287,8 +4291,9 @@ the session's, called as CLIs:
   the folder reads `integrated`.
 - **pause** — `pause --repo <r> --run <run>`: an execution's run (`<effort>.<stamp>`) told to start
   nothing new. One `paused` event under that execution (`pauseExecution`), unless one already
-  stands. The running program reads it at its next tick, and each of its leaves before its next round
-  or review (`pausedAt` in `lib/boundaries/execution.mjs`): what runs finishes and records, nothing
+  stands. The running program reads it at its next tick, each of its leaves before its next round
+  or review and again once its slot is open, and a merge batch once its branch lock is held
+  (`pausedAt` in `lib/boundaries/execution.mjs`): a wait never carries a unit past a pause; what runs finishes and records, nothing
   new is launched, a merge included, and the run ends `stopped: pause` once nothing runs, resumable.
   The pause stands over a relaunch until `resume`. Prints `{ok, paused, already, run, live}`
   (`paused` the event's seq) or `{ok: false, error}`: `unknown_run`, `not_an_execution`, `closed`.

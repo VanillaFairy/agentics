@@ -111,6 +111,8 @@ test('watch on a live run whose heartbeat went stale says it is unresponsive, no
 test('a stall is a line naming how long the main thread was held, from when, and where to look', () => {
   assert.deepEqual(runWatchLines([{ kind: 'stalled', ms: 61500, since: '2026-01-01T00:00:00.000Z', seq: 7 }], 0).lines,
     ['stalled: synchronous work held the main thread 62s from 2026-01-01T00:00:00.000Z; the records around seq 7 name it'])
+  assert.deepEqual(runWatchLines([{ kind: 'stalled', ms: 30000, since: 'T', spent: [{ label: 'git merge', n: 3, ms: 21000 }], seq: 9 }], 0).lines,
+    ['stalled: synchronous work held the main thread 30s from T (git merge x3 21s); the records around seq 9 name it'])
 })
 
 test('watch on a run that beats while its main thread has not turned says it is busy, never unresponsive', { timeout: 30000 }, async (t) => {

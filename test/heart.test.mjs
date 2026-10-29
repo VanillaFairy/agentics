@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { startHeart } from '../lib/heart.mjs'
-import { readJson, sleepMs, sweepStaged, writeJson } from '../lib/store.mjs'
+import { noteSync, readJson, sleepMs, sweepStaged, writeJson } from '../lib/store.mjs'
 
 const dir = (t) => {
   const d = mkdtempSync(join(tmpdir(), 'agentics-heart-'))
@@ -25,10 +25,11 @@ test('the heart beats while synchronous work holds the main thread, and the stal
   const file = join(dir(t), 'run.json')
   writeJson(file, { run: 'r', pid: 0, heartbeat_at: new Date(0).toISOString() })
   const stalls = []
-  const heart = startHeart({ file, everyMs: 50, stallMs: 500, stalled: (ms, since) => stalls.push({ ms, since }) })
+  const heart = startHeart({ file, everyMs: 50, stallMs: 500, stalled: (ms, since, spent) => stalls.push({ ms, since, spent }) })
   await pause(1300)
   const held = Date.now()
   sleepMs(2500)
+  noteSync('git merge', 2500)
   const during = readJson(file)
   await pause(1300)
   await heart.stop()
@@ -38,6 +39,7 @@ test('the heart beats while synchronous work holds the main thread, and the stal
   assert.equal(during.pid, process.pid)
   assert.equal(stalls.length, 1, JSON.stringify(stalls))
   assert.ok(stalls[0].ms >= 1000, JSON.stringify(stalls))
+  assert.deepEqual(stalls[0].spent, [{ label: 'git merge', n: 1, ms: 2500 }], 'the stall names the synchronous work counted while it held')
   const after = readJson(file).heartbeat_at
   await pause(300)
   assert.equal(readJson(file).heartbeat_at, after, 'no beat after stop')

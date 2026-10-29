@@ -160,10 +160,12 @@ test('work dispatched under the changed spec stands when the spec is ruled unaff
   assert.ok(!eventsOf(repo, 'api').includes('parked'))
 })
 
-test('a second change to the same spec rules its consumers again', () => {
+test('a second change to the same spec rules its consumers again, when it touches what defines their contract', () => {
   const repo = changed()
   assert.equal(ruled(repo, 'api').out.status, 'approved')
   write(repo, 'api', API_CHANGED.replace('A loader and a parser', 'A loader, a parser and a validator'))
+  assert.deepEqual(respecBrief(repo, E, 'api').nodes, ['api'], 'the Intent alone defines no contract')
+  write(repo, 'api', API_CHANGED.replace('`load(path)` returns a frozen object.', '`load(path)` returns a sealed object.'))
   assert.deepEqual(respecBrief(repo, E, 'api').nodes, ['api', 'cli'])
 })
 

@@ -367,6 +367,18 @@ test('a promoted spec whose entries drop a decision the task realised is refused
   assert.ok(out.problems.some((p) => /api\/parse\/DESIGN\.md$/.test(p.file) && /D1/.test(p.problem)))
 })
 
+test('re-approving a provider\'s spec after a plan-only edit parks none of its consumers', () => {
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  write(repo, 'api', API.replace('Use the existing tokenizer.', 'Use the existing tokenizer, and keep the parse pure.'))
+  approve(repo, 'api')
+  const out = compiled(repo)
+  assert.deepEqual(out.parked.filter((p) => p.reason === 'contract_changed'), [], 'neither the Design nor a provides line moved')
+  assert.notEqual(readTree(repo, E).status.get('cli').status, 'parked')
+})
+
 test('re-approving a folder that provides a contract parks its consumers outside that spec', () => {
   const repo = effort()
   approve(repo, '.')

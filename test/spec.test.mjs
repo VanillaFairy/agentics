@@ -385,9 +385,14 @@ test('a task cites its Design by a cites field, resolved to one part or refused 
   assert.equal(parseSpec(empty).sections.Design.body, '', 'the Design emptied')
   refusedAt(problemsOf(cites('Design', empty)), lineOf(cites('Design', empty), '· cites:'), /cites this spec's Design, which is empty/)
   refusedAt(problemsOf(cites('Layout')), lineOf(cites('Layout'), '· cites:'), /cites names Design, or a "<part>" of it in double quotes/)
-  const prose = swap(ROOT, '  Each refusal names its line.', '  Match the Design\'s "Ghost" block. Design the save format.')
-  assert.deepEqual(citeProblems(prose), [], 'a sentence is prose, never a citation')
-  assert.deepEqual(citedDesign(parseSpec(prose), entry(parseSpec(prose), 'spec-parser')).parts, [])
+  const prose = cites('"Layout"', swap(ROOT, '  Each refusal names its line.', '  Match the Design\'s "Ghost" block. Design the save format.'))
+  assert.deepEqual(citeProblems(prose), [], 'beside a cites, a sentence is prose, never a citation')
+  assert.deepEqual(citedDesign(parseSpec(prose), entry(parseSpec(prose), 'spec-parser')).parts.map((p) => p.heading), ['Layout'])
+  assert.deepEqual(citeProblems(swap(ROOT, '  Each refusal names its line.', '  Design the save format, as the Design says.')), [], 'the word alone')
+  for (const form of ['Match the Design\'s "Layout" block.', 'Keep the "Layout" section of the Design.', 'Read Design › Layout.']) {
+    const old = swap(ROOT, '  Each refusal names its line.', '  ' + form)
+    refusedAt(problemsOf(old), lineOf(old, '- **spec-parser**'), /cites the Design in its text[\s\S]*cites: Design[\s\S]*migrate-design-cites/)
+  }
   const onSub = swap(ROOT, '  The store computes every path; nothing else types one.', '  · cites: "Layout"\n  The store computes every path; nothing else types one.')
   refusedAt(problemsOf(onSub), lineOf(onSub, '- **store-layout**'), /cites is a task's field/)
 })

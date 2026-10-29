@@ -4156,7 +4156,10 @@ prefix of it that ends before a space or a bracket (`"Ports"` names `### Ports (
 and an exact key wins over a prefix (`designPart` in `lib/spec.mjs`). A task declares what it cites of
 its spec's Design in `cites`: `Design` for the whole of it, each `"<part>"` for that part; its brief
 carries what it cites ([Briefs and returns](#briefs-and-returns)), and a sentence of its title or
-context that mentions the Design cites nothing. A contract's `"<part>"` on `provides` is the part of
+context that mentions the Design cites nothing. A task with no `cites` whose title or context cites
+the Design the way a spec did before `cites` (`Design's "…"`, `"…" block of the Design`, `Design ›`)
+is refused at its entry, naming `cites:` and `tools/migrate-design-cites.mjs`: its brief would carry
+none of what it cites. A contract's `"<part>"` on `provides` is the part of
 this spec's Design that defines it ([Specs, approval and compile](#specs-approval-and-compile)); a
 contract with none is defined by the whole Design. A declared part that no heading answers to, or
 more than one does, a `cites: Design` over an empty Design, and an empty `""` are refused at the

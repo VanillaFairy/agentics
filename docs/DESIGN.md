@@ -3245,6 +3245,28 @@ reads it is the scheduler ([Scheduling](#scheduling)), the coupled lane, drift o
 guidance, and the judge's `folder` facts. A leaf that changes a file it did not expect is measured
 and reviewed like any other.
 
+### Review delta
+
+Every review that is judged again rules only what moved since a ruling was made. One pure function
+computes it (`reviewDelta` in `lib/review-delta.mjs`): given the rulings that stand from earlier
+reviews, each keyed by its unit and the **anchor** it was ruled at — a digest of what the unit stood
+on — and the units under review now with their anchors, it returns the rulings that **stand** (the
+same unit at the same anchor, the ruling carried whole), the units to **rule** (none ruled before,
+or ruled at another anchor, that earlier ruling handed on as `was`) and the rulings **gone** (their
+unit no longer under review). A whole review is the empty prior. Only a ruling that settled its unit
+is handed in as prior: a ruling that left the unit open — a unit a judge left unruled or declared
+unexamined — is no prior, so the unit is ruled again. What a judge left open is not a unit ruling but
+an open item (a blocker, a claim that is not a pass), and each caller carries those to its next
+review as it always does.
+
+An anchor is computed by code, from git and the store, never by a model, and each unit kind has one
+owner that names it and computes its anchor. A record that keeps no anchors is read as no prior:
+the review it feeds is whole, which costs one review and needs no migration.
+
+**Why:** a ruling stands until what it judged moves. Narrowing grew in each review on its own terms,
+each with its own fallbacks to a whole review; one delta over anchored rulings narrows every review
+the same way, and a fallback is no longer a separate path but the empty prior.
+
 ### Executors and review
 
 - **Producers** are a leaf's sessions: implementer and test-author (an auditor judges). Each is

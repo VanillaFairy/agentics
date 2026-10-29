@@ -33,6 +33,7 @@ const TABLE = [
   { msg: 'problems', from: 'code', to: 'planner' },
   { msg: 'refusals', from: 'code', to: 'thread' },
   { msg: 'cut_off', from: 'code', to: 'thread' },
+  { msg: 'left_out', from: 'code', to: 'thread' },
   { msg: 'failures', from: 'code', to: 'producer' },
   { msg: 'rebase', from: 'code', to: 'producer' },
   { msg: 'retried', from: 'code', to: 'thread' },

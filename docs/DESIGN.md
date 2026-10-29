@@ -677,7 +677,15 @@ shaped part's key:
 |---|---|---|
 | `work` | a leaf's own work: its Task, criteria, decisions, expected files and reads, its cited Design part, what it consumes, its effort files, evidence, gotchas, measures, commands; a folder's spec a planner or reviewer reads | in a leaf's dispatch (its round, its reviewer, its convergence ruler), a `decompose` to the folder's planner, or `needs_respec` in a folder the user wrote ([Replanning](#replanning)); elsewhere, as `user` |
 | `user` | the repository's guidance, one part per file; a changed spec's diff, the user's answers and the specs a ruler reads whole, one part per spec; a probed artefact | a stop for the user naming the file and its size: in an execution `escalated brief_too_large` (`dispatchFailed` in `lib/boundaries/records.mjs`), from `rule` `shrink_brief` ([A changed spec](#a-changed-spec)); the user settles it by shrinking or splitting the file |
-| `code` | everything else: the charge, thread messages, a probe's ground and settled specs, rendered records | a defect of its builder: a `role` fault whose detail carries the part, its bytes and budget |
+| `code` | everything else: the charge, thread messages, a probe's ground and settled specs, rendered records | none in practice: code bounds what it accumulates as it builds the brief, shedding the least valuable first and declaring what it shed; a refusal that still names one is a defect of its builder, a `role` fault whose detail carries the part, its bytes and budget |
+
+Code gives way first: a bound sheds what code owns before a refusal is laid on the work or the user.
+**A fresh session replays its thread within its room** (`replayOf` in `lib/programs/common.mjs`):
+its thread brief, then every message recorded on the thread but a `brief_changed`, whose copy of an
+older brief the fresh brief supersedes; while that is past the role's room, or a message past its
+part's budget, the oldest message is left out, never the latest, and a `left_out` message leading the
+rest names each by seq, kind and round. Every message counts as carried. The dispatch returns the
+seqs it left out (`left_out`), and an execution declares them in its coverage block.
 
 The spend view flags a unit with a call whose session opened past the bound as measured
 ([Spend view](#spend-view)), which is how an estimate that errs low shows.
@@ -714,7 +722,7 @@ read (`opened` on the session's first measured call): the system prompt and the 
 fresh session carries again. When the session's latest returned call that measured a `context` read
 past the midpoint between that floor and a 200 000-token window in its last model turn (`WINDOW` in
 `lib/runner.mjs`), the thread goes on in a fresh session, briefed with the call's fresh brief: the
-thread's brief and every message recorded on it, the open findings among them, in a program and an
+thread's brief and the messages it replays (`replayOf`), the open findings among them, in a program and an
 execution alike. So a renewal always sheds turns: a charge that alone fills more than half the window is no reason
 to renew. A session whose first measured call recorded no `opened` has floor 0, and a session no
 call measured is resumed; the cumulative `usage` never decides it.
@@ -944,6 +952,7 @@ sent where is the routing table (`ROUTES`):
 | `problems` | the spec check (code) | the planner session that wrote the spec | a corrected spec |
 | `refusals` | the evidence recorder, settling a probe's findings, or settling a changed spec (code) | the thread whose return was refused: the judge's session for items, the planner's for dispositions, the ruler's for rulings | corrected items, dispositions or rulings |
 | `cut_off` | code, for a call started and never returned, or one a host stop cut short | the thread's session | the turn finished and its whole structured output returned, from the start |
+| `left_out` | code, leading a fresh session's replay that left its oldest messages out to fit ([The agent runner](#the-agent-runner)) | the thread's session | the round goes on from the latest messages |
 
 - **Recorded before delivered, delivered once.** `message {node, thread, from, msg, payload,
   round}` is recorded before the recipient is resumed — by the boundary that decided it, before it
@@ -987,7 +996,7 @@ sent where is the routing table (`ROUTES`):
   After a round that cleared none of its blockers — a review that answered prior blockers and ruled
   none of them `fixed`, or a measurement in which every failure of the round before fails again —
   the next round is a fresh session on the raised tier ([Model tier](#model-tier)), recorded
-  `thread_renewed {why: raised}`, handed the thread's brief and every message on it.
+  `thread_renewed {why: raised}`, handed the thread's brief and the messages it replays.
 - **A conversation ends on a state (L2):** the same open findings after a round, the same request
   declined and sent again, or a convergence ruling `rulingDue` asked for.
 - **Turns are never interrupted.** A message waits until its recipient's turn has ended, and one

@@ -276,22 +276,28 @@ test('a later round resumes the thread, its fresh brief the thread brief then ev
   assert.equal(call.briefDigest, fnv1a(threadBrief))
 })
 
-test('a fresh session whose brief is past its room is refused by its largest part, nothing sent, while a resumed one is sent its message', async (t) => {
+test('a fresh session replays its thread within its room: no brief_changed copy, the oldest messages left out and named, never refused', async (t) => {
   const settled = { output: { status: 'settled', dispositions: [] } }
-  const rig = rigFor(t, { script: { 'planner||planner:p': [settled, settled, settled] } })
-  const threadBrief = '# Plan folder p\n\n## Findings to settle\n\n(the findings are the messages after this brief)\n\n## Product invariants\n\n- never a timer'
+  const rig = rigFor(t, { script: { 'planner||planner:p': [settled, settled, settled, settled] } })
+  const threadBrief = '# Plan folder p\n\n## Findings to settle\n\n(the findings are the messages after this brief)'
   const planner = { role: 'planner', schema: 'planner_settle', thread: 'planner:p', threadBrief }
   await dispatch(rig.ctx, { ...planner, round: 1, brief: threadBrief })
   const big = (n) => ({ findings: [{ id: 'P' + n, severity: 'gap', claim: 'answered-' + n + ' ' + 'x'.repeat(briefRoomOf('planner') / 3) }] })
   await deliver(rig.ctx, { ...planner, round: 2, msg: 'findings', payload: big(1) })
+  rig.log.append('message', { thread: 'planner:p', from: 'code', round: 2, msg: 'brief_changed', payload: { changed: ['Findings to settle'], brief: 'STALE_BRIEF_COPY_TOKEN' } })
   await deliver(rig.ctx, { ...planner, round: 3, msg: 'findings', payload: big(2) })
-  assert.equal(rig.calls.length, 3, 'the fixture: a resumed session reads only its message, so it is sent')
   const out = await deliver(rig.ctx, { ...planner, round: 4, fresh: 'raised', msg: 'findings', payload: big(3) })
-  assert.equal(rig.calls.length, 3, 'the fresh session is never started')
-  assert.equal(out.status, 'failed')
-  assert.equal(out.cause, 'brief_too_large')
-  assert.match(out.part, /^message \d+ findings$/)
-  assert.ok(out.bytes > out.budget, JSON.stringify(out))
+  assert.equal(out.status, 'returned', JSON.stringify(out))
+  const call = rig.calls[3]
+  assert.equal(call.resume, false, 'the fixture: a fresh session')
+  const seqs = rig.log.entries().filter((e) => e.kind === 'message' && e.thread === 'planner:p').map((e) => e.seq)
+  assert.deepEqual(call.carries, seqs, 'every message counts as carried, the ones it names as left out too')
+  assert.ok(!call.brief.includes('STALE_BRIEF_COPY_TOKEN'), 'the fresh brief is the current one: no copy of an older one')
+  assert.ok(!call.brief.includes('answered-1 '), 'the oldest findings are left out')
+  assert.ok(call.brief.includes('answered-2 ') && call.brief.includes('answered-3 '), 'the latest are replayed')
+  assert.deepEqual(out.left_out, [seqs[0]])
+  assert.ok(call.brief.includes('message ' + seqs[0] + ' (findings, round 2)'), 'what is left out is named in the brief')
+  assert.ok(Buffer.byteLength(call.brief) <= briefRoomOf('planner'))
 })
 
 test('a resumed session is sent its message however far its thread has grown past the room', async (t) => {

@@ -1387,7 +1387,12 @@ conflict, and its series is measured from what that merge brought (`MERGE_HEAD`)
 from the parent head it took (`leafBase`), never from the merge itself. A cycle member's series
 always leaves out its predecessors' approved heads by name (verify's `exclude`): their commits ride
 on its branch but were judged under their own role, so the series check reads only the member's
-own, each commit by itself.
+own. Its net diff is read from that base (`netBaseOf` in `lib/verify.mjs`), or, where a rebase round
+took it past its cut — a base that does not hold its predecessor's approved head — from the tree
+`git merge-tree --write-tree <predecessor's approved head> <the head it took>` writes: its branch
+without its own work. A conflicted remerge (exit 1) gives the conflicted tree, which is exactly that
+base, so a resolution is the member's change; any other failure is `series_unreadable`. So a green
+and an audit are judged on their net diff like any leaf, and their `tests_rewritten` is named.
 
 The base is read off the branch, never carried from the call that made it (`leafBase` in
 `lib/integration.mjs`): the oldest commit on the leaf's first-parent line, from where it left its

@@ -154,3 +154,32 @@ test("a merge's resolution of a fenced test file is its own author's change, jud
   assert.deepEqual(hits.filter((f) => f.sha === merge).length, 1, JSON.stringify(hits))
   assert.deepEqual(hits.filter((f) => f.sha === fenced), [], 'the test round wrote inside its fence')
 })
+
+// ---------------------------------------------------------------- a cycle member's net diff
+
+test("a green's existing test its test round rewrote is named, its red's commits left out", (t) => {
+  const c = cycle(t)
+  const fenced = commit(c.worktree, { 'test/base.test.mjs': PASSING }, 'test(w3): rework the base suite')
+  const payload = green(c, { fences: { [fenced]: 'tests' }, exclude: [c.red] })
+  assert.deepEqual(breaches(payload), [])
+  assert.deepEqual(payload.tests_rewritten, ['test/base.test.mjs'])
+})
+
+test("a green a rebase round took past its cut is judged on its own net change, never its red's tests", (t) => {
+  const c = cycle(t)
+  const moved = onMain(c, { 'src/other.mjs': 'export const other = 1\n' }, 'feat: other')
+  assert.equal(git(c.worktree, 'merge', '-q', '--no-edit', 'main').status, 0)
+  const payload = green(c, { base: moved, exclude: [c.red] })
+  assert.equal(payload.error, null)
+  assert.deepEqual(payload.series_findings.filter((f) => f.blocking), [], JSON.stringify(payload.series_findings))
+})
+
+test("a green whose taken parent conflicts with its red is measured from the conflicted tree: its resolution is its change", (t) => {
+  const c = cycle(t)
+  const moved = onMain(c, { [TEST_FILE]: PASSING }, 'test: a widget test of main')
+  assert.notEqual(git(c.worktree, 'merge', '-q', '--no-edit', 'main').status, 0, 'the fixture: the merge conflicts')
+  commit(c.worktree, { [TEST_FILE]: WIDGET_TEST }, 'merge main')
+  const payload = green(c, { base: moved, exclude: [c.red] })
+  assert.equal(payload.error, null, 'a conflicted remerge is the base, never an unreadable series')
+  assert.ok(breaches(payload).some((f) => f.sha === '' && String(f.message).includes(TEST_FILE)), JSON.stringify(breaches(payload)))
+})

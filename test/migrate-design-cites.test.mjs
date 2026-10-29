@@ -61,12 +61,13 @@ test('cites is written where the old reader found an explicit citation, and ever
   assert.ok(!declare(text.replace(/\n/g, '\r\n')).next.replace(/\r\n/g, '').includes('\n'), 'the endings it found')
 })
 
-test('a task whose only "Design" opens a sentence is listed and left, and its spec is no longer the same', () => {
+test('a task whose only "Design" opens a sentence keeps the whole Design it had, listed for the user to trim', () => {
   const text = spec([NAMED, IMPERATIVE])
   const d = declare(text)
-  assert.deepEqual(d.written.map((w) => w.entry), ['named'])
-  assert.deepEqual(d.initial, [{ entry: 'imperative', line: parseSpec(text).entries.find((e) => e.name === 'imperative').line }])
-  assert.equal(d.unchanged, false, 'its brief loses the Design the prose reader gave it')
+  assert.deepEqual(d.written, [{ entry: 'named', cites: '"Ports (`ports.ts`)"' }, { entry: 'imperative', cites: 'Design' }])
+  assert.deepEqual(d.initial, [{ entry: 'imperative', line: parseSpec(d.next).entries.find((e) => e.name === 'imperative').line }])
+  assert.equal(d.unchanged, true, 'a migration widens, never narrows')
+  assert.deepEqual(briefs(d.next), oldBriefs(text))
   const mid = declare(spec([task('mid', 'Design the save format', 'Store it as the Design says.')]))
   assert.deepEqual(mid.written, [{ entry: 'mid', cites: 'Design' }], 'one "Design" inside a sentence is a citation')
 })
@@ -85,26 +86,25 @@ test('a store is migrated once: dry run writes nothing, --yes declares and carri
   const put = (folder, text) => {
     mkdirSync(dirname(specPath(repo, 'e1', folder)), { recursive: true })
     writeFileSync(specPath(repo, 'e1', folder), text)
-    assert.equal(append(repo, 'e1', 'ledger', [{ kind: 'approved', folder, hash: hashSpec(text), decisions: [], by: 'user' }]).ok, true)
+    assert.equal(append(repo, 'e1', 'ledger', [{ kind: 'approved', folder, hash: hashSpec(text), decisions: parseSpec(text).decisions.map(({ id, text: t }) => ({ id, text: t })), by: 'user' }]).ok, true)
   }
-  const proven = spec([NAMED, PLAIN])
-  const lossy = spec([WHOLE, IMPERATIVE]).replace('# Ports', '# Lossy')
+  const proven = spec([WHOLE, PLAIN, IMPERATIVE])
+  const lossy = spec([WHOLE, NAMED], ['### Ports', '', 'interface Den {}', '', '# Aside', '', 'Read by the old part, not by the new one.']).replace('# Ports', '# Lossy')
   put('.', proven)
   put('lossy', lossy)
   const dry = migrate(repo)
   assert.deepEqual(dry.specs.map((s) => s.folder), ['.', 'lossy'])
   assert.equal(readFileSync(specPath(repo, 'e1', '.'), 'utf8'), proven, 'a dry run writes nothing')
-  const ledger = readLog(repo, 'e1', 'ledger').entries.length
+  const ledger = readLog(repo, 'e1', 'ledger').entries
 
   const done = migrate(repo, { yes: true })
   assert.deepEqual(done.carried.map((c) => c.folder), ['.'])
   assert.deepEqual(done.uncarried.map((c) => c.folder), ['lossy'])
   assert.deepEqual(done.initial.map((x) => x.entry), ['imperative'])
   assert.equal(approvalState(repo, 'e1', '.').state, 'approved', 'its signature stands at the new hash')
-  const carried = readLog(repo, 'e1', 'ledger').entries.at(-1)
+  const carried = readLog(repo, 'e1', 'ledger').entries.find((l) => l.seq > ledger.at(-1).seq && l.kind === 'approved')
   assert.deepEqual([carried.folder, carried.carried_from, carried.hash], ['.', hashSpec(proven), hashSpec(readFileSync(specPath(repo, 'e1', '.'), 'utf8'))])
   assert.notEqual(approvalState(repo, 'e1', 'lossy').state, 'approved', 'a brief that changes is the user\'s to approve again')
-  assert.equal(readLog(repo, 'e1', 'ledger').entries.length, ledger + 1)
 
   const again = migrate(repo, { yes: true })
   assert.deepEqual([again.specs, again.carried], [[], []], 'a second run writes nothing')

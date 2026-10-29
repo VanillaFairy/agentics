@@ -6,14 +6,13 @@
 //
 // Up to this version a task's brief carried what its title and context seemed to cite of the
 // Design; now it carries only what `cites:` declares. For each task, this reads the old citations
-// with a frozen copy of the reader of the time (`oldCited`) and writes `cites:` only where that
-// reader found an explicit one: a quoted part, or the word "Design" anywhere but at the start of a
-// sentence. An entry whose only signal was a sentence-initial "Design" ("Design the save format")
-// is listed and left: the user says whether it cites. Code then proves, entry by entry, that the
-// rewritten spec hands every task's brief the same Design text it handed before; only then is a
-// signed spec's latest `approved` or `prepared` line stated again at the new hash, every field kept
-// and `carried_from` naming the hash it was given at. `provides` needs nothing: a contract with no
-// declared part is defined by the whole Design. The default is a dry run; `--yes` writes. A second
+// with a frozen copy of the reader of the time (`oldCited`) and writes `cites:` wherever that reader
+// found one. An entry whose only signal was a sentence-initial "Design" ("Design the save format")
+// gets `cites: Design`, the whole Design it was given, and is listed for the user to trim: a
+// migration widens, never narrows. Code then proves, entry by entry, that the rewritten spec hands
+// every task's brief the same Design text it handed before; only then is a signed spec's latest
+// `approved` or `prepared` line stated again at the new hash, every field kept and `carried_from`
+// naming the hash it was given at. `provides` needs nothing: a contract with no declared part is defined by the whole Design. The default is a dry run; `--yes` writes. A second
 // run finds every cited task declared and writes nothing.
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -77,8 +76,9 @@ const same = (a, b) => JSON.stringify(a.map((p) => [p.heading, p.text])) === JSO
 
 /**
  * Pure. The rewrite of one spec's text: `next`, with a `· cites:` line after each task's opening
- * line where the old reader found an explicit citation; `written[{entry, cites}]`; `initial[{entry,
- * line}]`, the tasks whose only signal opened a sentence; `refused[{entry, why}]`; and `unchanged`,
+ * line where the old reader found a citation; `written[{entry, cites}]`; `initial[{entry, line}]`,
+ * the tasks whose only signal opened a sentence, written `cites: Design` for the user to trim;
+ * `refused[{entry, why}]`; and `unchanged`,
  * true when every task's brief carries the same Design text from `next` as it did from `text`.
  */
 export function declare(text) {
@@ -93,10 +93,7 @@ export function declare(text) {
   for (const e of tasks) {
     const old = before.get(e.name)
     if (e.given.includes('cites') || old.parts.length === 0) continue
-    if (old.word && onlyInitial(e)) {
-      out.initial.push({ entry: e.name, line: e.line })
-      continue
-    }
+    if (old.word && onlyInitial(e)) out.initial.push({ entry: e.name, line: e.line })
     const whole = old.parts.some((p) => p.heading === '')
     const quotes = old.parts.filter((p) => p.heading.includes('"'))
     if (quotes.length) {
@@ -123,6 +120,7 @@ export function declare(text) {
   }
   out.written = kept.map((i) => ({ entry: i.entry, cites: i.cites }))
   const final = parseSpec(next)
+  out.initial = out.initial.map((x) => ({ ...x, line: final.entries.find((n) => n.name === x.entry && n.kind === 'task').line }))
   out.unchanged = tasks.every((e) => {
     const now = final.entries.find((x) => x.name === e.name && x.kind === 'task')
     return Boolean(now) && same(citedDesign(final, now).parts, before.get(e.name).parts)
@@ -193,9 +191,9 @@ function reportOf(r, yes) {
   for (const c of r.carried) lines.push((yes ? 'carried ' : 'would carry ') + 'the signature of ' + c.effort + ' ' + c.folder + ' from ' + c.from.slice(0, 8) + ' to ' + c.hash.slice(0, 8))
   for (const x of r.uncarried) lines.push('not carried ' + x.file + ': ' + x.why)
   for (const x of r.parks) lines.push('its next compile parks ' + x.effort + ' ' + x.folder + ' spec_changed: work under it was dispatched')
-  for (const x of r.initial) lines.push('left ' + x.file + ':' + x.line + ' ' + x.entry + ': its only "Design" opens a sentence; add `cites: Design` if it cites')
+  for (const x of r.initial) lines.push('trim ' + x.file + ':' + x.line + ' ' + x.entry + ': its only "Design" opens a sentence, so it was given the whole Design; drop or narrow its cites if it cites less')
   for (const x of r.refused) lines.push('refused ' + x.file + (x.entry ? ' ' + x.entry : '') + ': ' + x.why)
-  lines.push(r.specs.length + ' spec(s), ' + r.initial.length + ' entry(ies) left' + (yes ? '' : '; nothing written (run again with --yes)'))
+  lines.push(r.specs.length + ' spec(s), ' + r.initial.length + ' entry(ies) to trim' + (yes ? '' : '; nothing written (run again with --yes)'))
   return lines.join('\n')
 }
 

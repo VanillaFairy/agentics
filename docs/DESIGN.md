@@ -159,7 +159,8 @@ a spec its first approval; a later change to an approved spec is approved withou
 theirs only when an independent ruling finds that everything it moves either is not moved at all or
 is settled by an answer they recorded ([A changed spec](#a-changed-spec)), or, for a one-shot
 migration, when code checks the change renames a field's keyword and moves nothing else, or
-declares the Design citations a task's text already made and hands every brief the text it had: the
+declares the Design citations the reader of the time took a task's text to make and hands every
+brief the text it had: the
 signature is then stated again at the new hash, as it was given ([Migration from 4.x](#migration-from-4x)).
 The user's branch and
 working tree change only by their explicit act: an inline task edits only the files it was asked to
@@ -4990,10 +4991,11 @@ refused, a compile failed or a withdrawal was refused.
 
 `tools/migrate-design-cites.mjs`, run once after upgrading to the release where a task's `cites`
 declares what its brief carries of the Design ([Spec format](#spec-format)), writes `cites:` on each
-task where the prose reader of the time, kept frozen in the script, found an explicit citation: a
-quoted part, as `"<its heading>"`, or the word "Design" anywhere but at the start of a sentence, or a
-quoted passage inside the Design, as `Design`. A task whose only "Design" opens a sentence ("Design
-the save format") is listed and left for the user. Code then proves each task's brief carries the
+task where the prose reader of the time, kept frozen in the script, found a citation: a quoted
+part, as `"<its heading>"`, or the word "Design", or a quoted passage inside the Design, as `Design`.
+A task whose only "Design" opens a sentence ("Design the save format") was given the whole Design,
+so it gets `cites: Design` too and is listed for the user to trim: a migration widens, never
+narrows. Code then proves each task's brief carries the
 same Design text from the new spec as from the old (`declare`); a declaration that would not is
 refused and not written, and only a spec whose every brief is proved the same has its latest
 `approved` or `prepared` line stated again at the new hash, every field kept and `carried_from`

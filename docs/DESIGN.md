@@ -2798,7 +2798,10 @@ Merge mode reports exactly four fields: `stop_reason` (`completed` or `environme
 (conflicting paths verbatim from git; empty when none), and `notes` (what was actually run). The
 caller derives the outcome as `mergeOk = stop_reason === 'completed' && merged_sha !== '' &&
 conflicts.length === 0` — never from `conflicts` alone, because an `environment_broken` merge has
-an empty conflict list too. Anything that is not `mergeOk` stops the batch. A conflict is never
+an empty conflict list too. A conflict whose merge was aborted holds back its unit and every unit
+built on it (whose head contains its head), and the other units merge (`mergeUnits` in
+`lib/integration.mjs`); a cycle merges through its tip, so its members land together or not at all.
+Anything else that is not `mergeOk` stops the batch. A conflict is never
 resolved on an integration branch: a leaf's goes to the judge, who may send the leaf a rebase round
 to resolve it on its own branch ([The judge](#the-judge)), and any other reaches the user.
 
@@ -2832,8 +2835,9 @@ merge, a `ruler_contention` ruling, about two things (`lib/contention.mjs`, `lib
   standing `resolve` ruling of the unit covers is none, and a ruling stands only while the unit's
   head and the other leaf's are the ones it was given. A unit with facts is set aside from the
   batch.
-- **Conflict.** A leaf outside any cycle whose executor has a shell to conclude a merge, whose merge
-  conflicted, unless a `resolve` of a conflict on the same paths at an earlier approved head stands:
+- **Conflict.** A leaf whose executor has a shell to conclude a merge, whose merge conflicted — a
+  cycle's tip only when every conflicting path is one its implementer may write, and its rebase
+  round goes to that implementer — unless a `resolve` of a conflict on the same paths at an earlier approved head stands:
   that remedy failed, and the conflict escalates `merge_conflict`.
 
 The merge unit dispatches the ruler on `ruler:<trigger>:<unit key>:<head>`, on the folder being

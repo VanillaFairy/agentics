@@ -122,6 +122,40 @@ test('a conflict the first merge met stands through the bisect of a red head, an
   assert.equal(kindOf(stateOf(w.r), 'batch').at(-1).conflict, 'n')
 })
 
+test('a cycle whose tip conflicts on a file its implementer writes is handed to the judge, not escalated', SLOW, async (t) => {
+  const w = world(inTest(t), [root(),
+    leaf('m', { rigor: 'trivial', expects: ['src/r.mjs'] }),
+    leaf('r', { rigor: 'tdd-pair', role: 'red', expects: ['test/r.test.mjs'], deps: ['m'] }),
+    leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], expects: ['src/r.mjs'] })])
+  const m = await ready(w, 'm', { 'src/r.mjs': 'export const r = () => 0\n' }, 'Seed r')
+  const r = await ready(w, 'r', { 'test/r.test.mjs': R_TEST }, 'Pin r')
+  const g = await ready(w, 'g', { 'src/r.mjs': 'export const r = () => 1\n' }, 'Implement r', { from: r.head_sha, cycleMember: true })
+  const out = await mergeBatch(w.xc, { target: '.', children: handed(m, r, g), cycles: [['r', 'g']] })
+
+  assert.deepEqual(ids(out.merged), ['m'])
+  assert.deepEqual(stopsOf(out), [], 'the judge rules before anyone asks the user')
+  assert.deepEqual(out.conflict, { id: 'g', head: g.head_sha, paths: ['src/r.mjs'] })
+  assert.notEqual(statusOf(w.r, 'g'), 'escalated')
+})
+
+test('a conflict holds back its own unit and what is built on it; an unrelated sibling after it still merges', SLOW, async (t) => {
+  const w = world(inTest(t), [root(),
+    leaf('m', { rigor: 'trivial', expects: ['README.md'] }),
+    leaf('n', { rigor: 'trivial', expects: ['README.md'], deps: ['m'] }),
+    leaf('o', { rigor: 'trivial', expects: ['OTHER.md'], deps: ['m'] }),
+    leaf('p', { rigor: 'trivial', expects: ['LATER.md'], deps: ['n'] })])
+  const m = await ready(w, 'm', { 'README.md': 'from m\n' }, 'Say m')
+  const n = await ready(w, 'n', { 'README.md': 'from n\n' }, 'Say n')
+  const o = await ready(w, 'o', { 'OTHER.md': 'other\n' }, 'Say other')
+  const later = await ready(w, 'p', { 'LATER.md': 'later\n' }, 'Say later', { from: n.head_sha })
+  const out = await batch(w, handed(m, n, o, later))
+
+  assert.deepEqual(ids(out.merged), ['m', 'o'], 'o neither conflicts nor is built on n')
+  assert.deepEqual(out.conflict, { id: 'n', head: n.head_sha, paths: ['README.md'] })
+  assert.equal(statusOf(w.r, 'o'), 'merged')
+  assert.notEqual(statusOf(w.r, 'p'), 'merged', 'p is built on n, so it waits with it')
+})
+
 test('a batch that merged nothing and saw nothing fail escalates merge_no_progress', SLOW, async (t) => {
   const w = world(inTest(t), [root(), addOne('x')])
   integrationOf(w)

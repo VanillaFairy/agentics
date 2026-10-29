@@ -1706,7 +1706,10 @@ A leaf's producer or a planner returns one of these instead of finishing; a rule
 leaf refused `brief_too_large` for a part of the leaf's own work ([The agent
 runner](#the-agent-runner)) as a `decompose`, the refusal its text (`tooLarge` in
 `lib/programs/execute/leaf.mjs`); a part only the user can shrink, such as a `CLAUDE.md`, never
-reaches the planner, whose own brief carries the same file:
+reaches the planner, whose own brief carries the same file. A split always revises the asker, so the
+refusal is journaled with the leaf's revision, its folder, the part and its bytes; a leaf of that
+folder revised since, refused on the same part again, escalates `replan_not_converging` instead of
+asking the planner again — its split left the part as large as it was:
 
 | return | meaning | who acts |
 |---|---|---|

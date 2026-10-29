@@ -117,6 +117,29 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.deepEqual(stopsOn(w.rig, 'f/b'), [])
   })
 
+  test('a leaf its planner revised that is refused on the same part again escalates replan_not_converging, not routed again', T, async (t) => {
+    const w = world(t, { spec: { '.': PLANNED, f: specText([hugeLeaf('b'), hugeLeaf('c')], { decisions: false }) } })
+    w.rig.script({})
+    assert.equal((await w.run('f/b')).outcome, 'route')
+    const sibling = await w.run('f/c')
+    assert.equal(sibling.outcome, 'route', 'a leaf of the folder no plan revised since is routed, its own request')
+    const again = w.relaunch()
+    again.rig.script({})
+    assert.equal((await again.run('f/b')).outcome, 'route', 'the unrevised leaf is routed again on a relaunch')
+
+    const b = readTree(again.rig.repo, E).nodes.get('f/b')
+    assert.equal(append(again.rig.repo, E, 'nodes', [{ kind: 'node', node: { ...b, title: b.title + ', split' } }]).ok, true)
+    const revised = w.relaunch()
+    revised.rig.script({})
+    const out = await revised.run('f/b')
+    assert.equal(revised.rig.calls.length, 0, 'no producer is started')
+    assert.equal(out.outcome, 'stopped')
+    assert.equal(out.route, undefined)
+    const stops = stopsOn(revised.rig, 'f/b')
+    assert.deepEqual(stops.map((s) => [s.kind, s.reason]), [['escalated', 'replan_not_converging']])
+    assert.ok(stops[0].detail.includes('"Task"'), stops[0].detail)
+  })
+
   test("a leaf whose repository guidance is past its budget escalates brief_too_large naming the file, never its planner's", T, async (t) => {
     const w = world(t, { spec: { '.': PLANNED, f: specText([leafEntry('b', { expects: ['src/b.txt'] })], { decisions: false }) }, files: HUGE_GUIDANCE })
     w.rig.script({})

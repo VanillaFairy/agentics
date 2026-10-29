@@ -281,7 +281,8 @@ names the property that earns it and the consumer that reads it, and goes when i
   approved only while every break it declares and every break the cycle's audit held still bites
   ([Rigor](#rigor)); otherwise it is reverted.
 - **No mechanism outlives its consumer.** A format change ships a one-shot migration, never a
-  permanent second reader. `test/fast/liveness.test.mjs` enforces it ([Self-checks](#self-checks)).
+  permanent second reader: a store stamp, and a frozen migration that rewrites the records
+  ([Migrations](#migrations)). `test/fast/liveness.test.mjs` enforces it ([Self-checks](#self-checks)).
 
 ### P5 — Faults are fixed in their class, where they live
 
@@ -1230,7 +1231,6 @@ nothing outside compile calls `addNodes`.
   <effort>/
     DESIGN.md                     the root folder's spec
     <sub-effort>/DESIGN.md        one folder per sub-effort, nested as the plan nests them
-    .legacy/                      design documents the migration copied
     .state/
       effort.json                 {about, roots, opened_at}, written once
       nodes.jsonl                 node revisions, append-only
@@ -4959,7 +4959,8 @@ which `recordCommands` writes as the investigator's.
   `lib/programs/`); every record kind is written somewhere and read somewhere; every message kind
   has a route, a template its reader is given, and a program or a boundary that sends it; every
   field a role's schema asks for is read in `lib/` or, for a return a program hands back whole, in a
-  skill; every lint rule has its test; every library export is used somewhere.
+  skill; every lint rule has its test; every library export is used somewhere but a migration, which
+  is frozen and keeps nothing alive ([Migrations](#migrations)).
   Defined-never-dispatched, written-never-read and read-never-written fail the suite.
 - **Budgets:** each skill and role file has a size budget in `tools/budgets.json`; the
   `size-budget` lint rule fails a file over it, or one with no budget.
@@ -4999,17 +5000,6 @@ what}`. Every other line and file is kept byte for byte. It exits 1 for a store 
 
 The one-shots below predate the stamp and rewrite what a store's user must see or approve; each is
 run on its own, before or after `migrate-to-1`.
-
-`tools/migrate-legacy.mjs` is the one-shot copy of a repository's 3.2.0 layout into `.agentics/`:
-each effort's files into its `.state/`, its design documents into its `.legacy/`, and its slot
-configuration into `config.json`. It never deletes: it lists the committed files it copied for the
-user to remove, and a second run copies nothing. `tools/migrate-node-keys.mjs` is the one-shot
-rename to bounded keys ([Storage](#storage)): for each node whose key differs from its spelled-out
-id, its branch, its worktree and the store's files named after it. `tools/migrate-worktree-keys.mjs`
-is the one-shot move of every worktree under `.claude/worktrees/` holding an `agentics/` branch to
-the bounded directory that branch names, with `git worktree move`, uncommitted work and all. Each
-refuses a target that exists, dry-runs by default, applies with `--yes`, and does nothing the
-second time; a 3.x or early-4.x store runs them in that order.
 
 `tools/migrate-design-cites.mjs`, run once after upgrading to the release where a task's `cites`
 declares what its brief carries of the Design ([Spec format](#spec-format)), writes `cites:` on each

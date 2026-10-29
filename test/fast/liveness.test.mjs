@@ -34,7 +34,8 @@ function files(dir, pattern, out = []) {
 const read = (full) => readFileSync(full, 'utf8')
 const lib = files('lib', /\.mjs$/)
 const skills = files('skills', /\.md$/)
-const tools = files('tools', /\.mjs$/)
+// A migration is frozen: it keeps nothing in lib/ alive, so it is counted as no consumer.
+const tools = files('tools', /\.mjs$/).filter((f) => !f.split(sep).pop().startsWith('migrate-'))
 const tests = files('test', /\.mjs$/)
 const roles = files('roles', /\.md$/)
 const programs = files('lib/programs', /\.mjs$/)

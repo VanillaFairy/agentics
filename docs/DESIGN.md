@@ -4384,7 +4384,8 @@ version up; above it, a store a newer plugin wrote. A change to what the store h
 `suite_scope` (`fast` or `full` on a merged head, `scoped` for a leaf's own tests, `none` when
 nothing ran); `suite_output_tail` (only when the suite failed);
 `failing_tests[{file, id}]`; `baseline_failing[{file, id}]` (failing tests that fail at the base
-too); `discriminator[{test_id, adds_test, failed_on_base, passes_now}]` (`adds_test` false for a
+too); `discriminator[{test_id, blob, adds_test, failed_on_base, passes_now}]` (`blob` the file's
+blob at the measured head, what a ruling over the file is keyed by; `adds_test` false for a
 file of the leaf's own diff that adds no test case; an entry without it is read as adding one);
 `static_on_base[{kind, command, failed_on_base}]` (on a tdd leaf whose every changed test file held
 at base, the established typecheck, `kind: typecheck`, and each criterion check that runs it, `kind:

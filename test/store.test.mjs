@@ -15,7 +15,7 @@ import { basename, dirname, join, relative, resolve } from 'node:path'
 
 import { append, readLog } from '../lib/ledger.mjs'
 import {
-  AGENTICS_DIR, CONFIG_FILE, EVIDENCE_RENDER, ROOT_ID, SPEC_FILE, STATE_DIR,
+  AGENTICS_DIR, CONFIG_FILE, EVIDENCE_RENDER, ROOT_ID, SPEC_FILE, STATE_DIR, blobsAt,
   agenticsRoot, configPath, contextDir, effortDir, effortStateDir, effortsRoot,
   evidenceStoreDir, executionDir, executionsRoot, folderDir, mainCheckout, mkdirState,
   projectStateDir, readConfig, returnPath, safeSlug, saidOf, sameBlob, slotsDir, specPath, withLock, writeJson,
@@ -334,4 +334,21 @@ test('sameBlob: a file holds the same content at two commits, or it does not', (
   assert.equal(sameBlob(r, first, second, 'a.txt'), true)
   assert.equal(sameBlob(r, first, second, 'b.txt'), false)
   assert.equal(sameBlob(r, first, second, 'gone.txt'), false, 'absent at both is not the same content')
+})
+
+test('blobsAt: each path names its content at a commit, from the root whatever the cwd; a path the commit lacks is absent', () => {
+  const r = gitRepo('blobs')
+  mkdirSync(join(r, 'sub'))
+  writeFileSync(join(r, 'sub', 'a.txt'), 'one\n')
+  writeFileSync(join(r, 'b.txt'), 'one\n')
+  git(r, 'add', '.')
+  git(r, 'commit', '-q', '-m', 'first')
+  const first = git(r, 'rev-parse', 'HEAD')
+  writeFileSync(join(r, 'b.txt'), 'two\n')
+  git(r, 'commit', '-q', '-am', 'second')
+  const at = blobsAt(join(r, 'sub'), 'HEAD', ['sub/a.txt', 'b.txt', 'gone.txt'])
+  assert.deepEqual([...at.keys()].sort(), ['b.txt', 'sub/a.txt'])
+  assert.equal(at.get('sub/a.txt'), git(r, 'rev-parse', 'HEAD:sub/a.txt'))
+  assert.equal(at.get('b.txt'), git(r, 'rev-parse', 'HEAD:b.txt'))
+  assert.notEqual(blobsAt(r, first, ['b.txt']).get('b.txt'), at.get('b.txt'), 'another content, another blob')
 })

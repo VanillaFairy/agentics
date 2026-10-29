@@ -1,7 +1,7 @@
 // tools/migrate-glob-literal.mjs — the one-shot report on stored evidence scopes once brackets turned
 // literal in the search glob dialect, run once after upgrading to 5.5.0. It writes nothing.
 //
-// Design: docs/DESIGN.md#migration-from-4x.
+// Design: docs/DESIGN.md#migrations.
 //
 // Stored query scopes are read in the new dialect as they stand. An item whose stored query result
 // differs from what its scope finds now is drifted: `checkAnchors` derives it `suspect` with a `query`

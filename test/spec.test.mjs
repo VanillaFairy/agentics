@@ -661,12 +661,6 @@ test('the spec CLI refuses a value that is not a handle, and a flag it does not 
   assert.deepEqual(refusal('check', '--repo', '.', '--effort', 'e1', '--file', 'DESIGN.md'), [1, 'unknown_flag'])
 })
 
-test('a task that still writes locus is refused, naming the migration', () => {
-  const old = SUB.replace(' · expects: ', ' · locus: ')
-  const problems = checkFolder(effortOnDisk({ '.': ROOT, 'store-layout': old }), 'e1', 'store-layout').problems
-  assert.ok(problems.some((p) => p.line === lineOf(old, '**paths**') && /migrate-expects/.test(p.problem)), JSON.stringify(problems))
-})
-
 test("checkFolder refuses a task whose text or recipe names a project script its runs does not list", () => {
   const swapped = (context, fields = '') => swap(ROOT, '  Each refusal names its line.', '  ' + context)
     .replace('  · ground: docs/DESIGN.md#storage', '  · ground: docs/DESIGN.md#storage' + fields)

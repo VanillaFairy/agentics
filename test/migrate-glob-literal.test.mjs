@@ -3,7 +3,7 @@
 // differs from the new-dialect result is drifted (derived `suspect`, re-ruled by its judge); the tool lists
 // parts naming a literally bracketed file and escaped-bracket parts with git's old reading, and writes nothing.
 //
-// Design: docs/DESIGN.md#migration-from-4x.
+// Design: docs/DESIGN.md#migrations.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

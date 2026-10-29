@@ -14,12 +14,8 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 
-import {
-  DROPPED, ROUTES, WITHDRAW_TOOL, deliveryPlan, migrationOf, pendingMessages, renderMessage, routeOf,
-} from '../../lib/conversation.mjs'
+import { ROUTES, deliveryPlan, pendingMessages, renderMessage, routeOf } from '../../lib/conversation.mjs'
 
 // The task's routing table: the spec these routes are checked against.
 const TABLE = [
@@ -353,16 +349,6 @@ test('a rendered message is deterministic', () => {
 test('a message with no template is refused', () => {
   assert.throws(() => renderMessage({ msg: 'gossip', payload: { text: 'hello' } }))
   assert.throws(() => renderMessage({ msg: 'dispute', payload: { why: 'I disagree' } }))
-})
-
-test('every kind this version cannot render names a migration that ships with it', () => {
-  const shipped = (tool) => existsSync(fileURLToPath(new URL('../../' + tool, import.meta.url)))
-  for (const [msg, tool] of Object.entries(DROPPED)) {
-    assert.throws(() => renderMessage({ msg, payload: {} }), `${msg}: a dropped kind renders no more`)
-    assert.ok(shipped(tool), `${msg}: ${tool} ships`)
-  }
-  assert.equal(migrationOf('gossip'), WITHDRAW_TOOL, 'a kind no row names is withdrawn')
-  assert.ok(shipped(WITHDRAW_TOOL), `${WITHDRAW_TOOL} ships`)
 })
 
 // --- delivery --------------------------------------------------------------------------------

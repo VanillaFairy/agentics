@@ -19,7 +19,7 @@ import { preflight } from '../lib/boundaries/execution.mjs'
 import { executionContext } from '../lib/boundaries/records.mjs'
 import { append, executionLog } from '../lib/ledger.mjs'
 import { hashSpec } from '../lib/spec.mjs'
-import { revParse, specPath } from '../lib/store.mjs'
+import { STORE_VERSION, revParse, specPath, storeStampPath, storeVersion } from '../lib/store.mjs'
 import { trace } from '../lib/traceability.mjs'
 import { addNodes, readTree } from '../lib/tree.mjs'
 import { ensureIntegration } from '../lib/integration.mjs'
@@ -427,4 +427,22 @@ test('a preflight run again in the same run appends no second checkpoint and no 
   assert.equal(p.checkpoint.reason, 'parked')
   assert.equal(q.checkpoint.seq, p.checkpoint.seq)
   assert.equal(stateKind(r, 'checkpoint').filter((e) => e.reason === 'parked').length, 1)
+})
+
+test('preflight refuses a store whose stamp is not this version, store_version, naming the migration or the update', async (t) => {
+  const r = world(t, NO_GAPS)
+  assert.equal(storeVersion(r), STORE_VERSION, 'the store was stamped as it was born')
+  rmSync(storeStampPath(r))
+  const old = await preflight(ctxOf(r, STAMP, { run: false }), { commands_file: commandsFile(t) })
+  assert.equal(old.ok, false)
+  assert.equal(old.error.kind, 'store_version')
+  for (let v = 1; v <= STORE_VERSION; v++) assert.match(old.error.message, new RegExp('tools/migrate-to-' + v + '\\.mjs'))
+  assert.equal(existsSync(envPath(r)), false)
+  assert.deepEqual(stateOf(r), [])
+  writeFileSync(storeStampPath(r), JSON.stringify({ version: STORE_VERSION + 1 }))
+  const newer = await preflight(ctxOf(r, STAMP, { run: false }), { commands_file: commandsFile(t) })
+  assert.equal(newer.error.kind, 'store_version')
+  assert.doesNotMatch(newer.error.message, /migrate-to-/)
+  writeFileSync(storeStampPath(r), JSON.stringify({ version: STORE_VERSION }))
+  assert.equal((await preflight(ctxOf(r, STAMP, { run: false }), { commands_file: commandsFile(t) })).ok, true)
 })

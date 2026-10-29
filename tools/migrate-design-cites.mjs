@@ -1,7 +1,7 @@
 // tools/migrate-design-cites.mjs — the one-shot declaration of each task's Design citations as a
 // `cites:` field, in every spec of a repository's efforts, run once after upgrading, on the user's go.
 //
-// Design: docs/DESIGN.md#migration-from-4x (a format change ships a one-shot migration, never a
+// Design: docs/DESIGN.md#migrations (a format change ships a one-shot migration, never a
 // permanent second reader).
 //
 // Up to this version a task's brief carried what its title and context seemed to cite of the

@@ -158,10 +158,9 @@ recorded in their own words, and a choice they made is never put to them again. 
 a spec its first approval; a later change to an approved spec is approved without a further act of
 theirs only when an independent ruling finds that everything it moves either is not moved at all or
 is settled by an answer they recorded ([A changed spec](#a-changed-spec)), or, for a one-shot
-migration, when code checks the change renames a field's keyword and moves nothing else, or
-declares the Design citations the reader of the time took a task's text to make and, once compiled,
+migration, when code checks the change declares the Design citations the reader of the time took a task's text to make and, once compiled,
 hands every brief the text it had: the signature is then stated again at the new hash, as it was
-given, and the migration compiles it ([Migration from 4.x](#migration-from-4x)).
+given, and the migration compiles it ([Migrations](#migrations)).
 The user's branch and
 working tree change only by their explicit act: an inline task edits only the files it was asked to
 edit; dispatched work happens on branches and worktrees the framework owns and reaches the user's
@@ -180,8 +179,7 @@ which admits a decision only from compile, as the approved copy states it, and r
 that changes a contract or drops a realised decision; the runner's confinement of every agent to
 its worktree, its role's writes and its commands, and its watch on the user's checkout
 ([The agent runner](#the-agent-runner), [Role rules](#role-rules)), with the series' `role-breach`
-behind it; `rename` in `tools/migrate-expects.mjs`, which carries a signature only over a change it
-finds to be the field keyword alone, and `declare` in `tools/migrate-design-cites.mjs`, only over
+behind it; `declare` in `tools/migrate-design-cites.mjs`, which carries a signature only over
 declarations it proves hand every brief the Design text it had; `lib/verify.mjs`, which refuses to run outside
 a linked worktree; `land`, which refuses over an open escalation, a park or a dirty tree.
 
@@ -932,16 +930,10 @@ sent where is the routing table (`ROUTES`):
   round}` is recorded before the recipient is resumed — by the boundary that decided it, before it
   returns, once per node, thread, round and `msg` — and the call that delivers it names it in
   `carries`. In an execution it is a node event naming its execution; one recorded with an empty
-  execution (only the migration writes one) is delivered by the next execution that runs its
-  thread. A dropped message kind is withdrawn (`withdrawn`, `withdrawnEvent` in
-  `lib/conversation.mjs`): a thread's messages are those no `withdrawn` names (`threadMessages`), and
-  preflight refuses an execution holding any other message it has no template for
-  (`messages_unrenderable`), so no session's prompt is built over a kind this version cannot say.
-  The refusal names the command that clears it: `migrationOf` maps each kind to the migration that
-  handles it, `tools/migrate-messages.mjs`, which withdraws any kind, unless `DROPPED` maps the kind
-  to a migration of its own because dropping it took more than its messages. A release that drops a
-  kind therefore needs no migration of its own unless it needs more than the withdrawal, and then
-  adds its `DROPPED` row. A declined request that was not an implementer's `needs_tests` is no message: sending
+  execution is delivered by the next execution that runs its thread. A thread's messages are every
+  `message` recorded to it (`threadMessages`). A release that drops a message kind raises
+  `STORE_VERSION`, and its store migration rewrites the messages of that kind out
+  ([Migrations](#migrations)), so no session's prompt is built over a kind this version cannot say. A declined request that was not an implementer's `needs_tests` is no message: sending
   the same request again would end the conversation, so it escalates `tests_declined`. A resumed
   call is sent every message on its thread no `dispatched` line carried yet, batched into one
   prompt; a message is delivered once a `dispatched` line carries it, and a carrier that never
@@ -1223,6 +1215,7 @@ nothing outside compile calls `addNodes`.
   config.json                     {max_parallel, max_agents, claude_cli, guidance, design_spend_multiple},
                                   edited by the user
   .state/
+    store.json                    the store's version stamp, {version} ([Store stamp](#store-stamp))
     seq, .lock                   the project-wide counter and mutex
     slots/                        the parallelism pool, shared by every execution (see Scheduling)
     runs/<run>/                   one program run outside an execution: run.json, heart.jsonl, state.jsonl with
@@ -2853,7 +2846,7 @@ attached).
 
 | boundary | steps |
 |---|---|
-| **preflight** | refuse what cannot run — a git older than 2.38 (`git_too_old`, `GIT_MIN` in `lib/store.mjs`: the series check reads `merge-tree --write-tree` and `log --remerge-diff`, [Role rules](#role-rules)), an effort it cannot read (`unreadable`), a folder that is no node (`no_such_node`), an effort root that is a leaf (`root_is_leaf`), a landed effort (`landed`), an execution whose envelope names another root (`wrong_root`), an execution holding a message no `withdrawn` names that this version has no template for (`messages_unrenderable`, [Conversations](#conversations)), and, writing a new envelope, a `base_ref` that names no commit (`no_base`) or a `commands_file` that is not readable JSON (`commands_unreadable`) — writing nothing; adopt or write the envelope (`execution.json`: base, dial, pace, and the commands the session wrote to `commands_file`); write the session's commands as command gotchas ([Gotchas](#gotchas)) — refusing `commands_unwritable`, naming each command the gotcha store refused, once the envelope is written, so a run again writes only what is missing; read every integration branch in scope for commits no record accounts for ([Outside work](#outside-work)), refusing `unreadable_branch` when git cannot read one; traceability; stop at `integration_lost` ([Outside work](#outside-work)) and then at `outside_work` before every other checkpoint, and never confirm past either, and then at a checkpoint not confirmed past ([Resume and checkpoints](#resume-and-checkpoints)), its lists (the overlapping executions, the gaps, the branches with their unaccounted commits) on its state line, for the session to read with `lib/status.mjs checkpoint`; on a resumed execution with no checkpoint, check whether the base moved under its leaves and write the ruler's brief and its record, and, with no checkpoint, write the brief on the drift of adopted records no ruling covers yet ([Landing and drift](#landing-and-drift)); free this execution's slots, its dead worktrees and merged leaves' worktrees (clean ones only — a dirty one is reported, never forced) |
+| **preflight** | refuse what cannot run — a git older than 2.38 (`git_too_old`, `GIT_MIN` in `lib/store.mjs`: the series check reads `merge-tree --write-tree` and `log --remerge-diff`, [Role rules](#role-rules)), an effort it cannot read (`unreadable`), a folder that is no node (`no_such_node`), an effort root that is a leaf (`root_is_leaf`), a landed effort (`landed`), an execution whose envelope names another root (`wrong_root`), a store whose stamp is not this version (`store_version`, [Store stamp](#store-stamp)), and, writing a new envelope, a `base_ref` that names no commit (`no_base`) or a `commands_file` that is not readable JSON (`commands_unreadable`) — writing nothing; adopt or write the envelope (`execution.json`: base, dial, pace, and the commands the session wrote to `commands_file`); write the session's commands as command gotchas ([Gotchas](#gotchas)) — refusing `commands_unwritable`, naming each command the gotcha store refused, once the envelope is written, so a run again writes only what is missing; read every integration branch in scope for commits no record accounts for ([Outside work](#outside-work)), refusing `unreadable_branch` when git cannot read one; traceability; stop at `integration_lost` ([Outside work](#outside-work)) and then at `outside_work` before every other checkpoint, and never confirm past either, and then at a checkpoint not confirmed past ([Resume and checkpoints](#resume-and-checkpoints)), its lists (the overlapping executions, the gaps, the branches with their unaccounted commits) on its state line, for the session to read with `lib/status.mjs checkpoint`; on a resumed execution with no checkpoint, check whether the base moved under its leaves and write the ruler's brief and its record, and, with no checkpoint, write the brief on the drift of adopted records no ruling covers yet ([Landing and drift](#landing-and-drift)); free this execution's slots, its dead worktrees and merged leaves' worktrees (clean ones only — a dirty one is reported, never forced) |
 | **schedule** | compute what to launch from the records (`lib/schedule.mjs`, see [Scheduling](#scheduling)); park a folder the user writes that has nothing planned (`needs_design`); approve a leaf the resume ladder finds measured green, with no review loop of its own and no approval standing; what a pass records is recorded and the launch computed again, until a pass records nothing |
 | **leaf-open** | acquire a slot, asked once (`no_slot` goes back to the program, which waits); ensure the parent's integration branch (lazily, refreshed from its own parent, each branch of the chain under its own lock in turn) and cut or attach the leaf's branch and worktree, brought up to that parent's head — a round a `rebase` message waits for leaves a conflicting refresh in the worktree for its producer, and an open run again takes that merge in progress as its own ([The judge](#the-judge)); compute the round — the round of a dispatch this execution started and never got back, else one past the latest; only a producer's or an auditor's dispatch is a round — its role from the records, its thread (resumed, fresh, or fresh on a raise, [Conversations](#conversations)), its tier and its permissions from its role ([Role rules](#role-rules)); build its thread brief; record `retried` when the round resumes a thread after the user's `retry` cleared the leaf's stop, and `notes` when the round starts a thread this execution never dispatched ([Conversations](#conversations)); a refusal escalates `open_refused` |
 | **leaf-close** | first put right what a verify cut off in the worktree left ([Verification](#verification)); read the producer's stored return — a round closed again with no `dispatch`, over the work a retry measures first, has none to read and is measured as no producer's ([Resume and checkpoints](#resume-and-checkpoints)); none, or a producer's with no string `status`, holds the leaf on a `role` fault, and an auditor's, which carries no status, reads as `done`: a park, an escalation, a request for the planner (or the `needs_respec` park of a folder the user writes), a `needs_tests` or a `declined` for another session is recorded and routed without measuring, and so is a return naming what it could not read (`unread`), but a path its `dispatched` line's `deny_read` holds, escalated `unread_reference` ([Producer returns](#producer-returns)); otherwise, a round that returned no commits included: measure nothing while a rebase merge the round opened is unconcluded (a `failures` message, `source: the rebase`, naming the unmerged paths; at a head the leaf was sent back at already, the rebase's among them, it escalates `merge_conflict`); commit a shell-less author's files its role may write (`authored`) (a close cut off after that commit finds it in git and journals it), and put every other uncommitted file back to the head; journal the series as `series-done`, from git, when the producer declared it done; measure by rigor — build, typecheck, its own tests, discriminator, declared mutations and named checks; write and delete the gotchas it returned, never a command one; compute the close decision and record it — the approval, the escalation, the next round's message (`failures`, `surviving_mutations`, `tests_ready`), a verify leaf's finding (the `needs_respec` park of a folder the user writes beside the leaf's escalation; under a planner's folder the finding is the route and the leaf is not escalated, [Replanning](#replanning)), every send-back through the loop guard (`sendBack` in `lib/boundaries/loop-guard.mjs`, [L2](#l2--states-end-work-counts-dont)): `fix_without_commits`, carrying the measured failures, when the round returned a head the leaf was already sent back at, unmoved — a test round's redeclared mutations count as moving it — and it still fails, `verify_not_converging` when the failures repeat the last verification send-back at a moved head, and failures an earlier one held marked to ask the leaf's convergence ruler; hand back `command_unknown` until an investigator of this execution has returned, and escalate it after; a cycle's consolidation round approves instead of any other decision, at its commit when it passes and on its revert otherwise ([Rigor](#rigor)); write the round's close record. What it reads of the rounds before spans executions, as a leaf's rounds do ([Resume and checkpoints](#resume-and-checkpoints)) |
@@ -4023,9 +4016,7 @@ is derived from it) · `message {thread, from, msg, payload, round, guard?}` (a 
 thread's session, [Conversations](#conversations); its `execution` is `''` only on one the migration
 recorded, and no status is derived from it; a send-back carries `guard {kind, key, at}`, the loop
 it belongs to, its state and the head it was sent at, which the loop guard compares the next by,
-[L2](#l2--states-end-work-counts-dont)) · `withdrawn {messages[], why}` (the seqs of messages a
-migration retired because the version that reads them has no template for their kind, with the
-messages' `execution`; no session is told them again, and no status is derived from it) · `paused
+[L2](#l2--states-end-work-counts-dont)) · `paused
 {by}` and `resumed {by}` (node `''`, the session's pause of the execution it names and its end,
 `pause` and `resume` under [Session calls](#session-calls); no status is derived from them). A boundary appends an event only while it is not
 already the node's word (`freshRecords` in `lib/boundaries/records.mjs`, [Boundaries](#boundaries)); a
@@ -4366,6 +4357,20 @@ run outside an execution counts its own log the same way, under `runs/<run>/seq`
 `runs/<run>/.lock`; an execution's run has no counter of its own: its records take the effort's
 `seq`, and `appendRun` refuses an execution's run id.
 
+### Store stamp
+
+- **Owner:** `STORE_VERSION`, `storeVersion` and `mkdirState` in `lib/store.mjs`.
+- **Restated in:** each `tools/migrate-to-<v>.mjs`, which writes `{version: v}`; the `store_version`
+  row of `skills/develop/SKILL.md`.
+
+`.agentics/.state/store.json` is `{version}`, an integer: the format of every record and file
+under `.agentics/`. `mkdirState` writes it, at `STORE_VERSION`, when it gives a store its first
+state — the root's own `.state/` or an effort's — and never otherwise, so a store with no stamp is
+one that predates the stamp, read as version 0. Preflight refuses a store at any other version than
+`STORE_VERSION` (`store_version`): below it, naming each `tools/migrate-to-<v>.mjs` from the store's
+version up; above it, a store a newer plugin wrote. A change to what the store holds raises
+`STORE_VERSION` and ships the migration that rewrites a store into it.
+
 ### Verify payload
 
 - **Owner:** `blank()` and `verify()` in `lib/verify.mjs`.
@@ -4617,7 +4622,7 @@ integration review or survey lost), `declared` (what rests on a declaration — 
   `recordProbe`, `recordSolutions`), whose `runQuery` builds every query through `queryOf` in
   `lib/search/query.mjs`, the dialect the search tools share, a query's `scope` parts read as globs
   in the search glob dialect (`globOf`); `tools/migrate-glob-literal.mjs` reports the stored scopes
-  that dialect reads otherwise ([Migration from 4.x](#migration-from-4x)); written through
+  that dialect reads otherwise ([Migrations](#migrations)); written through
   `lib/ledger.mjs appendProject`, which mints a project-wide `seq` under `.agentics/.state/.lock`.
 - **Restated in:** the judge return schemas in `lib/schemas.mjs`; the `effort-store`
   block in the design, challenge-idea and develop skills (the `cite` call).
@@ -4977,7 +4982,25 @@ which `recordCommands` writes as the investigator's.
 
 ---
 
-## Migration from 4.x
+## Migrations
+
+A store is at the version its stamp says ([Store stamp](#store-stamp)), and each
+`tools/migrate-to-<v>.mjs` brings a store at `v - 1` to `v`. Such a migration is a frozen copy: it
+spells out the formats it reads and writes as they were, imports from `lib/` nothing whose meaning
+a later change could move, and rewrites the records themselves, so the plugin reads the current
+format alone and keeps no reader of an older one. Liveness counts no migration as a consumer
+([Self-checks](#self-checks)). Each dry-runs by default, applies with `--yes`, writes the stamp last,
+and does nothing to a store already at its version.
+
+`tools/migrate-to-1.mjs` brings a store that predates the stamp to version 1. In each effort's
+`events.jsonl` it drops every `withdrawn` event, every message one names and every message of a kind
+version 1 has no template for, so a thread's messages are read as they stand. In each stored return
+whose `unread` holds a line of text it types the line ([Producer returns](#producer-returns)): a
+blank one is dropped, one that is a single path becomes `{kind: doc, path}`, any other `{kind: doc,
+what}`. Every other line and file is kept byte for byte. It exits 1 for a store stamped past 1.
+
+The one-shots below predate the stamp and rewrite what a store's user must see or approve; each is
+run on its own, before or after `migrate-to-1`.
 
 `tools/migrate-legacy.mjs` is the one-shot copy of a repository's 3.2.0 layout into `.agentics/`:
 each effort's files into its `.state/`, its design documents into its `.legacy/`, and its slot
@@ -4989,22 +5012,6 @@ is the one-shot move of every worktree under `.claude/worktrees/` holding an `ag
 the bounded directory that branch names, with `git worktree move`, uncommitted work and all. Each
 refuses a target that exists, dry-runs by default, applies with `--yes`, and does nothing the
 second time; a 3.x or early-4.x store runs them in that order.
-
-`tools/migrate-expects.mjs`, run once after upgrading to 6.0.0, renames a task's `locus:` field to
-`expects:` in every spec of the repository's efforts. Code checks that the rewritten text differs
-by that keyword alone (`rename`); where the spec's hash before the rewrite was its signed one, its
-latest `approved` or `prepared` line is stated again at the new hash, every field kept and
-`carried_from` naming the hash it was given at, so the signature stands for the same words and no
-reader learns a new kind. It then compiles each effort it touched, so node records carry `expects`;
-a node line that still says `locus` reads as expecting nothing until then. Every `needs_locus`
-message, a kind 6.0.0 has no template for, is withdrawn, one `withdrawn` event per node and
-execution. It lists, for the user to `retry` or replan, every leaf not merged whose open stop is
-`locus_held` or `verify_oscillating`, whose latest close routed a `needs_locus`, or whose close
-recorded a `breach_reverted`: what each left behind (a held mutation on a file a revert took out, a
-stop nothing raises any more) is the user's to clear, and a merged leaf left nothing.
-A spec that still writes `locus:` is refused by the spec check, naming the migration. It dry-runs by
-default, applies with `--yes`, and a second run finds nothing to do; it exits 1 while a spec is
-refused, a compile failed or a withdrawal was refused.
 
 `tools/migrate-design-cites.mjs`, run once after upgrading to the release where a task's `cites`
 declares what its brief carries of the Design ([Spec format](#spec-format)), writes `cites:` on each
@@ -5027,15 +5034,6 @@ or a compile failed.
 `tools/migrate-contract-parks.mjs` clears the `contract_changed` parks an earlier version raised on
 an edit that left the contract as it was, read with a frozen copy of the contract reader those parks
 were raised under, so its meaning stays what it was whatever the live reader becomes.
-
-`tools/migrate-messages.mjs`, run once after upgrading past a release that dropped a message kind
-(5.6.1 dropped `continue_search` with the search rounds), withdraws in every effort each message
-this version has no template for and no `withdrawn` names yet, one `withdrawn` event per node and
-execution, so preflight no longer refuses the execution holding them and no session is told them
-again. It lists the ones no `dispatched` carried, which no session ever saw. A kind `DROPPED` maps
-to a migration of its own is left to it and listed with it. It dry-runs by default,
-applies with `--yes`, and a second run finds nothing to do; it exits 1 while such a kind is left or
-the ledger refused a withdrawal.
 
 `tools/migrate-glob-literal.mjs`, run once after upgrading to 5.5.0, reports on stored evidence
 scopes now that the search glob dialect reads brackets literally; it writes nothing. Stored query

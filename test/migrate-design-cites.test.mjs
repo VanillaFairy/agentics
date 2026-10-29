@@ -9,7 +9,7 @@
 //   migrate   a dry run writes nothing; `--yes` writes, and carries a signature only over a spec
 //             whose briefs code proved unchanged; a second run writes nothing
 //
-// Design: docs/DESIGN.md#migration-from-4x.
+// Design: docs/DESIGN.md#migrations.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

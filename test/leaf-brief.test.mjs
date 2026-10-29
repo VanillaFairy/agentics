@@ -111,18 +111,18 @@ test('the expected files and the reads are listed', (t) => {
   for (const p of ['src/api/parse.js', 'test/parse.test.mjs', 'src/api/types.js']) assert.ok(s.includes('- ' + p), p)
 })
 
-test("the part of its spec's Design a task's entry cites is handed in the brief, and the whole Design when it names the Design alone", (t) => {
+test("the part of its spec's Design a task's cites declares is handed in the brief, the whole Design for cites: Design, nothing for prose", (t) => {
   const repo = mkdtempSync(join(tmpdir(), 'agentics-leaf-brief-'))
   t.after(() => rmSync(repo, { recursive: true, force: true }))
-  const task = (name, context) => ['- **' + name + '** — task · realises: D1 · rigor: trivial', '  · expects: src/ports.ts',
-    '  Declare the ports', '  ' + context, '  - [ ] it typechecks — check: `tsc`'].join('\n')
+  const task = (name, cites, context) => ['- **' + name + '** — task · realises: D1 · rigor: trivial', '  · expects: src/ports.ts',
+    ...(cites ? ['  · cites: ' + cites] : []), '  Declare the ports', '  ' + context, '  - [ ] it typechecks — check: `tsc`'].join('\n')
   mkdirSync(join(repo, '.agentics/e1'), { recursive: true })
   writeFileSync(join(repo, '.agentics/e1/DESIGN.md'), ['# Ports', '', '## Intent', '', 'Ports.', '', '## Decisions', '',
     '| id | decision | why |', '|---|---|---|', '| D1 | Ports are typed. | Callers check. |', '', '## Design', '',
     '### Ports (`ports.ts`)', '', '```ts', 'interface Carries { payload(): Carried }', '### not a heading: inside the fence',
     'PORTS_TOKEN interface Proximity { tileOf(): Tile }', '```', '', '### Save', '', 'SAVE_TOKEN', '',
-    '## Plan', '', task('named', 'Bring `ports.ts` to the Design\'s "Ports" block, whole.'),
-    task('whole', 'Declare them exactly as this spec\'s Design states.'), task('none', 'Write them.'), '',
+    '## Plan', '', task('named', '"Ports"', 'Bring `ports.ts` to its block.'), task('whole', 'Design', 'Declare them as stated.'),
+    task('none', '', 'Bring `ports.ts` to the Design\'s "Ports" block, as this spec\'s Design states.'), '',
     '## Open questions', '', '## Evidence', ''].join('\n'))
   const leaf = (id) => ({ id, kind: 'leaf', title: 'Declare the ports', rigor: 'trivial', expects: ['src/ports.ts'], decisions: ['D1'],
     acceptance: [{ text: 'it typechecks', check: 'tsc', decisions: ['D1'] }] })
@@ -143,7 +143,7 @@ test("the part of its spec's Design a task's entry cites is handed in the brief,
   assert.ok(named.includes('.agentics/e1/DESIGN.md') && /never at its path/.test(named), 'names the spec, and says the worktree lacks it')
   const whole = section('whole')
   assert.ok(whole.includes('PORTS_TOKEN') && whole.includes('SAVE_TOKEN'), 'the whole Design')
-  assert.equal(section('none'), null, 'no section when nothing is cited')
+  assert.equal(section('none'), null, 'prose naming the Design cites nothing')
 })
 
 test("the effort store's files a leaf reads or cites are handed in the brief, its records never", (t) => {

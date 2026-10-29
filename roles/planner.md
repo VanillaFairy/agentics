@@ -116,7 +116,8 @@ Headings in this order: `# <title>`, `## Intent`, `## Decisions`, `## Design`, `
 - **Decisions**: the heading and nothing under it. A Decisions row in your spec is refused by the
   check, and the folder is parked for the user.
 - **Design**: the interfaces and data shapes the tasks build against, at this folder's level of
-  detail.
+  detail. Each contract an entry provides goes under its own `#### <contract>` heading, which that
+  `provides` names as its `"<part>"`; a task's `cites` names each part (`Design`: all) its executor reads.
 - **Plan**: the entries, in the grammar below.
 - **Open questions**: `- **lookup:** …` or `- **compost:** …`. A question only the user can
   answer is a `needs_decision` return, not a line here.
@@ -125,8 +126,8 @@ Headings in this order: `# <title>`, `## Intent`, `## Decisions`, `## Design`, `
 ```
 - **<name>** — task · realises: D1, a.D2 · after: <sibling>, /<path from the root>
   · rigor: <rigor> · role: <role> · expects: <path>, … · reads: <path>, … · runs: <command>, …
-  · provides: <contract> (<path>, …) · consumes: <contract> · dispatch: producer=sonnet/medium
-  · label: <the work in free text, at most 16 characters: World tests, not world-red>
+  · provides: <contract> (<path>, …) "<part>" · consumes: <contract> · cites: "<part>", …
+  · dispatch: producer=sonnet/medium · label: <the work in free text, at most 16 characters: World tests, not world-red>
   <title: one imperative line>
   <context: self-contained, for an executor who never saw your conversation>
   - [ ] <criterion> — check: `<command>`

@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import {
-  ENTRY_KEYS, ENTRY_KINDS, GRADES, SECTIONS, checkFolder, checkSpec, citedDesign, contractDefinition, entryId, hashSpec, parseSpec,
+  ENTRY_KEYS, ENTRY_KINDS, GRADES, SECTIONS, checkFolder, checkSpec, citedDesign, contractDefinition, declaredPart, designPart, entryId, hashSpec, parseSpec,
 } from '../lib/spec.mjs'
 import { specPath } from '../lib/store.mjs'
 
@@ -371,31 +371,52 @@ test('a task with no criterion is refused at its entry', () => {
   refusedAt(problemsOf(text), lineOf(text, '- **spec-parser**'), /criteri/)
 })
 
-test('a task citing a Design part the Design does not hold is refused at its entry; a ### heading or a passage inside it is not', () => {
-  const cite = (words) => problemsOf(swap(ROOT, '  Each refusal names its line.', '  ' + words)).filter((p) => /cites/.test(p.problem))
-  const ghost = swap(ROOT, '  Each refusal names its line.', '  Match the Design\'s "Ghost" block.')
-  refusedAt(problemsOf(ghost), lineOf(ghost, '- **spec-parser**'), /cites the Design's "Ghost".*does not hold/)
-  assert.deepEqual(cite('Match the Design\'s "Layout" block, whole.'), [], 'a ### heading')
-  assert.deepEqual(cite('Keep the Design\'s "one DESIGN.md per folder" rule.'), [], 'a passage inside the Design')
-  assert.deepEqual(cite('Declare it exactly as this spec\'s Design states.'), [], 'the Design whole')
-  const empty = swap(swap(ROOT, '### Layout', ''), 'One folder per sub-effort, one `DESIGN.md` per folder.', '')
-  const emptied = empty.replace(/```text[\s\S]*?```\n/, '')
-  const cited = swap(emptied, '  Each refusal names its line.', '  As this spec\'s Design states.')
-  refusedAt(problemsOf(cited), lineOf(cited, '- **spec-parser**'), /cites this spec's Design, which is empty/)
+test('a task cites its Design by a cites field, resolved to one part or refused at that line; prose naming the Design cites nothing', () => {
+  const cites = (value, text = ROOT) => swap(text, '  · ground: docs/DESIGN.md#storage', '  · ground: docs/DESIGN.md#storage\n  · cites: ' + value)
+  const citeProblems = (text) => problemsOf(text).filter((p) => /cites/.test(p.problem))
+  assert.deepEqual(citeProblems(cites('"Layout"')), [], 'a ### heading')
+  assert.deepEqual(citeProblems(cites('"layout", Design')), [], 'case aside, and the Design whole')
+  assert.deepEqual(citeProblems(cites('"Layout"', ROOT.replace('### Layout', '### Layout (lib/store.mjs)'))), [], 'a heading it starts before a space')
+  const ghost = cites('"Ghost"')
+  refusedAt(problemsOf(ghost), lineOf(ghost, '· cites:'), /cites "Ghost", which no ### or #### heading of this spec's Design answers to/)
+  const twice = cites('"Layout"', ROOT.replace('One folder per sub-effort', '#### Layout\n\nOne folder per sub-effort'))
+  refusedAt(problemsOf(twice), lineOf(twice, '· cites:'), /more than one ### or #### heading/)
+  const empty = ROOT.replace(/### Layout[\s\S]*?(?=## Plan\n\n- \*\*store)/, '')
+  assert.equal(parseSpec(empty).sections.Design.body, '', 'the Design emptied')
+  refusedAt(problemsOf(cites('Design', empty)), lineOf(cites('Design', empty), '· cites:'), /cites this spec's Design, which is empty/)
+  refusedAt(problemsOf(cites('Layout')), lineOf(cites('Layout'), '· cites:'), /cites names Design, or a "<part>" of it in double quotes/)
+  const prose = swap(ROOT, '  Each refusal names its line.', '  Match the Design\'s "Ghost" block. Design the save format.')
+  assert.deepEqual(citeProblems(prose), [], 'a sentence is prose, never a citation')
+  assert.deepEqual(citedDesign(parseSpec(prose), entry(parseSpec(prose), 'spec-parser')).parts, [])
+  const onSub = swap(ROOT, '  The store computes every path; nothing else types one.', '  · cites: "Layout"\n  The store computes every path; nothing else types one.')
+  refusedAt(problemsOf(onSub), lineOf(onSub, '- **store-layout**'), /cites is a task's field/)
 })
 
-test('citedDesign carries the ### part a task names, or the whole Design when it names the Design alone', () => {
-  const spec = (context) => {
-    const parsed = parseSpec(swap(ROOT, '  Each refusal names its line.', '  ' + context), { file: 'DESIGN.md' })
-    return citedDesign(parsed, parsed.entries.find((e) => e.name === 'spec-parser'))
+test("citedDesign carries each part a task's cites declares, a #### part to its next heading at its level or above, or the whole Design", () => {
+  const DESIGN = '### Ports\n\nTwo ports.\n\n#### Den\n\nA den is set up once.\n\n#### Proximity\n\nFed by the game.\n\n### Store\n\nOne folder.\n'
+  const spec = (value) => {
+    const text = swap(ROOT.replace(/### Layout[\s\S]*?(?=## Plan\n\n- \*\*store)/, DESIGN + '\n'), '  · ground: docs/DESIGN.md#storage', '  · ground: docs/DESIGN.md#storage\n  · cites: ' + value)
+    const parsed = parseSpec(text, { file: 'DESIGN.md' })
+    return citedDesign(parsed, entry(parsed, 'spec-parser'))
   }
-  const part = spec('Match the Design\'s "Layout" block.')
-  assert.deepEqual(part.parts.map((p) => p.heading), ['Layout'])
-  assert.match(part.parts[0].text, /^### Layout\n\nOne folder per sub-effort/)
-  const whole = spec('As this spec\'s Design states.')
+  assert.deepEqual(spec('"Den"').parts.map((p) => p.text), ['#### Den\n\nA den is set up once.'])
+  assert.deepEqual(spec('"Ports"').parts.map((p) => p.text), ['### Ports\n\nTwo ports.\n\n#### Den\n\nA den is set up once.\n\n#### Proximity\n\nFed by the game.'])
+  assert.deepEqual(spec('"Store", "Den", "Store"').parts.map((p) => p.heading), ['Store', 'Den'], 'each part once, in order')
+  const whole = spec('"Den", Design')
   assert.deepEqual(whole.parts.map((p) => p.heading), [''])
-  assert.match(whole.parts[0].text, /### Layout[\s\S]*# not a heading/)
-  assert.deepEqual(spec('No citation here.').parts, [])
+  assert.equal(whole.parts[0].text, DESIGN.trim())
+})
+
+test('designPart resolves an exact key or a lone prefix before a space or a bracket, and refuses none or many', () => {
+  const parts = ['Ports (critters/ports.ts)', 'Den', 'Den [v2]', 'Store', 'Store layout'].map((heading) => ({ heading, text: heading }))
+  assert.equal(designPart(parts, 'ports').part.heading, 'Ports (critters/ports.ts)')
+  assert.equal(designPart(parts, 'Den').part.heading, 'Den', 'an exact key wins over a prefix')
+  assert.equal(designPart(parts, '`Store`').part.heading, 'Store', 'markup aside')
+  assert.deepEqual(designPart(parts, 'Por'), { problem: 'none' }, 'a prefix ends before a space or a bracket')
+  assert.deepEqual(designPart(parts, ''), { problem: 'none' })
+  assert.deepEqual(designPart([...parts, { heading: 'den', text: '' }], 'Den'), { problem: 'many' })
+  assert.deepEqual(designPart(parts.filter((p) => p.heading !== 'Store'), 'Store'), { part: parts[4] }, 'a lone prefix')
+  assert.deepEqual(designPart([{ heading: 'Ports (a)', text: '' }, { heading: 'Ports [b]', text: '' }], 'Ports'), { problem: 'many' })
 })
 
 test('a planner-written spec with a Decisions row is refused at the row', () => {
@@ -657,16 +678,34 @@ test("checkFolder refuses a task whose text or recipe names a project script its
     'the recipe is its first fenced script; prose and later lines are not asked for')
 })
 
-test('contractDefinition reads what names the contract: its declarations and the paragraphs naming them, not the text beside them', () => {
-  const design = (extra = '', den = '  setup(): void;', note = 'A den is set up once.') => [
-    '# Ports', '', '## Intent', '', 'Ports.', '', '## Decisions', '', '## Design', '', '### Ports', '', '```ts',
-    'interface Den {   // den-port: what a controller drives', den, '}', 'interface Proximity { tileOf(): Tile }', '```', '',
-    'Every `Den` is homed in one area. ' + note, '', 'Proximity is fed by the game.' + extra, '',
-    '## Plan', '', '- **burrow** — task · rigor: trivial · provides: den-port (src/den.ts)', '  Build it', '  - [ ] it builds — check: `tsc`', '',
+test('contractDefinition is the providers and the declared part, or the whole Design when none is declared; it never narrows by what the text names', () => {
+  const design = ({ den = 'A den is set up once.', other = 'Proximity is fed by the game.', part = ' "Den"', paths = 'src/den.ts' } = {}) => [
+    '# Ports', '', '## Intent', '', 'Ports.', '', '## Decisions', '', '## Design', '', '### Ports', '',
+    '#### Den', '', 'interface Den { setup(): void }  // den-port, src/den.ts', '', den, '', '#### Proximity', '', other, '',
+    '## Plan', '', '- **burrow** — task · rigor: trivial · provides: den-port (' + paths + ')' + part, '  Build it', '  - [ ] it builds — check: `tsc`', '',
     '## Open questions', '', '## Evidence', '',
   ].join('\n')
-  const def = (text) => contractDefinition(parseSpec(text), 'den-port')
-  assert.equal(def(design(' Its listener may run inside a drain.')), def(design()), 'a paragraph about another port moves nothing')
-  assert.notEqual(def(design('', '  setup(): void; // twice throws')), def(design()), 'the declaration itself')
-  assert.notEqual(def(design('', undefined, 'A den is set up twice.')), def(design()), 'a paragraph naming what it declares')
+  const def = (text, part = declaredPart(parseSpec(text), 'den-port')) => contractDefinition(parseSpec(text), 'den-port', part)
+  assert.equal(declaredPart(parseSpec(design()), 'den-port'), 'Den')
+  assert.equal(def(design({ other: 'Proximity may run inside a drain.' })), def(design()), 'text outside the declared part moves nothing')
+  assert.notEqual(def(design({ den: 'A den is set up twice.' })), def(design()), 'the declared part')
+  assert.notEqual(def(design({ paths: 'src/den2.ts' })), def(design()), 'a provider\'s paths')
+  const whole = { part: '' }
+  assert.equal(declaredPart(parseSpec(design(whole)), 'den-port'), '')
+  assert.notEqual(def(design({ ...whole, other: 'Proximity may run inside a drain.' })), def(design(whole)),
+    'no part declared: the whole Design, even a paragraph that names neither the contract nor its files')
+  assert.equal(def(design().replace('#### Den', '#### Lair'), 'Den'), null, 'a part the text does not hold is no definition')
+})
+
+test('a provided contract may declare its part; one the Design does not answer, or an empty one, is refused at the provides line', () => {
+  const provides = (value) => ROOT.replace('provides: store-paths (lib/store.mjs, lib/effort.mjs)', 'provides: ' + value)
+  const parsed = parseSpec(provides('store-paths (lib/store.mjs, lib/effort.mjs) "Layout", other-api (lib/other.mjs)'))
+  assert.deepEqual(parsed.problems, [])
+  assert.deepEqual(entry(parsed, 'store-layout').provides, [
+    { name: 'store-paths', paths: ['lib/store.mjs', 'lib/effort.mjs'], part: 'Layout' }, { name: 'other-api', paths: ['lib/other.mjs'] }])
+  assert.deepEqual(problemsOf(provides('store-paths (lib/store.mjs) "Layout, the store"')).filter((p) => /provides/.test(p.problem)).map((p) => p.problem),
+    ['store-layout provides store-paths "Layout, the store", which no ### or #### heading of this spec\'s Design answers to'], 'a comma inside the quotes is the part\'s')
+  const ghost = provides('store-paths (lib/store.mjs) "Ghost"')
+  refusedAt(problemsOf(ghost), lineOf(ghost, '- **store-layout**'), /store-layout provides store-paths "Ghost", which no ###/)
+  refusedAt(parseSpec(provides('store-paths (lib/store.mjs) ""')).problems, lineOf(ROOT, '- **store-layout**'), /not ""/)
 })

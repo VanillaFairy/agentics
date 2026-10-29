@@ -227,8 +227,16 @@ refuse an unknown flag as `bad_arg` (below, and [Session calls](#session-calls))
 conclusion or any other text a session hands a program beyond one line goes as a file
 (`survey --prior-file`, `--read-file`, `--question-file`, `--criteria-file`, …), never as a flag's value.
 
+When code must slice prose, the spec names the slice by a structural handle (a Design part a task
+`cites` or a `provides` declares, [Spec format](#spec-format)). Code resolves it exactly or refuses.
+An undeclared slice is the whole. A pattern over prose or model text may refuse or widen, never
+narrow. Model text is matched only as an exact handle or a typed field (a producer's `unread`
+entries, [Producer returns](#producer-returns)).
+
 **Why:** a model that retypes bytes is slow, costly and lossy in proportion to their length, and
-a checksum over what it typed only turns the loss into a retry.
+a checksum over what it typed only turns the loss into a retry. A pattern that narrows drops,
+silently, whatever its author did not foresee; one that refuses or widens fails loud or costs only
+context.
 
 ### P3 — State is derived; records are written as things happen
 
@@ -813,11 +821,11 @@ in the sections `Task`, `Acceptance criteria`, `Decisions realised`, `Expected f
 `Evidence`, `Gotchas`, `Measures`, `Commands`, `Worktree` and `Repository guidance`: the node, the
 decisions it realises, the files it expects to change (a prediction, never a limit) and those it
 reads, a test round of a green or an audit also the test files the red's branch changed
-(`cycleTests` in `lib/integration.mjs`); then, under `Spec Design` and only when its entry cites
-the Design of the spec that holds it (`designCitedBy` and `citedDesign` in `lib/spec.mjs`), each
-`### ` part of that Design the entry names, or the whole Design when it names the Design alone or a
-passage no heading answers to, from the text compile last kept for the folder: a producer, and the
-reviewer handed its brief, can never be told to match a document its worktree does not hold; then,
+(`cycleTests` in `lib/integration.mjs`); then, under `Spec Design` and only when its entry's `cites`
+declares any ([Spec format](#spec-format)), each part of the Design of the spec that holds it the
+entry cites, or the whole Design for `cites: Design` (`designCitedBy` and `citedDesign` in
+`lib/spec.mjs`), from the text compile last kept for the folder: a producer, and the reviewer handed
+its brief, can never be told to match a document its worktree does not hold; then,
 under `Effort files` and only when there are any,
 the text of each file under the effort's store (`.agentics/<effort>/`, its `.state/` records
 excepted) that the leaf reads or its intent or context cites, read from the main checkout: the store
@@ -1294,11 +1302,12 @@ edited since approval is left out, and develop keeps the last approved graph, bu
 node still takes what its parent's entry says of it (`realises`, `after`, contracts, ground,
 context): those are the parent spec's to say. When a spec is
 approved again with other text, compile parks every consumer of a contract whose definition the
-edit changed (`contract_changed`) — the entries that provide it with their paths, and what the
-Design says of it: a `### ` part whose heading names it, whole; elsewhere the declarations on lines
-naming it or one of its files, and each paragraph or line of code naming the contract, one of those
-files or one of those declarations; the whole Design when nothing names it (`contractDefinition` in
-`lib/spec.mjs`), compared with the text it last compiled; a plan-only edit parks no consumer — gives every node realising a changed decision a `decision_changed`
+edit changed (`contract_changed`) — the entries that provide it with their paths, and the part of
+the Design its `provides` declares, or the whole Design when it declares none (`contractDefinition`
+in `lib/spec.mjs`), the text it last compiled and the text now both read under the declaration as it
+stands now (`declaredPart`); a part the kept text does not hold counts as changed, and a plan-only
+edit parks no consumer. No pattern over the Design's prose ever narrows a definition: code slices
+only by the part a spec declares — gives every node realising a changed decision a `decision_changed`
 revision, parks the folder when work under it was dispatched (`spec_changed`), and retires the
 entries it no longer lists — refusing, by name, one with dispatched or merged work. A parked node
 whose spec was approved or prepared after the park gets a new revision (`answered`), which clears
@@ -4113,19 +4122,26 @@ root and `<folder id with / as .>.D<n>` below it. Open questions: `- **blocking:
 ```
 
 Kinds: `sub-effort`, `task`, `deferred`, `dropped`. Keys: `realises`, `after` (a name in the same
-plan, or `/a/b` from the root folder), `provides` (`<name> (<path>, …)`), `consumes`, `ground`;
+plan, or `/a/b` from the root folder), `provides` (`<name> (<path>, …) "<part>"`, the part optional), `consumes`, `ground`;
 `author` (`you` or `planner`) and `shared` on a sub-effort; `rigor`, `role`, `expects` (optional), `reads`,
 `runs` (the project commands the work runs beyond its role's and its checks, each named literally
-and without `*`: ``runs: `npm run asset:rename` ``) and `dispatch` (`producer=<model>/<effort>, reviewer=<model>/<effort>`) on a task,
+and without `*`: ``runs: `npm run asset:rename` ``), `cites` (`Design | "<part>", …`) and `dispatch` (`producer=<model>/<effort>, reviewer=<model>/<effort>`) on a task,
 which also needs a criterion; `label` on either, the node's visible name. A node's id is its path and carries its
 parents; the label names the work done there in free text for people, at most 16 characters so
 it fits a node's block in the viewer (`foundations/world/world-red` is shown as `World tests`). The
 viewer draws the label, and the last id segment where none was written. A checked box is refused.
-Headings and forms inside a fenced block are prose. A task's title and context cite the spec's
-Design as `the Design` (the capitalised word), and a part of it as `the Design's "<name>"`, `"<name>"
-block of the Design` or `Design › <name>`, where `<name>` is a `### ` heading of the Design or its
-start before a space or a bracket; its brief carries what it cites ([Briefs and returns](#briefs-and-returns)).
-A task citing a name the Design does not hold, or a Design that is empty, is refused at its entry. So is a task whose
+Headings and forms inside a fenced block are prose. A **part** of the Design is a `###` or `####`
+heading of it outside a fence, and runs from that heading to the next heading at its level or above;
+a quoted `"<part>"` names one by its key — the heading, case, markup and spacing aside — or by a
+prefix of it that ends before a space or a bracket (`"Ports"` names `### Ports (critters/ports.ts)`),
+and an exact key wins over a prefix (`designPart` in `lib/spec.mjs`). A task declares what it cites of
+its spec's Design in `cites`: `Design` for the whole of it, each `"<part>"` for that part; its brief
+carries what it cites ([Briefs and returns](#briefs-and-returns)), and a sentence of its title or
+context that mentions the Design cites nothing. A contract's `"<part>"` on `provides` is the part of
+this spec's Design that defines it ([Specs, approval and compile](#specs-approval-and-compile)); a
+contract with none is defined by the whole Design. A declared part that no heading answers to, or
+more than one does, a `cites: Design` over an empty Design, and an empty `""` are refused at the
+line that declares them. So is a task whose
 title or context names `npm run <script>`, or that reads a recipe (`.claude/skills/<x>/SKILL.md`, a
 `.claude/commands/` file) whose first fenced script is one, when its `runs` lists no such script and
 the effort's established commands and its own criterion checks do not run it (`runsProblems` in

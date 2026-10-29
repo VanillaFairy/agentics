@@ -395,6 +395,30 @@ test('re-approving a folder that provides a contract parks its consumers outside
   assert.notEqual(readTree(repo, E).status.get('api/parse').status, 'parked', 'its own entries were re-approved with it')
 })
 
+/** The root fixture with `reload` consuming config-type, which api's `types` provides, its Design in two parts. */
+const PARTED_ROOT = ROOT.replace('realises: D3 · after: api · rigor: tdd', 'realises: D3 · after: api · consumes: config-type · rigor: tdd')
+const partedApi = ({ loader = '`load(path)`, then `parse(text)`.', type = 'The config type is a plain object.', declared = ' "Config type"', heading = '### Config type' } = {}) =>
+  API.replace('`load(path)`, then `parse(text)`.', '### Loader\n\n' + loader + '\n\n' + heading + '\n\n' + type)
+    .replace('provides: config-type (src/api/types.js)', 'provides: config-type (src/api/types.js)' + declared)
+
+test('a declared part moves its consumers only when that part changed, both texts read under the declaration as it stands', () => {
+  const reloadParked = (from, to) => {
+    const repo = effort({ '.': PARTED_ROOT, api: from })
+    approve(repo, '.')
+    approve(repo, 'api')
+    compiled(repo)
+    write(repo, 'api', to)
+    approve(repo, 'api')
+    return compiled(repo).parked.some((p) => p.node === 'reload' && p.reason === 'contract_changed')
+  }
+  const frozen = '`load(path)` returns a frozen object.'
+  assert.equal(reloadParked(partedApi(), partedApi({ loader: frozen })), false, 'an edit outside the part')
+  assert.equal(reloadParked(partedApi(), partedApi({ type: 'The config type is frozen.' })), true, 'an edit of the part')
+  assert.equal(reloadParked(partedApi({ declared: '' }), partedApi()), false, 'a declaration added over a part the kept text holds unchanged')
+  assert.equal(reloadParked(partedApi({ declared: '', heading: '### Config' }), partedApi()), true, 'a part the kept text lacks counts as changed')
+  assert.equal(reloadParked(partedApi({ declared: '' }), partedApi({ declared: '', loader: frozen })), true, 'no part declared: the whole Design')
+})
+
 test('a changed decision gives every node that realises it a decision_changed revision', () => {
   const repo = effort()
   approve(repo, '.')

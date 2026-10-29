@@ -294,6 +294,23 @@ test('a fresh session whose brief is past its room is refused by its largest par
   assert.ok(out.bytes > out.budget, JSON.stringify(out))
 })
 
+test('a resumed session is sent its message however far its thread has grown past the room', async (t) => {
+  const settled = { output: { status: 'settled', dispositions: [] } }
+  const rounds = 5
+  const rig = rigFor(t, { script: { 'planner||planner:p': Array.from({ length: rounds }, () => settled) } })
+  const threadBrief = '# Plan folder p\n\n## Findings to settle\n\n(the findings are the messages after this brief)'
+  const planner = { role: 'planner', schema: 'planner_settle', thread: 'planner:p', threadBrief }
+  await dispatch(rig.ctx, { ...planner, round: 1, brief: threadBrief })
+  const third = Math.floor(briefRoomOf('planner') / 3)
+  for (let round = 2; round <= rounds; round++) {
+    const out = await deliver(rig.ctx, { ...planner, round, msg: 'findings', payload: { findings: [{ id: 'P' + round, severity: 'gap', claim: 'x'.repeat(third) }] } })
+    assert.equal(out.status, 'returned', 'round ' + round + ': ' + JSON.stringify(out))
+  }
+  const grown = rig.log.entries().filter((e) => e.kind === 'message' && e.thread === 'planner:p').length * third
+  assert.ok(grown > briefRoomOf('planner'), 'the fixture: the thread holds more than a fresh brief may')
+  assert.equal(rig.calls.length, rounds)
+})
+
 test("a call that fails is failed with the runner's cause", async (t) => {
   const rig = rigFor(t, {
     script: {

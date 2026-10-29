@@ -11,7 +11,8 @@
 // `head_sha`, and loses `all`; each `verify-observed` line of each execution's `journal.jsonl` has
 // every `discriminator` entry given what it lacks of `blob`, its `test_id`'s blob at the line's
 // `head_sha`, and `base_blob`, the same at its `base_sha`. A blob git cannot find (a commit gone, or
-// a file the base lacks) is '', which no net or measured head matches: that net stands nowhere. Every
+// a file the base lacks) is '', which no net or measured head matches: that net stands nowhere, and
+// each net or entry keyed to no head blob is listed in the output's `voided`, dry run or not. Every
 // other line is kept byte for byte, each log rewritten under its effort's lock. Then the store is
 // stamped `{version: 2}`. The default is a dry run; `--yes` writes. A store at 2 is left alone, so a
 // second run writes nothing; exit 1 for a store at any version but 1 or 2, or a file it could not
@@ -80,17 +81,27 @@ export function specsOf(text) {
   return specs
 }
 
-/** Pure. A log's text with its nets and discriminator entries keyed by blob (`blobs`, by spec), and how many lines changed. */
+/**
+ * Pure. A log's text with its nets and discriminator entries keyed by blob (`blobs`, by spec), how
+ * many lines changed, and each net or entry it keyed to no head blob, which stands nowhere
+ * (`voided[{node, file}]`, once per node and file).
+ */
 export function logRewrite(text, blobs) {
   let changed = 0
+  const voided = new Map()
   const blob = (head, path) => blobs.get(head + ':' + path) || ''
+  const headBlob = (r, path) => {
+    const b = blob(r.head_sha, path)
+    if (!b) voided.set(JSON.stringify([r.node, path]), { node: r.node, file: path })
+    return b
+  }
   const lines = text.split('\n').map((line) => {
     const r = parsed(line)
     if (!r || (r.kind !== 'nets' && r.kind !== 'verify-observed')) return line
     if (r.kind === 'nets') {
       const { all, ...rest } = r
       const nets = (Array.isArray(r.nets) ? r.nets : []).map((n) => (n && typeof n.file === 'string' && !('blob' in n)
-        ? { file: n.file, blob: blob(r.head_sha, n.file), why: n.why } : n))
+        ? { file: n.file, blob: headBlob(r, n.file), why: n.why } : n))
       const next = JSON.stringify({ ...rest, nets })
       if (next === line) return line
       changed++
@@ -101,14 +112,15 @@ export function logRewrite(text, blobs) {
     if (!entries.some(unkeyed)) return line
     changed++
     return JSON.stringify({ ...r, discriminator: entries.map((d) => (unkeyed(d)
-      ? { test_id: d.test_id, blob: blob(r.head_sha, d.test_id), base_blob: blob(r.base_sha, d.test_id), ...d } : d)) })
+      ? { test_id: d.test_id, ...('blob' in d ? {} : { blob: headBlob(r, d.test_id) }), base_blob: blob(r.base_sha, d.test_id), ...d } : d)) })
   })
-  return { text: lines.join('\n'), changed }
+  return { text: lines.join('\n'), changed, voided: [...voided.values()] }
 }
 
 /**
- * What the migration would do to the store of `repo`: `{from, logs[{path, lines}], refused[{path,
- * why}]}`; with `write`, it does it.
+ * What the migration would do to the store of `repo`: `{from, logs[{path, lines}], voided[{path, node,
+ * file}], refused[{path, why}]}`, `voided` each net or measured file it keys to no blob, so the user
+ * sees what stands nowhere before stamping; with `write`, it does it.
  */
 export function migrate(repo, { write = false } = {}) {
   const checkout = mainCheckout(resolve(repo))
@@ -116,7 +128,7 @@ export function migrate(repo, { write = false } = {}) {
   const stampFile = join(store, '.state', 'store.json')
   const stamp = existsSync(stampFile) ? parsed(readFileSync(stampFile, 'utf8')) : null
   const at = stamp && Number.isInteger(stamp.version) ? stamp.version : 0
-  const out = { from: at, logs: [], refused: [] }
+  const out = { from: at, logs: [], voided: [], refused: [] }
   if (at === VERSION || !existsSync(store)) return out
   if (at !== VERSION - 1) {
     return { ...out, refused: [{ path: stampFile, why: 'the store is at version ' + at + ': this brings a store at ' + (VERSION - 1) + ' to ' + VERSION }] }
@@ -131,6 +143,7 @@ export function migrate(repo, { write = false } = {}) {
         const r = logRewrite(text, blobsOf(checkout, specsOf(text)))
         if (r.changed === 0) continue
         out.logs.push({ path, lines: r.changed })
+        out.voided.push(...r.voided.map((v) => ({ path, ...v })))
         if (write) replace(path, r.text)
       }
     }

@@ -5049,8 +5049,11 @@ net of a `nets` event `blob`, its file's blob at the event's `head_sha`, and dro
 each `discriminator` entry of a `verify-observed` line what it lacks of `blob`, its file's blob at
 the line's `head_sha`, and `base_blob`, the same at its `base_sha` ([Verify
 payload](#verify-payload)). A blob git cannot find, its commit gone, is `''`, which no measurement
-matches. Each log is rewritten under its effort's lock, every other line kept
-byte for byte. It exits 1 for a store at any version but 1 or 2.
+matches: a net keyed so stands nowhere, and an approved leaf it covered is no longer named
+`undiscriminated`. Its output lists each net and measured file it keys to no head blob
+(`voided[{path, node, file}]`), the dry run included, so the user sees them before the store is
+stamped. Each log is rewritten under its effort's lock, every other line kept byte for byte. It
+exits 1 for a store at any version but 1 or 2.
 
 The one-shots below predate the stamp and rewrite what a store's user must see or approve; each is
 run on its own, before or after `migrate-to-1`.

@@ -1,8 +1,8 @@
 // test/migrate-to-2.test.mjs — tools/migrate-to-2.mjs from the command line over a real repository:
-// a dry run writes nothing, `--yes` keys each net and discriminator entry by its file's blob at the
-// head it names, and an entry by its file's blob at its base too, and stamps the store, a second run
-// writes nothing, and a store at another version
-// than 1 is refused.
+// a dry run names each net and entry it would key to no blob and writes nothing, `--yes` keys each
+// net and discriminator entry by its file's blob at the head it names, and an entry by its file's
+// blob at its base too, and stamps the store, a second run writes nothing, and a store at another
+// version than 1 is refused.
 //
 // Design: docs/DESIGN.md#migrations.
 
@@ -46,6 +46,7 @@ function v1Store(t) {
   const events = [
     { seq: 1, kind: 'nets', node: 'a', execution: stamp, head_sha: head, nets: [{ file: 'test/x.test.mjs', why: 'held' }], all: true, by: 'session' },
     merged,
+    { seq: 6, kind: 'nets', node: 'b', execution: stamp, head_sha: gone, nets: [{ file: 'test/x.test.mjs', why: 'held' }], by: 'session' },
   ]
   writeFileSync(join(state, 'events.jsonl'), events.map((e) => JSON.stringify(e) + '\n').join(''))
   const entry = { test_id: 'test/x.test.mjs', adds_test: true, failed_on_base: false, passes_now: true }
@@ -68,13 +69,20 @@ test('a dry run lists the logs and writes nothing; --yes keys nets and entries b
   const before = [readFileSync(s.events, 'utf8'), readFileSync(s.journal, 'utf8')]
   const dry = run(s.repo)
   assert.equal(dry.status, 0, dry.stdout + dry.stderr)
-  assert.deepEqual(JSON.parse(dry.stdout).logs.map((l) => l.lines), [1, 2])
+  const planned = JSON.parse(dry.stdout)
+  assert.deepEqual(planned.logs.map((l) => l.lines), [2, 2])
+  const voided = (out) => out.voided.map((v) => [v.path.endsWith('journal.jsonl') ? 'journal' : 'events', v.node, v.file])
+  assert.deepEqual(voided(planned), [['events', 'b', 'test/x.test.mjs'], ['journal', 'a', 'test/x.test.mjs']],
+    'each net and measured file keyed to no blob is shown before the store is stamped')
   assert.deepEqual([readFileSync(s.events, 'utf8'), readFileSync(s.journal, 'utf8')], before)
   assert.equal(storeVersion(s.repo), 1)
 
-  assert.equal(run(s.repo, '--yes').status, 0)
-  const [nets, merged] = lines(s.events)
+  const written = run(s.repo, '--yes')
+  assert.equal(written.status, 0)
+  assert.deepEqual(voided(JSON.parse(written.stdout)), voided(planned))
+  const [nets, merged, gonenet] = lines(s.events)
   assert.deepEqual(nets.nets, [{ file: 'test/x.test.mjs', blob: s.blob, why: 'held' }])
+  assert.deepEqual(gonenet.nets, [{ file: 'test/x.test.mjs', blob: '', why: 'held' }])
   assert.equal('all' in nets, false, 'version 2 derives all from the measurement')
   assert.deepEqual(merged, s.merged)
   const [at, gone, series] = lines(s.journal)

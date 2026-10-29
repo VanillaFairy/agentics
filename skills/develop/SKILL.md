@@ -429,7 +429,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e> --node
 | `unread_reference` | always — the producer could not read what `detail` names: when the node's brief now carries it, retry; else put the text in the entry or in a Design part its `cites` names, have the edit ruled (`respec.md`), then retry |
 | `fails_full_suite`, `verify_not_converging` | its failures are timeouts or load faults that pass alone: retry once; the same again is the user's |
 | `git_hung` | never — a git hung past its ceiling twice at the same head: the user's machine (antivirus scanning the repository, a network drive); retry once they dealt with it |
-| `discriminator_undecidable` | it comes only after the file went back to the producer once and still passes at base. A file that only pins behaviour that held at base: rule it a net (below). One that should fail at base, for behaviour the leaf adds: note what it must assert, then retry. The user's only when you cannot tell which |
+| `discriminator_undecidable` | on a tdd leaf it comes only after the file went back to the producer once and still passes at base; on a red, at once. A file that only pins behaviour that held at base: rule it a net (below). One that should fail at base, for behaviour the leaf adds: note what it must assert, then retry. The user's only when you cannot tell which |
 
 `discriminator_undecidable`: a changed test file passes at base too. To rule it a regression
 net over behaviour that already held, write `{nets: [{file, why}]}` with Write (`why` one line) and run

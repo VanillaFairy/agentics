@@ -414,7 +414,7 @@ When the user says work was done by hand, read `outside-work.md` too.
 **b. Escalations** — `{id, reason, said}`: its text is on the node's card (step 0), read from the
 return `said` names. A stop with a mechanical cause is yours: settle it as the table says, note
 what you ruled (below) and name it in your report. Every other stop, and `review_not_converging`
-always, goes to the user: a decision, not information. Once a cause is dealt with, clear the stop,
+or `not_converging` always, goes to the user: a decision, not information. Once a cause is dealt with, clear the stop,
 then relaunch (step 3):
 
 ```bash

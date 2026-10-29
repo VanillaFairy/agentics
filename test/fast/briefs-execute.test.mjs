@@ -306,18 +306,21 @@ test('the same input gives the same text, and the input is left as it was', () =
   }
 })
 
-test('the convergence brief names the ruling and its schema, and carries each review round with what it left open', async () => {
+test('the convergence brief names the ruling and its schema, and carries each round sent back with what its producer was told', async () => {
   const { convergenceBrief } = await import('../../lib/briefs/execute.mjs')
   assert.equal(typeof convergenceBrief, 'function')
   const second = { ...blocker, id: 'F2', claim: 'lower-case keys are doubled' }
-  const reviews = [
-    { review_round: 1, round: 1, open: [blocker], unfixed: [] },
-    { review_round: 2, round: 2, open: [second], unfixed: ['F1'] },
+  const loop = [
+    { round: 2, messages: [{ msg: 'findings', payload: { findings: [blocker] } }] },
+    { round: 3, messages: [{ msg: 'failures', guard: { kind: 'verification', key: 'suite:src/a.ts:TS2322|suite:tests fail:x', at: 'abcdef0123456789' } }] },
+    { round: 4, messages: [{ msg: 'findings', payload: { findings: [second] } }] },
   ]
-  const text = convergenceBrief({ leaf: leaf(), reviews })
-  for (const s of ['api/parse', 'ruler_convergence', 'F1', blocker.claim, 'F2', second.claim]) assert.ok(text.includes(s), s)
-  assert.ok(text.indexOf(blocker.claim) < text.indexOf(second.claim), 'the oldest round first')
-  assert.equal(convergenceBrief({ leaf: leaf(), reviews }), text, 'the same input gives the same text')
+  const text = convergenceBrief({ leaf: leaf(), loop })
+  for (const s of ['api/parse', 'ruler_convergence', 'F1', blocker.claim, 'F2', second.claim, 'verification, at abcdef01', 'src/a.ts:TS2322']) {
+    assert.ok(text.includes(s), s)
+  }
+  assert.ok(text.indexOf(blocker.claim) < text.indexOf('TS2322') && text.indexOf('TS2322') < text.indexOf(second.claim), 'the oldest round first')
+  assert.equal(convergenceBrief({ leaf: leaf(), loop }), text, 'the same input gives the same text')
 })
 
 test('an integration brief names the work agentics did not produce, with its shas', () => {

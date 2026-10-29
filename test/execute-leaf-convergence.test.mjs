@@ -1,7 +1,7 @@
-// test/execute-leaf-convergence.test.mjs — pins the convergence ruling in the leaf unit's review
-// loop (`runLeaf`): after a review round `askAfter` picks ends in a fix, a fresh ruler rules
-// whether the loop converges; `not_converging` escalates the leaf, `converging` lets it go on, and
-// a relaunch resumes or reads back the ruling of a round, never asking twice.
+// test/execute-leaf-convergence.test.mjs — pins the convergence ruling in the leaf unit (`runLeaf`):
+// before a round that answers a send-back opens, when `rulingDue` picks the leaf's loop, a fresh
+// ruler rules whether it converges; `not_converging` escalates the leaf, `converging` lets it go on,
+// and a relaunch resumes or reads back the ruling of a round, never asking twice.
 //
 // The rig, the scripted answers and the worlds are in test/harness/execute-leaf-world.mjs.
 //
@@ -10,12 +10,12 @@
 import { after, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { resolve } from 'node:path'
+import { producerLoop } from '../lib/boundaries/loop-guard.mjs'
 import { heldOf } from '../lib/boundaries/records.mjs'
 import { renderMessage } from '../lib/conversation.mjs'
 import { readOnlyPermissions } from '../lib/permissions.mjs'
 import { tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
-import { readJson, reviewPath } from '../lib/store.mjs'
 import {
   T, YARD, bLeaf, work, world, ofKind, stateOf, faultsOf, startsOf, approvals, stopsOn,
   keyOf, sessionFor, nodeOf, roleOf, IMPL, REV, done, failed, verdict, finding, fixed,
@@ -29,7 +29,6 @@ const RULER = (n, id = 'b') => 'ruler|' + id + '|ruler:converge:' + id + ':' + n
 const ruling = (value, why = 'WHY-' + value) => ({ output: { ruling: value, why } })
 const notFixed = (id) => ({ id, status: 'not_fixed', evidence: 'ruled ' + id })
 const stopped = () => ({ status: 'stopped', cause: 'rate_limit' })
-const reviewRecord = (rig, n, id = 'b') => readJson(reviewPath(rig.repo, rig.effort, rig.stamp, id, n))
 const producerSteps = (n) => Array.from({ length: n }, () => done())
 const reviewSteps = (verdicts) => Object.fromEntries(verdicts.map((v, i) => [REV(i + 1), [v]]))
 
@@ -78,7 +77,7 @@ async function cutOff(run, k) {
   assert.equal(ended, 'cut off', 'the first run is cut off inside the ruling')
 }
 
-describe('the convergence ruling in the leaf review loop', { concurrency: 4 }, () => {
+describe('the convergence ruling on a leaf\'s loop', { concurrency: 4 }, () => {
   /** Review 3 ends in a fix, the ruler rules not_converging; run at intelligence low. */
   const notConverging = scenario(async (t) => {
     const w = loopWorld(t, 3)
@@ -90,13 +89,13 @@ describe('the convergence ruling in the leaf review loop', { concurrency: 4 }, (
   describe('a ruling of not_converging at review round 3', { concurrency: 4 }, () => {
     after(() => notConverging.end())
 
-    test('a review round askAfter picks that ends in a fix asks a ruler, and not_converging escalates review_not_converging', T, async () => {
+    test('a third round sent back asks a ruler before it opens, and not_converging escalates the leaf', T, async () => {
       const { w, out } = await notConverging.get()
       assert.equal(out.outcome, 'stopped')
       assert.equal(out.round, 3)
       assert.equal(out.review_rounds, 3)
       const stops = ofKind(w.rig, 'escalated', 'b')
-      assert.deepEqual(stops.map((e) => e.reason), ['review_not_converging'])
+      assert.deepEqual(stops.map((e) => e.reason), ['not_converging'])
       assert.equal(stops[0].said, keyOf('b', 'ruler', 'ruler:converge:b:3', 3), "said is the ruler's dispatch")
       assert.ok(stops[0].detail.includes('WHY-ROUNDS-2-AND-3'), "the detail carries the ruler's why")
       assert.equal(startsOf(w.rig, 'ruler', 'b').length, 1)
@@ -111,7 +110,7 @@ describe('the convergence ruling in the leaf review loop', { concurrency: 4 }, (
       const ruler = roleOf('ruler')
       assert.equal(call.thread.key, 'ruler:converge:b:3')
       assert.equal(call.node, 'b')
-      assert.equal(call.round, 3, 'its round is the reviewed producer round')
+      assert.equal(call.round, 3, 'its round is the one the last send-back answered')
       assert.equal(call.resume, false)
       assert.equal(call.thread.session, sessionFor(w.rig, { node: 'b', role: 'ruler', thread: 'ruler:converge:b:3' }))
       const others = [...startsOf(w.rig, 'implementer', 'b'), ...startsOf(w.rig, 'reviewer', 'b')].map((c) => c.thread.session)
@@ -122,13 +121,14 @@ describe('the convergence ruling in the leaf review loop', { concurrency: 4 }, (
       assert.equal(resolve(call.cwd), resolve(w.rig.worktreeOf('b')))
     })
 
-    test("the ruler's prompt is the convergence brief over every review record of the loop", T, async () => {
+    test("the ruler's prompt is the convergence brief over every round of the leaf sent back", T, async () => {
       const { w } = await notConverging.get()
       const [call] = startsOf(w.rig, 'ruler', 'b')
       const { convergenceBrief } = await import('../lib/briefs/execute.mjs')
       assert.equal(typeof convergenceBrief, 'function', "lib/briefs/execute.mjs builds the ruler's prompt")
-      const reviews = [1, 2, 3].map((n) => reviewRecord(w.rig, n))
-      assert.equal(call.brief, convergenceBrief({ leaf: nodeOf(w.rig), reviews }))
+      const loop = producerLoop(ofKind(w.rig, 'message', 'b'), 'b', 0)
+      assert.deepEqual(loop.map((s) => s.round), [2, 3, 4])
+      assert.equal(call.brief, convergenceBrief({ leaf: nodeOf(w.rig), loop }))
       for (const id of ['F1', 'F2']) assert.ok(call.brief.includes(finding(id).claim), id)
     })
   })
@@ -150,11 +150,11 @@ describe('the convergence ruling in the leaf review loop', { concurrency: 4 }, (
     const roundFour = ofKind(w.rig, 'dispatched', 'b').find((e) => e.role === 'implementer' && e.round === 4)
     assert.ok(ruledThree.seq < roundFour.seq, 'round 4 runs after the converging ruling')
     const stops = ofKind(w.rig, 'escalated', 'b')
-    assert.deepEqual(stops.map((e) => e.reason), ['review_not_converging'])
+    assert.deepEqual(stops.map((e) => e.reason), ['not_converging'])
     assert.deepEqual(stops.map((e) => e.said), [keyOf('b', 'ruler', 'ruler:converge:b:6', 6)])
   })
 
-  test('a review round askAfter picks that approves asks no ruling', T, async (t) => {
+  test('a third review round that approves sends nothing back and asks no ruling', T, async (t) => {
     const w = loopWorld(t, 3)
     w.rig.script({ [IMPL]: producerSteps(3), ...reviewSteps([THREE[0], THREE[1], verdict({ fix: [fixed('F2')] })]) })
     const out = await w.run('b')
@@ -163,22 +163,17 @@ describe('the convergence ruling in the leaf review loop', { concurrency: 4 }, (
     assert.deepEqual(startsOf(w.rig, 'ruler', 'b'), [])
   })
 
-  test('a review round that leaves units unruled counts toward the ask', T, async (t) => {
-    const w = loopWorld(t, 2)
+  test('a review round that leaves units unruled sends no producer back, and counts toward no ruling', T, async (t) => {
+    const w = loopWorld(t, 3)
     w.rig.script({
-      [IMPL]: producerSteps(2),
-      ...reviewSteps([verdict({ ruled: ['criterion:1'] }), verdict({ findings: [finding('F1')] }), verdict({ fix: [notFixed('F1')] })]),
-      [RULER(3)]: [ruling('not_converging')],
+      [IMPL]: producerSteps(3),
+      ...reviewSteps([verdict({ ruled: ['criterion:1'] }), verdict({ findings: [finding('F1')] }), verdict({ fix: [notFixed('F1')] }), verdict({ fix: [fixed('F1')] })]),
     })
     const out = await w.run('b')
-    assert.equal(out.outcome, 'stopped')
-    assert.equal(out.review_rounds, 3)
-    assert.equal(out.round, 2)
-    assert.deepEqual(startsOf(w.rig, 'reviewer', 'b').map((c) => c.round), [1, 1, 2])
-    const [call] = startsOf(w.rig, 'ruler', 'b')
-    assert.equal(call.thread.key, 'ruler:converge:b:3')
-    assert.equal(call.round, 2)
-    assert.deepEqual(ofKind(w.rig, 'escalated', 'b').map((e) => e.reason), ['review_not_converging'])
+    assert.equal(out.outcome, 'approved')
+    assert.equal(out.review_rounds, 4)
+    assert.deepEqual(startsOf(w.rig, 'reviewer', 'b').map((c) => c.round), [1, 1, 2, 3])
+    assert.deepEqual(startsOf(w.rig, 'ruler', 'b'), [])
   })
 
   test('a ruler dispatch that fails holds the leaf on a fault', T, async (t) => {
@@ -227,7 +222,7 @@ describe('the convergence ruling in the leaf review loop', { concurrency: 4 }, (
     assert.equal(call.resume, true)
     assert.equal(call.thread.session, cut.thread.session)
     assert.equal(call.brief, renderMessage({ msg: 'cut_off' }))
-    assert.deepEqual(ofKind(again.rig, 'escalated', 'b').map((e) => e.reason), ['review_not_converging'])
+    assert.deepEqual(ofKind(again.rig, 'escalated', 'b').map((e) => e.reason), ['not_converging'])
   })
 
   test('a ruling that returned before a kill is read back on relaunch, not asked again', T, async (t) => {

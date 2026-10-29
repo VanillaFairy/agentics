@@ -435,7 +435,7 @@ test('the review record holds node, round, review_round, dispatch, head_sha, uni
     yardstick: false, findings: ret.findings, verdicts: ret.fix_rulings, prior: recordOf(w, 'a', 1), producer: '',
     units: U, rulings: ret.units,
   })
-  for (const key of ['next', 'reason', 'detail', 'open', 'unfixed', 'clean_streak', 'raise']) {
+  for (const key of ['next', 'reason', 'detail', 'open', 'unfixed', 'raise', 'renewed']) {
     assert.deepEqual(record[key], exit[key], key)
   }
   assert.equal(recordOf(w, 'a', 1).review_round, 1)

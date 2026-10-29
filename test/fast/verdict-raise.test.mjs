@@ -21,21 +21,21 @@ test('a first round never raises', () => {
 })
 
 test('a round that ruled every answered prior blocker not fixed raises', () => {
-  const prior = { open: [blocker('F1'), blocker('F2')], unfixed: [], clean_streak: 0 }
+  const prior = { open: [blocker('F1'), blocker('F2')], unfixed: [] }
   const exit = reviewExit({ findings: [], verdicts: [ruling('F1', 'not_fixed'), ruling('F2', 'regressed')], prior })
   assert.equal(exit.next, 'fix')
   assert.equal(exit.raise, true)
 })
 
 test('a round that ruled no prior blocker raises', () => {
-  const prior = { open: [blocker('F1'), blocker('F2')], unfixed: [], clean_streak: 0 }
+  const prior = { open: [blocker('F1'), blocker('F2')], unfixed: [] }
   const exit = reviewExit({ findings: [], verdicts: [], prior })
   assert.equal(exit.next, 'fix')
   assert.equal(exit.raise, true)
 })
 
 test('a round that fixed one answered prior blocker and left another unfixed does not raise', () => {
-  const prior = { open: [blocker('F1'), blocker('F2')], unfixed: [], clean_streak: 0 }
+  const prior = { open: [blocker('F1'), blocker('F2')], unfixed: [] }
   const exit = reviewExit({ findings: [], verdicts: [ruling('F1', 'fixed'), ruling('F2', 'not_fixed')], prior })
   assert.equal(exit.next, 'fix')
   assert.deepEqual(exit.open.map((f) => f.id), ['F2'])
@@ -43,7 +43,7 @@ test('a round that fixed one answered prior blocker and left another unfixed doe
 })
 
 test('a round whose answered prior blockers were all fixed does not raise, new blockers or not', () => {
-  const prior = { open: [blocker('F1'), blocker('F2')], unfixed: [], clean_streak: 0 }
+  const prior = { open: [blocker('F1'), blocker('F2')], unfixed: [] }
   const exit = reviewExit({ findings: [blocker('F3')], verdicts: [ruling('F1', 'fixed'), ruling('F2', 'fixed')], prior })
   assert.equal(exit.next, 'fix')
   assert.deepEqual(exit.open.map((f) => f.id), ['F3'])
@@ -54,21 +54,21 @@ test('a prior blocker carried past the round counts toward no raise', () => {
   // The round was a code round (`producer: 'code'`): F2 asks for tests, so it was carried, not answered.
   const carriedOnly = reviewExit({
     findings: [], verdicts: [], producer: 'code',
-    prior: { open: [blocker('F2', { remedy: 'tests' })], unfixed: [], clean_streak: 0 },
+    prior: { open: [blocker('F2', { remedy: 'tests' })], unfixed: [] },
   })
   assert.equal(carriedOnly.next, 'fix')
   assert.equal(carriedOnly.raise, false, 'nothing was answered, so nothing was left unfixed')
 
   const beside = reviewExit({
     findings: [], verdicts: [ruling('F1', 'not_fixed')], producer: 'code',
-    prior: { open: [blocker('F1'), blocker('F2', { remedy: 'tests' })], unfixed: [], clean_streak: 0 },
+    prior: { open: [blocker('F1'), blocker('F2', { remedy: 'tests' })], unfixed: [] },
   })
   assert.equal(beside.next, 'fix')
   assert.equal(beside.raise, true, 'the one answered blocker was ruled not fixed')
 })
 
 test('a prior unit the round now rules counts as cleared, so the round does not raise', () => {
-  const prior = { open: [blocker('unit:u1'), blocker('F1')], unfixed: [], clean_streak: 0 }
+  const prior = { open: [blocker('unit:u1'), blocker('F1')], unfixed: [] }
   const exit = reviewExit({
     findings: [], verdicts: [ruling('F1', 'not_fixed')], prior, units: ['u1'], rulings: [clean('u1')],
   })
@@ -78,7 +78,7 @@ test('a prior unit the round now rules counts as cleared, so the round does not 
 })
 
 test('an escalating round does not raise', () => {
-  const prior = { open: [blocker('F1')], unfixed: ['F1'], clean_streak: 0 }
+  const prior = { open: [blocker('F1')], unfixed: ['F1'] }
   const exit = reviewExit({ findings: [], verdicts: [ruling('F1', 'not_fixed')], prior })
   assert.equal(exit.next, 'escalate')
   assert.equal(exit.raise, false)

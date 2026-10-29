@@ -87,14 +87,14 @@ const THREE = [
 ]
 
 /** The round-4 call carries every message waiting for round 4: the findings and the retried. */
-function assertRoundFour(w, findingId) {
+function assertRoundFour(w, findingId, reason = 'review_not_converging') {
   const found = messages(w.rig, 'producer:b', 'findings').filter((m) => m.round === 4)
   assert.equal(found.length, 1, 'one findings message for round 4')
   assert.ok(found[0].payload.findings.some((f) => f.id === findingId), findingId)
   const retried = messages(w.rig, 'producer:b', 'retried')
   assert.equal(retried.length, 1)
   assert.equal(retried[0].round, 4)
-  assert.deepEqual(retried[0].payload, { reason: 'review_not_converging', notes: [NOTE] })
+  assert.deepEqual(retried[0].payload, { reason, notes: [NOTE] })
   const four = startsOf(w.rig, 'implementer', 'b').find((c) => c.round === 4)
   assert.ok(four, 'round 4 is dispatched')
   for (const m of [found[0], retried[0]]) {
@@ -136,7 +136,7 @@ describe('a retry after a review-loop stop', { concurrency: 4 }, () => {
     assert.equal(second.round, 4)
     assert.equal(ofKind(w.rig, 'escalated', 'b').length, 1, 'the replayed ruling lands no second escalation')
     assert.equal(startsOf(w.rig, 'ruler', 'b').length, 1, 'the ruler is not asked again')
-    assertRoundFour(w, 'F2')
+    assertRoundFour(w, 'F2', 'not_converging')
     assert.equal(approvals(w.rig).length, 1)
   })
 

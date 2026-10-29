@@ -410,12 +410,13 @@ test('a prior blocker left unruled, or ruled not fixed without being re-reported
   assert.equal(reviewExit({ findings: [], verdicts: [{ id: 'F1', status: 'fixed' }], prior: one }).next, 'approve')
 })
 
-test('two rounds that each fix every prior blocker and still mint new ones escalate', () => {
+test('rounds that each fix every prior blocker and mint new ones go on: whether that converges is the ruler\'s', () => {
   const r1 = reviewExit({ findings: [critical('F1')] })
   const r2 = reviewExit({ findings: [critical('F2')], verdicts: [{ id: 'F1', status: 'fixed' }], prior: r1 })
-  assert.deepEqual([r2.next, r2.clean_streak], ['fix', 1])
   const r3 = reviewExit({ findings: [critical('F3')], verdicts: [{ id: 'F2', status: 'fixed' }], prior: r2 })
-  assert.deepEqual([r3.next, r3.reason], ['escalate', 'review_not_converging'])
+  assert.deepEqual([r2.next, r3.next], ['fix', 'fix'])
+  assert.deepEqual([r2.renewed, r3.renewed], [true, true], 'each fixed every prior blocker and minted a new one')
+  assert.equal(reviewExit({ findings: [critical('F2')], verdicts: [{ id: 'F1', status: 'not_fixed' }], prior: r1 }).renewed, false)
 })
 
 test('a prior blocker the round under review could not fix is carried: open still, and never a strike toward escalation', () => {
@@ -423,7 +424,7 @@ test('a prior blocker the round under review could not fix is carried: open stil
   const r1 = reviewExit({ findings: [critical('F1'), gap], producer: 'code' })
   // An implementer's round: it fixed F1 and was never asked to touch T1, which the reviewer re-reports.
   const r2 = reviewExit({ findings: [gap], verdicts: [{ id: 'F1', status: 'fixed' }, { id: 'T1', status: 'not_fixed' }], prior: r1, producer: 'code' })
-  assert.deepEqual([r2.next, r2.open.map((f) => f.id), r2.unfixed, r2.raise, r2.clean_streak], ['fix', ['T1'], [], false, 0],
+  assert.deepEqual([r2.next, r2.open.map((f) => f.id), r2.unfixed, r2.raise], ['fix', ['T1'], [], false],
     'T1 stays open, but is no strike, no raise and no newly minted blocker')
   // The test-author's round left it unfixed: that is its first strike, not its second.
   const r3 = reviewExit({ findings: [gap], verdicts: [{ id: 'T1', status: 'not_fixed' }], prior: r2, producer: 'tests' })

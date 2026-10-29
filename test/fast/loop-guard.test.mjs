@@ -5,13 +5,16 @@
 //   repeated   the same failures as the kind's last send-back, at a moved head, stop
 //   recurred   an exact state any earlier send-back of the kind held stops
 //   failuresKey  a line that only moved is no progress; one diagnostic of three gone is
+//   ask        lossy failures seen before, not last, stop nothing: the send-back asks the ruler
+//   producerLoop / rulingDue  every round sent back since cleared, by any kind; the ruler every third
 //
 // Design: docs/DESIGN.md#l2--states-end-work-counts-dont.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { clearedAt, failuresKey, sendBack, sendBacks, sentBackFiles } from '../../lib/boundaries/loop-guard.mjs'
+import { clearedAt, failuresKey, producerLoop, sendBack, sendBacks, sentBackFiles } from '../../lib/boundaries/loop-guard.mjs'
+import { rulingDue } from '../../lib/programs/converge.mjs'
 
 let seq = 0
 /** A recorded send-back of node `a`, as the events hold it. */
@@ -79,4 +82,35 @@ test('a diagnostic that only moved lines is the same failure; one of three gone 
   assert.equal(failuresKey(fails('x', 'y')), failuresKey(fails('y', 'x')))
   const tests = (ms) => [{ check: 'suite', claim: 'fails', evidence: '✖ adds two numbers (' + ms + 'ms)' }]
   assert.equal(failuresKey(tests(3)), failuresKey(tests(40)), 'a duration is no failure')
+})
+
+test('lossy failures seen before, but not last, stop nothing: the send-back asks the ruler at once', () => {
+  const history = [was(2, { kind: 'verification', key: 'A', at: 'h1' }), was(3, { kind: 'verification', key: 'B', at: 'h2' })]
+  const out = ask(history, { kind: 'verification', key: 'A', at: 'h3' })
+  assert.equal(out.record.fields.guard.ask, true)
+  assert.equal('ask' in ask(history, { kind: 'verification', key: 'C', at: 'h3' }).record.fields.guard, false, 'new failures ask nothing')
+  assert.equal('ask' in ask([was(2, { kind: 'rebase', key: 'p', at: 'h1' })], { kind: 'rebase', key: 'p', at: 'h2' }).record.fields.guard, false,
+    'a kind with no lossy key never asks')
+})
+
+test('a leaf\'s loop is every round sent back since it was cleared, by a guarded send-back or a review\'s findings', () => {
+  const findings = (round, s, node = 'a') => ({ kind: 'message', seq: s, node, thread: 'producer:' + node, msg: 'findings', round, payload: { findings: [] } })
+  const events = [
+    { ...was(2, { kind: 'verification', key: 'A', at: 'h1' }), seq: 10 },
+    findings(3, 20), { ...findings(3, 21), thread: 'producer:red' },
+    { kind: 'message', seq: 22, node: 'a', thread: 'producer:a', msg: 'tests_ready', round: 4 },
+    findings(4, 23, 'b'),
+    { ...was(5, { kind: 'rebase', key: 'p', at: 'h2' }), seq: 30 },
+  ]
+  assert.deepEqual(producerLoop(events, 'a', 0).map((s) => [s.round, s.messages.length]), [[2, 1], [3, 2], [5, 1]])
+  assert.deepEqual(producerLoop(events, 'a', 20).map((s) => s.round), [3, 5], 'only what came after it was cleared')
+})
+
+test('the ruler is due after every third round sent back, and at once on a send-back that asks', () => {
+  const step = (round, guard = { kind: 'verification', key: 'k', at: 'h' }) => ({ round, messages: [{ msg: 'failures', guard }] })
+  assert.equal(rulingDue([]), 0)
+  assert.equal(rulingDue([step(2), step(3)]), 0)
+  assert.equal(rulingDue([step(2), step(3), step(4)]), 3, 'it rules the round the last send-back answers')
+  assert.equal(rulingDue([step(2), step(3), step(4), step(5)]), 0)
+  assert.equal(rulingDue([step(2), step(3, { kind: 'verification', key: 'k', at: 'h', ask: true })]), 2)
 })

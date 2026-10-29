@@ -45,7 +45,7 @@ returns its result and writes no result file itself.
   (`prompt-origin` lint). Prompt text lives in `lib/briefs/`, `lib/brief.mjs` or a `renderMessage`
   template.
 - No loop bound or turn cap (`no-loop-bounds`, `no-turn-caps`). A loop that needs to stop asks a
-  ruler through `askAfter` in `converge.mjs`.
+  ruler through `askAfter` in `converge.mjs`; a leaf's loop asks through `rulingDue` there.
 - `recordOnce` records a message once per node, thread, round and `msg`, so a second message of the
   same kind in one round is silently the first; it needs a new round.
 - `reviewUnit` (`execute/integrate.mjs`) names a child's criterion unit `criterion:<leaf>#<n>`, and

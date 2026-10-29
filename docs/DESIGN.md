@@ -2165,7 +2165,8 @@ changed ranges by the whole section (`widenedScope` in `lib/programs/probe.mjs`)
 `declared`, and is attacked on that axis, so a partial round is finished by the next narrowed one
 instead of a whole round that would re-find, under new ids, what the user already settled; an
 artefact unchanged since such a round is attacked in those sections rather than taking the
-no-agent path.
+no-agent path. A round recorded before rulings were kept judged the text whole: while no line changed since, every
+unit stands and the round takes the no-agent path.
 
 **A recorded round keeps its ground** beside its snapshot (`<hash>.ground.json`): the repository axes
 it probed, the guidance they rest on, the places it located and their excerpts. A narrowed round

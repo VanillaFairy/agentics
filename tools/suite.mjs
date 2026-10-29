@@ -13,7 +13,7 @@
 
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { availableParallelism, tmpdir } from 'node:os'
 import { join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -23,7 +23,7 @@ const REPORTER = new URL('./suite-reporter.mjs', import.meta.url).href
 const FAST_TIER = 'test/fast/**/*.test.mjs'
 const ALL_TESTS = 'test/**/*.test.mjs'
 const NO_SPAWN = new URL('../test/fast/harness/no-spawn.mjs', import.meta.url).href
-export const DEFAULT_CONCURRENCY = 8
+export const DEFAULT_CONCURRENCY = Math.max(2, Math.floor(availableParallelism() / 2))
 export const RERUN_CONCURRENCY = 2
 
 const USAGE = 'usage: node tools/suite.mjs [--fast] [--concurrency N] [file...]'

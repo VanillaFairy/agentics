@@ -1032,7 +1032,7 @@ test("a plan journaled on a round an earlier plan already used replays none of t
   assert.equal(ledger(w.rig, 'prepared').at(-1).hash, hashSpec(EDITED_TWICE))
 })
 
-test('a unit that settles with nothing recorded is not launched again on the same records, and the tick loop yields to timers', async (t) => {
+test('a unit that settles with nothing recorded is a program fault holding its node for the run, and the tick loop yields to timers', async (t) => {
   const w = world(t, { steps: clean(), writes: { 1: S1 } })
   assert.equal((await w.run()).outcome, 'prepared', 'the fixture: p is planned and compiled')
   recordAll(w.rig.xc, [parked('p', 'integration_critical', 'the landed work lacks y')])
@@ -1053,8 +1053,31 @@ test('a unit that settles with nothing recorded is not launched again on the sam
   assert.equal(new Set(calls).size, calls.length, 'no unit ran twice: ' + calls.join(', '))
   assert.ok(seen.notes.some((n) => n.startsWith('plan:p settled with nothing recorded')), seen.notes.join('\n'))
   assert.ok(ticked, 'a timer ran before the loop ended')
-  // L1: the run does not end over a unit it never moved without a stop that says so.
-  const stop = readTree(w.rig.repo, E).events.filter((e) => e.kind === 'escalated' && e.node === 'p').at(-1)
-  assert.deepEqual([stop && stop.reason], ['no_progress'], 'the idle unit is stopped with a reason')
-  assert.match(stop.detail, /settled with nothing recorded/)
+  // P5: a livelock is the plugin's defect, held on a fault the coverage lists, never a question for the user.
+  const faults = w.rig.log.entries().filter((e) => e.kind === 'fault' && e.node === 'p')
+  assert.deepEqual(faults.map((f) => [f.channel, f.detail]), [['program', 'settled with nothing recorded']])
+  assert.equal(readTree(w.rig.repo, E).events.filter((e) => e.kind === 'escalated' && e.node === 'p').length, 0, 'nothing asks the user')
+})
+
+test('a unit that settles waiting (requeued, routed, paused) is no fault, and is launched again', async (t) => {
+  const w = world(t, { steps: clean(), writes: { 1: S1 } })
+  assert.equal((await w.run()).outcome, 'prepared', 'the fixture: p is planned and compiled')
+  recordAll(w.rig.xc, [parked('p', 'integration_critical', 'the landed work lacks y')])
+  putSpec(w.rig, EDITED_SPEC)
+  const plans = ['requeue', 'prepared']
+  let planned = 0
+  const settles = (outcome) => async () => ({ outcome, survey: null })
+  const units = {
+    planFolder: async () => {
+      planned += 1
+      if (planned > plans.length) throw new Error('launched again')
+      return { outcome: plans[planned - 1], survey: null }
+    },
+    runLeaf: settles('stopped'), mergeUnit: settles('done'), reviewUnit: settles('reviewed'),
+  }
+  const seen = { notes: [], leaves: new Map(), reviews: [], reviewsLost: [], surveysLost: [], drift: [], failed: [], stopped: '' }
+  await runUnits(w.ctx, w.rig.xc, {}, {}, seen, units)
+  assert.equal(planned, 2, 'the requeued plan ran again: ' + seen.notes.join(' | '))
+  const faults = w.rig.log.entries().filter((e) => e.kind === 'fault' && e.node === 'p')
+  assert.deepEqual(faults.map((f) => f.detail), ['settled with nothing recorded'], 'only the second plan, which waited on nothing')
 })

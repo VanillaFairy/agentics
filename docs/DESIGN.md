@@ -1068,7 +1068,8 @@ with `cut_off` even when the brief it would build now differs.
 
 A plugin fault is never the user's decision. A fault is recorded where it is known, as
 `fault {node, channel, detail}`: `program` (a program threw, or a unit of an execution did, on that
-unit's node), `role` (a return that failed its schema the same way twice, a dispatch that returned
+unit's node, or a unit settled with nothing recorded while waiting on nothing — a livelock no answer
+of the user's could end), `role` (a return that failed its schema the same way twice, a dispatch that returned
 nothing, a leaf a ruler on a moved base did not rule), `host_error` (a failure the runner could not
 classify), `checkout` (the user's `HEAD` or a branch ref moved during a call or a check, or the
 watch could not read the checkout: `watch_failed`, whose kept return is not read and whose call
@@ -2800,7 +2801,11 @@ memory and passes them to `schedule`, which launches nothing beneath a running o
 program that died loses that set and rebuilds it from the records: a dispatch with no `returned` is
 resumed, a batch with no outcome is reset, and everything else is decided again from disk. A unit
 records its own faults and never rejects: a throw inside it is a `program` fault on its node, and
-the unit ends — `faulted` even when that fault cannot be recorded.
+the unit ends — `faulted` even when that fault cannot be recorded. A unit that settles with nothing
+recorded by anyone while it ran, and that waits on nothing (its outcome is not `requeue`, `route` or
+`paused`), would settle the same way on the same records: it records
+`fault {channel: program, detail: settled with nothing recorded}` on its node, which holds the node
+for the run and which the coverage lists ([Faults](#faults), P5).
 
 **Checks run as the program's own children.** leaf-close, merge-batch and suite-gate measure through
 `measure` (`lib/measure.mjs`): `node lib/verify.mjs --options -` as a child process the program
@@ -2862,9 +2867,11 @@ escalation, drift to its ruler, each replayed by its ruler's `said`. When every 
 the same children at the same heads were handed again for nothing, and each child — never the
 target, whose stop would hold its other children — escalates `merge_no_progress`, the one place
 that reason is raised. A leaf with a `rebase` message newer than its latest round opens that round, whatever its
-latest round's close left to resume. A relaunch takes up every such round still owed — an approved leaf's
+latest round's close left to resume. Every tick reads each such round still owed — an approved leaf's
 `rebase` or integration `failures` message newer than its latest dispatch, a cycle's tip only
-(`owedRounds` in `lib/programs/execute.mjs`) — rather than merging the head that round must change.
+(`owedRounds` in `lib/programs/execute.mjs`) — from the records and runs it, rather than merging the
+head that round must change; a cycle with a member owed a round or held stays out of a merge whole
+(`mergeable`).
 Anything else that is not `mergeOk` stops the batch. A conflict is never
 resolved on an integration branch: a leaf's goes to the judge, who may send the leaf a rebase round
 to resolve it on its own branch ([The judge](#the-judge)), and any other reaches the user.
@@ -3918,10 +3925,7 @@ messages' `execution`; no session is told them again, and no status is derived f
 `pause` and `resume` under [Session calls](#session-calls); no status is derived from them). A boundary appends an event only while it is not
 already the node's word (`freshRecords` in `lib/boundaries/records.mjs`, [Boundaries](#boundaries)); a
 `judged` lands once per node, trigger and `said`, and is read only while it is newer than where its
-node was cleared, so the ruling a retried node is given again at the same head is recorded and read. When the tick loop has nothing left to
-run and nothing waiting, every unit that last settled with nothing recorded is stopped,
-`merge_no_progress` for a merge and `no_progress` for any other, so a run never ends over work it
-never reached without a stop that names it (L1).
+node was cleared, so the ruling a retried node is given again at the same head is recorded and read.
 
 ### Snapshot
 

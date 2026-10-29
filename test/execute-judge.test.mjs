@@ -217,6 +217,29 @@ test('a rebase round reopened before it returned keeps a conflicting refresh for
   assert.ok(readFileSync(join(a.worktree, 'src/both.mjs'), 'utf8').includes('<<<<<<<'), 'the reopened round is handed the conflict again')
 })
 
+test('a round after the rebase round returned is an ordinary round: it is granted no path to resolve', SLOW, async (t) => {
+  const rig = executionRig(t, { spec: SPEC })
+  const c = readyLeaf(rig, 'x/c', { 'src/c.mjs': 'export const c = 1\n', 'src/both.mjs': 'export const both = "c"\n' })
+  const a = readyLeaf(rig, 'x/a', { 'src/a.mjs': 'export const a = 1\n', 'src/both.mjs': 'export const both = "a"\n' })
+  approve(rig, c)
+  await merge(rig, 'x', c)
+  approve(rig, a)
+  rig.script({ [rulerKey('conflict', a)]: [rulings(['integration', 'resolve'])] })
+  await merge(rig, 'x', a)
+  const opened = await leafOpen(rig.xc, { node: 'x/a', intelligence: 'normal' })
+  assert.ok(opened.permissions.allowed.includes('Edit(/src/both.mjs)'), 'the rebase round may write the path it resolves')
+  const dispatch = dispatchKey({ node: 'x/a', role: 'implementer', thread: 'producer:x/a', round: 2 })
+  rig.log.append('dispatched', { node: 'x/a', dispatch, round: 2, thread: 'producer:x/a', role: 'implementer' })
+  writeFileSync(join(a.worktree, 'src/both.mjs'), 'export const both = "a and c"\n')
+  git(a.worktree, 'add', 'src/both.mjs')
+  git(a.worktree, 'commit', '-q', '--no-edit')
+  rig.log.append('returned', { dispatch, session: 's', status: 'returned', cause: '', usage: null, cost_total: null, cost_usd: null, denials: [] })
+
+  const next = await leafOpen(rig.xc, { node: 'x/a', intelligence: 'normal' })
+  assert.deepEqual([next.status, next.round], ['opened', 3])
+  assert.ok(!next.permissions.allowed.includes('Edit(/src/both.mjs)'), JSON.stringify(next.permissions.allowed))
+})
+
 test("a leaf a resolve sent a rebase opens the rebase round, never resuming what its last round left", SLOW, async (t) => {
   const rig = executionRig(t, { spec: SPEC })
   const c = readyLeaf(rig, 'x/c', { 'src/c.mjs': 'export const c = 1\n', 'src/both.mjs': 'export const both = "c"\n' })

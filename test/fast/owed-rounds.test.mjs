@@ -16,8 +16,9 @@ const tree = (nodes, events, approved) => ({
   status: new Map(nodes.map((n) => [n.id, { status: approved.includes(n.id) ? 'approved' : 'merged' }])),
   events,
 })
-const message = (node, msg, round, seq) => ({ kind: 'message', node, msg, round, seq })
-const dispatched = (node, round, seq) => ({ kind: 'dispatched', node, round, seq })
+const message = (node, msg, round, seq) => ({ kind: 'message', node, thread: 'producer:' + node, msg, round, seq })
+const dispatched = (node, round, seq, thread = 'producer:' + node) => ({ kind: 'dispatched', node, thread, round, seq, dispatch: thread + '#' + round })
+const returned = (dispatch, status, seq) => ({ kind: 'returned', dispatch, status, seq })
 
 test('an approved leaf a merge sent a rebase or its failures for a round not yet opened is owed it; one opened since is not', () => {
   const nodes = [leaf('a'), leaf('b'), leaf('c')]
@@ -39,16 +40,25 @@ test('a cycle with one member owed a round or held stays out of the merge whole;
   assert.deepEqual(mergeable(item, (id) => id === 'b'), { children: [{ id: 'r' }, { id: 'g' }, { id: 'a' }], cycles: [['r', 'g']] })
 })
 
-test('a rebase is owed until the leaf is approved or merged after it, a round opened for it and never returned included', () => {
+test('a rebase is owed until a round opened for it returned, a round opened and never returned included', () => {
   const events = [dispatched('a', 1, 1), message('a', 'rebase', 2, 2)]
   assert.equal(rebaseOwed(events, 'a').seq, 2)
-  events.push(dispatched('a', 2, 3))
+  events.push(dispatched('a', 2, 3), returned('producer:a#2', 'cut_off', 4))
   assert.equal(rebaseOwed(events, 'a').seq, 2, 'the round opened for it has not settled it')
-  events.push({ kind: 'approved', node: 'a', seq: 4 })
+  events.push(dispatched('a', 3, 5))
+  assert.equal(rebaseOwed(events, 'a').seq, 2, 'nor has the next round, opened before any returned')
+  events.push(dispatched('a', 3, 6, 'reviewer:a:1'), returned('reviewer:a:1#3', 'returned', 7))
+  assert.equal(rebaseOwed(events, 'a').seq, 2, "another thread's return is no round of the rebase's")
+  events.push(returned('producer:a#3', 'returned', 8))
+  assert.equal(rebaseOwed(events, 'a'), null, 'every round after the one that returned is an ordinary round')
+})
+
+test('a rebase is owed until the leaf is approved or merged after it', () => {
+  const events = [dispatched('a', 1, 1), message('a', 'rebase', 2, 2), { kind: 'approved', node: 'a', seq: 3 }]
   assert.equal(rebaseOwed(events, 'a'), null)
-  events.push(message('a', 'rebase', 3, 5))
-  assert.equal(rebaseOwed(events, 'a').seq, 5, 'a later conflict owes its own')
-  events.push({ kind: 'merged', node: 'a', seq: 6 })
+  events.push(message('a', 'rebase', 3, 4))
+  assert.equal(rebaseOwed(events, 'a').seq, 4, 'a later conflict owes its own')
+  events.push({ kind: 'merged', node: 'a', seq: 5 })
   assert.equal(rebaseOwed(events, 'a'), null)
   assert.equal(rebaseOwed(events, 'b'), null)
 })

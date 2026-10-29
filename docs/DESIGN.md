@@ -3016,10 +3016,13 @@ rule admits plus exactly the conflicted paths the judge sent (`resolves` of `rol
 allow, so a test path to resolve lifts a `no-tests` round's test denials; what else of the tests it
 writes, the series check finds: every path the judge ever sent the leaf is admitted as its own change
 (verify's `resolves`), each other path is judged by the role, and a test it resolved is named in
-`tests_rewritten` for the leaf's reviewer whatever the leaf expects ([L3](#l3--separate-judges)). A leaf owes the rebase until it is
-approved or merged after the message (`rebaseOwed` in `lib/tree.mjs`), and the round that waits for
-it is the leaf's latest, opened or not: a round reopened before it returned keeps a conflicting
-refresh too, even one its producer aborted. An open run again finds the merge in
+`tests_rewritten` for the leaf's reviewer whatever the leaf expects ([L3](#l3--separate-judges)). A leaf owes the rebase until a
+round opened for it returned — a dispatch on the message's thread, at its round or later, whose
+`returned` line says `returned`, in whichever execution — or the leaf is approved or merged after
+the message (`rebaseOwed` in `lib/tree.mjs`; leaf-open, the leaf unit and a green's round role all
+read it so): a round reopened before it returned keeps a conflicting refresh too, even one its
+producer aborted, and so does the next a later execution opens past it, while every round after
+the one that returned is an ordinary round. An open run again finds the merge in
 progress and takes it as its own; every other round refuses a conflicting refresh (`open_refused`).
 leaf-close measures nothing while the merge is in progress ([Boundaries](#boundaries)).
 

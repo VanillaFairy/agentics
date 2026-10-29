@@ -262,10 +262,14 @@ test('a verify leaf that fails is a finding for its parent, not a fix round', ()
   assert.equal(d.failures[0].check, 'check')
 })
 
-test('a lone discriminator on a tdd leaf escalates on round one as discriminator_undecidable', () => {
+test('a lone discriminator on a tdd leaf goes back to its producer once; the same file still holding at base escalates', () => {
   const d = closeDecision(m({ discriminator: [disc(false, true)] }), LEAVES.tdd)
-  assert.deepEqual([d.next, d.reason], ['escalate', 'discriminator_undecidable'])
-  assert.equal(d.failures.length, 1)
+  assert.deepEqual([d.next, d.reason, d.files], ['fix', 'discriminator_sent_back', ['test/x.test.mjs']])
+  assert.match(d.failures[0].evidence, /make it fail without your change/)
+  const again = closeDecision(m({ discriminator: [disc(false, true)] }), LEAVES.tdd, '', { sentBack: ['test/x.test.mjs'] })
+  assert.deepEqual([again.next, again.reason], ['escalate', 'discriminator_undecidable'])
+  const other = closeDecision(m({ discriminator: [disc(false, true, 'test/y.test.mjs')] }), LEAVES.tdd, '', { sentBack: ['test/x.test.mjs'] })
+  assert.equal(other.next, 'fix', 'a file never sent back is asked first')
 })
 
 test('a tdd change the typecheck rejects at base is discriminated by the check that failed there', () => {
@@ -274,7 +278,7 @@ test('a tdd change the typecheck rejects at base is discriminated by the check t
   for (const s of [{ kind: 'typecheck', command: 'npx tsc --noEmit', failed_on_base: true }, { kind: 'check', command: check, failed_on_base: true }]) {
     assert.equal(closeDecision(typed({ static_on_base: [s] }), LEAVES.tdd).next, 'approve', s.kind + ' failed at base with the tests restored')
   }
-  const undecided = (over, why) => assert.equal(closeDecision(typed(over), LEAVES.tdd).reason, 'discriminator_undecidable', why)
+  const undecided = (over, why) => assert.equal(closeDecision(typed(over), LEAVES.tdd, '', { sentBack: ['test/x.test.mjs'] }).reason, 'discriminator_undecidable', why)
   undecided({ static_on_base: [{ kind: 'typecheck', command: 'npx tsc --noEmit', failed_on_base: false }] }, 'the typecheck held at base')
   undecided({ static_on_base: [] }, 'nothing static was asked')
   const unrun = closeDecision(typed({ static_on_base: [{ kind: 'check', command: check, failed_on_base: true }], checks: [{ command: check, status: 'unrunnable' }] }), LEAVES.tdd)
@@ -290,7 +294,7 @@ test('a file the user ruled a regression net is held to passes_now alone, beside
   assert.equal(closeDecision(m({ discriminator: [disc(false, true)], checks: passed }), LEAVES.tdd, '', { nets }).next, 'approve')
   assert.equal(measurementOk(m({ discriminator: [disc(false, false)], checks: passed }), LEAVES.tdd, '', { nets }).ok, false, 'a net must pass now')
   const two = m({ discriminator: [disc(false, true), disc(false, true, 'test/z.test.mjs')], checks: passed })
-  assert.equal(closeDecision(two, LEAVES.tdd, '', { nets }).reason, 'discriminator_undecidable', 'a file not ruled is still undecidable')
+  assert.equal(closeDecision(two, LEAVES.tdd, '', { nets, sentBack: ['test/z.test.mjs'] }).reason, 'discriminator_undecidable', 'a file not ruled is still undecidable')
 })
 
 test('with every changed test file ruled a net, a leaf with no criterion check that ran does not pass', () => {

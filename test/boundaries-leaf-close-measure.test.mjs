@@ -143,11 +143,17 @@ describe('leaf-close and the measurement', { concurrency: 4 }, () => {
     assert.deepEqual([out.stops[0].id, out.stops[0].status, out.stops[0].reason], ['a', 'escalated', 'measure_failed'])
   })
 
-  test('an escalation the measurement decides is recorded with its reason and the failing claims', SLOW, async (t) => {
+  test('a test that holds at base goes back to the producer once; still holding the round after, it escalates with the failing claims', SLOW, async (t) => {
     const w = world(t, [root(), lf('a', { expects: ['test/more.test.mjs'] })])
     const o = open(w, 'a')
     commit(o.worktree, { 'test/more.test.mjs': MORE_TEST }, 'Add a test of what exists')
-    const { out } = await run(w, { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
+    const first = await run(w, { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
+    assert.deepEqual([first.out.decision.next, first.out.decision.reason], ['fix', 'discriminator_sent_back'])
+    assert.equal(msgs(w, 'failures', 'a').at(-1).payload.failures[0].check, 'discriminator', 'the producer is told')
+    assert.deepEqual(recs(w, 'escalated', 'a'), [])
+    const moved = head(o.worktree)
+    commit(o.worktree, { 'test/more.test.mjs': MORE_TEST + '// tried again\n' }, 'Tighten the test')
+    const { out } = await run(w, { node: 'a', role: 'implementer', round: 2, ret: DONE, base_sha: o.base_sha, head_before: moved })
     assert.deepEqual([out.decision.next, out.decision.reason], ['stop', 'discriminator_undecidable'])
     assert.ok(out.decision.failures.length > 0)
     const events = recs(w, 'escalated', 'a')
@@ -160,7 +166,11 @@ describe('leaf-close and the measurement', { concurrency: 4 }, () => {
     const w = world(t, [root(), lf('a', { expects: ['test/more.test.mjs'] })])
     const o = open(w, 'a')
     commit(o.worktree, { 'test/more.test.mjs': MORE_TEST }, 'Add a test of what exists')
-    const first = await run(w, { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
+    const sent = await run(w, { node: 'a', role: 'implementer', round: 1, ret: DONE, base_sha: o.base_sha, head_before: o.base_sha })
+    assert.equal(sent.out.decision.reason, 'discriminator_sent_back')
+    const before = head(o.worktree)
+    commit(o.worktree, { 'test/more.test.mjs': MORE_TEST + '// tried again\n' }, 'Tighten the test')
+    const first = await run(w, { node: 'a', role: 'implementer', round: 2, ret: DONE, base_sha: o.base_sha, head_before: before })
     assert.equal(first.out.decision.reason, 'discriminator_undecidable')
     const WHY = 'pins add over negatives, which already held at base'
     assert.equal(ruleNets(w.r, E, 'a', { nets: [{ file: 'test/other.test.mjs', why: WHY }] }).error.kind, 'not_measured')
@@ -169,13 +179,13 @@ describe('leaf-close and the measurement', { concurrency: 4 }, () => {
     assert.deepEqual([ruled.ok, ruled.all, ruled.head_sha], [true, true, head(o.worktree)])
     const retry = () => assert.equal(append(w.r, E, 'events', [{ kind: 'replanned', node: 'a', execution: w.stamp, reason: 'retry_escalated', by: 'session' }]).ok, true)
     retry()
-    const again = await close(w, { node: 'a', round: 1, dispatch: '', base_sha: o.base_sha, head_before: o.base_sha })
+    const again = await close(w, { node: 'a', round: 2, dispatch: '', base_sha: o.base_sha, head_before: before })
     assert.ok(['approve', 'review'].includes(again.decision.next), JSON.stringify(again.decision))
     assert.equal(ruleNets(w.r, E, 'a', { nets: [{ file: 'test/more.test.mjs', why: WHY }] }).error.kind, 'not_undecidable', 'nothing left to rule')
 
     commit(o.worktree, { 'test/more.test.mjs': MORE_TEST + '// more\n' }, 'Touch the net')
     retry()
-    const moved = await close(w, { node: 'a', round: 1, dispatch: '', base_sha: o.base_sha, head_before: o.base_sha })
+    const moved = await close(w, { node: 'a', round: 2, dispatch: '', base_sha: o.base_sha, head_before: before })
     assert.equal(moved.decision.reason, 'discriminator_undecidable', 'the ruling binds to the head it was made at')
   })
 

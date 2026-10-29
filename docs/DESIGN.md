@@ -3083,7 +3083,9 @@ and reviewed like any other.
   a brief change or commits made by hand was sent no failures of its head, so its failures go to
   the next round. Two consecutive measurements failing
   identically escalate (`verify_not_converging`). lib/verdict.mjs escalates what no commit of
-  the leaf can move — a discriminator that is the only failing fact on a `tdd` leaf, or on a `red`
+  the leaf can move — a discriminator that is the only failing fact on a `tdd` leaf once its producer
+  was sent the same files back (`discriminator_sent_back`, a fix round telling it the test passes at
+  base and must fail without its change; `sentBack` read off the round before's close), or on a `red`
   leaf whose only failing fact is a file that adds a case and passes at base and now beside the tests
   that fail as they must (`discriminator_undecidable`) — and any environment error by its kind. A
   tdd leaf whose every changed test file passes at base and now is not undecidable when the change

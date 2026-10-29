@@ -63,6 +63,19 @@ const passing = () => (passingP ??= (async () => {
 
 // ================================================================== merging
 
+test('a batch whose execution was paused while it waited for the lock merges nothing and records nothing', SLOW, async (t) => {
+  const w = world(inTest(t), [root(), leaf('x', { rigor: 'trivial', expects: ['x.txt'] })])
+  const x = await ready(w, 'x', { 'x.txt': 'x\n' }, 'Add x')
+  const pre = headOf(w.r, '.')
+  const recorded = stateOf(w.r).length
+  const out = await mergeBatch(w.xc, { target: '.', children: handed(x), paused: () => true })
+  assert.equal(out.status, 'paused')
+  assert.deepEqual(out.merged, [])
+  assert.equal(headOf(w.r, '.'), pre, 'the integration branch did not move')
+  assert.equal(stateOf(w.r).length, recorded, 'no batch-started, no batch')
+  assert.notEqual(statusOf(w.r, 'x'), 'merged')
+})
+
 test('children merge in dependency order, whatever order they are handed in', SLOW, async (t) => {
   const w = world(inTest(t), [root(),
     leaf('x', { rigor: 'trivial', expects: ['x.txt'] }),

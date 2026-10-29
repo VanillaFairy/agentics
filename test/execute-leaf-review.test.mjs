@@ -221,6 +221,11 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     const first = reviewRecord(w.rig, 1)
     assert.equal(first.next, 'fix')
     assert.ok(first.open.length > 0 && first.open.every((o) => String(o.id).startsWith('unit:')), 'what stayed open is unruled units alone')
+    const listed = (brief, heading) => brief.split(heading)[1].split('\n## ')[0].split('\n').filter((l) => l.startsWith('- ')).map((l) => l.slice(2))
+    assert.deepEqual(listed(reviewers[1].brief, '## The units you rule'), first.open.map((o) => String(o.id).slice('unit:'.length)),
+      'the fresh reviewer rules what the first left unruled, at the same head')
+    assert.deepEqual(listed(reviewers[1].brief, '## Rulings that stand'), ['criterion:1'], 'what the first ruled stands')
+    assert.deepEqual(reviewRecord(w.rig, 2).rulings.map((r) => r.unit), ['criterion:1', ...listed(reviewers[1].brief, '## The units you rule')])
     assert.deepEqual(messages(w.rig, 'producer:b'), [], 'no message waits on the producer, whatever its kind')
     assert.equal(approvals(w.rig).length, 1)
   })

@@ -137,6 +137,13 @@ test('every unit the reviewer rules is listed under its name', () => {
   for (const u of units) assert.ok(text.includes('\n- ' + u + '\n') || text.endsWith('\n- ' + u), u)
 })
 
+test('the units whose rulings stand are named apart from those the reviewer rules, and only when there are any', () => {
+  const text = reviewerBrief(review({ units: ['file:src/api/parse.js'], standing: ['criterion:1'] }))
+  assert.deepEqual(listed(text, '## The units you rule'), ['file:src/api/parse.js'])
+  assert.deepEqual(listed(text, '## Rulings that stand'), ['criterion:1'])
+  assert.ok(!reviewerBrief(review()).includes('## Rulings that stand'))
+})
+
 test("each of the prior round's open blockers is listed by its id, to rule in fix_rulings", () => {
   const second = { ...blocker, id: 'F2', severity: 'major', claim: 'the error names no key' }
   const text = reviewerBrief(review({ prior: [blocker, second] }))

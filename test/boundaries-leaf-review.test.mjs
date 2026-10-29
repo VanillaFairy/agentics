@@ -11,6 +11,7 @@ import assert from 'node:assert/strict'
 import { existsSync, rmSync } from 'node:fs'
 
 import { leafReview, reviewUnits } from '../lib/boundaries/leaf-review.mjs'
+import { reviewDelta } from '../lib/review-delta.mjs'
 import { executionContext } from '../lib/boundaries/records.mjs'
 import { executionLog, readLog } from '../lib/ledger.mjs'
 import { branchOf, dispatchKey, readJson, returnPath, reviewPath, writeJson } from '../lib/store.mjs'
@@ -23,6 +24,8 @@ const E = 'e1'
 // The units a leaf review is handed in these tests: its one criterion and one changed file.
 const U = ['criterion:1', 'file:src/a.mjs']
 const UNRULED = 'unit:file:src/a.mjs'
+/** A whole review's delta over `units`: each to rule, none standing. */
+const whole = (units = U) => reviewDelta([], units.map((unit) => ({ unit, anchor: 'at:' + unit })))
 
 const finding = (id, extra = {}) => ({
   id, severity: 'critical', claim: 'claim ' + id, evidence: 'evidence ' + id, failure_scenario: 'fails when ' + id, ...extra,
@@ -92,7 +95,7 @@ const verdict = ({ ruled = U, findings = [], fix = [] } = {}) => ({
 /** One review round: the reviewer is called and returns `ret`, then leafReview reads it. */
 async function go(w, { node = 'a', round, review_round = round, units = U, ...ret }) {
   const dispatch = reviewed(w, { node, round, review_round, value: verdict({ ruled: units, ...ret }) })
-  const args = { node, round, review_round, dispatch, units }
+  const args = { node, round, review_round, dispatch, delta: whole(units) }
   return { dispatch, args, result: await leafReview(w.xc, args) }
 }
 
@@ -110,20 +113,46 @@ const sorted = (a) => [...a].sort()
 test('reviewUnits names each criterion from 1, each changed file, each failing approved case, in that order', () => {
   const two = { acceptance: [{ text: 'first' }, { text: 'second' }] }
   const units = reviewUnits(two, {
-    changed: ['src/a.mjs', 'src/b.mjs'],
+    head: 'h1', changed: ['src/a.mjs', 'src/b.mjs'], blobs: new Map([['src/a.mjs', 'blob-a']]),
     approved_failing: [{ file: 'test/a.test.mjs', id: 'adds one' }],
   })
-  assert.deepEqual(units, [
+  assert.deepEqual(units.map((u) => u.unit), [
     'criterion:1', 'criterion:2', 'file:src/a.mjs', 'file:src/b.mjs', 'approved-case:test/a.test.mjs#adds one',
   ])
+  assert.deepEqual(units.slice(2, 4).map((u) => u.anchor), ['blob-a', 'deleted'], 'a file is anchored to its blob at the head')
   // An option left out is an empty list.
-  assert.deepEqual(reviewUnits(two, {}), ['criterion:1', 'criterion:2'])
-  assert.deepEqual(reviewUnits(two, { changed: ['src/a.mjs'] }), ['criterion:1', 'criterion:2', 'file:src/a.mjs'])
+  assert.deepEqual(reviewUnits(two, {}).map((u) => u.unit), ['criterion:1', 'criterion:2'])
 })
 
 test('reviewUnits of a leaf with no criteria, no changed file and no failing case is empty', () => {
   assert.deepEqual(reviewUnits({ acceptance: [] }, { changed: [], approved_failing: [] }), [])
   assert.deepEqual(reviewUnits({ acceptance: [] }, {}), [])
+})
+
+test('a criterion and a failing case stand only at the head they were ruled at; a file wherever its blob is the same', () => {
+  const leafOf = { acceptance: [{ text: 'first' }] }
+  const at = (head, blob) => reviewUnits(leafOf, { head, changed: ['src/a.mjs'], blobs: new Map([['src/a.mjs', blob]]), approved_failing: [{ file: 't.mjs', id: 'x' }] })
+  const prior = at('h1', 'blob-a').map((u) => ({ ...u, ruling: 'clean' }))
+  assert.deepEqual(reviewDelta(prior, at('h1', 'blob-a')).rule, [], 'nothing moved: every ruling stands')
+  assert.deepEqual(reviewDelta(prior, at('h2', 'blob-a')).rule.map((r) => r.unit), ['criterion:1', 'approved-case:t.mjs#x'], 'the head moved, the file did not')
+  const edited = reviewUnits({ acceptance: [{ text: 'first, reworded' }] }, { head: 'h1' })
+  assert.notEqual(edited[0].anchor, prior[0].anchor, 'a criterion whose text changed is ruled again')
+})
+
+test('the review record keeps the rulings that stood and each unit the return ruled examined, at its anchor', async (t) => {
+  const w = world(t)
+  produced(w, { node: 'a', round: 1 })
+  const standing = { unit: 'criterion:1', anchor: 'c1', ruling: 'clean' }
+  const delta = reviewDelta([standing], [{ unit: 'criterion:1', anchor: 'c1' }, { unit: 'file:src/a.mjs', anchor: 'b1' }, { unit: 'file:src/b.mjs', anchor: 'b2' }])
+  const ret = { units: [{ unit: 'file:src/a.mjs', ruling: 'clean', why: 'read it' }, { unit: 'file:src/b.mjs', ruling: 'unexamined', why: 'not reached' }], findings: [], fix_rulings: [], claims: [], notes: '' }
+  const dispatch = reviewed(w, { node: 'a', round: 1, review_round: 1, value: ret })
+  const result = await leafReview(w.xc, { node: 'a', round: 1, review_round: 1, dispatch, delta })
+
+  const record = recordOf(w, 'a', 1)
+  assert.deepEqual(record.units, ['file:src/a.mjs', 'file:src/b.mjs'], 'only what the delta rules is the round\'s to rule')
+  assert.deepEqual(record.rulings, [standing, { unit: 'file:src/a.mjs', anchor: 'b1', ruling: 'clean' }])
+  assert.equal(result.decision.next, 'fix', 'the unexamined file is open')
+  assert.deepEqual(record.open.map((f) => f.id), ['unit:file:src/b.mjs'])
 })
 
 // ------------------------------------------------------------------ the exit and its records
@@ -421,7 +450,7 @@ test('the review record holds node, round, review_round, dispatch, head_sha, uni
   produced(w, { node: 'a', round: 2 })
   const ret = verdict({ findings: [finding('F2')], fix: [notFixed('F1')] })
   const dispatch = reviewed(w, { node: 'a', round: 2, review_round: 2, value: ret })
-  await leafReview(w.xc, { node: 'a', round: 2, review_round: 2, dispatch, units: U })
+  await leafReview(w.xc, { node: 'a', round: 2, review_round: 2, dispatch, delta: whole() })
 
   const record = recordOf(w, 'a', 2)
   assert.equal(record.node, 'a')
@@ -446,7 +475,7 @@ test('a review with no stored return holds the leaf on a role fault and records 
   produced(w, { node: 'a', round: 1 })
   const dispatch = reviewed(w, { node: 'a', round: 1, review_round: 1, status: null })
   const before = w.xc.log.entries().length
-  const result = await leafReview(w.xc, { node: 'a', round: 1, review_round: 1, dispatch, units: U })
+  const result = await leafReview(w.xc, { node: 'a', round: 1, review_round: 1, dispatch, delta: whole() })
   assert.deepEqual(result.decision, { next: 'held', reason: 'role' })
   assert.equal(result.raise, false)
   assert.deepEqual(result.stops, [{ id: 'a', status: 'held', reason: 'role', said: '' }])
@@ -465,7 +494,7 @@ test('a return file with no returned record is not read', async (t) => {
   const w = world(t)
   produced(w, { node: 'a', round: 1 })
   const dispatch = reviewed(w, { node: 'a', round: 1, review_round: 1, value: verdict(), status: null })
-  const result = await leafReview(w.xc, { node: 'a', round: 1, review_round: 1, dispatch, units: U })
+  const result = await leafReview(w.xc, { node: 'a', round: 1, review_round: 1, dispatch, delta: whole() })
   assert.equal(result.decision.next, 'held')
   assert.equal(events(w, 'approved').length, 0)
   assert.equal(faults(w).length, 1)
@@ -475,7 +504,7 @@ test('a return whose findings is not an array holds the leaf on a role fault', a
   const w = world(t)
   produced(w, { node: 'a', round: 1 })
   const dispatch = reviewed(w, { node: 'a', round: 1, review_round: 1, value: { units: [], findings: 'none', fix_rulings: [] } })
-  const result = await leafReview(w.xc, { node: 'a', round: 1, review_round: 1, dispatch, units: U })
+  const result = await leafReview(w.xc, { node: 'a', round: 1, review_round: 1, dispatch, delta: whole() })
   assert.deepEqual(result.decision, { next: 'held', reason: 'role' })
   assert.equal(result.raise, false)
   assert.deepEqual(result.stops, [{ id: 'a', status: 'held', reason: 'role', said: '' }])
@@ -489,7 +518,7 @@ test('a stored return whose call did not return is not read', async (t) => {
     produced(w, { node: 'a', round: 1 })
     const dispatch = reviewed(w, { node: 'a', round: 1, review_round: 1, value: verdict(), status, cause })
     assert.ok(existsSync(returnPath(w.xc.dir, dispatch)), 'the file is kept')
-    const result = await leafReview(w.xc, { node: 'a', round: 1, review_round: 1, dispatch, units: U })
+    const result = await leafReview(w.xc, { node: 'a', round: 1, review_round: 1, dispatch, delta: whole() })
     assert.equal(result.decision.next, 'held', status)
     assert.equal(result.raise, false, status)
     assert.equal(events(w, 'approved').length, 0, status)
@@ -540,7 +569,7 @@ test('a round that crashed after some records landed records the rest once when 
   produced(w, { node: 'u', round: 1, role: 'auditor', thread: 'auditor:u' })
   const ret = verdict({ findings: [finding('F1'), finding('F2', { remedy: 'tests' })] })
   const dispatch = reviewed(w, { node: 'u', round: 1, review_round: 1, value: ret })
-  const args = { node: 'u', round: 1, review_round: 1, dispatch, units: U }
+  const args = { node: 'u', round: 1, review_round: 1, dispatch, delta: whole() }
   let appended = 0
   const flaky = {
     ...w.xc,
@@ -565,7 +594,7 @@ test('a node that is no leaf throws', async (t) => {
   const w = world(t)
   produced(w, { node: 'a', round: 1 })
   const dispatch = reviewed(w, { node: 'a', round: 1, review_round: 1, value: verdict() })
-  const args = { round: 1, review_round: 1, dispatch, units: U }
+  const args = { round: 1, review_round: 1, dispatch, delta: whole() }
   await assert.rejects(async () => leafReview(w.xc, { ...args, node: '.' }), /not a leaf/)
   await assert.rejects(async () => leafReview(w.xc, { ...args, node: 'nowhere' }))
   assert.equal(events(w, 'approved').length, 0)

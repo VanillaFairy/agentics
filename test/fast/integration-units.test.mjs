@@ -7,7 +7,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { integrationUnits, priorRulings } from '../../lib/boundaries/integration.mjs'
+import { integrationDelta, integrationUnits, lastReview, priorRulings } from '../../lib/boundaries/integration.mjs'
 import { reviewDelta } from '../../lib/review-delta.mjs'
 
 const at = ({ merges = [3], head = 'h1', specHash = 's1', claims = [] } = {}) => integrationUnits({
@@ -42,4 +42,40 @@ test('a finished review leaves standing what it anchored and the claims it passe
 test('a review that kept no anchors leaves nothing standing', () => {
   assert.deepEqual(priorRulings({ head_sha: 'h1', claims: [{ claim: 'a', ruling: 'met' }] }), [])
   assert.deepEqual(priorRulings(null), [])
+})
+
+test('a decision is ruled again once a file its realising merges touched moves, its text and merges the same', () => {
+  const units = (blob) => anchorsOf(integrationUnits({
+    decisions: [{ id: 'D1', text: 'keys are case blind', merges: [3], rests: [['src/keys.mjs', blob]] }], files: [], blobs: new Map(), specHash: 's1', head: 'h1',
+  }))
+  assert.notEqual(units('blob-2')['decision:D1'], units('blob-1')['decision:D1'])
+})
+
+test('a review that kept no anchors still carries its open blockers and its claims other than a pass, accepted among them', () => {
+  const found = {
+    head_sha: 'h1', open: [{ id: 'C1', claim: 'leaks', failure_scenario: 'x' }],
+    claims: [{ claim: 'a', ruling: 'met' }, { claim: 'b', ruling: 'under' }, { claim: 'c', ruling: 'accepted' }, { claim: 'd', ruling: 'equivalent' }],
+  }
+  const last = lastReview(found)
+  assert.deepEqual(last.open, found.open)
+  assert.deepEqual(last.claims.map((c) => c.claim), ['b', 'c'])
+  assert.deepEqual(priorRulings(last), [], 'no ruling of it stands')
+  const anchored = { ...found, anchors: { spec: 's1' } }
+  assert.equal(lastReview(anchored), anchored)
+  assert.equal(lastReview(undefined), null)
+})
+
+test("a spec edit that cannot be shown leaves no claim's ruling standing; no change, or a shown edit, leaves them", () => {
+  const review = { head_sha: 'h1', anchors: { spec: 's0' }, claims: [{ claim: 'a', ruling: 'met' }] }
+  const current = at({ claims: review.claims })
+  const asked = []
+  const run = (edit) => integrationDelta(review, current, (anchor) => (asked.push(anchor), edit))
+  const gone = run({ ok: false, kind: 'no_copy' })
+  assert.deepEqual(asked, ['s0'], 'the edit is asked of the spec ruling it was made on')
+  assert.ok(gone.delta.rule.some((r) => r.unit === 'claim:1'), 'every claim is ruled again')
+  assert.equal(gone.edit.kind, 'no_copy')
+  for (const edit of [{ ok: false, kind: 'no_diff' }, { ok: true, diff: '@@' }]) {
+    assert.deepEqual(run(edit).delta.stand.map((u) => u.unit), ['claim:1'])
+  }
+  assert.equal(integrationDelta({ ...review, anchors: { spec: 's1' } }, current, () => assert.fail('spec stood: no edit asked')).edit, null)
 })

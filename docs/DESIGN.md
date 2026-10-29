@@ -3266,13 +3266,14 @@ an open item (a blocker, a claim that is not a pass), and each caller carries th
 review as it always does.
 
 An anchor is computed by code, from git and the store, never by a model, and each unit kind has one
-owner that names it and computes its anchor. A record that keeps no anchors is read as no prior:
-the review it feeds is whole, which costs one review and needs no migration.
+owner that names it and computes its anchor. A record that keeps no anchors holds no ruling that
+stands: the review it feeds rules every unit, which costs one review and needs no migration, and
+its open items are still carried.
 
 | Review | Units, each anchored to | Owner | The prior it reads |
 |---|---|---|---|
 | a leaf's review | `criterion:<n>`: its text and the head · `file:<path>`: its blob at the head · `approved-case:<file>#<id>`: the head · a unit the review before left unruled and the span no longer names: the head | `reviewUnits` in `lib/boundaries/leaf-review.mjs` | the review record before it in the execution: its `rulings` ([Executors and review](#executors-and-review)) |
-| a folder's integration review | `decision:<id>`: its text and the merges beneath the folder carrying an entry that realises it · `file:<path>`: its blob at the head (`fileUnits` in `lib/review-delta.mjs`) · `spec`: the spec's text hash · `claim:<n>`: the head under review | `integrationUnits` and `priorRulings` in `lib/boundaries/integration.mjs` | the folder's last `claims` event with `review: done`: its `anchors`, and its passing claims at its `head_sha` ([Executors and review](#executors-and-review)) |
+| a folder's integration review | `decision:<id>`: its text, the merges beneath the folder carrying an entry that realises it, and the blob at the head of each file those merges touched · `file:<path>`: its blob at the head (`fileUnits` in `lib/review-delta.mjs`) · `spec`: the spec's text hash · `claim:<n>`: the head under review | `integrationUnits` and `priorRulings` in `lib/boundaries/integration.mjs` | the folder's last `claims` event with `review: done` (`lastReview`): its `anchors`, and its passing claims at its `head_sha`, none of them when the spec's edit since its `spec` ruling cannot be shown (`integrationDelta`) ([Executors and review](#executors-and-review)) |
 | a probe's narrowed round — a spec's review, and a plan's, which `planFolder` runs as one | `<axis>@<section>`: its section's text | `sectionUnits` in `lib/evidence.mjs` | the `since` round's kept rulings beside its snapshot (`<hash>.rulings.json`, [Probe](#probe)) |
 
 **Why:** a ruling stands until what it judged moves. Narrowing grew in each review on its own terms,
@@ -3479,19 +3480,23 @@ the same way, and a fallback is no longer a separate path but the empty prior.
   **After its first review, a folder is reviewed only where it moved** ([Review delta](#review-delta)).
   `reviewUnit` computes its units with their anchors (`integrationUnits` in
   `lib/boundaries/integration.mjs`, the owner of these unit kinds): `decision:<id>` for each decision
-  the folder defines, anchored to its text and the merges beneath the folder that carry an entry
-  realising it; `file:<path>` for each file the span changed, anchored to its blob at the head;
+  the folder defines, anchored to its text, the merges beneath the folder that carry an entry
+  realising it, and the blob at the head of each file those merges touched (a commit that changes
+  code a decision rests on moves it without naming it); `file:<path>` for each file the span changed, anchored to its blob at the head;
   `spec`, the claims the spec makes, anchored to the spec's text hash; and `claim:<n>` for each claim
   of the folder's last finished review, anchored to the head under review. The prior is that review's
   `claims` event (`priorRulings`): each unit it anchored, and each claim it ruled `met`, `equivalent`
   or `accepted` at the head it judged. A claim ruled otherwise is open and ruled again by every
-  review, as is each unit the reviewer left unexamined. A review that kept no anchors leaves the next
-  review whole: no claim carried, no blocker carried. One brief serves every review
+  review, as is each unit the reviewer left unexamined. A review that kept no anchors (`lastReview`)
+  leaves no ruling standing, so the next review rules every unit, but it is still the prior for
+  what it left open: its open blockers, and each claim it ruled other than a pass or `accepted`, so
+  an accepted drift does not park again. One brief serves every review
   (`integrationBrief`): the folder's span; what merged since the head the last review judged, when it
   moved; the leaves no test discriminates whose nets are among the files to rule, and the existing
   tests rewritten among them; the spec's edit since the text the `spec` ruling was made on (the kept
   copy of that hash, diffed by `keptSpecDiff` in `lib/spec.mjs`, the diff `respec` shows), when one is
-  kept; the last review's claims numbered `claim:<n>`; the blockers it left open, each to be ruled in
+  kept — where none is, no `claim:<n>` ruling stands (`integrationDelta`), so every claim is
+  ruled again against the spec as it is; the last review's claims numbered `claim:<n>`; the blockers it left open, each to be ruled in
   `fix_rulings`; every answer the user recorded on the folder, the latest per question, as settled;
   the units to rule, and those whose rulings stand, named apart; and the spec whole. Ruling `spec`
   means giving every claim the spec makes on a first review, every claim the changed lines make or

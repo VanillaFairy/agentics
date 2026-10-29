@@ -966,8 +966,9 @@ sent where is the routing table (`ROUTES`):
   the same request again would end the conversation, so it escalates `tests_declined`. A resumed
   call is sent every message on its thread no `dispatched` line carried yet, batched into one
   prompt; a message is delivered once a `dispatched` line carries it, and a carrier that never
-  returned is resumed, never sent the message again. `cut_off` alone is never recorded: it is the
-  brief of every resume of a started call, after a cut-off or a host stop.
+  returned is resumed, never sent the message again. No `message` line records `cut_off`, so no replay carries it: it is the whole
+  prompt of a resume of a started call, after a cut-off or a host stop, and leads a renewed
+  session's brief over a started call; the call's `dispatched` line holds it only as the prompt sent.
 - **A refusal names what was refused.** A `refusals` message's payload is `{of, refusals[{claim?,
   id?, finding?, problem}]}`, `of` naming what code refused of its recipient's return — `items`,
   `dispositions` or `rulings` — and its text says who refused them: the evidence store, the ledger

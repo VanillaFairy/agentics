@@ -1331,7 +1331,9 @@ the leaf's own commits, a tdd leaf's new tests still fail at its base, and whate
 parent since the cut is in the tree the leaf is measured on. The refresh merge is not the leaf's
 work, and the series check leaves it out. A cycle member takes its parent only at the cut, with
 the merge as its base: it is cut from its predecessor's head, which the parent does not hold, so a
-later refresh would count its predecessor's commits as its own.
+later refresh would count its predecessor's commits as its own. The one exception is a rebase round of
+the cycle's tip, which a conflict sent: it takes the parent's head so its implementer can resolve the
+conflict, and its series is measured from what that merge brought (`MERGE_HEAD`).
 
 The base is read off the branch, never carried from the call that made it (`leafBase` in
 `lib/integration.mjs`): the oldest commit on the leaf's first-parent line, from where it left its
@@ -2800,7 +2802,14 @@ caller derives the outcome as `mergeOk = stop_reason === 'completed' && merged_s
 conflicts.length === 0` — never from `conflicts` alone, because an `environment_broken` merge has
 an empty conflict list too. A conflict whose merge was aborted holds back its unit and every unit
 built on it (whose head contains its head), and the other units merge (`mergeUnits` in
-`lib/integration.mjs`); a cycle merges through its tip, so its members land together or not at all.
+`lib/integration.mjs`); a cycle merges through its tip, so its members land together or not at all,
+and a member handed without its tip waits, merging, measuring and recording nothing. A batch whose
+target head, units and unit heads are those of a batch already finished in the execution, with no
+`retry` of a child since, is not run again and records nothing: the program waits until something
+changes. A leaf with a `rebase` message newer than its latest round opens that round, whatever its
+latest round's close left to resume. A relaunch takes up every such round still owed — an approved leaf's
+`rebase` or integration `failures` message newer than its latest dispatch, a cycle's tip only
+(`owedRounds` in `lib/programs/execute.mjs`) — rather than merging the head that round must change.
 Anything else that is not `mergeOk` stops the batch. A conflict is never
 resolved on an integration branch: a leaf's goes to the judge, who may send the leaf a rebase round
 to resolve it on its own branch ([The judge](#the-judge)), and any other reaches the user.
@@ -4104,7 +4113,7 @@ value}` or `step {key, value_file, bytes}`; `batch {target, merged[], head_sha, 
 landing before the batch's `merged` events; `gate {target, head_sha, passed, checks}`, `checks` the digest of the criterion checks it ran, one per suite gate
 that ran; `checkpoint {reason, detail, executions?, gaps?, branches?, lost?}` (the lists the checkpoint found, `branches` the `[{branch, commits}]` of an `outside_work` one, `lost` the `[{branch, exists, node, merged_sha, reachable_from}]` of an `integration_lost` one;
 `lib/status.mjs checkpoint` prints them); `checkpoint-confirmed {reason, gaps?, executions?}`, the
-reason and what the confirmed checkpoint line found; `closed {status: done | migrated}`; `batch-started {target, pre, children}`;
+reason and what the confirmed checkpoint line found; `closed {status: done | migrated}`; `batch-started {target, pre, children, heads?}` (`heads` the units' heads, in order);
 `drift-ruled {node, contract, head_sha, ruling, why, said, adopted_seq?}` (`adopted_seq` the seq of the adopted record the ruling covers, [Landing and drift](#landing-and-drift)) and `stale-ruled {node, base_now,
 ruling, why, said}` (`said` the ruler's dispatch; the newest `stale-ruled` of a leaf is its anchor
 for the next moved base once it is `unaffected` or answered on disk); `fault {node, channel, detail}`, once per node and channel

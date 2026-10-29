@@ -24,6 +24,7 @@ import { leafClose } from '../lib/boundaries/leaf-close.mjs'
 import { leafOpen } from '../lib/boundaries/leaf-open.mjs'
 import { ensureIntegration, ensureLeaf } from '../lib/integration.mjs'
 import { mergeUnit } from '../lib/programs/execute/integrate.mjs'
+import { runLeaf } from '../lib/programs/execute/leaf.mjs'
 import { schedule } from '../lib/schedule.mjs'
 import { dispatchKey, nodeKey } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
@@ -191,4 +192,22 @@ test('resolve of a conflict sends a rebase round: the open leaves the merge in p
   git(a.worktree, 'commit', '-q', '--no-edit')
   const done = await close()
   assert.equal(done.decision.next, 'approve', JSON.stringify(done.decision))
+})
+
+test("a leaf a resolve sent a rebase opens the rebase round, never resuming what its last round left", SLOW, async (t) => {
+  const rig = executionRig(t, { spec: SPEC })
+  const c = readyLeaf(rig, 'x/c', { 'src/c.mjs': 'export const c = 1\n', 'src/both.mjs': 'export const both = "c"\n' })
+  const a = readyLeaf(rig, 'x/a', { 'src/a.mjs': 'export const a = 1\n', 'src/both.mjs': 'export const both = "a"\n' })
+  approve(rig, c)
+  await merge(rig, 'x', c)
+  approve(rig, a)
+  rig.script({
+    [rulerKey('conflict', a)]: [rulings(['integration', 'resolve'])],
+    'implementer|x/a|producer:x/a': [{ output: { status: 'blocked', text: 'stopping here' } }],
+  })
+  await merge(rig, 'x', a)
+  const out = await runLeaf(rig.ctx, rig.xc, { id: 'x/a', intelligence: 'normal' })
+  const rounds = kinds(rig, 'dispatched').filter((e) => e.node === 'x/a').map((e) => [e.round, e.role])
+  assert.deepEqual(rounds.at(-1), [2, 'implementer'], 'round 1 returned unclosed is not closed again; the rebase opens round 2')
+  assert.equal(out.outcome, 'stopped')
 })

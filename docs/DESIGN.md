@@ -3247,11 +3247,12 @@ and reviewed like any other.
   leaf was cleared counts as sent) — and any environment error by its kind. Such a file may be ruled
   a regression net over behaviour that held at base (`net`, [Session calls](#session-calls)): by the
   session when the file only pins that behaviour ([Skills](#skills), who settles a stop), else by the
-  user. At the head that ruling names, and at any later head of the leaf where the file's content is
-  the same (a rebase for a conflict elsewhere, a fix round that left the file alone; `netsAt`,
-  through `sameBlob`), the file is of class net; a leaf whose nets leave no file of class adds or
-  static-pin is reported `undiscriminated` in the result and named to its folder's integration
-  review.
+  user. A net is keyed by the file's blob in the measurement it was ruled over (`netsOf`), so it
+  stands at every head of the leaf where the file holds that content — a rebase for a conflict
+  elsewhere, a fix round that left the file alone — and at none where it changed; there the file is
+  of class net. A leaf whose nets leave no file of class adds or static-pin in its approved
+  measurement (`approvedNets`) is reported `undiscriminated` in the result and named to its folder's
+  integration review.
 - **Review** is a fresh reviewer each round (`reviewer:<leaf>:<n>`, `n` counting this execution's
   reviews of the leaf), handed its producer's leaf brief, the span, the producer's return (its
   concerns first), the units it must rule — each criterion (`criterion:<n>`), each changed file
@@ -4018,8 +4019,8 @@ either)
 outcome: serialize | resolve | replan | cant_rule, after[], why, said}` (the judge's ruling on a unit
 at its approved head, [The judge](#the-judge); `contentionOf`, `waitsOn` and `conflictJudged` read it) ·
 `landed {into, merged_sha, by}` (`by` who confirmed the word: `user` or `terminal`, or `session` for a landing recorded over work the user's branch already held) · `nets {head_sha,
-nets[{file, why}], all, by}` (the ruling, the session's or the user's, that test files are regression nets, `net`
-under [Session calls](#session-calls)) · `claims
+nets[{file, blob, why}], by}` (the ruling, the session's or the user's, that test files are regression nets, each at
+the blob the measurement it was ruled over read, `net` under [Session calls](#session-calls)) · `claims
 {head_sha, review: done | not_earned, claims[{claim, ruling, failure_scenario?}], open?[{id, claim,
 failure_scenario}], said?, by?, accepted?[{claim, was, why}], rerule?}` (`open` is every critical a
 finished review leaves open, its own and the prior's it did not rule fixed) (`ruling` is the reviewer's `met`, `equivalent`, `under`, `over`, `deviates`, `spec_defect` or
@@ -4518,8 +4519,9 @@ the session's, called as CLIs:
   stop is not that escalation), `no_measurement`, `bad_file` (not that shape, or a file listed
   twice), `no_nets`, `not_measured` (no such changed test file), `not_a_net` (it discriminates, or
   does not pass now), `no_reason`; an unresolved file refuses `unknown_file`. On success one `nets`
-  event is appended under the escalation's execution, bound to that measurement's head, so a later
-  commit voids it; `all` when every changed file that adds a case is a net. `retry` then clears
+  event is appended under the escalation's execution, each net keyed by its file's blob in that
+  measurement, so a commit that changes the file voids it and one that leaves it alone does not;
+  `all` when the leaf's nets leave no file of that measurement to discriminate. `retry` then clears
   the stop and the leaf's next close measures it under the ruling.
 - **accept** — `accept --repo <r> --effort <e> --node <folder> --file <path>`: the session's verdict
   on drift claims an integration review found, and the one thing that clears the park the review
@@ -4754,9 +4756,9 @@ directory; `sessions` every session the search's thread ran in; `rounds` each ro
   reviews[{target, said}]}, drift[{node, contract}], cleanup_n, stopped: '' | budget | pause,
   paused, notes, coverage}`: `root` is the folder it ran, `paused` the seq of the session's pause the
   run stopped for (0 when it did not, a `--pause` flag's stop included), `checkpoint` null when none stopped the run, and
-  `implemented[].role` the node's role (`none` outside a cycle), `nets` the test files ruled
-  regression nets at its approved head and `undiscriminated` whether no file of it is left to
-  discriminate. A preflight refusal returns the
+  `implemented[].role` the node's role (`none` outside a cycle), `nets` the test files whose
+  regression nets stand in its approved measurement and `undiscriminated` whether they leave no file
+  of it to discriminate (`approvedNets`). A preflight refusal returns the
   same shape with `error {kind, message}`, `checkpoint` null and the unreached line `preflight
   refused (<kind>): nothing was dispatched`. A stop's text is its `said` dispatch's return, or the
   node's card. `coverage.unreached` names every stopped node and counts the rest.

@@ -17,7 +17,7 @@ import assert from 'node:assert/strict'
 import {
   CONSOLIDATION, auditGap, closeDecision, consolidationDue, greenRoundRole, heldMutations, integrationPark, measurementOk,
   ownFailing, profileOf, reviewExit,
-  netsAt, suiteFailed, undiscriminated,
+  netsIn, netsOf, suiteFailed, undiscriminated,
 } from '../../lib/verdict.mjs'
 import { normalizeNode } from '../../lib/tree.mjs'
 
@@ -54,9 +54,11 @@ const m = (over = {}) => ({
   ...over,
 })
 
-const disc = (failed_on_base, passes_now, test_id = 'test/x.test.mjs') => ({ test_id, failed_on_base, passes_now })
+const disc = (failed_on_base, passes_now, test_id = 'test/x.test.mjs') => ({ test_id, blob: 'blob of ' + test_id, failed_on_base, passes_now })
+// A regression net over a file, ruled at the blob `disc` measures it at.
+const net = (file) => ({ file, blob: 'blob of ' + file, why: 'a net' })
 // A changed test file that adds no test case: it passes at base by construction.
-const upkeep = (passes_now) => ({ test_id: 'test/y.test.mjs', adds_test: false, failed_on_base: false, passes_now })
+const upkeep = (passes_now) => ({ test_id: 'test/y.test.mjs', blob: 'blob of test/y.test.mjs', adds_test: false, failed_on_base: false, passes_now })
 const bites = { file: 'src/x.mjs', applied: true, unapplied_reason: '', expect_failing: ['test/x.test.mjs'], observed_failing: ['test/x.test.mjs'], bites: true }
 const survives = { ...bites, observed_failing: [], bites: false }
 const stale = { ...bites, applied: false, unapplied_reason: 'stale', observed_failing: [], bites: false }
@@ -297,49 +299,41 @@ test('a tdd leaf whose every changed test file is declared upkeep goes back to i
 
 test('a file the user ruled a regression net is held to passes_now alone, beside a criterion check', () => {
   const passed = [{ command: 'grep wired', status: 'passed' }]
-  const nets = ['test/x.test.mjs']
+  const nets = [net('test/x.test.mjs')]
   assert.equal(closeDecision(m({ discriminator: [disc(false, true)], checks: passed }), LEAVES.tdd, '', { nets }).next, 'approve')
   assert.equal(measurementOk(m({ discriminator: [disc(false, false)], checks: passed }), LEAVES.tdd, '', { nets }).ok, false, 'a net must pass now')
+  assert.equal(closeDecision(m({ discriminator: [{ ...disc(false, true), blob: 'edited' }], checks: passed }), LEAVES.tdd, '', { nets }).reason,
+    'discriminator_sent_back', 'a net ruled over other content of the file stands nowhere')
   const two = m({ discriminator: [disc(false, true), disc(false, true, 'test/z.test.mjs')], checks: passed })
   assert.equal(closeDecision(two, LEAVES.tdd, '', { nets, sentBack: ['test/z.test.mjs'] }).reason, 'discriminator_undecidable', 'a file not ruled is still undecidable')
 })
 
 test('with every changed test file ruled a net, a leaf with no criterion check that ran does not pass', () => {
-  const d = closeDecision(m({ discriminator: [disc(false, true)] }), LEAVES.tdd, '', { nets: ['test/x.test.mjs'] })
+  const d = closeDecision(m({ discriminator: [disc(false, true)] }), LEAVES.tdd, '', { nets: [net('test/x.test.mjs')] })
   assert.equal(d.reason, 'discriminator_undecidable')
   assert.ok(d.failures.some((f) => /no criterion check ran/.test(f.claim)))
-  const beside = measurementOk(m({ discriminator: [disc(false, true), upkeep(true)] }), LEAVES.tdd, '', { nets: ['test/x.test.mjs'] })
+  const beside = measurementOk(m({ discriminator: [disc(false, true), upkeep(true)] }), LEAVES.tdd, '', { nets: [net('test/x.test.mjs')] })
   assert.ok(beside.failures.some((f) => /no criterion check ran/.test(f.claim)), 'an upkeep file beside the nets discriminates nothing either')
 })
 
-test('a net ruling stands at its head alone, and a leaf approved there reads undiscriminated', () => {
-  const events = [
-    { kind: 'nets', node: 'x', head_sha: 'aaa', nets: [{ file: 'test/x.test.mjs', why: 'a net over what held' }], all: true, seq: 1 },
-    { kind: 'approved', node: 'x', head_sha: 'aaa', seq: 2 },
-  ]
-  assert.deepEqual(netsAt(events, 'x', 'aaa').files, ['test/x.test.mjs'])
-  assert.equal(netsAt(events, 'x', 'bbb'), null, 'a new commit voids the ruling')
+test('a net stands wherever its file holds the blob it was ruled over, and a leaf approved there reads undiscriminated', () => {
+  const ruled = [net('test/x.test.mjs'), net('test/y.test.mjs')]
+  const events = [{ kind: 'nets', node: 'x', head_sha: 'aaa', nets: ruled, seq: 1 }, { kind: 'approved', node: 'x', head_sha: 'bbb', seq: 2 }]
+  assert.deepEqual(netsOf(events, 'x').map((n) => n.file), ['test/x.test.mjs', 'test/y.test.mjs'])
+  // A rebase for a conflict elsewhere: x's file is the same at bbb, y's was edited.
+  const edited = { ...disc(false, true, 'test/y.test.mjs'), blob: 'another' }
+  const at = (discriminator) => [{ kind: 'verify-observed', node: 'x', head_sha: 'bbb', discriminator, checks: [{ command: 'c', status: 'passed' }] }]
+  const kept = at([disc(false, true), edited])
+  assert.deepEqual(netsIn(kept[0], netsOf(events, 'x')), { nets: [{ file: 'test/x.test.mjs', why: 'a net' }], all: false },
+    'a net whose file changed is voided, and leaves a file to discriminate')
   const nodes = new Map([['x', normalizeNode({ id: 'x', kind: 'leaf' })]])
-  assert.deepEqual(undiscriminated(nodes, events, '.').map((l) => l.id), ['x'])
-  assert.deepEqual(undiscriminated(nodes, [...events, { kind: 'approved', node: 'x', head_sha: 'bbb', seq: 3 }], '.'), [])
+  assert.deepEqual(undiscriminated(nodes, events, kept, '.'), [])
+  assert.deepEqual(undiscriminated(nodes, events, at([disc(false, true), disc(false, true, 'test/y.test.mjs')]), '.').map((l) => l.id), ['x'])
+  assert.deepEqual(undiscriminated(nodes, events, [{ ...at([disc(false, true)])[0], head_sha: 'ccc' }], '.'), [], 'read at the approved head alone')
+  const later = [...events, { kind: 'nets', node: 'x', nets: [{ ...net('test/x.test.mjs'), why: 'ruled again' }], seq: 3 }]
+  assert.deepEqual(netsOf(later, 'x').find((n) => n.file === 'test/x.test.mjs').why, 'ruled again', 'the latest ruling of a file at a blob stands')
 })
 
-test('a net ruling carries to a later head for each netted file whose content is unchanged there', () => {
-  const nets = [{ file: 'test/x.test.mjs', why: 'a net' }, { file: 'test/y.test.mjs', why: 'a net' }]
-  const events = [
-    { kind: 'nets', node: 'x', head_sha: 'aaa', nets, all: true, seq: 1 },
-    { kind: 'approved', node: 'x', head_sha: 'bbb', seq: 2 },
-  ]
-  // A rebase for a conflict elsewhere: x's file is the same at bbb, y's was edited.
-  const sameAt = (from, to, file) => from === 'aaa' && to === 'bbb' && file === 'test/x.test.mjs'
-  const carried = netsAt(events, 'x', 'bbb', sameAt)
-  assert.deepEqual(carried.files, ['test/x.test.mjs'])
-  assert.equal(carried.all, false, 'a net voided on the way leaves a file to discriminate')
-  assert.equal(netsAt(events, 'x', 'bbb', () => true).all, true)
-  assert.equal(netsAt(events, 'x', 'bbb', () => false), null, 'every netted file changed: nothing carries')
-  const nodes = new Map([['x', normalizeNode({ id: 'x', kind: 'leaf' })]])
-  assert.deepEqual(undiscriminated(nodes, events, '.', () => true).map((l) => l.id), ['x'])
-})
 
 test('...but not when a test does not pass now, which an implementer can move', () => {
   assert.equal(closeDecision(m({ discriminator: [disc(true, false)] }), LEAVES.tdd).next, 'fix')
@@ -356,7 +350,7 @@ test('a red leaf whose only failing fact is a file that adds a case passing at b
   const held = disc(false, true, 'test/z.test.mjs')
   const d = closeDecision(m({ ...red, discriminator: [disc(true, false), held] }), LEAVES.red)
   assert.deepEqual([d.next, d.reason], ['escalate', 'discriminator_undecidable'])
-  assert.equal(closeDecision(m({ ...red, discriminator: [disc(true, false), held] }), LEAVES.red, '', { nets: ['test/z.test.mjs'] }).next, 'review')
+  assert.equal(closeDecision(m({ ...red, discriminator: [disc(true, false), held] }), LEAVES.red, '', { nets: [net('test/z.test.mjs')] }).next, 'review')
   assert.equal(closeDecision(m({ ...red, discriminator: [disc(true, false), disc(false, false, 'test/z.test.mjs')] }), LEAVES.red).next, 'fix',
     'a test that passed at base and fails now is one the red broke')
   assert.equal(closeDecision(m({ discriminator: [held] }), LEAVES.red).next, 'fix', 'a red whose every test passes pins nothing it could not move')

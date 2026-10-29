@@ -682,8 +682,8 @@ and the project commands its entry names in `runs` (`roleCommands` in `lib/roles
 by `commandParts` like any other. A producer that returns `blocked` after the host denied it a
 command stops as `command_denied`, the denied command lines its `detail` (read from the call's
 `denials`): its entry is missing a `runs`, a spec gap that no retry clears. When every denied line
-is ad hoc (`adHocCommand` in `lib/permissions.mjs`: file tools such as `cat`, `sed` or `git`, or an
-interpreter given an inline script), the producer wanted a tool its role has: the lines go back to
+is ad hoc (`adHocCommand` in `lib/permissions.mjs`: file tools such as `cat`, `sed` or `git`, shell control
+such as `eval` or a loop, even around a project command, or an interpreter given an inline script), the producer wanted a tool its role has: the lines go back to
 it as a `failures` message (`source: the permission check`) and the round goes on; the same lines
 refused again stop as `command_denied`. An agent of a program run outside an execution runs
 in the checkout the program reads (`--root`), the `review` program's reviewer in its throwaway
@@ -3982,7 +3982,11 @@ Headings and forms inside a fenced block are prose. A task's title and context c
 Design as `the Design` (the capitalised word), and a part of it as `the Design's "<name>"`, `"<name>"
 block of the Design` or `Design › <name>`, where `<name>` is a `### ` heading of the Design or its
 start before a space or a bracket; its brief carries what it cites ([Briefs and returns](#briefs-and-returns)).
-A task citing a name the Design does not hold, or a Design that is empty, is refused at its entry.
+A task citing a name the Design does not hold, or a Design that is empty, is refused at its entry. So is a task whose
+title or context names `npm run <script>`, or that reads a recipe (`.claude/skills/<x>/SKILL.md`, a
+`.claude/commands/` file) whose first fenced script is one, when its `runs` lists no such script and
+the effort's established commands and its own criterion checks do not run it (`runsProblems` in
+`lib/spec.mjs`): its producer would be denied the command.
 
 A group:
 

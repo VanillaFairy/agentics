@@ -108,6 +108,8 @@ test('blocked after only ad-hoc denied lines (reading or rewriting files, an inl
   assert.deepEqual(po({ ret: { status: 'blocked', text: TEXT }, denied }), { next: 'denied', denied })
   const mixed = po({ ret: { status: 'blocked', text: TEXT }, denied: [...denied, 'npm run asset:rename'] })
   assert.equal(mixed.next, 'stop', "a project command among them is still the spec's gap")
+  const wrapped = ['eval "npm run asset:add -- prop.x --tiles 1x1"', 'for id in a b; do npm run asset:add -- $id; done']
+  assert.equal(po({ ret: { status: 'blocked', text: TEXT }, denied: wrapped }).next, 'denied', 'a project command in a loop or eval runs as one plain line instead')
 })
 
 test('needs_decision parks the leaf on it, said the dispatch', () => {

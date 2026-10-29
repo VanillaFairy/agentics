@@ -1034,8 +1034,8 @@ with `--child <run>` as a detached child whose output goes to the run's `run.log
 child's pid into `run.json` and appends the run's `run` line naming it, both inside the claim, so a
 start racing it sees the run live and is refused `run_live`; it prints `{run, pid, log, result_file}`
 at once. Once a run's `ended` is on disk, a program that asks (`afterEnded`) is handed its result:
-an execution that stopped for the session's pause, which the session has cleared since, starts
-again detached.
+an execution that stopped for the session's pause (its result's `paused`), which the session
+has cleared since, starts again detached; one the `--pause` flag stopped stays stopped.
 `lib/status.mjs watch --run <run>` prints a line for every `host_stop` and `fault` recorded after
 the `seq` its `--since <seq>` names (a non-negative safe integer; any other is refused), or after it
 began when it is given none (`host_stop <dispatch>: <cause> until <until or ->`, `fault <channel>:
@@ -4659,7 +4659,8 @@ directory; `sessions` every session the search's thread ran in; `rounds` each ro
   review_rounds, at_integration, salvaged, nets, undiscriminated}], escalations[{id, reason, said}], parked[{id, return,
   said}], faults[{id, channel}], blocked[{blocked_by, leaves_n}], integration{branch, head_sha,
   reviews[{target, said}]}, drift[{node, contract}], cleanup_n, stopped: '' | budget | pause,
-  notes, coverage}`: `root` is the folder it ran, `checkpoint` null when none stopped the run, and
+  paused, notes, coverage}`: `root` is the folder it ran, `paused` the seq of the session's pause the
+  run stopped for (0 when it did not, a `--pause` flag's stop included), `checkpoint` null when none stopped the run, and
   `implemented[].role` the node's role (`none` outside a cycle), `nets` the test files ruled
   regression nets at its approved head and `undiscriminated` whether no file of it is left to
   discriminate. A preflight refusal returns the

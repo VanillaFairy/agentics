@@ -18,7 +18,7 @@ import { approvalState, recordApproval, recordPreparation } from '../lib/approva
 import { compileEffort } from '../lib/compile.mjs'
 import { renderMessage } from '../lib/conversation.mjs'
 import { append, fileFor, readLog, readRunLog, runState } from '../lib/ledger.mjs'
-import { briefRoomOf, programContext } from '../lib/programs/common.mjs'
+import { programContext } from '../lib/programs/common.mjs'
 import { rule } from '../lib/programs/rule.mjs'
 import { launch } from '../lib/run.mjs'
 import { rulerBrief } from '../lib/briefs/respec.mjs'
@@ -113,7 +113,7 @@ test('a change that cannot be ruled is refused with its next step and dispatches
   assert.equal(ledger(rig.repo, 'ruled').length, 0)
 })
 
-test('a ruler whose brief is past what it can read is sent it fitted, the specs as files to open, and rules', async (t) => {
+test('a ruler whose brief is past what it can read is never sent it: the change is refused, its largest part named', async (t) => {
   const pad = (text, mark) => text.replace('## Design\n', '## Design\n\n' + Array.from({ length: 1200 }, (_, i) => mark + ' ' + i + ' ' + 'z'.repeat(100)).join('\n') + '\n')
   const rig = programRig({ files: { 'CLAUDE.md': GUIDE + '\n' } })
   t.after(() => rig.cleanup())
@@ -128,13 +128,10 @@ test('a ruler whose brief is past what it can read is sent it fitted, the specs 
 
   const run = rig.relaunch(rulerScript(rulingsOf(brief)))
   const out = await rule(run.ctx, args('api'))
-  assert.notEqual(out.why, 'the ruler returned no rulings: brief_too_large', JSON.stringify(out))
-  assert.equal(run.calls.length, 1)
-  const [call] = run.calls
-  assert.ok(Buffer.byteLength(call.brief) <= briefRoomOf('ruler'), 'the brief sent fits')
-  assert.ok(!(call.brief.includes('API_PAD 7 ') && call.brief.includes('ROOT_PAD 7 ')), 'a spec past the room went as a file')
-  assert.match(call.brief, /it is the file .*\/briefs\//)
-  assert.ok(call.brief.includes('## Rulings'), 'its charge stays inline')
+  assert.equal(run.calls.length, 0, 'no ruler is started')
+  assert.deepEqual([out.status, out.next], ['refused', 'rule_it'])
+  assert.ok(out.why.includes('brief_too_large') && out.why.includes('"'), out.why)
+  assert.equal(ledger(run.repo, 'ruled').length, 0)
 })
 
 test("one ruler rules the change at its role's tier", async (t) => {

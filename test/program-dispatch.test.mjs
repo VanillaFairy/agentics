@@ -276,23 +276,22 @@ test('a later round resumes the thread, its fresh brief the thread brief then ev
   assert.equal(call.briefDigest, fnv1a(threadBrief))
 })
 
-test('a fresh session past its room keeps the messages it is sent to answer inline, and hands the answered ones as files', async (t) => {
+test('a fresh session whose brief is past its room is refused by its largest part, nothing sent, while a resumed one is sent its message', async (t) => {
   const settled = { output: { status: 'settled', dispositions: [] } }
-  const rig = rigFor(t, { script: { 'planner||planner:p': [settled, settled, settled, settled] } })
-  // A plain brief whose last section is guidance: text after it would read as that section's.
+  const rig = rigFor(t, { script: { 'planner||planner:p': [settled, settled, settled] } })
   const threadBrief = '# Plan folder p\n\n## Findings to settle\n\n(the findings are the messages after this brief)\n\n## Product invariants\n\n- never a timer'
   const planner = { role: 'planner', schema: 'planner_settle', thread: 'planner:p', threadBrief }
   await dispatch(rig.ctx, { ...planner, round: 1, brief: threadBrief })
-  const big = (n) => ({ findings: [{ id: 'P' + n, severity: 'gap', claim: 'answered-' + n + ' ' + 'x'.repeat(briefRoomOf('planner')) }] })
+  const big = (n) => ({ findings: [{ id: 'P' + n, severity: 'gap', claim: 'answered-' + n + ' ' + 'x'.repeat(briefRoomOf('planner') / 3) }] })
   await deliver(rig.ctx, { ...planner, round: 2, msg: 'findings', payload: big(1) })
   await deliver(rig.ctx, { ...planner, round: 3, msg: 'findings', payload: big(2) })
-  await deliver(rig.ctx, { ...planner, round: 4, fresh: 'raised', msg: 'findings', payload: { findings: [{ id: 'P9', severity: 'gap', claim: 'live-finding-P9' }] } })
-  const call = rig.calls.at(-1)
-  assert.equal(call.resume, false, 'the fixture: a fresh session')
-  assert.ok(Buffer.byteLength(call.brief) <= briefRoomOf('planner'), 'the brief fits')
-  assert.ok(call.brief.includes('live-finding-P9'), 'the finding the call is for is in its prompt')
-  assert.ok(call.brief.includes('- never a timer'), 'the guidance stays whole')
-  assert.ok(!call.brief.includes('answered-1') && !call.brief.includes('answered-2'), 'the answered findings went as files')
+  assert.equal(rig.calls.length, 3, 'the fixture: a resumed session reads only its message, so it is sent')
+  const out = await deliver(rig.ctx, { ...planner, round: 4, fresh: 'raised', msg: 'findings', payload: big(3) })
+  assert.equal(rig.calls.length, 3, 'the fresh session is never started')
+  assert.equal(out.status, 'failed')
+  assert.equal(out.cause, 'brief_too_large')
+  assert.match(out.part, /^message \d+ findings$/)
+  assert.ok(out.bytes > out.budget, JSON.stringify(out))
 })
 
 test("a call that fails is failed with the runner's cause", async (t) => {

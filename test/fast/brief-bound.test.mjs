@@ -1,7 +1,8 @@
 // test/fast/brief-bound.test.mjs — pins the bound on a call's first read: a fresh call whose system
-// prompt and brief hold more than a first read may is refused before anything starts; a prober's
-// brief gives up its excerpts, as places to open, to fit; a narrowed probe round's kept ground holds
-// each place once; and the spend view flags a unit whose call read past the bound.
+// prompt and brief hold more than a first read may is refused before anything starts; a brief is
+// sized part by part and refused, naming the part, never cut or handed as a file; a narrowed probe
+// round's kept ground holds each place once; and the spend view flags a unit whose call read past the
+// bound.
 //
 // Design: docs/DESIGN.md#the-agent-runner, docs/DESIGN.md#probe, docs/DESIGN.md#spend-view.
 
@@ -10,12 +11,12 @@ import assert from 'node:assert/strict'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { fitParts, joined, sectionsOf } from '../../lib/briefs/fit.mjs'
+import { joined, oversizedPart, sectionsOf } from '../../lib/briefs/size.mjs'
 import { proberBrief } from '../../lib/briefs/probe.mjs'
 import { hitBlocks } from '../../lib/citations.mjs'
 import { briefRoomOf } from '../../lib/programs/common.mjs'
 import { joinedGround } from '../../lib/programs/probe.mjs'
-import { BRIEF_BYTES, BRIEF_TOKENS } from '../../lib/roles.mjs'
+import { BRIEF_BYTES, BRIEF_TOKENS, PART_BYTES } from '../../lib/roles.mjs'
 import { callsOf } from '../../lib/run.mjs'
 import { oversize, runAgent } from '../../lib/runner.mjs'
 import { flagSpend, spendUnits } from '../../lib/status.mjs'
@@ -61,37 +62,41 @@ const groundOf = (hits, summary = 'the scout found the ground') => {
   return { text, blocks: hitBlocks(text), counts: { hits: hits.length, unresolved: 0 }, complete: true }
 }
 const SECTIONS = [{ slug: 'intent', title: 'Intent', start: 1, end: 2 }]
-const at = (ground, room) => ({
-  room, artifact: 'DESIGN.md', text: '# T\n\n## Intent\nx\n', axes: [{ key: 'contract', charge: 'attack it' }],
+const at = (ground) => ({
+  artifact: 'DESIGN.md', text: '# T\n\n## Intent\nx\n', axes: [{ key: 'contract', charge: 'attack it' }],
   units: ['contract@intent'], sections: SECTIONS, cited: { read_error: '', files: [], unresolved: [] }, ground,
   settled: [{ file: '.agentics/e/DESIGN.md', intent: 'SETTLED_INTENT_TOKEN '.repeat(200), decisions: '', design: '' }],
 })
+const bytes = (text) => Buffer.byteLength(text)
+const bigSpec = (lines) => Array.from({ length: lines }, (_, i) => 'line ' + (i + 1) + ' ' + 'x'.repeat(120)).join('\n') + '\n'
 
-/** A prober's brief fitted to `room` by the shared fit, each file it hands kept in `files` by key. */
-function fitted({ room, ...given }) {
-  const files = {}
-  const out = fitParts(proberBrief(given).parts, room, (key, body) => { files[key] = body; return '/run/briefs/' + key + '.md' })
-  return { text: out.text, trimmed: out.handed.map((h) => h.key), files }
-}
-
-test("a prober's brief past its room hands the ground as places to open, every place still named", () => {
-  const ground = groundOf(Array.from({ length: 40 }, (_, i) => hit(i + 1)))
-  const whole = fitted(at(ground, Infinity))
-  assert.deepEqual(whole.trimmed, [])
-  const room = Buffer.byteLength(whole.text) - 1000
-  const small = fitted(at(ground, room))
-  assert.ok(Buffer.byteLength(small.text) <= room, 'it fits')
-  assert.deepEqual(small.trimmed, ['ground'], 'giving up the least it must')
-  assert.ok(!small.text.includes('EXCERPT_LINE_TOKEN'))
-  for (const b of ground.blocks) assert.ok(small.text.includes(b.head), 'still names ' + b.head)
-  assert.ok(small.text.includes('SETTLED_INTENT_TOKEN'), 'what fits is kept whole')
+test("a prober's brief within its budgets is sent whole: the ground's excerpts and the settled specs are in it", () => {
+  const ground = groundOf(Array.from({ length: 10 }, (_, i) => hit(i + 1)))
+  const { parts } = proberBrief(at(ground))
+  assert.equal(oversizedPart(parts, BRIEF_BYTES), null)
+  const text = joined(parts)
+  assert.ok(text.includes(ground.text), 'every excerpt the search located')
+  assert.ok(text.includes('SETTLED_INTENT_TOKEN '.repeat(200)), 'the settled spec, whole')
 })
 
-test("a prober's brief that cannot fit hands every part but its charge as a file", () => {
-  const out = fitted(at(groundOf([hit(1)]), 10))
-  assert.deepEqual(out.trimmed, ['ground', 'cited', 'settled', 'units', 'artefact'])
-  assert.ok(!out.text.includes('SETTLED_INTENT_TOKEN'))
-  assert.ok(out.text.includes('.agentics/e/DESIGN.md'), 'the settled spec is named to read')
+test('a part past what one part may hold is refused by name, even where the whole brief would fit', () => {
+  const lines = Math.ceil(PART_BYTES / bytes(bigSpec(1))) + 1
+  const { parts } = proberBrief({ ...at(groundOf([hit(1)])), text: bigSpec(lines) })
+  const refused = oversizedPart(parts, Infinity)
+  assert.equal(refused.part, 'artefact')
+  assert.equal(refused.bytes, bytes(parts.find((p) => p.key === 'artefact').text))
+  assert.equal(refused.budget, PART_BYTES)
+  assert.ok(refused.message.includes('"artefact"'), refused.message)
+})
+
+test('a brief past its room, each part within its budget, is refused naming its largest part and what that part may hold beside the rest', () => {
+  const brief = (n) => [{ key: 'charge', text: 'Rule this.' }, { key: 'small', text: 's'.repeat(100) }, { key: 'big', text: 'b'.repeat(n) }]
+  const room = 5000
+  const refused = oversizedPart(brief(6000), room)
+  assert.equal(refused.part, 'big')
+  assert.equal(refused.bytes, 6000)
+  assert.equal(oversizedPart(brief(refused.budget), room), null, 'the largest part at its budget fits')
+  assert.notEqual(oversizedPart(brief(refused.budget + 1), room), null, 'and one byte more does not')
 })
 
 test("a narrowed round's ground holds each place once, a place located again with its newer lines", () => {
@@ -127,40 +132,11 @@ test('the spend view flags a unit whose call opened its session reading past the
   assert.ok(reasons['folder a'].includes('brief_over_bound'))
 })
 
-const bigSpec = (lines) => Array.from({ length: lines }, (_, i) => 'line ' + (i + 1) + ' FAR_TEXT_TOKEN ' + 'x'.repeat(120)).join('\n') + '\n'
-const carriedOf = (n) => Array.from({ length: n }, (_, i) => ({ id: 'P' + (i + 1), severity: 'gap', axis: 'contract', section: 'design', claim: 'CARRIED_TOKEN ' + 'y'.repeat(900) }))
-
-test('a narrowed round over a large spec fits by handing its artefact and carried findings as files, its changed lines inline', () => {
-  const text = bigSpec(806)
-  const narrow = { changed: [{ start: 533, end: 533 }, { start: 697, end: 702 }], carried: carriedOf(106) }
-  const at2 = {
-    ...at(groundOf([hit(1)]), 60000), text, narrow, guidance: '## Repository guidance\n\n### CLAUDE.md\n\n' + 'g'.repeat(16000),
-  }
-  const out = fitted(at2)
-  assert.ok(Buffer.byteLength(out.text) <= at2.room, 'it fits')
-  assert.ok(out.trimmed.includes('artefact') && out.trimmed.includes('carried'), JSON.stringify(out.trimmed))
-  assert.ok(out.text.includes('/run/briefs/artefact.md') && out.text.includes('/run/briefs/carried.md'))
-  assert.equal(out.files.artefact, text, "the artefact's file is its text, so Read numbers its lines as findings cite them")
-  assert.match(out.text, /^\s+533\tline 533 /m, 'a changed line, at its own number')
-  assert.match(out.text, /^\s+513\tline 513 /m, 'with the lines around it')
-  assert.ok(!/^\s+100\tline 100 /m.test(out.text), 'a far unchanged line goes by the file')
-})
-
-test('a full round whose artefact alone is past the room hands it as the file to read', () => {
-  const out = fitted({ ...at(groundOf([hit(1)]), BRIEF_BYTES - 6000), text: bigSpec(2000) })
-  assert.ok(Buffer.byteLength(out.text) <= BRIEF_BYTES - 6000)
-  assert.ok(out.trimmed.includes('artefact'))
-  assert.ok(!out.text.includes('FAR_TEXT_TOKEN'))
-})
-
-test("a plain brief's sections go as files, largest first, its charge and a fenced heading's text kept whole", () => {
-  const spec = '~~~~markdown\n## Not a section of the brief\n' + 'S'.repeat(5000) + '\n~~~~'
+test("a plain brief's parts are its sections keyed by their headings, a fenced heading the fenced text's, and they join back to the brief", () => {
+  const spec = '~~~~markdown\n## Not a section of the brief\n' + 'S'.repeat(50) + '\n~~~~'
   const text = ['# Rule this', '', 'Return the rulings.', '', '## The change', '', 'small', '', '## The specs', '', '### a.md', '', spec].join('\n')
   const parts = sectionsOf(text)
-  assert.deepEqual(parts.map((p) => p.key), ['charge', 'The change', 'The specs', 'a.md'], 'a heading inside a fence is the fenced text\'s')
-  assert.equal(joined(parts), text, 'the parts join back to the brief')
-  const out = fitParts(parts, 1000, (key) => '/run/briefs/' + key + '.md')
-  assert.deepEqual(out.handed.map((h) => h.key), ['a.md'])
-  assert.ok(out.text.startsWith('# Rule this'))
-  assert.ok(out.text.includes('### a.md') && out.text.includes('/run/briefs/a.md.md'))
+  assert.deepEqual(parts.map((p) => p.key), ['charge', 'The change', 'The specs', 'a.md'])
+  assert.equal(joined(parts), text)
+  assert.deepEqual(sectionsOf('## Task\n\nDo it.').map((p) => p.key), ['Task'], 'a brief that opens on a heading has no charge before it')
 })

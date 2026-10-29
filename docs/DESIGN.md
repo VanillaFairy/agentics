@@ -650,21 +650,26 @@ fails `brief_too_large`, a terminal class like `budget`, so a relaunch builds th
 meets the same refusal unless what it is built from changed. A resumed call is not checked: its
 session carries the brief, and a session past half its window is renewed instead (below).
 
-**A brief fits by handing its parts as files.** Every role but the searchers carries Read, so `dispatch`
-fits the prompt of each fresh call of such a role, and its renewal briefs, to the room the role leaves
-(`briefRoomOf` in `lib/programs/common.mjs`: the bound less the role's system prompt), with one fit
-(`fitParts` in `lib/briefs/fit.mjs`): past the room, part after part is written under the run's
-`briefs/` (named by its key and digest) and replaced by a line saying which file holds it, until the
-prompt fits or only its charge is left. A plain brief's parts are its `## ` and `### ` sections
-(`sectionsOf`; what comes before the first is the charge, and a heading inside a fence is the fenced
-text's), given up largest first: a ruler's specs before its answers, a reviewer's yardstick spec before
-its units. A fresh call's thread messages are parts of their own, never read into the brief's last
-section: a message no returned call carried is what the call is for and stays inline, and one a
-returned call answered goes as a file before any part of the brief. A brief built for the fit is shaped (`{parts}`), each part naming its rank, what it says
-once it is a file, and what the file holds; the prober's is ([Probe](#probe)). The dispatch's result
-names what went as files (`handed`). The searchers (scout, historian, doc-researcher) carry no Read:
-their prompt is the round's brief and their charge the search's material, sent as it is. The spend view flags a unit with a call whose session opened past the bound
-as measured ([Spend view](#spend-view)), which is how an estimate that errs low shows.
+**A brief is sized when it is built, and sent whole or not at all.** A brief is the evidence its
+agent is handed inline; a part cut from it and replaced by a path to open would send the agent to
+read what code should have handed it, so no part ever is. The budgets sit beside the window: one
+part of a brief may hold half of what a first read may (`PART_BYTES` in `lib/roles.mjs`), so no one
+body of text crowds out the rest, and the whole may hold what the role leaves of the bound
+(`briefRoomOf` in `lib/programs/common.mjs`: `BRIEF_BYTES` less the role's system prompt and charge).
+`dispatch` composes every fresh call's prompt from its parts and checks them before anything starts
+(`oversizedPart` in `lib/briefs/size.mjs`): a part past its budget, or else a whole past the room, is
+refused `brief_too_large`, the result naming the part (`part`, the whole's largest when the whole is
+over), its `bytes`, and the `budget` it would have to meet — beside the rest, for the whole. Nothing
+is sent or recorded. A plain brief's parts are its `## ` and `### ` sections (`sectionsOf`; what comes
+before the first is its `charge`, and a heading inside a fence is the fenced text's); a fresh call's
+thread messages are parts of their own; a brief built in parts is shaped (`{parts}`, each `{key,
+text}`), as the prober's is ([Probe](#probe)). Under budget the prompt is the brief exactly as built.
+A session the runner renews mid-call is briefed with the thread's fresh brief, held to the runner's
+whole bound alone (`oversize`).
+Where the refusal lands is the dispatching unit's: it ends its program on the failure, as any failed
+dispatch does (a `role` fault in an execution).
+The spend view flags a unit with a call whose session opened past the bound as measured
+([Spend view](#spend-view)), which is how an estimate that errs low shows.
 
 **One driver per session.** The host lets two processes drive one session at once and interleaves
 their turns, so the runner keeps it to one: before a session is resumed, the runner makes sure no
@@ -844,8 +849,7 @@ contract's shallowest live provider (`consumedParts`); then,
 under `Effort files` and only when there are any,
 the text of each file under the effort's store (`.agentics/<effort>/`, its `.state/` records
 excepted) that the leaf reads or its intent or context cites, read from the main checkout: the store
-is gitignored, so no worktree holds it, and the producer is confined to its worktree. Like any
-section it is handed as a file under the run's `briefs/` when the brief is past its room. Then its
+is gitignored, so no worktree holds it, and the producer is confined to its worktree. Then its
 referenced evidence, the gotchas its role and expected
 files call for, how its rigor measures it, the established commands, its worktree, and the
 repository's guidance — its `CLAUDE.md` files from the root to each directory its expected files sit
@@ -2100,7 +2104,7 @@ included. It finds the guidance and the code the artefact rests on, its hits lab
 `ground`; its material is the artefact, or, given `since`, each changed range on its own
 (`locateMaterial`), and its scope the probe's roots. The artefact's own citations stay apart: they
 are resolved by `resolveCitations` and handed over as the shared ground. Every prober gets every
-hit's excerpts (`hitExcerpts`) while they fit its brief; the axes analyst gets the `guidance`-labelled ones, and is bought
+hit's excerpts (`hitExcerpts`); the axes analyst gets the `guidance`-labelled ones, and is bought
 when the repository has guidance (`guidanceOf`: the `CLAUDE.md` chain and `config.guidance`,
 resolved by code) or any hit is labelled `guidance`. The probe builds its coverage from the search
 through `searchCoverage` ([Searches](#searches)): a `done` or `stalled` locate is a `declared` line
@@ -2136,17 +2140,14 @@ locates and derives its axes as a full round does. Kept ground holds each place 
 a hit located again keeps its newer lines where it now stands, and a search block word for word the
 same is kept once, so a folder's rounds grow its ground only by places no round held before.
 
-**A prober's brief fits what it can read.** The prober's brief is shaped for the one fit
-([The agent runner](#the-agent-runner)), its parts given up in this order: the repository ground (its
-places stay, each search's head and each hit's `- <place> — <note>` line), the document's citations
-(each file with the lines it cites stays), the settled specs (their files stay named), the
-repository's guidance, a narrowed round's carried findings, the units, and last the artefact, whose
-file holds its text, so Read numbers its lines as findings cite them; a narrowed round still hands its
-changed lines inline, with 20 lines around each, each after its number. The probe's `declared` names
-the parts each prober was handed as files. What is left is the
-charge itself, so a brief past the room after all that is a defect in the charge's text, which the
-runner refuses `brief_too_large`: the prober fails, the round records nothing, and in an execution the
-folder is held on a `role` fault naming the cause.
+**A prober's brief is sized part by part.** The prober's brief is built in parts
+([The agent runner](#the-agent-runner)) — the artefact, the settled specs, a narrowed round's carried
+findings, the units, the document's citations, the repository ground, the guidance, each beside the
+charge's own — and is sent whole, the artefact always line-numbered in full. A part past its budget,
+or a brief past the room, is refused `brief_too_large` before it is sent: the prober fails, its
+`unreached` line names the part, its size and its budget, the round records nothing, and in an
+execution the folder is held on a `role` fault naming the cause. A relaunch meets the same refusal
+until the artefact or what it rests on is smaller.
 
 ### What a probe costs
 
@@ -3367,7 +3368,6 @@ and reviewed like any other.
   and "Entries that run after this folder" (`laterEntries`): every unmerged entry outside the folder
   that waits on it, topmost first, with the decisions it realises. A claim one of them realises is
   not the folder's to have met: the reviewer leaves it out of its claims and names it in its notes.
-  Both sections, like any, go as files under the run's `briefs/` when the brief is past its room.
   Besides findings it returns a
   **claim ruling** for each
   claim the spec makes (a success criterion, a Design statement, a plan criterion): `met`,

@@ -3271,6 +3271,7 @@ the review it feeds is whole, which costs one review and needs no migration.
 |---|---|---|---|
 | a leaf's review | `criterion:<n>`: its text and the head · `file:<path>`: its blob at the head · `approved-case:<file>#<id>`: the head | `reviewUnits` in `lib/boundaries/leaf-review.mjs` | the review record before it in the execution: its `rulings` ([Executors and review](#executors-and-review)) |
 | a folder's integration review | `decision:<id>`: its text and the merges beneath the folder carrying an entry that realises it · `file:<path>`: its blob at the head (`fileUnits` in `lib/review-delta.mjs`) · `spec`: the spec's text hash · `claim:<n>`: the head under review | `integrationUnits` and `priorRulings` in `lib/boundaries/integration.mjs` | the folder's last `claims` event with `review: done`: its `anchors`, and its passing claims at its `head_sha` ([Executors and review](#executors-and-review)) |
+| a probe's narrowed round — a spec's review, and a plan's, which `planFolder` runs as one | `<axis>@<section>`: its section's text | `sectionUnits` in `lib/evidence.mjs` | the `since` round's kept rulings beside its snapshot (`<hash>.rulings.json`, [Probe](#probe)) |
 
 **Why:** a ruling stands until what it judged moves. Narrowing grew in each review on its own terms,
 each with its own fallbacks to a whole review; one delta over anchored rulings narrows every review

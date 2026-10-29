@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import {
-  ENTRY_KEYS, ENTRY_KINDS, GRADES, SECTIONS, checkFolder, checkSpec, citedDesign, entryId, hashSpec, parseSpec,
+  ENTRY_KEYS, ENTRY_KINDS, GRADES, SECTIONS, checkFolder, checkSpec, citedDesign, contractDefinition, entryId, hashSpec, parseSpec,
 } from '../lib/spec.mjs'
 import { specPath } from '../lib/store.mjs'
 
@@ -655,4 +655,18 @@ test("checkFolder refuses a task whose text or recipe names a project script its
   writeFileSync(join(recipe, '.claude/skills/add-asset/SKILL.md'), '# Adding\n\nSee `npm run lint` first.\n\n```sh\nnpm run asset:add -- <id>\nnpm run shadow:draw\n```\n')
   assert.deepEqual(runsOf(recipe).map((p) => p.problem), ['spec-parser runs `npm run asset:add` (named in .claude/skills/add-asset/SKILL.md), which its runs does not list: add it to runs, or its producer is denied it'],
     'the recipe is its first fenced script; prose and later lines are not asked for')
+})
+
+test('contractDefinition reads what names the contract: its declarations and the paragraphs naming them, not the text beside them', () => {
+  const design = (extra = '', den = '  setup(): void;', note = 'A den is set up once.') => [
+    '# Ports', '', '## Intent', '', 'Ports.', '', '## Decisions', '', '## Design', '', '### Ports', '', '```ts',
+    'interface Den {   // den-port: what a controller drives', den, '}', 'interface Proximity { tileOf(): Tile }', '```', '',
+    'Every `Den` is homed in one area. ' + note, '', 'Proximity is fed by the game.' + extra, '',
+    '## Plan', '', '- **burrow** — task · rigor: trivial · provides: den-port (src/den.ts)', '  Build it', '  - [ ] it builds — check: `tsc`', '',
+    '## Open questions', '', '## Evidence', '',
+  ].join('\n')
+  const def = (text) => contractDefinition(parseSpec(text), 'den-port')
+  assert.equal(def(design(' Its listener may run inside a drain.')), def(design()), 'a paragraph about another port moves nothing')
+  assert.notEqual(def(design('', '  setup(): void; // twice throws')), def(design()), 'the declaration itself')
+  assert.notEqual(def(design('', undefined, 'A den is set up twice.')), def(design()), 'a paragraph naming what it declares')
 })

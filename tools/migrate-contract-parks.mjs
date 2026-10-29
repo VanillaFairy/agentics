@@ -50,8 +50,12 @@ export function plan(repo, effort) {
       left.push({ node, why: 'the provider ' + file + ' is no spec of this effort' })
       continue
     }
-    const lines = compiled.filter((l) => l.folder === of.folder && (l.seq || 0) < park.seq)
-    const [older, newer] = lines.slice(-2)
+    // Compile parks first and records `compiled` after: the compile that raised the park is the first
+    // one after it, and the text it was measured against is the one compiled before that.
+    const lines = compiled.filter((l) => l.folder === of.folder)
+    const at = lines.findIndex((l) => (l.seq || 0) > park.seq)
+    const newerAt = at >= 0 ? at : lines.length - 1
+    const [older, newer] = [lines[newerAt - 1], lines[newerAt]]
     const a = older && kept(repo, effort, of.folder, older.hash)
     const b = newer && kept(repo, effort, of.folder, newer.hash)
     if (!a || !b) left.push({ node, why: 'the texts of ' + file + ' on either side of the park are not both kept' })

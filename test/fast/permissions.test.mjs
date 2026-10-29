@@ -269,3 +269,16 @@ test('a denied line is read against each command a compound grant runs, and a pa
 test('a here-string is no heredoc: the lines after it are commands', () => {
   assert.equal(deniedClass('grep x <<< foo\nnpm run evil', []), 'unlisted')
 })
+
+test("a rebase round may also write exactly the conflicted paths it resolves, a test among them, never the store", () => {
+  const [source, other] = SOURCES
+  const [testPath] = TESTS
+  const green = rolePermissions({ writes: 'no-tests', resolves: [testPath] })
+  assert.ok(may(green, testPath), 'a deny would win over the allow: the test denials lift')
+  assert.ok(may(green, source))
+  for (const path of STORE) assert.ok(!may(green, path), path)
+  assert.ok(!may(rolePermissions({ writes: 'no-tests', resolves: [source] }), testPath), 'a source path to resolve lifts nothing')
+  const tests = rolePermissions({ writes: 'tests', resolves: [source] })
+  assert.ok(may(tests, source))
+  assert.ok(!may(tests, other), 'only the path it resolves')
+})

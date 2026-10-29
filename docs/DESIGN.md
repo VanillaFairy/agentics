@@ -2919,9 +2919,8 @@ merge, a `ruler_contention` ruling, about two things (`lib/contention.mjs`, `lib
   head and the other leaf's are the ones it was given and its node has not been cleared since
   ([P3](#p3--state-is-derived-records-are-written-as-things-happen)). A unit with facts is set aside from the
   batch.
-- **Conflict.** A leaf whose executor has a shell to conclude a merge, whose merge conflicted — a
-  cycle's tip only when every conflicting path is one its implementer may write, and its rebase
-  round goes to that implementer — unless a `resolve` of a conflict on the same paths at an earlier approved head stands
+- **Conflict.** A leaf whose executor has a shell to conclude a merge, whose merge conflicted — of a
+  cycle, its tip, whose rebase round goes to its implementer — unless a `resolve` of a conflict on the same paths at an earlier approved head stands
   since the leaf was cleared: that remedy failed, and the conflict escalates `merge_conflict` until the user's retry asks again.
 
 The merge unit dispatches the ruler on `judgeThread`'s `ruler:<trigger>:<unit key>:<head8>:<digest>:c<cleared>`
@@ -2954,7 +2953,13 @@ trigger and ruling dispatch (`said`).
 **The rebase round.** A round that a `rebase` message waits for refreshes the leaf's branch from its
 parent's head and, on a conflict, leaves the merge in progress in the worktree (`mergeForRebase` in
 `lib/merge.mjs`) for the producer to resolve and conclude with `git add` and `git commit`; its base
-is the head it merges, so its series is its own work over it. A leaf owes the rebase until it is
+is the head it merges, so its series is its own work over it. The round may write what its role's
+rule admits plus exactly the conflicted paths the judge sent (`resolves` of `rolePermissions` in
+`lib/permissions.mjs`), so a green's implementer can resolve a conflicted test. A deny wins over every
+allow, so a test path to resolve lifts a `no-tests` round's test denials; what else of the tests it
+writes, the series check finds: every path the judge ever sent the leaf is admitted as its own change
+(verify's `resolves`), each other path is judged by the role, and a test it resolved is named in
+`tests_rewritten` for the leaf's reviewer whatever the leaf expects ([L3](#l3--separate-judges)). A leaf owes the rebase until it is
 approved or merged after the message (`rebaseOwed` in `lib/tree.mjs`), and the round that waits for
 it is the leaf's latest, opened or not: a round reopened before it returned keeps a conflicting
 refresh too, even one its producer aborted. An open run again finds the merge in
@@ -3112,7 +3117,7 @@ for `/**`, the call's worktree, or for each test-file glob at any depth; `--disa
 anchors a pattern at the call's working folder, so the rules reach neither the main checkout nor a
 sibling worktree, though both contain the leaf's worktree (`test/host-contract.test.mjs` holds the
 host to this). Deleting a file is writing it: an implementer deletes with `git rm`, one of its role's
-commands.
+commands. A rebase round may write the conflicted paths it resolves too ([The judge](#the-judge)).
 
 **Detected.** What permissions cannot stop is a file a repository command wrote, or a path a git
 command staged. The series check judges the role on the series' net diff, base to head (`role-breach`,
@@ -4301,7 +4306,8 @@ file runs in its place at the head); `notes`; `error` (`null` or `{kind, message
 gave no payload `measure_failed` and a checkout the watch could not read `watch_failed`);
 `journal` (`null` or `{written, error}`). `node lib/verify.mjs --options -` reads its options, one
 JSON object, on standard input — `key`, `approved[{file, sha}]` (the red's approved version of
-each cycle test file), `expects[]` and `fences{sha: rule}` among them — and prints the payload as one
+each cycle test file), `expects[]`, `fences{sha: rule}`, `exclude[]` (a cycle member's predecessors'
+approved heads) and `resolves[]` (the paths the judge sent the leaf's rebase rounds) among them — and prints the payload as one
 JSON line. The series checks
 come from `lib/commit-series.mjs`: `empty-series`, `empty-commit`, `role-breach`, `test-removed`,
 `wip-subject`, `checkpoint-commit`, `and-subject`, `subject-length`. They run over `base..HEAD`,
@@ -4311,8 +4317,8 @@ empty commit, and a merge owes no subject style, its subject being git's. `role-
 ([Role rules](#role-rules)), and each commit the program made for a shell-less author against its
 own fence (a test round's commit on a green or an audit, held to test files); `test-removed`
 flags a test case removed from a test file the cycle approved. `tests_rewritten[]` names the test
-files the net diff changed that exist at the base, outside `expects` and the cycle's tests: an
-observation a reviewer rules, never a failure.
+files the net diff changed that exist at the base, outside `expects` and the cycle's tests, and every
+resolved test: an observation a reviewer rules, never a failure.
 
 ### Gotcha file
 

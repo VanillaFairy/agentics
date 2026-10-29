@@ -248,3 +248,18 @@ test('the test-case patterns are shared', () => {
     assert.ok(patterns.some((re) => re.test(declaration)), `a pattern matches ${declaration}`)
   }
 })
+
+test("a path a rebase round resolved is the leaf's own change, in its commits and its net diff; never a fenced commit's, never the store", () => {
+  const resolves = [TEST_FILE, '.agentics/x.json']
+  const commits = [
+    { sha: SHA_A, subject: 'test(w3): pin it', trailers: '', files: ['lib/x.mjs'] },
+    { sha: SHA_B, subject: 'merge the folder', trailers: '', files: [TEST_FILE, '.agentics/x.json'], merge: true },
+  ]
+  const fences = { [SHA_A]: 'tests' }
+  const hits = breaches(series.analyzeSeries(commits, { writes: 'no-tests', fences, netFiles: [TEST_FILE, '.agentics/x.json'], resolves }))
+  assert.ok(!hits.some((f) => f.message.includes(TEST_FILE)), JSON.stringify(hits))
+  assert.ok(hits.some((f) => f.message.includes('.agentics/x.json')), 'the store stays no one\'s')
+  assert.ok(hits.some((f) => f.sha === SHA_A && f.message.includes('lib/x.mjs')), 'a fenced commit is held to its fence')
+  assert.ok(breaches(series.analyzeSeries(commits, { writes: 'no-tests', fences, netFiles: [TEST_FILE] })).some((f) => f.message.includes(TEST_FILE)),
+    'without the resolve, the same test is a breach')
+})

@@ -183,3 +183,13 @@ test("a green whose taken parent conflicts with its red is measured from the con
   assert.equal(payload.error, null, 'a conflicted remerge is the base, never an unreadable series')
   assert.ok(breaches(payload).some((f) => f.sha === '' && String(f.message).includes(TEST_FILE)), JSON.stringify(breaches(payload)))
 })
+
+test("a cycle test a rebase round resolved is no breach of the green's rule, and is named rewritten for its reviewer", (t) => {
+  const c = cycle(t)
+  const moved = onMain(c, { [TEST_FILE]: PASSING }, 'test: a widget test of main')
+  git(c.worktree, 'merge', '-q', '--no-edit', 'main')
+  commit(c.worktree, { [TEST_FILE]: WIDGET_TEST }, 'merge main')
+  const payload = green(c, { base: moved, exclude: [c.red], resolves: [TEST_FILE] })
+  assert.deepEqual(breaches(payload), [])
+  assert.deepEqual(payload.tests_rewritten, [TEST_FILE], 'though it is the cycle\'s own test')
+})

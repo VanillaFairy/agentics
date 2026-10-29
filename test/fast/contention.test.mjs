@@ -158,7 +158,7 @@ test('a judge question replays on the same observations of an uncleared node; ch
 
 // ---------------------------------------------------------------- which conflicts the judge rules
 
-test('a conflict goes to the judge only for a leaf whose executor can conclude a merge on paths it writes, and not again after a resolve that failed', () => {
+test('a conflict goes to the judge only for a leaf whose executor can conclude a merge, of a cycle its tip, and not again after a resolve that failed', () => {
   const tree = effort([
     folder('.'), leaf('a'), leaf('t', { rigor: 'tests-only' }),
     leaf('r', { rigor: 'tdd-pair', role: 'red' }), leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'] }),
@@ -166,7 +166,7 @@ test('a conflict goes to the judge only for a leaf whose executor can conclude a
   assert.equal(conflictJudged(tree, 'a', 'H1', ['src/x.js']), true)
   assert.equal(conflictJudged(tree, 't', 'H1', ['test/x.test.js']), false, 'a test-author has no shell to conclude a merge')
   assert.equal(conflictJudged(tree, 'g', 'H1', ['src/x.js']), true, 'a cycle merges through its tip, whose implementer writes its code')
-  assert.equal(conflictJudged(tree, 'g', 'H1', ['src/x.js', 'test/x.test.js']), false, 'a test file is not for its implementer to resolve')
+  assert.equal(conflictJudged(tree, 'g', 'H1', ['src/x.js', 'test/x.test.js']), true, 'its rebase round may write the conflicted test file too')
   assert.equal(conflictJudged(tree, 'r', 'H1', ['test/x.test.js']), false, 'the red is no tip and has no shell')
   const resolved = { ...tree, events: [{ kind: 'judged', node: 'a', trigger: 'conflict', outcome: 'resolve', head_sha: 'H1', paths: ['src/x.js'], seq: 9 }] }
   assert.equal(conflictJudged(resolved, 'a', 'H1', ['src/x.js']), true, 'the same head again is a replay, ruled once')

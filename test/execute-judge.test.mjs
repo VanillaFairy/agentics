@@ -181,6 +181,7 @@ test('resolve of a conflict sends a rebase round: the open leaves the merge in p
   assert.equal(opened.status, 'opened')
   assert.equal(opened.round, 2)
   assert.ok(readFileSync(join(a.worktree, 'src/both.mjs'), 'utf8').includes('<<<<<<<'), 'the conflict is left in the worktree')
+  assert.ok(opened.permissions.allowed.includes('Edit(/src/both.mjs)'), 'the round may write the path it resolves')
   const again = await leafOpen(rig.xc, { node: 'x/a', intelligence: 'normal' })
   assert.equal(again.status, 'opened', 'an open run again takes the merge in progress as its own')
 

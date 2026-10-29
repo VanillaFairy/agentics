@@ -6,7 +6,7 @@
 // same for one execution: an approved, compiled effort, its effort branch, the execution's home,
 // log port and boundary context.
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import { recordApproval } from '../../lib/approval.mjs'
@@ -22,6 +22,7 @@ import {
 } from '../../lib/store.mjs'
 import { scriptedRunner } from '../fast/harness/scripted-runner.mjs'
 import { seededRepo } from './seeded-repo.mjs'
+import { templated } from './template.mjs'
 
 const RUN = '20260101-000000-test'
 const NOW = () => '2026-01-01T00:00:00.000Z'
@@ -84,36 +85,14 @@ const RIG_FILES = {
  * `xc` and a program context `ctx` over the scripted runner. `script(steps)` replaces the script
  * the runner plays, each key from its first step; `relaunch()` is the program started again: a
  * fresh log port read back from disk, a fresh `xc` and `ctx`, the current script. `git(...args)`
- * runs in the repository and returns its trimmed output. The repository is removed in `t.after`.
+ * runs in the repository and returns its trimmed output. Each world is built once per process and
+ * copied (`templated`); the copy is removed in `t.after`.
  */
 export function executionRig(t, { spec = RIG_SPEC, commands = RIG_COMMANDS, files = {}, maxAgents = 6, env = {} } = {}) {
-  const repo = seededRepo('agentics-execution-', { branch: 'main', message: 'base', files: { ...RIG_FILES, ...files }, autocrlf: false })
-  t.after(() => rmSync(repo, { recursive: true, force: true }))
+  const key = JSON.stringify(['execution', spec, commands, files])
+  const { dir: repo, built: { base_sha, envelope } } = templated(t, 'agentics-execution-', key, (into) => buildExecution(into, { spec, commands, files }))
   const inRepo = (...args) => git(repo, ...args).trim()
-  const base_sha = inRepo('rev-parse', 'HEAD')
-
-  const opened = openEffort(repo, { slug: EFFORT, about: 'the rig', roots: ['src'], now: new Date(NOW()) })
-  if (!opened.ok) throw new Error('executionRig: ' + opened.error)
-  const specs = typeof spec === 'string' ? { [ROOT_ID]: spec } : spec
-  for (const [id, text] of Object.entries(specs)) {
-    mkdirState(dirname(specPath(repo, EFFORT, id)))
-    writeFileSync(specPath(repo, EFFORT, id), text)
-  }
-  const depth = (id) => (id === ROOT_ID ? 0 : id.split('/').length)
-  for (const id of Object.keys(specs).sort((a, b) => depth(a) - depth(b))) {
-    const out = recordApproval(repo, EFFORT, id)
-    if (!out.ok) throw new Error('executionRig: approving ' + id + ': ' + out.error)
-  }
-  const compiled = compileEffort(repo, EFFORT)
-  if (!compiled.ok) throw new Error('executionRig: compile: ' + JSON.stringify(compiled.problems || compiled.error))
-
-  const envelope = { stamp: STAMP, root: ROOT_ID, base_branch: 'main', base_sha, dial: 'normal', pace: 'balanced', commands }
   const dir = executionDir(repo, EFFORT, STAMP)
-  mkdirState(dir)
-  writeFileSync(join(dir, 'execution.json'), JSON.stringify(envelope, null, 1) + '\n')
-  writeSessionCommands(executionContext({ repo, effort: EFFORT, execution: STAMP, log: null }), envelope)
-  const branch = ensureIntegration(repo, EFFORT, ROOT_ID, envelope)
-  if (!branch.ok) throw new Error('executionRig: the effort branch: ' + branch.error)
 
   const build = (initial) => {
     let runner = null
@@ -137,4 +116,36 @@ export function executionRig(t, { spec = RIG_SPEC, commands = RIG_COMMANDS, file
     }
   }
   return build({})
+}
+
+/** The execution world `executionRig` copies, built in `repo`: `{base_sha, envelope}`. */
+function buildExecution(repo, { spec, commands, files }) {
+  const seed = seededRepo('agentics-execution-seed-', { branch: 'main', message: 'base', files: { ...RIG_FILES, ...files }, autocrlf: false })
+  cpSync(seed, repo, { recursive: true })
+  rmSync(seed, { recursive: true, force: true })
+  const base_sha = git(repo, 'rev-parse', 'HEAD').trim()
+
+  const opened = openEffort(repo, { slug: EFFORT, about: 'the rig', roots: ['src'], now: new Date(NOW()) })
+  if (!opened.ok) throw new Error('executionRig: ' + opened.error)
+  const specs = typeof spec === 'string' ? { [ROOT_ID]: spec } : spec
+  for (const [id, text] of Object.entries(specs)) {
+    mkdirState(dirname(specPath(repo, EFFORT, id)))
+    writeFileSync(specPath(repo, EFFORT, id), text)
+  }
+  const depth = (id) => (id === ROOT_ID ? 0 : id.split('/').length)
+  for (const id of Object.keys(specs).sort((a, b) => depth(a) - depth(b))) {
+    const out = recordApproval(repo, EFFORT, id)
+    if (!out.ok) throw new Error('executionRig: approving ' + id + ': ' + out.error)
+  }
+  const compiled = compileEffort(repo, EFFORT)
+  if (!compiled.ok) throw new Error('executionRig: compile: ' + JSON.stringify(compiled.problems || compiled.error))
+
+  const envelope = { stamp: STAMP, root: ROOT_ID, base_branch: 'main', base_sha, dial: 'normal', pace: 'balanced', commands }
+  const dir = executionDir(repo, EFFORT, STAMP)
+  mkdirState(dir)
+  writeFileSync(join(dir, 'execution.json'), JSON.stringify(envelope, null, 1) + '\n')
+  writeSessionCommands(executionContext({ repo, effort: EFFORT, execution: STAMP, log: null }), envelope)
+  const branch = ensureIntegration(repo, EFFORT, ROOT_ID, envelope)
+  if (!branch.ok) throw new Error('executionRig: the effort branch: ' + branch.error)
+  return { base_sha, envelope }
 }

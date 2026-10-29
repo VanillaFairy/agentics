@@ -392,7 +392,7 @@ A program's process carries every live call's stream on one event loop. Git that
 stays inline, so the work between two awaits stays atomic over worktrees and refs; work whose git
 count grows with its input runs off the main thread: a check in a child the program awaits
 (`lib/measure.mjs`), and a leaf brief's evidence and a probe round's review scope, whose anchor
-checks run git per item, on the one long-lived offload worker (`offload` in `lib/offload.mjs`), a
+checks run git per item, and the planner's compile preview, which reads every spec of its folder, on the one long-lived offload worker (`offload` in `lib/offload.mjs`), a
 worker thread started on first use and kept warm. There is no in-process fallback: a request the
 worker cannot answer rejects, and its unit faults (`program`), never a silent stall; a git it
 killed at its ceiling rejects as `GitHung`. A probe round's carried findings are handed to
@@ -2172,9 +2172,12 @@ execution journaled (`sweepTrees`); a dirty one is never forced, and preflight r
    the folder (`needs_decision`, `contract_changed`, `premise_mismatch`) or
    escalates it (`plan_<status>`) on the planner's return. It then parses the spec with its
    ancestors' decisions in view and, when that finds nothing, compiles it dry as its preparation
-   would sign it (`compileEffort` with `previewAs: 'prepared'`), so a refusal of the tree's guards
-   — a consumed contract dropped or re-pathed, a provided one changed — reaches the planner while it
-   can revise or return `contract_changed`, not after a review round is spent. A Decisions row parks the folder `needs_decision`, because only
+   would sign it (`compileEffort` with `previewAs: 'prepared'`, on the offload worker), so a refusal
+   of the tree's guards — a consumed contract dropped or re-pathed, a provided one changed — reaches
+   the planner while it can revise or return `contract_changed`, not after a review round is spent.
+   Only the refusals its spec causes count (`plannerCaused`): one more compile with the spec
+   reverted names those that stand without it, and they are dropped wherever they sit, the
+   planner's own file included, since there is no revision of its to make. A Decisions row parks the folder `needs_decision`, because only
    the user states decisions; any other problem goes back to the planner's session as a `problems`
    message, and the same problems again escalate `spec_refused`.
 2. **Attack.** Before each round the folder's design spend is held to its allowance (below). The

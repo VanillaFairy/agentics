@@ -182,12 +182,12 @@ const dispose = (xc, finding, outcome) => {
 
 // ================================================================== spec-check
 
-test('spec-check: a written spec is checked and records nothing', (t) => {
+test('spec-check: a written spec is checked and records nothing', async (t) => {
   const xc = rig(t)
   const dispatch = planner(xc, 1, { status: 'written' })
   assert.deepEqual(problemsOf(xc), [], 'the fixture spec is sound')
   const before = everything(xc)
-  const out = specCheck(xc, { folder: 'p', dispatch })
+  const out = await specCheck(xc, { folder: 'p', dispatch })
   assert.equal(out.status, 'checked')
   assert.equal(out.spec_path, posix(specPath(xc.repo, E, 'p')))
   assert.equal(out.hash, hashSpec(folderSpec()))
@@ -198,7 +198,7 @@ test('spec-check: a written spec is checked and records nothing', (t) => {
   assert.deepEqual(everything(xc), before, 'a clean check records nothing')
 })
 
-test('spec-check: a rewrite compile would refuse (a consumed contract dropped) goes back to the planner before any review, naming the guard', (t) => {
+test('spec-check: a rewrite compile would refuse (a consumed contract dropped) goes back to the planner before any review, naming the guard', async (t) => {
   const root = ROOT_SPEC.replace('- **q** — task · realises: D1 · rigor: tdd · expects: src/q.mjs', '- **q** — task · realises: D1 · rigor: tdd · expects: src/q.mjs · provides: api (src/q.mjs)')
   const consuming = folderSpec({ after: ' · consumes: api' })
   const xc = rig(t, { root, spec: consuming })
@@ -209,29 +209,29 @@ test('spec-check: a rewrite compile would refuse (a consumed contract dropped) g
   put(xc.repo, 'p', folderSpec({ title: 'Add x again.' }))
   assert.deepEqual(problemsOf(xc), [], 'the spec alone checks clean')
   const dispatch = planner(xc, 1, { status: 'written' })
-  const out = specCheck(xc, { folder: 'p', dispatch })
+  const out = await specCheck(xc, { folder: 'p', dispatch })
   assert.equal(out.status, 'problems')
   const sent = messages(xc, 'problems')
   assert.equal(sent.length, 1)
   assert.match(sent[0].payload.problems.map((p) => p.problem).join(), /drop or re-path a contract this node consumes \(api\)/)
 
   put(xc.repo, 'p', folderSpec({ title: 'Add x again.', after: ' · consumes: api' }))
-  assert.equal(specCheck(restarted(xc), { folder: 'p', dispatch: planner(xc, 2, { status: 'written' }) }).status, 'checked', 'kept, it checks clean')
+  assert.equal((await specCheck(restarted(xc), { folder: 'p', dispatch: planner(xc, 2, { status: 'written' }) })).status, 'checked', 'kept, it checks clean')
 })
 
-test('spec-check: a settled return reads as written', (t) => {
+test('spec-check: a settled return reads as written', async (t) => {
   const xc = rig(t)
   const dispatch = planner(xc, 1, { status: 'settled', dispositions: [] })
-  const out = specCheck(xc, { folder: 'p', dispatch })
+  const out = await specCheck(xc, { folder: 'p', dispatch })
   assert.equal(out.status, 'checked')
   assert.deepEqual(out.stops, [])
 })
 
 for (const status of ['needs_decision', 'contract_changed', 'premise_mismatch']) {
-  test(`spec-check: ${status} parks the folder on the planner's dispatch`, (t) => {
+  test(`spec-check: ${status} parks the folder on the planner's dispatch`, async (t) => {
     const xc = rig(t, { spec: null })
     const dispatch = planner(xc, 1, { status })
-    const out = specCheck(xc, { folder: 'p', dispatch })
+    const out = await specCheck(xc, { folder: 'p', dispatch })
     assert.equal(out.status, 'stopped')
     assert.deepEqual(out.stops, [{ id: 'p', status: 'parked', reason: status, said: dispatch }])
     const now = statusOf(xc)
@@ -241,10 +241,10 @@ for (const status of ['needs_decision', 'contract_changed', 'premise_mismatch'])
 }
 
 for (const status of ['blocked', 'unsplittable']) {
-  test(`spec-check: ${status} escalates plan_${status} on the planner's dispatch`, (t) => {
+  test(`spec-check: ${status} escalates plan_${status} on the planner's dispatch`, async (t) => {
     const xc = rig(t, { spec: null })
     const dispatch = planner(xc, 1, { status })
-    const out = specCheck(xc, { folder: 'p', dispatch })
+    const out = await specCheck(xc, { folder: 'p', dispatch })
     assert.equal(out.status, 'stopped')
     assert.deepEqual(out.stops, [{ id: 'p', status: 'escalated', reason: 'plan_' + status, said: dispatch }])
     const now = statusOf(xc)
@@ -253,28 +253,28 @@ for (const status of ['blocked', 'unsplittable']) {
   })
 }
 
-test('spec-check: any other status escalates plan_<status> on the planner\'s dispatch', (t) => {
+test('spec-check: any other status escalates plan_<status> on the planner\'s dispatch', async (t) => {
   const xc = rig(t, { spec: null })
   const dispatch = planner(xc, 1, { status: 'confused' })
-  const out = specCheck(xc, { folder: 'p', dispatch })
+  const out = await specCheck(xc, { folder: 'p', dispatch })
   assert.deepEqual(out.stops, [{ id: 'p', status: 'escalated', reason: 'plan_confused', said: dispatch }])
 })
 
-test('spec-check: a planner dispatch with no stored return holds the folder on a role fault', (t) => {
+test('spec-check: a planner dispatch with no stored return holds the folder on a role fault', async (t) => {
   const xc = rig(t, { spec: folderSpec({ rigor: 'wild' }) })
   const dispatch = planner(xc, 1)
   assert.ok(problemsOf(xc).length > 0, 'the spec on disk has problems')
-  const out = specCheck(xc, { folder: 'p', dispatch })
+  const out = await specCheck(xc, { folder: 'p', dispatch })
   assertHeld(xc, out)
   assert.deepEqual(messages(xc), [], 'no message is sent over a spec nobody said was written')
   assert.deepEqual(escalations(xc), [])
 })
 
-test('spec-check: a spec that states a decision parks needs_decision', (t) => {
+test('spec-check: a spec that states a decision parks needs_decision', async (t) => {
   const xc = rig(t, { spec: folderSpec({ decisions: [['p.D1', 'keep it in memory']] }) })
   assert.ok(problemsOf(xc).length > 0, 'a decision nothing realises is also a problem')
   const dispatch = planner(xc, 1, { status: 'written' })
-  const out = specCheck(xc, { folder: 'p', dispatch })
+  const out = await specCheck(xc, { folder: 'p', dispatch })
   assertStop(out, 'p', 'parked', 'needs_decision')
   assert.equal(out.decisions_n, 1)
   const now = statusOf(xc)
@@ -283,11 +283,11 @@ test('spec-check: a spec that states a decision parks needs_decision', (t) => {
   assert.deepEqual(messages(xc), [], 'a decision is the user\'s: the planner is not sent its problems')
 })
 
-test('spec-check: problems go to the planner once, as a problems message for its next round', (t) => {
+test('spec-check: problems go to the planner once, as a problems message for its next round', async (t) => {
   const xc = rig(t, { spec: folderSpec({ rigor: 'wild' }) })
   const problems = problemsOf(xc)
   assert.ok(problems.length > 0)
-  const out = specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
+  const out = await specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
   assert.equal(out.status, 'problems')
   assert.deepEqual(out.stops, [])
   assert.equal(out.problems_n, problems.length)
@@ -300,18 +300,18 @@ test('spec-check: problems go to the planner once, as a problems message for its
   assert.deepEqual(escalations(xc).concat(parks(xc)), [], 'the planner is told first: nothing stops')
 })
 
-test('spec-check: the message goes to the round after the dispatch\'s own', (t) => {
+test('spec-check: the message goes to the round after the dispatch\'s own', async (t) => {
   const xc = rig(t, { spec: folderSpec({ rigor: 'wild' }) })
-  const out = specCheck(xc, { folder: 'p', dispatch: planner(xc, 3, { status: 'written' }) })
+  const out = await specCheck(xc, { folder: 'p', dispatch: planner(xc, 3, { status: 'written' }) })
   assert.equal(out.status, 'problems')
   assert.deepEqual(messages(xc).map((m) => m.round), [4])
 })
 
-test('spec-check: the same problems again escalate spec_refused', (t) => {
+test('spec-check: the same problems again escalate spec_refused', async (t) => {
   const xc = rig(t, { spec: folderSpec({ rigor: 'wild' }) })
   const problems = problemsOf(xc)
-  specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
-  const out = specCheck(xc, { folder: 'p', dispatch: planner(xc, 2, { status: 'written' }) })
+  await specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
+  const out = await specCheck(xc, { folder: 'p', dispatch: planner(xc, 2, { status: 'written' }) })
   assertStop(out, 'p', 'escalated', 'spec_refused')
   const detail = detailOf(xc)
   for (const p of problems) assert.ok(detail.includes(p.file + ':' + p.line + ' ' + p.problem), 'the detail names ' + p.problem + ': ' + detail)
@@ -319,28 +319,28 @@ test('spec-check: the same problems again escalate spec_refused', (t) => {
   assert.equal(statusOf(xc).last.reason, 'spec_refused')
 })
 
-test('spec-check: a problem that moved to another line is the same problem', (t) => {
+test('spec-check: a problem that moved to another line is the same problem', async (t) => {
   const xc = rig(t, { spec: folderSpec({ rigor: 'wild' }) })
   const first = problemsOf(xc)
-  specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
+  await specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
   put(xc.repo, 'p', folderSpec({ rigor: 'wild', extra: 'A paragraph the planner added above the plan.' }))
   const second = problemsOf(xc)
   assert.deepEqual(textsOf(second), textsOf(first), 'the same problem texts')
   assert.notDeepEqual(second.map((p) => p.line), first.map((p) => p.line), 'on other lines')
-  const out = specCheck(xc, { folder: 'p', dispatch: planner(xc, 2, { status: 'written' }) })
+  const out = await specCheck(xc, { folder: 'p', dispatch: planner(xc, 2, { status: 'written' }) })
   assertStop(out, 'p', 'escalated', 'spec_refused')
   assert.equal(messages(xc).length, 1)
 })
 
-test('spec-check: different problems on the next round are sent again', (t) => {
+test('spec-check: different problems on the next round are sent again', async (t) => {
   const xc = rig(t, { spec: folderSpec({ rigor: 'wild' }) })
   const first = problemsOf(xc)
-  specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
+  await specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
   put(xc.repo, 'p', folderSpec({ plan: ['- **x** — task · realises: D9 · rigor: tdd · expects: src/x.mjs, test/x.test.mjs', '  Add x.', '  Write x and its test.', '  - [ ] x works — check: `node --test test/x.test.mjs`'] }))
   const second = problemsOf(xc)
   assert.ok(second.length > 0)
   assert.equal(textsOf(second).some((s) => textsOf(first).includes(s)), false, 'no problem in common')
-  const out = specCheck(xc, { folder: 'p', dispatch: planner(xc, 2, { status: 'written' }) })
+  const out = await specCheck(xc, { folder: 'p', dispatch: planner(xc, 2, { status: 'written' }) })
   assert.equal(out.status, 'problems')
   assert.deepEqual(out.stops, [])
   const sent = messages(xc)
@@ -349,31 +349,31 @@ test('spec-check: different problems on the next round are sent again', (t) => {
   assert.deepEqual(escalations(xc), [])
 })
 
-test('spec-check: a set of problems that grew is a different set', (t) => {
+test('spec-check: a set of problems that grew is a different set', async (t) => {
   const xc = rig(t, { spec: folderSpec({ rigor: 'wild' }) })
-  specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
+  await specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
   put(xc.repo, 'p', folderSpec({ rigor: 'wild', plan: ['- **x** — task · realises: D9 · expects: src/x.mjs, test/x.test.mjs', '  Add x.', '  Write x and its test.', '  - [ ] x works — check: `node --test test/x.test.mjs`'] }))
   const now = problemsOf(xc)
   assert.ok(now.length >= 2, JSON.stringify(now))
-  const out = specCheck(xc, { folder: 'p', dispatch: planner(xc, 2, { status: 'written' }) })
+  const out = await specCheck(xc, { folder: 'p', dispatch: planner(xc, 2, { status: 'written' }) })
   assert.equal(out.status, 'problems')
   assert.deepEqual(messages(xc).map((m) => m.round).sort(), [2, 3])
   assert.deepEqual(escalations(xc), [])
 })
 
-test('spec-check: a folder the parent gives the user escalates spec_refused at once', (t) => {
+test('spec-check: a folder the parent gives the user escalates spec_refused at once', async (t) => {
   const xc = rig(t, { root: ROOT_SPEC.replace(' · author: planner', '') })
-  const out = specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
+  const out = await specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
   assertStop(out, 'p', 'escalated', 'spec_refused')
   assert.match(detailOf(xc), /the parent spec gives p to the user/)
   assert.deepEqual(messages(xc), [], 'no message: nothing the planner could fix')
 })
 
-test('spec-check: a spec the planner never wrote is a problem sent to the planner', (t) => {
+test('spec-check: a spec the planner never wrote is a problem sent to the planner', async (t) => {
   const xc = rig(t, { spec: null })
   const c = checkFolder(xc.repo, E, 'p')
   assert.equal(c.exists, false)
-  const out = specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
+  const out = await specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
   assert.equal(out.status, 'problems')
   assert.equal(out.exists, false)
   assert.equal(out.problems_n, c.problems.length)
@@ -385,46 +385,46 @@ test('spec-check: a spec the planner never wrote is a problem sent to the planne
   assert.ok(JSON.stringify(sent[0].payload).includes(c.file), 'the message names the missing file')
 })
 
-test('spec-check: a spec still missing after the planner\'s next round escalates spec_refused', (t) => {
+test('spec-check: a spec still missing after the planner\'s next round escalates spec_refused', async (t) => {
   const xc = rig(t, { spec: null })
-  specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
-  const out = specCheck(xc, { folder: 'p', dispatch: planner(xc, 2, { status: 'written' }) })
+  await specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
+  const out = await specCheck(xc, { folder: 'p', dispatch: planner(xc, 2, { status: 'written' }) })
   assertStop(out, 'p', 'escalated', 'spec_refused')
   assert.ok(detailOf(xc).includes(checkFolder(xc.repo, E, 'p').file), 'the detail names the missing file')
   assert.equal(messages(xc).length, 1)
 })
 
-test('spec-check run twice on one dispatch records its message once', (t) => {
+test('spec-check run twice on one dispatch records its message once', async (t) => {
   const xc = rig(t, { spec: folderSpec({ rigor: 'wild' }) })
   const dispatch = planner(xc, 1, { status: 'written' })
-  const first = specCheck(xc, { folder: 'p', dispatch })
-  const second = specCheck(xc, { folder: 'p', dispatch })
+  const first = await specCheck(xc, { folder: 'p', dispatch })
+  const second = await specCheck(xc, { folder: 'p', dispatch })
   assert.deepEqual([first.status, second.status], ['problems', 'problems'])
   assert.equal(messages(xc).length, 1, 'the message the call sent for the next round is not the planner having been told')
   assert.deepEqual(escalations(xc), [])
-  const third = specCheck(restarted(xc), { folder: 'p', dispatch })
+  const third = await specCheck(restarted(xc), { folder: 'p', dispatch })
   assert.equal(third.status, 'problems')
   assert.equal(messages(xc).length, 1, 'nor after a restart')
 })
 
-test('spec-check run twice on a park records it once', (t) => {
+test('spec-check run twice on a park records it once', async (t) => {
   const xc = rig(t, { spec: null })
   const dispatch = planner(xc, 1, { status: 'needs_decision' })
-  const first = specCheck(xc, { folder: 'p', dispatch })
-  const second = specCheck(xc, { folder: 'p', dispatch })
+  const first = await specCheck(xc, { folder: 'p', dispatch })
+  const second = await specCheck(xc, { folder: 'p', dispatch })
   assert.deepEqual(first.stops, second.stops)
   assert.equal(second.stops.length, 1, 'the stop is reported both times')
   assert.equal(parks(xc).filter((e) => e.return === 'needs_decision').length, 1)
-  specCheck(restarted(xc), { folder: 'p', dispatch })
+  await specCheck(restarted(xc), { folder: 'p', dispatch })
   assert.equal(parks(xc).length, 1, 'and after a restart')
 })
 
-test('spec-check run twice on a refusal records it once', (t) => {
+test('spec-check run twice on a refusal records it once', async (t) => {
   const xc = rig(t, { spec: folderSpec({ rigor: 'wild' }) })
-  specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
+  await specCheck(xc, { folder: 'p', dispatch: planner(xc, 1, { status: 'written' }) })
   const dispatch = planner(xc, 2, { status: 'written' })
-  const first = specCheck(xc, { folder: 'p', dispatch })
-  const second = specCheck(xc, { folder: 'p', dispatch })
+  const first = await specCheck(xc, { folder: 'p', dispatch })
+  const second = await specCheck(xc, { folder: 'p', dispatch })
   assert.deepEqual(first.stops, second.stops)
   assert.equal(escalations(xc).filter((e) => e.reason === 'spec_refused').length, 1)
 })

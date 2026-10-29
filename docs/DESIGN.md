@@ -3638,13 +3638,18 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
 - A test that could not be launched at base is `test_unrunnable`; a suite failure that cannot be
   placed against a test file raises `suite_failures_unnamed`.
 - **A changed test file either adds a test case or keeps existing ones working, as its producer
-  declares.** Whether a file adds a case is no pattern over its text: the producer names each test
-  file of the leaf's diff that adds none in its return's `upkeep` ([Producer
-  returns](#producer-returns)) — a call site given a new argument — and leaf-close hands verify those
-  files (`upkeep`), with each file an earlier measurement of the leaf recorded adding none at the
-  blob it holds at the head (`upkeepAt` in `lib/verdict.mjs`), so a relaunch that measures a head
-  before any round keeps the declaration, and an edit of the file voids it. Every other file of the
-  diff adds one: a missing declaration costs the stricter question. A file under measurement the
+  declares.** The producer names each test file of the leaf's diff that adds none in its return's
+  `upkeep` ([Producer returns](#producer-returns)) — a call site given a new argument — and
+  leaf-close hands verify those files (`upkeep`), with each file an earlier measurement of the leaf
+  recorded adding none at the blob it holds at the head (`upkeepAt` in `lib/verdict.mjs`), so a
+  relaunch that measures a head before any round keeps the declaration, and an edit of the file
+  voids it. Every other file of the diff adds one: a missing declaration costs the stricter
+  question. The declaration is the producer's about its own work (L3), so it only ever waives a
+  proof: verify reads each such file's `git diff -U0` from base to head, and one whose diff adds a
+  test-case declaration it does not also remove (`addedTestCases` in `lib/commit-series.mjs`, over
+  `TEST_CASE_PATTERNS`), or whose diff does not run, adds one, the refused declaration named in the
+  notes. The closed patterns only refuse a waiver (P2): a framework they miss leaves the
+  declaration standing, never a case unasked. A file under measurement the
   leaf's diff did not touch (a cycle's test a green's test round left alone) adds none, and a
   caller's named tests on a green each count as adding one. The reading is on each discriminator
   entry (`adds_test`) and in the notes, so the verdict and a resume read it off the journal line.
@@ -4406,8 +4411,8 @@ nothing ran); `suite_output_tail` (only when the suite failed);
 `failing_tests[{file, id}]`; `baseline_failing[{file, id}]` (failing tests that fail at the base
 too); `discriminator[{test_id, blob, adds_test, failed_on_base, passes_now}]` (`blob` the file's
 blob at the measured head, what a ruling over the file is keyed by; `adds_test` false for a
-file declared upkeep or one the leaf's own diff did not touch; an entry without it is read as adding
-one);
+file declared upkeep whose diff adds no test-case declaration, or one the leaf's own diff did not
+touch; an entry without it is read as adding one);
 `static_on_base[{kind, command, failed_on_base}]` (on a tdd leaf whose every changed test file held
 at base, the established typecheck, `kind: typecheck`, and each criterion check that runs it, `kind:
 check`, each run at base with the tests under measurement restored; empty otherwise);
@@ -4595,7 +4600,8 @@ measured before any producer round ([Resume and checkpoints](#resume-and-checkpo
 `{status, text, concerns[], unread[{kind, path, what}]?, gotchas[], gotchas_stale[], mutations[], upkeep[]?, commit?}`.
 `upkeep` names each test file of the leaf's diff that adds no test case, only keeping existing
 tests working, spelled as `unread`'s paths are (`repoPath`): a declaration the discriminator reads
-([What a verdict is computed from](#what-a-verdict-is-computed-from)); a file it leaves out adds one.
+([What a verdict is computed from](#what-a-verdict-is-computed-from)); a file it leaves out, or
+one whose diff adds a test-case declaration ([Verification](#verification)), adds one.
 `unread` names each document, spec part or contract the brief told the producer to follow or match
 that neither its brief nor its worktree held, typed: `kind` `doc` or `source`, its `path`, and `what`
 of it: a declaration of what it worked without, never a ruling. A return that names any stops before

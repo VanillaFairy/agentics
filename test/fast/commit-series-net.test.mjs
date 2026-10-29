@@ -1,6 +1,6 @@
 // test/fast/commit-series-net.test.mjs — pins the series check's role rule judged on the net diff,
-// base to head (`netFiles`), with fenced commits judged per commit; and `removedTestCases`, the
-// removed-test-case finder.
+// base to head (`netFiles`), with fenced commits judged per commit; and `removedTestCases` and
+// `addedTestCases`, the removed- and added-test-case finders.
 //
 // Design: docs/DESIGN.md#role-rules, docs/DESIGN.md#conversations.
 //
@@ -271,4 +271,24 @@ test('a resolved path is admitted only in the merge that resolved it: a later or
   ]
   const hits = breaches(series.analyzeSeries(commits, { writes: 'no-tests', netFiles: [TEST_FILE], resolves: [TEST_FILE] }))
   assert.deepEqual(hits.map((f) => f.sha), [SHA_B], JSON.stringify(hits))
+})
+
+// =========================================================================================
+// addedTestCases
+// =========================================================================================
+
+const diffOf = (...hunk) => lines('diff --git a/test/x.test.mjs b/test/x.test.mjs', '--- a/test/x.test.mjs', '+++ b/test/x.test.mjs', '@@ -3,0 +3,3 @@', ...hunk)
+
+test('a test case a diff adds is named; a call site it edits is none', () => {
+  const added = "test('parses three records', () => {"
+  const diff = diffOf('+' + added, '+  assert.equal(parse(three).length, 3)', '+})', "-  const p = parse(one)", "+  const p = parse(one, { strict: true })")
+  assert.deepEqual(series.addedTestCases(diff), [added])
+  assert.deepEqual(series.addedTestCases(crlf(diff)), [added])
+  assert.deepEqual(series.addedTestCases(diffOf("-  const p = parse(one)", "+  const p = parse(one, { strict: true })")), [])
+})
+
+test('a test case a diff moves is not added, and a second copy of one is', () => {
+  const declaration = "test('parses one record', () => {"
+  assert.deepEqual(series.addedTestCases(diffOf('-' + declaration, '+' + declaration)), [])
+  assert.deepEqual(series.addedTestCases(diffOf('-' + declaration, '+' + declaration, '+  ' + declaration)), [declaration])
 })

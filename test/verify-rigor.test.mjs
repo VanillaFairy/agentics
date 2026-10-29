@@ -210,6 +210,27 @@ test('a tdd leaf that only keeps another test file up to date, declared upkeep, 
   assert.equal(undeclared.adds_test, true, 'a file nobody declared upkeep is held to the whole question')
 })
 
+test('an upkeep declaration over a file whose diff adds a test case waives nothing: the case is held to failing at base', (t) => {
+  // The producer's declaration is about its own work. A case it adds that already passes at base,
+  // declared upkeep, would otherwise pass a tdd leaf on the strength of its other file.
+  const { worktree, base } = order(t)
+  writeFileSync(join(worktree, 'test', 'base.test.mjs'),
+    "import { test } from 'node:test'\ntest('the base suite passes', () => {})\ntest('a case that held all along', () => {})\n")
+  git(worktree, 'commit', '-qam', 'test: a case over behaviour that already holds')
+  const head = rev(worktree, 'HEAD')
+
+  const payload = verify({ ...options({ worktree, base, head, extra: ['--rigor', 'tdd', '--expects', 'test/base.test.mjs'] }), upkeep: ['test/base.test.mjs'] })
+
+  assert.equal(payload.stop_reason, 'completed', payload.notes)
+  const declared = payload.discriminator.find((d) => d.test_id === 'test/base.test.mjs')
+  assert.equal(declared.adds_test, true, 'a declared file that adds a case adds one')
+  assert.equal(declared.failed_on_base, false)
+  assert.match(payload.notes, /declared upkeep and read as adding a test case: test\/base\.test\.mjs adds test\('a case that held all along'/)
+  const verdict = measurementOk(payload, normalizeNode({ id: 'w1', kind: 'leaf', rigor: 'tdd', expects: ['src/'] }))
+  assert.ok(verdict.failures.some((f) => f.check === 'discriminator' && f.claim.startsWith('test/base.test.mjs passes at base')),
+    JSON.stringify(verdict.failures))
+})
+
 test('named checks travel only as base64, and every option parses', () => {
   const o = parseArgs(['--rigor', 'tdd-pair', '--role', 'green', '--test-file', 'test/a.test.mjs',
     ...check("npm run e2e -- 'login flow'"), '--repo', '/r', '--effort', 'e', '--execution', EXECUTION,

@@ -1666,7 +1666,8 @@ to the planner again, never opening a round whose producer would have nothing to
 the same way: the planner rewrites the folder's spec when the planner wrote it, and the folder
 parks `needs_respec` for the user when the user did. Under a planner's folder the finding is the
 route: leaf-close records no escalation of the leaf, so none outlives the planner's replan, and the
-leaf is measured again against the folder as replanned. Under a folder the user wrote the leaf is
+leaf is measured again against the folder as replanned; a replan that leaves the verify leaf as it
+was escalates `replan_not_converging`, as any request a leaf routed does. Under a folder the user wrote the leaf is
 escalated `verify_finding` beside the park. Every spec the planner writes passes the autonomous
 review before compile builds from it.
 

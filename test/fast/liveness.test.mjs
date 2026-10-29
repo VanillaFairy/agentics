@@ -83,7 +83,9 @@ test('every library export is used outside the file that defines it', () => {
   for (const full of lib) {
     const source = read(full)
     for (const [, name] of source.matchAll(/^export (?:async )?(?:function|const|class) ([A-Za-z0-9_]+)/gm)) {
-      const used = everything.some(([f, t]) => f !== full && new RegExp('\\b' + name + '\\b').test(t))
+      // A function a child runs is named in its caller's `childCall`, which may sit in its own file.
+      const called = new RegExp("childCall\\('[^']+', '" + name + "'")
+      const used = everything.some(([f, t]) => (f !== full && new RegExp('\\b' + name + '\\b').test(t)) || called.test(t))
       check(used, rel(full) + ' exports `' + name + '` and nothing uses it')
     }
   }

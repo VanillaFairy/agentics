@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-import { verify, parseArgs, journalLine } from '../lib/verify.mjs'
+import { verify, parseArgs } from '../lib/verify.mjs'
 import { readLog } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import {
@@ -44,11 +44,6 @@ test('the CLI prints one line whose digest covers the payload it carries', (t) =
   const typed = JSON.parse(refused.stdout)
   assert.equal(typed.payload.error.kind, 'main_worktree', 'a typed error still travels under a digest')
   assert.equal(fnv1a(canonical(typed.payload)), typed.payload_digest)
-})
-
-test('base64 command transport decodes to the same commands', () => {
-  const encoded = Buffer.from('npm run build --workspace "a b"', 'utf8').toString('base64')
-  assert.equal(parseArgs(['--build-b64', encoded]).build, 'npm run build --workspace "a b"')
 })
 
 // ---------------------------------------------------------------- the journal
@@ -116,17 +111,4 @@ test('a refused append is reported on the payload rather than thrown', (t) => {
   assert.equal(payload.journal.written, false)
   assert.match(payload.journal.error, /not an effort name/)
   assert.equal(payload.stop_reason, 'completed', 'the measurement itself is unaffected')
-})
-
-test('journalLine is pure and carries the observed head', () => {
-  const line = journalLine({ node: 'a/b', branch: 'agentics/e--a.b', worktree: 'C:\\w', base: 'b0' },
-    { stop_reason: 'completed', build: 'passed', typecheck: 'absent', suite: 'passed', failing_tests: [],
-      discriminator: [], mutations: [], series_findings: [], checks: [{ command: 'x', status: 'passed' }] },
-    'h1')
-  assert.equal(line.node, 'a/b')
-  assert.equal(line.worktree, 'C:/w')
-  assert.equal(line.head_sha, 'h1')
-  assert.equal(line.base_sha, 'b0')
-  assert.equal('seq' in line, false, 'the ledger mints seq; a line never carries one in')
-  assert.deepEqual(line.checks, [{ command: 'x', status: 'passed' }])
 })

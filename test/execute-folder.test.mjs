@@ -14,7 +14,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join, relative } from 'node:path'
 
 import { approvalState, recordReviewed } from '../lib/approval.mjs'
-import { clearedAt, editedPlanKey, schedule, stoppedAt } from '../lib/boundaries/execution.mjs'
+import { editedPlanKey, schedule, stoppedAt } from '../lib/boundaries/execution.mjs'
 import { escalated, parked, recordAll } from '../lib/boundaries/records.mjs'
 import { guidanceOf, leafBrief } from '../lib/brief.mjs'
 import { plannerBrief } from '../lib/briefs/execute.mjs'
@@ -31,7 +31,7 @@ import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
 import { checkFolder, hashSpec } from '../lib/spec.mjs'
 import { dispatchKey, mainCheckout, posix, readConfig, readJson, sessionOf, specPath } from '../lib/store.mjs'
-import { readTree } from '../lib/tree.mjs'
+import { clearedAt, readTree } from '../lib/tree.mjs'
 import { closedSearch, closingRound, hitTurn } from './fast/harness/scout.mjs'
 import { executionRig } from './harness/program-rig.mjs'
 
@@ -465,7 +465,7 @@ test('a retried folder pins the head it is planned on now', async (t) => {
   w.rig.git('-C', w.rig.worktreeOf('.'), 'commit', '--allow-empty', '-qm', 'a leaf merged meanwhile')
   append(w.rig.repo, E, 'events', [{ kind: 'replanned', node: 'p', execution: w.rig.stamp, reason: 'retry_escalated', by: 'session' }])
   assert.equal((await w.run()).outcome, 'prepared')
-  const retried = w.rig.log.entries().filter((e) => e.kind === 'step' && e.key.startsWith('tree:p:') && e.key.includes(':retry:'))
+  const retried = w.rig.log.entries().filter((e) => e.kind === 'step' && e.key.startsWith('tree:p:') && e.key.includes(':cleared:'))
   assert.equal(retried.length, 1)
   assert.equal(retried[0].value, w.rig.git('rev-parse', w.rig.branchOf('.')))
   assert.notEqual(retried[0].value, before)
@@ -985,7 +985,7 @@ test('a relaunch resumes the plan of an edit that the plan itself has since edit
   assert.equal((await w.run()).outcome, 'prepared', 'the fixture: p is planned and compiled')
   recordAll(w.rig.xc, [parked('p', 'integration_critical', 'the landed work lacks y')])
   const tree = readTree(w.rig.repo, E)
-  const key = editedPlanKey('p', stoppedAt(tree.events, 'p'), clearedAt(tree.events, 'p'))
+  const key = editedPlanKey('p', stoppedAt(tree.events, 'p'), clearedAt(tree.nodes, tree.events, 'p'))
   w.rig.xc.log.append('step', { key, value: 2 })
   putSpec(w.rig, EDITED_SPEC)
   assert.deepEqual(schedule(w.rig.xc, {}).launch.filter((l) => l.unit === 'plan').map((l) => l.why), ['spec_edited'],
@@ -1026,7 +1026,7 @@ test("a plan journaled on a round an earlier plan already used replays none of t
   const w = await editedOnce(t)
   const tree = readTree(w.rig.repo, E)
   const first = planStarts(w.rig).at(-1)
-  w.rig.xc.log.append('step', { key: editedPlanKey('p', stoppedAt(tree.events, 'p'), clearedAt(tree.events, 'p')), value: first.value })
+  w.rig.xc.log.append('step', { key: editedPlanKey('p', stoppedAt(tree.events, 'p'), clearedAt(tree.nodes, tree.events, 'p')), value: first.value })
   assert.equal((await w.run({ why: 'spec_edited' })).outcome, 'prepared')
   assert.equal(approvalState(w.rig.repo, E, 'p').state, 'prepared', 'the edit as it stands is prepared')
   assert.equal(ledger(w.rig, 'prepared').at(-1).hash, hashSpec(EDITED_TWICE))

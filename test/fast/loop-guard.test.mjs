@@ -13,7 +13,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { clearedAt, failuresKey, producerLoop, sendBack, sendBacks, sentBackFiles } from '../../lib/boundaries/loop-guard.mjs'
+import { failuresKey, producerLoop, sendBack, sendBacks, sentBackFiles } from '../../lib/boundaries/loop-guard.mjs'
+import { clearedAt } from '../../lib/tree.mjs'
 import { rulingDue } from '../../lib/programs/converge.mjs'
 
 let seq = 0
@@ -65,9 +66,9 @@ test('history is the node\'s send-backs since it was cleared and before the roun
     was(3, { kind: 'verification', key: 'k', at: 'h1' }, 'b'),
     { kind: 'message', seq: ++seq, node: 'a', msg: 'tests_ready', round: 3 },
   ]
-  const since = clearedAt({ id: 'a', seq: 1 }, events)
+  const since = clearedAt(new Map([['a', { id: 'a', seq: 1 }]]), events, 'a')
   assert.deepEqual(sendBacks(events, 'a', since, 4).map((e) => e.round), [3])
-  assert.equal(clearedAt({ id: 'a', seq: 99 }, events), 99, 'a revision of the node clears it too')
+  assert.equal(clearedAt(new Map([['a', { id: 'a', seq: 99 }]]), events, 'a'), 99, 'a revision of the node clears it too')
 })
 
 test('every file a discriminator send-back named counts as told, whichever round named it', () => {

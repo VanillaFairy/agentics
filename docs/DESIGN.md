@@ -239,6 +239,13 @@ ledger mints, never by a clock. Resume names the single next undone action per n
 stage only where the record and git agree. What a session learns about a node is a `noted` record
 like any other, and no status is derived from it.
 
+A node is **cleared** at the later of its latest `replanned` event — a retry, an answer, a
+re-derivation, a revision — and its own revision (`clearedAt` in `lib/tree.mjs`, the one reader of
+it): a stop, a standing review, a loop's history, a journalled measurement or a plan from before it
+answered a question the user's word or a new plan has since re-asked. A `brief_changed` message
+clears nothing: it is code telling a resumed thread its context moved, never the user's word on the
+node.
+
 **Why:** a record written after the fact by someone else leaves a window where work exists and
 nothing says so; a status written down outlives what it described.
 
@@ -2097,8 +2104,9 @@ round first (`plan:<folder>:<basis>`), past every round dispatched on the planne
 earlier plan's start, since a plan of an edit journals its first steps at its start round without
 dispatching; and it replays only the steps recorded after its start, so no plan reads back another
 plan's check, gate or preparation. The plan's basis — the
-folder's revision, or the request it answers — also names the folder's latest `retry_escalated`
-event, so a plan after the user's `retry` is a new plan that runs on from the planner thread's
+folder's revision, or the request it answers — also names where the folder was cleared
+([P3](#p3--state-is-derived-records-are-written-as-things-happen)) when that is later than its
+revision, so a plan after the user's `retry` or answer is a new plan that runs on from the planner thread's
 latest round, never a replay back to the stop the user cleared. Each plan of a folder searches one
 tree: before anything else it journals, as the step `tree:<folder>:<basis>`, the head of the nearest
 existing integration branch among the folder and its ancestors, else the execution's `base_sha`, and
@@ -2791,8 +2799,8 @@ line) by what its answer depends on — the worktree's head and status, the base
 role and producer, the commands, the mutations, the tests, the checks, the approved cases, the
 expected files and the fences — and one this execution already journalled at the
 same key is handed back instead of taken again, by a relaunch and by the same check asked again
-within the execution — unless its environment broke, or the user has retried its node since (a
-`replanned` event, reason `retry_escalated`, with a higher `seq`: the key holds nothing of the
+within the execution — unless its environment broke, or its node was cleared since
+([P3](#p3--state-is-derived-records-are-written-as-things-happen): the key holds nothing of the
 environment, and a user retries a node once they have fixed what failed it). The main checkout is
 read before and after each, and two checks one leaf-close measures back to back share the read
 between them: nothing a close does between them writes what the watch reads, and a move of the
@@ -3888,7 +3896,7 @@ messages' `execution`; no session is told them again, and no status is derived f
 {by}` and `resumed {by}` (node `''`, the session's pause of the execution it names and its end,
 `pause` and `resume` under [Session calls](#session-calls); no status is derived from them). A boundary appends an event only while it is not
 already the node's word (`freshRecords` in `lib/boundaries/records.mjs`, [Boundaries](#boundaries)); a
-`judged` at a head is the node's word only until the session retries it, so the ruling a retried
+`judged` at a head is the node's word only until the node is cleared, so the ruling a retried
 node is given again at the same head is recorded and read. When the tick loop has nothing left to
 run and nothing waiting, every unit that last settled with nothing recorded is stopped,
 `merge_no_progress` for a merge and `no_progress` for any other, so a run never ends over work it

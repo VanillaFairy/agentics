@@ -806,7 +806,7 @@ the runner alone.
 A leaf's producers are briefed by code (`leafBrief` in `lib/brief.mjs`) with their thread's brief,
 its evidence derived in a child the program awaits (`briefEvidence`), since every anchor check
 runs git; within one check each git answer (a diff, a rename, a query) is asked once however many
-spans name it, and a commit's blob once per process,
+spans name it, and a commit's blob once for the worker's life, held by its oid (`blobAt` in `lib/offload.mjs`),
 in the sections `Task`, `Acceptance criteria`, `Decisions realised`, `Expected files and reads`,
 `Evidence`, `Gotchas`, `Measures`, `Commands`, `Worktree` and `Repository guidance`: the node, the
 decisions it realises, the files it expects to change (a prediction, never a limit) and those it
@@ -1052,10 +1052,11 @@ each line as it comes. A program run's monitor passes `--since 0`, so a fault re
 watch began, or between two of its re-arms, is printed all the same: the run's log is its own. An
 execution's log spans every run of it, so develop's watch passes the effort's `seq` it read before
 the start instead ([Progress](#progress)); a re-armed watch prints again a line that still stands. A
-run is alive while its pid lives and its heartbeat — `heartbeat_at` in `run.json`, rewritten every
-10 seconds — is fresh, written within the last 120 seconds. A worker thread of the run's process
-beats (`startHeart` in `lib/heart.mjs`), so synchronous work on the main thread — a git call, a lock
-wait, a rename retried — never stales it; each beat also writes `loop_at`, the main thread's last
+run is alive while its pid lives and its heartbeat — the last beat in `heart.jsonl`, appended every
+10 seconds — is fresh, written within the last 120 seconds. Beats are appended to a file of their
+own, never renamed over `run.json`, so a reader holding `run.json` open never refuses one. A worker
+thread of the run's process beats (`startHeart` in `lib/heart.mjs`), so synchronous work on the
+main thread — a git call, a lock wait — never stales it; each beat also writes `loop_at`, the main thread's last
 turn of its event loop, which that thread marks every second. A stale heartbeat therefore means the
 process itself froze: a run whose heartbeat went stale is still alive while its pid is a node
 process running a `run.mjs` (`runProcess` in `lib/host.mjs`, read only then): `runState` reads it
@@ -1197,7 +1198,7 @@ nothing outside compile calls `addNodes`.
   .state/
     seq, .lock                   the project-wide counter and mutex
     slots/                        the parallelism pool, shared by every execution (see Scheduling)
-    runs/<run>/                   one program run outside an execution: run.json, state.jsonl with
+    runs/<run>/                   one program run outside an execution: run.json, heart.jsonl, state.jsonl with
                                   its seq and .lock, result.json, run.log (a detached child's
                                   output), returns/<dispatch>.json, live/, roles/ (the system
                                   prompts its calls ran with)
@@ -1205,7 +1206,7 @@ nothing outside compile calls `addNodes`.
     evidence/                     the evidence item store
                                   ([Evidence item store](#evidence-item-store)): items.jsonl,
                                   returns/<stamp>[-<n>]-<kind>.json, snapshots/<hash>.txt,
-                                  anchors/<fnv>.json (a discardable cache of pinned text)
+                                  anchors/<fnv>.json (a discardable cache of a pinned blob's oid, hash and span windows)
   <effort>/
     DESIGN.md                     the root folder's spec
     <sub-effort>/DESIGN.md        one folder per sub-effort, nested as the plan nests them
@@ -1222,7 +1223,7 @@ nothing outside compile calls `addNodes`.
       cites.jsonl                 each folder's evidence citations ([Cites](#cites))
       knowledge/                  gotchas (see Gotchas)
       executions/<stamp>/         one execution of a subtree, the home of its runs:
-                                  execution.json, run.json, state.jsonl, journal.jsonl,
+                                  execution.json, run.json, heart.jsonl, state.jsonl, journal.jsonl,
                                   result.json, run.log, returns/, live/, roles/, closes/,
                                   reviews/, merges/, gates/, stale-<head>.md and .json
       locks/                      branch locks
@@ -2179,7 +2180,8 @@ execution journaled (`sweepTrees`); a dirty one is never forced, and preflight r
    of the tree's guards — a consumed contract dropped or re-pathed, a provided one changed — reaches
    the planner while it can revise or return `contract_changed`, not after a review round is spent.
    Only the refusals its spec causes count (`plannerCaused`): one more compile with the spec
-   reverted names those that stand without it, and they are dropped wherever they sit, the
+   reverted, dry as well (`preview: null`, the edited spec kept as it was compiled), names those
+   that stand without it, and they are dropped wherever they sit, the
    planner's own file included, since there is no revision of its to make. A Decisions row parks the folder `needs_decision`, because only
    the user states decisions; any other problem goes back to the planner's session as a `problems`
    message, and the same problems again escalate `spec_refused`.
@@ -2563,8 +2565,12 @@ stored:
    window — its lines and a line of context each side, at least two of its lines non-blank — was
    unique in that text and is unique in the current file stands where it is now. Anything else goes
    to the diff, so a copy elsewhere never hides an edit to the span's own lines, and a block moved
-   away from its context is judged as the diff maps it. A commit's pinned text is read once and kept
-   in `anchors/`, a cache any check may rebuild; losing it costs a `git show`. Otherwise a committed
+   away from its context is judged as the diff maps it. git's object database is the content store:
+   a commit's blob is read through `blobAt` (`lib/offload.mjs`), whose one map, keyed by oid, keeps
+   each text for the life of the thread that read it, the offload worker where checks run. `anchors/`
+   keeps per `at` and path only the blob's oid, its hash and each span's window, never the text: a
+   cache any check may rebuild, and an entry without an oid is a miss; losing it costs one
+   `git cat-file`. Otherwise a committed
    span is mapped through `git diff -U0 -M <at>` to the working tree, so renames are followed and uncommitted edits count;
    a snapshot span is diffed with `git diff --no-index` against its saved text. Both pass
    `--ignore-cr-at-eol`. A hunk wholly above the span shifts it; a hunk overlapping it changes it;
@@ -4729,7 +4735,7 @@ directory; `sessions` every session the search's thread ran in; `rounds` each ro
 ### Run directory
 
 - **Owner:** `launch` in `lib/run.mjs` (the claim, `run.json`, `result.json` and what it prints),
-  over the paths in `lib/store.mjs` (`runHome`, `runDir`, `runJsonPath`, `runLogPath`,
+  over the paths in `lib/store.mjs` (`runHome`, `runDir`, `runJsonPath`, `heartPath`, `runLogPath`,
   `resultPath`, `runLogFile`), and `homeOf` in a program that names its home; read by `runState`
   in `lib/ledger.mjs` and `lib/status.mjs watch --run`, and outside this repository by
   agent-tree-viewer, which shows a run's sessions under its `session`.
@@ -4738,11 +4744,15 @@ directory; `sessions` every session the search's thread ran in; `rounds` each ro
 
 A run's home is `runs/<run>/`, or for an execution's run, `<effort>.<stamp>`, that execution's
 directory (`runHome`), whose log is its `state.jsonl`. Its `run.json` is `{run, program, scope,
-scope_key, args, args_digest, raw, session, pid, started_at, heartbeat_at, loop_at?}`: `args` the resolved
+scope_key, args, args_digest, raw, session, pid, started_at, heartbeat_at}`: `args` the resolved
 arguments, `raw` the flags as given, `scope_key` and `args_digest` the digests of `scope` and
 `args`, and `session` the `CLAUDE_CODE_SESSION_ID` of the session that last started the run, `''`
 when none did, which is what ties the run's headless sessions to the session that asked for them.
-It is rewritten whole, `heartbeat_at` and `loop_at` every 10 seconds while the run's process lives.
+It is written whole when the run starts, `heartbeat_at` the start. Its `heart.jsonl` gets one
+`{pid, heartbeat_at, loop_at}` line every 10 seconds while the run's process lives, appended by
+`startHeart` in `lib/heart.mjs` and started afresh by each process's first beat; `runState` lays
+the last whole line (`readBeat`) over `run.json` unless `run.json`'s `heartbeat_at` is newer, so
+a missing heart file, or one an earlier process left, is no beat.
 `result.json` is the program's result with `run` and `cost`.
 A search keeps its files in `searches/<search key>/` (the key's `:` written `~`): `calls.jsonl`, the
 call log; `server-<digest>.json`, the tool server's spec; `mcp-<digest>.json`, its MCP config

@@ -219,6 +219,34 @@ test('spec-check: a rewrite compile would refuse (a consumed contract dropped) g
   assert.equal((await specCheck(restarted(xc), { folder: 'p', dispatch: planner(xc, 2, { status: 'written' }) })).status, 'checked', 'kept, it checks clean')
 })
 
+test('spec-check: the compile check writes nothing, over a sub-effort approved again but not compiled', async (t) => {
+  const root = ROOT_SPEC.replace('- **q** — task · realises: D1 · rigor: tdd · expects: src/q.mjs', '- **q** — task · realises: D1 · rigor: tdd · expects: src/q.mjs · provides: api (src/q.mjs)')
+  const sub = ['- **s** — sub-effort', '  Build s.', '  The user writes its spec.']
+  const xLines = (after = '', title = 'Add x.') => ['- **x** — task · realises: D1 · rigor: tdd · expects: src/x.mjs, test/x.test.mjs' + after, '  ' + title, '  Write x and its test.',
+    '  - [ ] x works — check: `node --test test/x.test.mjs`']
+  const sSpec = (title) => folderSpec({ plan: ['- **y** — task · realises: D1 · rigor: tdd · expects: src/y.mjs', '  ' + title, '  Write y.',
+    '  - [ ] y works — check: `node --test test/y.test.mjs`'] }).replace('# Build p', '# Build s')
+  const xc = rig(t, { root, spec: folderSpec({ plan: [...xLines(' · consumes: api'), ...sub] }) })
+  put(xc.repo, 'p/s', sSpec('Add y.'))
+  assert.equal(recordPreparation(xc.repo, E, 'p', { review: REVIEW }).ok, true)
+  assert.equal(recordApproval(xc.repo, E, 'p/s').ok, true)
+  assert.equal(compileEffort(xc.repo, E).ok, true)
+  assert.ok(nodeOf(xc, 'p/s/y'), 'the sub-effort is compiled')
+
+  put(xc.repo, 'p/s', sSpec('Add y again.'))
+  assert.equal(recordApproval(xc.repo, E, 'p/s').ok, true, 'approved again, not compiled')
+  put(xc.repo, 'p', folderSpec({ plan: [...xLines('', 'Add x again.'), ...sub] }))
+  assert.deepEqual(problemsOf(xc), [], 'the spec alone checks clean')
+  const dispatch = planner(xc, 1, { status: 'written' })
+  const before = { ...everything(xc), nodes: [...readTree(xc.repo, E).nodes.values()] }
+  const out = await specCheck(xc, { folder: 'p', dispatch })
+  assert.equal(out.status, 'problems')
+  const after = everything(xc)
+  assert.deepEqual(after.events.filter((e) => e.kind !== 'message'), before.events.filter((e) => e.kind !== 'message'), 'no event but the problems message')
+  assert.deepEqual(after.ledger, before.ledger, 'nothing recorded compiled')
+  assert.deepEqual([...readTree(xc.repo, E).nodes.values()], before.nodes, 'no node written')
+})
+
 test('spec-check: a settled return reads as written', async (t) => {
   const xc = rig(t)
   const dispatch = planner(xc, 1, { status: 'settled', dispositions: [] })

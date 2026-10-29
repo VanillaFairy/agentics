@@ -159,9 +159,9 @@ a spec its first approval; a later change to an approved spec is approved withou
 theirs only when an independent ruling finds that everything it moves either is not moved at all or
 is settled by an answer they recorded ([A changed spec](#a-changed-spec)), or, for a one-shot
 migration, when code checks the change renames a field's keyword and moves nothing else, or
-declares the Design citations the reader of the time took a task's text to make and hands every
-brief the text it had: the
-signature is then stated again at the new hash, as it was given ([Migration from 4.x](#migration-from-4x)).
+declares the Design citations the reader of the time took a task's text to make and, once compiled,
+hands every brief the text it had: the signature is then stated again at the new hash, as it was
+given, and the migration compiles it ([Migration from 4.x](#migration-from-4x)).
 The user's branch and
 working tree change only by their explicit act: an inline task edits only the files it was asked to
 edit; dispatched work happens on branches and worktrees the framework owns and reaches the user's
@@ -4999,10 +4999,13 @@ narrows. Code then proves each task's brief carries the
 same Design text from the new spec as from the old (`declare`); a declaration that would not is
 refused and not written, and only a spec whose every brief is proved the same has its latest
 `approved` or `prepared` line stated again at the new hash, every field kept and `carried_from`
-naming the hash it was given at. A carried folder with work dispatched below it is listed: its next
+naming the hash it was given at. A brief reads the spec as compile last kept it, so it then compiles
+each effort compiled before in which it carried a signature; until that compile succeeds a carried
+task's brief carries no Design. A carried folder with work dispatched below it is listed: that
 compile reads the new hash as a change and parks it `spec_changed`. `provides` needs no rewrite: a
 contract with no declared part is defined by the whole Design. It dry-runs by default, applies with
-`--yes`, and a second run finds nothing to do; it exits 1 while a declaration or a carry is refused.
+`--yes`, and a second run finds nothing to do; it exits 1 while a declaration or a carry is refused
+or a compile failed.
 
 `tools/migrate-contract-parks.mjs` clears the `contract_changed` parks an earlier version raised on
 an edit that left the contract as it was, read with a frozen copy of the contract reader those parks

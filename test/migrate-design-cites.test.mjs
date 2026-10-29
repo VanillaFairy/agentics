@@ -19,7 +19,8 @@ import { dirname, join } from 'node:path'
 
 import { approvalState } from '../lib/approval.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
-import { citedDesign, hashSpec, parseSpec } from '../lib/spec.mjs'
+import { compileEffort } from '../lib/compile.mjs'
+import { citedDesign, designCitedBy, hashSpec, parseSpec } from '../lib/spec.mjs'
 import { specPath } from '../lib/store.mjs'
 import { declare, migrate, oldCited } from '../tools/migrate-design-cites.mjs'
 
@@ -92,9 +93,12 @@ test('a store is migrated once: dry run writes nothing, --yes declares and carri
   const lossy = spec([WHOLE, NAMED], ['### Ports', '', 'interface Den {}', '', '# Aside', '', 'Read by the old part, not by the new one.']).replace('# Ports', '# Lossy')
   put('.', proven)
   put('lossy', lossy)
+  const pre = compileEffort(repo, 'e1')
+  assert.equal(pre.ok, true, 'compiled before the upgrade: ' + JSON.stringify(pre.problems))
   const dry = migrate(repo)
   assert.deepEqual(dry.specs.map((s) => s.folder), ['.', 'lossy'])
   assert.equal(readFileSync(specPath(repo, 'e1', '.'), 'utf8'), proven, 'a dry run writes nothing')
+  assert.deepEqual(dry.compiled, [], 'nor compiles')
   const ledger = readLog(repo, 'e1', 'ledger').entries
 
   const done = migrate(repo, { yes: true })
@@ -105,6 +109,11 @@ test('a store is migrated once: dry run writes nothing, --yes declares and carri
   const carried = readLog(repo, 'e1', 'ledger').entries.find((l) => l.seq > ledger.at(-1).seq && l.kind === 'approved')
   assert.deepEqual([carried.folder, carried.carried_from, carried.hash], ['.', hashSpec(proven), hashSpec(readFileSync(specPath(repo, 'e1', '.'), 'utf8'))])
   assert.notEqual(approvalState(repo, 'e1', 'lossy').state, 'approved', 'a brief that changes is the user\'s to approve again')
+  assert.deepEqual(done.compiled, [{ effort: 'e1', ok: true, problems: [] }])
+  const design = parseSpec(proven).sections.Design.body.trim()
+  for (const id of ['whole', 'imperative']) {
+    assert.deepEqual(designCitedBy(repo, 'e1', id).parts.map((p) => p.text), [design], id + '\'s brief carries the Design it had, from the copy compile keeps')
+  }
 
   const again = migrate(repo, { yes: true })
   assert.deepEqual([again.specs, again.carried], [[], []], 'a second run writes nothing')

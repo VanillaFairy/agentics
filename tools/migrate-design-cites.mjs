@@ -12,7 +12,9 @@
 // migration widens, never narrows. Code then proves, entry by entry, that the rewritten spec hands
 // every task's brief the same Design text it handed before; only then is a signed spec's latest
 // `approved` or `prepared` line stated again at the new hash, every field kept and `carried_from`
-// naming the hash it was given at. `provides` needs nothing: a contract with no declared part is defined by the whole Design. The default is a dry run; `--yes` writes. A second
+// naming the hash it was given at. A brief reads the spec compile kept, so each effort compiled
+// before with a carried spec is compiled again. `provides` needs nothing: a contract with no
+// declared part is defined by the whole Design. The default is a dry run; `--yes` writes. A second
 // run finds every cited task declared and writes nothing.
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -20,6 +22,7 @@ import { join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { approvalState } from '../lib/approval.mjs'
+import { compileEffort } from '../lib/compile.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
 import { citedDesign, hashSpec, parseSpec } from '../lib/spec.mjs'
 import { ROOT_ID, SPEC_FILE, effortDir, effortsRoot, mainCheckout, posix, safeSlug } from '../lib/store.mjs'
@@ -150,8 +153,9 @@ function foldersOf(repo, effort) {
 /** What the migration does to `repo`, and with `yes`, does it. */
 export function migrate(repo, { yes = false } = {}) {
   const root = mainCheckout(resolve(String(repo)))
-  const out = { specs: [], carried: [], uncarried: [], initial: [], refused: [], parks: [] }
+  const out = { specs: [], carried: [], uncarried: [], initial: [], refused: [], parks: [], compiled: [] }
   for (const effort of dirsOf(effortsRoot(root)).filter(safeSlug).sort()) {
+    let carriedHere = false
     const tree = readTree(root, effort)
     const dispatched = new Set(tree.events.filter((e) => e.kind === 'dispatched').map((e) => e.node))
     for (const folder of foldersOf(root, effort)) {
@@ -180,6 +184,13 @@ export function migrate(repo, { yes = false } = {}) {
       delete fields.seq
       const c = append(root, effort, 'ledger', [{ ...fields, hash: hashSpec(d.next), carried_from: st.hash }])
       if (!c.ok) out.refused.push({ effort, folder, file, entry: '', why: 'the signature could not be carried: ' + c.error })
+      else carriedHere = true
+    }
+    // A brief reads the spec as compile last kept it, which holds no `cites`: until compiled, a
+    // carried task's brief carries no Design. An effort never compiled reads its specs as they stand.
+    if (carriedHere && readLog(root, effort, 'ledger').entries.some((l) => l.kind === 'compiled')) {
+      const c = compileEffort(root, effort)
+      out.compiled.push({ effort, ok: c.ok, problems: c.problems.map((p) => p.problem) })
     }
   }
   return out
@@ -190,7 +201,8 @@ function reportOf(r, yes) {
   for (const s of r.specs) for (const w of s.written) lines.push((yes ? 'declared ' : 'would declare ') + s.file + ' ' + w.entry + ' · cites: ' + w.cites)
   for (const c of r.carried) lines.push((yes ? 'carried ' : 'would carry ') + 'the signature of ' + c.effort + ' ' + c.folder + ' from ' + c.from.slice(0, 8) + ' to ' + c.hash.slice(0, 8))
   for (const x of r.uncarried) lines.push('not carried ' + x.file + ': ' + x.why)
-  for (const x of r.parks) lines.push('its next compile parks ' + x.effort + ' ' + x.folder + ' spec_changed: work under it was dispatched')
+  for (const x of r.parks) lines.push((yes ? 'its compile parks ' : 'its compile would park ') + x.effort + ' ' + x.folder + ' spec_changed: work under it was dispatched')
+  for (const c of r.compiled) lines.push('compiled ' + c.effort + (c.ok ? '' : ': ' + c.problems.join('; ')))
   for (const x of r.initial) lines.push('trim ' + x.file + ':' + x.line + ' ' + x.entry + ': its only "Design" opens a sentence, so it was given the whole Design; drop or narrow its cites if it cites less')
   for (const x of r.refused) lines.push('refused ' + x.file + (x.entry ? ' ' + x.entry : '') + ': ' + x.why)
   lines.push(r.specs.length + ' spec(s), ' + r.initial.length + ' entry(ies) to trim' + (yes ? '' : '; nothing written (run again with --yes)'))
@@ -211,6 +223,6 @@ if (isMain) {
     const yes = argv.includes('--yes')
     const r = migrate(at >= 0 ? argv[at + 1] : '.', { yes })
     console.log(reportOf(r, yes))
-    process.exitCode = r.refused.length ? 1 : 0
+    process.exitCode = r.refused.length || r.compiled.some((c) => !c.ok) ? 1 : 0
   }
 }

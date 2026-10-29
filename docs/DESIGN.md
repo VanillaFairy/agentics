@@ -5016,6 +5016,15 @@ whose `unread` holds a line of text it types the line ([Producer returns](#produ
 blank one is dropped, one that is a single path becomes `{kind: doc, path}`, any other `{kind: doc,
 what}`. Every other line and file is kept byte for byte. It exits 1 for a store stamped past 1.
 
+`tools/migrate-to-2.mjs` brings a store at version 1 to 2, which keys a regression net by its file's
+blob ([Executors and review](#executors-and-review)). In each effort's `events.jsonl` it gives each
+net of a `nets` event `blob`, its file's blob at the event's `head_sha`, and drops the event's
+`all`, which version 2 derives from the measurement; in each execution's `journal.jsonl` it gives
+each `discriminator` entry of a `verify-observed` line `blob`, its file's blob at the line's
+`head_sha` ([Verify payload](#verify-payload)). A blob git cannot find, its commit gone, is `''`,
+which no measurement matches. Each log is rewritten under its effort's lock, every other line kept
+byte for byte. It exits 1 for a store at any version but 1 or 2.
+
 The one-shots below predate the stamp and rewrite what a store's user must see or approve; each is
 run on its own, before or after `migrate-to-1`.
 

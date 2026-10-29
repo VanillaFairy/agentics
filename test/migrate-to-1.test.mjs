@@ -64,3 +64,19 @@ test('a store stamped past 1 is refused and left as it is', (t) => {
   assert.equal(readFileSync(s.events, 'utf8'), before)
   assert.equal(storeVersion(s.repo), 2)
 })
+
+test('a store that never ran the locus move is refused whole, and nothing is written', (t) => {
+  for (const plant of [
+    (s) => writeFileSync(join(s.repo, '.agentics', 'e1', 'DESIGN.md'), '# e1\n\n- [ ] a · locus: src/a.ts\n'),
+    (s) => writeFileSync(s.events, readFileSync(s.events, 'utf8') + JSON.stringify({ seq: 4, kind: 'message', msg: 'needs_locus', thread: 'y', node: 'a' }) + '\n'),
+  ]) {
+    const s = oldStore(t)
+    plant(s)
+    const before = readFileSync(s.events, 'utf8')
+    const out = run(s.repo, '--yes')
+    assert.equal(out.status, 1, out.stdout)
+    assert.match(out.stdout, /migrate-expects/)
+    assert.equal(readFileSync(s.events, 'utf8'), before, 'the events are left as they were')
+    assert.equal(storeVersion(s.repo), 0, 'the store is not stamped')
+  }
+})

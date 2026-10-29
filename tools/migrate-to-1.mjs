@@ -11,14 +11,18 @@
 // stored return under an execution's or a run's `returns/` whose `unread` holds a line of text has it
 // typed: a blank line is dropped, a line that is one path becomes `{kind: 'doc', path}`, any other
 // `{kind: 'doc', what}`. Then the store is stamped `{version: 1}`. Every other line and file is kept
-// byte for byte. The default is a dry run; `--yes` writes. A store already stamped is left alone, so
-// a second run writes nothing; exit 1 for a store stamped past 1 or a file it could not rewrite.
+// byte for byte. Each events log is rewritten under its effort's lock, so an append meanwhile is
+// never lost. A store that never ran the 6.0.0 `locus` → `expects` move (a `· locus:` line in a
+// spec, or a `needs_locus` message no withdrawn event names) is refused whole: that move is not this
+// one's, and dropping its messages would lose it. The default is a dry run; `--yes` writes. A store
+// already stamped is left alone, so a second run writes nothing; exit 1 for a refused store, one
+// stamped past 1 or a file it could not rewrite.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { mainCheckout } from '../lib/store.mjs'
+import { mainCheckout, withLock } from '../lib/store.mjs'
 
 const VERSION = 1
 // The message kinds version 1 renders.
@@ -75,6 +79,25 @@ export function returnRewrite(ret) {
   return { ...ret, unread }
 }
 
+/** Every `.md` file under `dir`, its state folder and dot folders left out. */
+function specFiles(dir) {
+  let entries
+  try {
+    entries = readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+  return entries.flatMap((e) => (e.isDirectory() ? (e.name.startsWith('.') ? [] : specFiles(join(dir, e.name)))
+    : e.name.endsWith('.md') ? [join(dir, e.name)] : []))
+}
+
+/** Pure. Whether an events log still holds a `needs_locus` message no withdrawn event names. */
+export function locusOpen(text) {
+  const rows = text.split('\n').map(parsed).filter(Boolean)
+  const named = new Set(rows.filter((r) => r.kind === 'withdrawn').flatMap((r) => (Array.isArray(r.messages) ? r.messages : [])))
+  return rows.some((r) => r.kind === 'message' && r.msg === 'needs_locus' && !named.has(r.seq))
+}
+
 /** Every stored return of the store: each execution's and each run's `returns/*.json`. */
 function returnFiles(store, efforts) {
   const homes = [
@@ -103,13 +126,26 @@ export function migrate(repo, { write = false } = {}) {
   if (at > VERSION) return { ...out, refused: [{ path: stampFile, why: 'the store is at version ' + at + ', past ' + VERSION }] }
   if (at === VERSION || !existsSync(store)) return out
   const efforts = dirs(store).filter((e) => !e.startsWith('.') && existsSync(join(store, e, '.state')))
+  const LOCUS = /·\s*locus:/
+  for (const effort of efforts) {
+    const events = join(store, effort, '.state', 'events.jsonl')
+    if (specFiles(join(store, effort)).some((p) => LOCUS.test(readFileSync(p, 'utf8'))) ||
+      (existsSync(events) && locusOpen(readFileSync(events, 'utf8')))) {
+      out.refused.push({ path: join(store, effort), why: 'it never ran the 6.0.0 locus → expects migration: run tools/migrate-expects.mjs from an agentics release that still ships it, then this' })
+    }
+  }
+  if (out.refused.length) return out
   for (const effort of efforts) {
     const path = join(store, effort, '.state', 'events.jsonl')
     if (!existsSync(path)) continue
-    const r = eventsRewrite(readFileSync(path, 'utf8'))
-    if (r.dropped.withdrawn === 0 && r.dropped.messages.length === 0) continue
-    out.events.push({ effort, withdrawn: r.dropped.withdrawn, messages: r.dropped.messages })
-    if (write) replace(path, r.text)
+    const rewrite = () => {
+      const r = eventsRewrite(readFileSync(path, 'utf8'))
+      if (r.dropped.withdrawn === 0 && r.dropped.messages.length === 0) return
+      out.events.push({ effort, withdrawn: r.dropped.withdrawn, messages: r.dropped.messages })
+      if (write) replace(path, r.text)
+    }
+    if (write) withLock(join(store, effort, '.state', '.lock'), rewrite)
+    else rewrite()
   }
   for (const path of returnFiles(store, efforts)) {
     const ret = parsed(readFileSync(path, 'utf8'))

@@ -3014,8 +3014,9 @@ is the head it merges, so its series is its own work over it. The round may writ
 rule admits plus exactly the conflicted paths the judge sent (`resolves` of `rolePermissions` in
 `lib/permissions.mjs`), so a green's implementer can resolve a conflicted test. A deny wins over every
 allow, so a test path to resolve lifts a `no-tests` round's test denials; what else of the tests it
-writes, the series check finds: every path the judge ever sent the leaf is admitted as its own change
-(verify's `resolves`), each other path is judged by the role, and a test it resolved is named in
+writes, the series check finds: every path the judge ever sent the leaf (verify's `resolves`) is
+judged per commit and admitted only in a merge commit's resolution, its remerge diff, so a later
+ordinary commit to it is held to the role; each other path is judged by the role, and a test it resolved is named in
 `tests_rewritten` for the leaf's reviewer whatever the leaf expects ([L3](#l3--separate-judges)). A leaf owes the rebase until a
 round opened for it returned — a dispatch on the message's thread, at its round or later, whose
 `returned` line says `returned`, in whichever execution — or the leaf is approved or merged after
@@ -4389,7 +4390,8 @@ each merge read by its remerge diff (`log --remerge-diff`): what it changed beyo
 of its parents — a resolution, an extra edit, a removal — so a clean refresh lists nothing and is no
 empty commit, and a merge owes no subject style, its subject being git's. `role-breach` judges the series' net diff against what the leaf's role may change
 ([Role rules](#role-rules)), and each commit the program made for a shell-less author against its
-own fence (a test round's commit on a green or an audit, held to test files); `test-removed`
+own fence (a test round's commit on a green or an audit, held to test files), and each commit that
+touches a path a rebase round resolved by the role, but the merge that resolved it; `test-removed`
 flags a test case removed from a test file the cycle approved. `tests_rewritten[]` names the test
 files the net diff changed that exist at the base, outside `expects` and the cycle's tests, and every
 resolved test: an observation a reviewer rules, never a failure.

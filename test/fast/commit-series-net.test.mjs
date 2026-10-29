@@ -263,3 +263,12 @@ test("a path a rebase round resolved is the leaf's own change, in its commits an
   assert.ok(breaches(series.analyzeSeries(commits, { writes: 'no-tests', fences, netFiles: [TEST_FILE] })).some((f) => f.message.includes(TEST_FILE)),
     'without the resolve, the same test is a breach')
 })
+
+test('a resolved path is admitted only in the merge that resolved it: a later ordinary commit to it is judged by the role', () => {
+  const commits = [
+    { sha: SHA_A, subject: 'merge the folder', trailers: '', files: [TEST_FILE], merge: true },
+    { sha: SHA_B, subject: 'fix: loosen the test', trailers: '', files: [TEST_FILE] },
+  ]
+  const hits = breaches(series.analyzeSeries(commits, { writes: 'no-tests', netFiles: [TEST_FILE], resolves: [TEST_FILE] }))
+  assert.deepEqual(hits.map((f) => f.sha), [SHA_B], JSON.stringify(hits))
+})

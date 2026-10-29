@@ -193,3 +193,25 @@ test("a cycle test a rebase round resolved is no breach of the green's rule, and
   assert.deepEqual(breaches(payload), [])
   assert.deepEqual(payload.tests_rewritten, [TEST_FILE], 'though it is the cycle\'s own test')
 })
+
+// ---------------------------------------------------------------- CRLF
+
+/** Commit `path` holding `text` byte for byte, whatever the machine's autocrlf. Gives its sha. */
+function commitBytes(worktree, path, text, message) {
+  writeFileSync(join(worktree, path), text)
+  assert.equal(git(worktree, '-c', 'core.autocrlf=false', 'add', path).status, 0)
+  assert.equal(git(worktree, 'commit', '-qm', message).status, 0)
+  return rev(worktree, 'HEAD')
+}
+
+test("a test a green stored again with CRLF line ends, its text unchanged, is no change of its; a real edit is", (t) => {
+  const c = cycle(t)
+  const base = git(c.worktree, 'show', 'HEAD:test/base.test.mjs').stdout
+  commitBytes(c.worktree, 'test/base.test.mjs', base.replace(/\n/g, '\r\n'), 'chore: store the base suite with CRLF')
+  const payload = green(c, { exclude: [c.red] })
+  assert.deepEqual(naming(breaches(payload), 'test/base.test.mjs'), [], JSON.stringify(breaches(payload)))
+  assert.deepEqual(payload.tests_rewritten, [])
+
+  commitBytes(c.worktree, 'test/base.test.mjs', (base + '// edited\n').replace(/\n/g, '\r\n'), 'chore: edit the base suite')
+  assert.equal(naming(breaches(green(c, { exclude: [c.red] })), 'test/base.test.mjs').length, 1)
+})

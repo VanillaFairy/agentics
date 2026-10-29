@@ -3123,7 +3123,10 @@ commands. A rebase round may write the conflicted paths it resolves too ([The ju
 command staged. The series check judges the role on the series' net diff, base to head (`role-breach`,
 [Verify payload](#verify-payload)): nothing under `.agentics/`; a green's or an audit's own commits
 change no test file; a commit the program made for a cycle's test round or a `tests-only` leaf's
-test-author changes only test files. A breach is blocking, so it is a fix round. The round's
+test-author changes only test files. A net-diff hit that counts — a test file, or a path the role may
+not change — is read again by content where either side's blob holds a carriage return: a file whose
+text, read through `textOf` in `lib/store.mjs` (LF line ends, no byte-order mark; `readText` is the
+one port a file's text is read through), did not change is no change. A breach is blocking, so it is a fix round. The round's
 uncommitted files are put back to the head before it is measured, and nothing is reverted out of a
 series. A test file the series rewrote that exists at the base, outside what the leaf expects and the
 cycle's tests, is named in the measurement (`tests_rewritten`) and handed to the leaf's reviewer, or

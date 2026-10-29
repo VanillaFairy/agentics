@@ -497,7 +497,7 @@ the program the resolved values:
 
 | kind | given as | resolved to |
 |---|---|---|
-| `file` | a path, absolute or from the working directory | the absolute path of an existing file, and its text — `\r\n` read as `\n`, trimmed — under the name the program asks for, so a file's line endings never change a run's arguments or its scope |
+| `file` | a path, absolute or from the working directory | the absolute path of an existing file, and its text — read through `readText` (LF line ends, no byte-order mark), trimmed — under the name the program asks for, so a file's line endings never change a run's arguments or its scope |
 | `text` | a string | the string; its `<name>_file` twin (a `file` argument whose `as` names it) gives it from a file, and giving both is `bad_arg` |
 | `list` | `a,b,c` | the entries, trimmed, empty ones dropped |
 | `int` | digits | a non-negative integer |

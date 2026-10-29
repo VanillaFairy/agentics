@@ -130,3 +130,8 @@ test('a directory that climbs out of the root is dropped even where its remainde
   const { root } = nested(t, { 'CLAUDE.md': 'r', 'repo/CLAUDE.md': 'inner' }, {})
   assert.equal(guidanceOf(root, { dirs: ['.', '../repo'] }), doc(block('CLAUDE.md', 'r')))
 })
+
+test('a guidance file is read through the one text port: its byte-order mark and CRLF line ends are gone', (t) => {
+  const root = tree(t, { 'CLAUDE.md': '\uFEFFone\r\ntwo\r\n' })
+  assert.equal(guidanceOf(root), doc(block('CLAUDE.md', 'one\ntwo')))
+})

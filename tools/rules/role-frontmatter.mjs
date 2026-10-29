@@ -22,7 +22,7 @@ const listOf = (value) => value.split(',').map((s) => s.trim()).filter(Boolean)
 
 /** Pure. Each frontmatter key with its value and 1-based line, or null when no block opens and closes. */
 function frontmatter(source) {
-  const lines = source.split('\n').map((l) => l.replace(/\r$/, ''))
+  const lines = source.split('\n')
   if (lines[0] !== '---') return null
   const end = lines.indexOf('---', 1)
   if (end === -1) return null

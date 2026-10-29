@@ -8,6 +8,8 @@ import { readdir, readFile } from 'node:fs/promises'
 import { join, relative, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { textOf } from '../lib/store.mjs'
+
 /**
  * The plugin root, derived from this file's own location rather than the caller's cwd.
  *
@@ -29,7 +31,7 @@ const TEST_DIR = 'test'
 const TEST_LINTED = 'fast'
 
 /**
- * Run a rule set against one file's text.
+ * Run a rule set against one file's text, read as the plugin reads text (`textOf`).
  * @param {string} source
  * @param {string} filePath POSIX-style repo-relative path
  * @param {Array<{id: string, applies: RegExp, check: Function}>} rules
@@ -39,7 +41,7 @@ export function lintSource(source, filePath, rules) {
   const findings = []
   for (const rule of rules) {
     if (!rule.applies.test(filePath)) continue
-    for (const violation of rule.check(source, filePath)) {
+    for (const violation of rule.check(textOf(source), filePath)) {
       findings.push({
         file: filePath,
         rule: rule.id,

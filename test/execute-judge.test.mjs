@@ -231,3 +231,16 @@ test('a ruler that leaves the unit out again escalates contention_unruled, namin
   assert.deepEqual([stop.node, stop.reason], ['x/a', 'contention_unruled'])
   assert.match(stop.detail, /y\/b: left unruled/)
 })
+
+test('after the session retries a leaf, a new ruling at the head an earlier one stopped it at is recorded and decides', SLOW, async (t) => {
+  const { rig, a } = contended(t)
+  const earlier = { node: 'x/a', trigger: 'contention', head_sha: a.head_sha, heads: {}, facts: [], paths: [], outcome: 'cant_rule', after: [], why: 'y/b: left unruled', said: 'r0', execution: rig.stamp }
+  rig.log.append('judged', earlier)
+  rig.log.append('replanned', { node: 'x/a', reason: 'retry_escalated', by: 'session' })
+  approve(rig, a)
+  rig.script({ [rulerKey('contention', a)]: [rulings(['y/b', 'resolve'])] })
+  await merge(rig, 'x', a)
+  const judged = kinds(rig, 'judged').filter((e) => e.node === 'x/a')
+  assert.deepEqual(judged.map((e) => e.outcome), ['cant_rule', 'resolve'], 'the earlier ruling does not stand over the retry')
+  assert.ok(merges(rig).includes('x/a'), 'the new ruling is what the schedule reads')
+})

@@ -94,6 +94,13 @@ test('blocked after a denied command stops as command_denied, naming the command
   assert.deepEqual(out.records, [escalated('a', 'command_denied', denied[0], 'd7')])
 })
 
+test('blocked after only ad-hoc denied lines (reading or rewriting files, an inline script) goes back to the producer, not the session', () => {
+  const denied = ['cd src/core/critters; cat RoamBrain.ts; git log --oneline | head -5', "python3 - <<'EOF'"]
+  assert.deepEqual(po({ ret: { status: 'blocked', text: TEXT }, denied }), { next: 'denied', denied })
+  const mixed = po({ ret: { status: 'blocked', text: TEXT }, denied: [...denied, 'npm run asset:rename'] })
+  assert.equal(mixed.next, 'stop', "a project command among them is still the spec's gap")
+})
+
 test('needs_decision parks the leaf on it, said the dispatch', () => {
   const out = po({ ret: { status: 'needs_decision', text: TEXT } })
   assert.equal(out.next, 'stop')
@@ -374,6 +381,20 @@ describe('leaf-close before it measures', { concurrency: 4 }, () => {
     const { out, dispatch } = await run(w, { node: 'a', role: 'implementer', round: 1, ret: { status: 'blocked', text: TEXT }, denials, base_sha: o.base_sha, head_before: o.base_sha })
     assert.deepEqual(out.stops.map((s) => [s.id, s.reason, s.said]), [['a', 'command_denied', dispatch]])
     assert.equal(recs(w, 'escalated', 'a').find((e) => e.reason === 'command_denied').detail, command)
+  })
+
+  test('a round blocked on ad-hoc denials is sent them as failures and fixes; the same denials again escalate command_denied', SLOW, async (t) => {
+    const { w, o } = tdd(t)
+    const command = "python3 - <<'EOF'\nopen('src/a.mjs').read()\nEOF"
+    const denials = [{ tool_name: 'Bash', tool_use_id: 't1', tool_input: { command } }]
+    const first = await run(w, { node: 'a', role: 'implementer', round: 1, ret: { status: 'blocked', text: TEXT }, denials, base_sha: o.base_sha, head_before: o.base_sha })
+    assert.deepEqual([first.out.decision.next, first.out.decision.reason], ['fix', 'command_denied'])
+    assert.deepEqual(first.out.stops, [])
+    const told = msgs(w, 'failures', 'a').at(-1)
+    assert.equal(told.payload.source, 'the permission check')
+    assert.match(told.payload.failures[0].evidence, /Edit and Write/)
+    const second = await run(w, { node: 'a', role: 'implementer', round: 2, ret: { status: 'blocked', text: TEXT }, denials, base_sha: o.base_sha, head_before: o.base_sha })
+    assert.deepEqual(second.out.stops.map((s) => [s.id, s.reason]), [['a', 'command_denied']])
   })
 
   test('an implementer round that moved nothing over commits made by hand since the round before closed is measured', SLOW, async (t) => {

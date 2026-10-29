@@ -424,7 +424,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e> --node
 | `reason` | yours when |
 |---|---|
 | `blocked`, `locus_held`, `review_incomplete` | always — a transient, two leaves on one file, a reviewer's miss: retry |
-| `command_denied` | always — the work runs a project command its entry's `runs` does not name (`detail`): add it there, have the edit ruled (`respec.md`), then retry; never retry first |
+| `command_denied` | always — the work runs a project command its entry's `runs` does not name (`detail`): add it there, have the edit ruled (`respec.md`), then retry; never retry first. Ad-hoc lines (a script, `cat`, `sed`) reach here only when refused twice: leave a note telling it to use Edit and Write, then retry |
 | `compile_refused`, `prepare_refused` | a planner-written folder's — retry: its planner is sent the refusals (`detail`) and revises, or returns `contract_changed`, which parks for the user. A problem in a spec the user wrote is a re-spec (`respec.md`) |
 | `unread_reference` | always — the producer could not read what `detail` names: when the node's brief now carries it, retry; else put the text in the entry or in the Design part it cites, have the edit ruled (`respec.md`), then retry |
 | `fails_full_suite`, `verify_not_converging` | its failures are timeouts or load faults that pass alone: retry once; the same again is the user's |

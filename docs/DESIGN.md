@@ -681,7 +681,11 @@ allowed and may run only its role's commands; an implementer also runs its leaf'
 and the project commands its entry names in `runs` (`roleCommands` in `lib/roles.mjs`), each split
 by `commandParts` like any other. A producer that returns `blocked` after the host denied it a
 command stops as `command_denied`, the denied command lines its `detail` (read from the call's
-`denials`): its entry is missing a `runs`, a spec gap that no retry clears. An agent of a program run outside an execution runs
+`denials`): its entry is missing a `runs`, a spec gap that no retry clears. When every denied line
+is ad hoc (`adHocCommand` in `lib/permissions.mjs`: file tools such as `cat`, `sed` or `git`, or an
+interpreter given an inline script), the producer wanted a tool its role has: the lines go back to
+it as a `failures` message (`source: the permission check`) and the round goes on; the same lines
+refused again stop as `command_denied`. An agent of a program run outside an execution runs
 in the checkout the program reads (`--root`), the `review` program's reviewer in its throwaway
 worktree, and none of them is allowed a path to write. Prevention ends where the repository's own
 commands begin: a build or test script a producer runs is the project's code, and what it writes
@@ -742,6 +746,9 @@ the runner alone.
 ### Briefs and returns
 
 A leaf's producers are briefed by code (`leafBrief` in `lib/brief.mjs`) with their thread's brief,
+its evidence derived in a child the program awaits (`briefEvidence`), since every anchor check
+runs git; within one check each git answer (a diff, a rename, a query) is asked once however many
+spans name it, and a commit's blob once per process,
 in the sections `Task`, `Acceptance criteria`, `Decisions realised`, `Expected files and reads`,
 `Evidence`, `Gotchas`, `Measures`, `Commands`, `Worktree` and `Repository guidance`: the node, the
 decisions it realises, the files it expects to change (a prediction, never a limit) and those it

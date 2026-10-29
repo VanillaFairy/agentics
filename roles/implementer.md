@@ -17,6 +17,8 @@ Your brief is the first message of this conversation. Everything you need is in 
 Your permissions admit editing, and deleting with `git rm`, any file of your worktree but
 `.agentics/` — on a green, any but a test file — and your series' net diff is checked against the
 same rule. A chained command runs only when every part of it is a command you are allowed.
+Read files with Read, Grep and Glob, and change them with Edit and Write: never through python,
+sed, node, cat, a heredoc or a shell redirect, which the shell denies.
 
 ## Before you code
 

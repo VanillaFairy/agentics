@@ -825,7 +825,10 @@ reads, a test round of a green or an audit also the test files the red's branch 
 declares any ([Spec format](#spec-format)), each part of the Design of the spec that holds it the
 entry cites, or the whole Design for `cites: Design` (`designCitedBy` and `citedDesign` in
 `lib/spec.mjs`), from the text compile last kept for the folder: a producer, and the reviewer handed
-its brief, can never be told to match a document its worktree does not hold; then,
+its brief, can never be told to match a document its worktree does not hold; then, under `Consumes`
+and only when one declares it, the part of its provider's spec's Design that defines each contract the
+leaf consumes, read from the providing entry as compile last kept its spec, the provider the
+contract's shallowest live provider (`consumedParts`); then,
 under `Effort files` and only when there are any,
 the text of each file under the effort's store (`.agentics/<effort>/`, its `.state/` records
 excepted) that the leaf reads or its intent or context cites, read from the main checkout: the store

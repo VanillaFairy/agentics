@@ -14,7 +14,9 @@ import { leafBrief, measuresFor } from '../lib/brief.mjs'
 import { recordItems } from '../lib/evidence.mjs'
 import { writeGotcha } from '../lib/gotchas.mjs'
 import { fnv1a } from '../lib/plan-digest.mjs'
-import { branchOf, configPath } from '../lib/store.mjs'
+import { append } from '../lib/ledger.mjs'
+import { hashSpec } from '../lib/spec.mjs'
+import { branchOf, configPath, specCopyPath } from '../lib/store.mjs'
 import { normalizeNode, readTree } from '../lib/tree.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 
@@ -144,6 +146,38 @@ test("the part of its spec's Design a task's cites declares is handed in the bri
   const whole = section('whole')
   assert.ok(whole.includes('PORTS_TOKEN') && whole.includes('SAVE_TOKEN'), 'the whole Design')
   assert.equal(section('none'), null, 'prose naming the Design cites nothing')
+})
+
+test("each consumed contract's declared part is handed under Consumes, from the provider's spec as compile kept it", (t) => {
+  const repo = mkdtempSync(join(tmpdir(), 'agentics-leaf-brief-'))
+  t.after(() => rmSync(repo, { recursive: true, force: true }))
+  const spec = (den) => ['# Ports', '', '## Intent', '', 'Ports.', '', '## Decisions', '', '## Design', '',
+    '### Ports', '', '#### Den', '', den, '', '#### Proximity', '', 'PROX_TOKEN', '', '## Plan', '',
+    '- **burrow** — task · rigor: trivial · provides: den-port (src/den.ts) "Den"', '  Build the den', '  - [ ] it builds — check: `tsc`',
+    '- **lair** — task · rigor: trivial · provides: lair-port (src/lair.ts)', '  Build the lair', '  - [ ] it builds — check: `tsc`', '',
+    '## Open questions', '', '## Evidence', ''].join('\n')
+  mkdirSync(join(repo, '.agentics/e1'), { recursive: true })
+  writeFileSync(join(repo, '.agentics/e1/DESIGN.md'), spec('DEN_NOW'))
+  const kept = spec('DEN_KEPT')
+  mkdirSync(dirname(specCopyPath(repo, E, '.', hashSpec(kept))), { recursive: true })
+  writeFileSync(specCopyPath(repo, E, '.', hashSpec(kept)), kept)
+  assert.equal(append(repo, E, 'ledger', [{ kind: 'compiled', folder: '.', hash: hashSpec(kept) }]).ok, true)
+  const leaf = (id, extra) => ({ id, kind: 'leaf', title: 'Build ' + id, rigor: 'trivial', expects: ['src/' + id + '.ts'], decisions: ['D1'],
+    acceptance: [{ text: 'it builds', check: 'tsc', decisions: ['D1'] }], ...extra })
+  const added = seedTree(repo, E, [{ id: '.', kind: 'composite', title: 'Ports', defines: [{ id: 'D1', text: 'Ports are typed.' }] },
+    leaf('burrow', { provides: [{ name: 'den-port', paths: ['src/den.ts'] }] }), leaf('lair', { provides: [{ name: 'lair-port', paths: ['src/lair.ts'] }] }),
+    leaf('user', { deps: ['burrow', 'lair'], consumes: [{ name: 'den-port', paths: ['src/den.ts'] }, { name: 'lair-port', paths: ['src/lair.ts'] }] }),
+    leaf('plain', { deps: ['lair'], consumes: [{ name: 'lair-port', paths: ['src/lair.ts'] }] })])
+  assert.equal(added.ok, true, JSON.stringify(added.problems))
+  const { text, parts } = brief(repo, 'user')
+  const at = text.indexOf('## Consumes\n')
+  assert.ok(parts.Consumes)
+  assert.ok(at > text.indexOf('## Expected files and reads\n') && at < text.indexOf('## Evidence\n'), 'after the reads, before the evidence')
+  const section = text.slice(at, text.indexOf('## Evidence\n'))
+  assert.ok(section.includes('### den-port (src/den.ts) — .agentics/e1/DESIGN.md, Design › Den'), section)
+  assert.ok(section.includes('DEN_KEPT') && !section.includes('DEN_NOW'), 'the text compile kept')
+  assert.ok(!section.includes('PROX_TOKEN') && !section.includes('lair-port'), 'only the declared part, and no contract that declares none')
+  assert.ok(!brief(repo, 'plain').text.includes('## Consumes'), 'no section when no consumed contract declares a part')
 })
 
 test("the effort store's files a leaf reads or cites are handed in the brief, its records never", (t) => {

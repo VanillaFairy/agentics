@@ -35,6 +35,7 @@ test('a second provider outside the promiser, a sibling deliverer or a path past
 
 test("a consumer builds against the promise, not the task delivering it below", () => {
   const nodes = [...treeOf(leaf('roamers/x', { provides: api('src/a/kinds.ts') }), composite('roamers', { provides: api('src/a') })).values()]
-  assert.deepEqual(promiserOf(nodes, 'api').paths, ['src/a'])
+  assert.deepEqual(promiserOf(nodes, 'api').contract.paths, ['src/a'])
+  assert.equal(promiserOf(nodes, 'api').id, 'roamers')
   assert.equal(promiserOf(nodes, 'none'), null)
 })

@@ -10,7 +10,8 @@
 //   measure      the payload comes from a `lib/verify.mjs` child over a real linked worktree; the
 //                line it journals carries the key; the same key is not measured again, unless what
 //                it journalled was broken; a broken child is an `environment_broken` payload, and
-//                its watch failing is one too; the event loop runs while the child
+//                its watch failing is one too, but a git hung in the child or the watch rejects
+//                as GitHung; the event loop runs while the child
 //                does; a moved user ref is `moved`, a framework ref is not
 //
 // Design: docs/DESIGN.md#verification.
@@ -21,13 +22,16 @@ import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import { measure, measureKey } from '../lib/measure.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
+import { GitHung } from '../lib/store.mjs'
 import { snapshotCheckout } from '../lib/watch.mjs'
 import { BRANCH, EFFORT, EXECUTION, NODE, git, options, order } from './harness/verify-fixture.mjs'
 
 const PASS = "node -e 'process.exit(0)'"
+const HANGS = pathToFileURL(join(import.meta.dirname, 'fixtures', 'git-hangs.mjs')).href
 const posix = (p) => String(p).split('\\').join('/')
 
 /** The child's environment: never the test runner's mark, or a grandchild `node --test` runs nothing. */
@@ -335,6 +339,21 @@ test('a worktree that cannot be read gives environment_broken and spawns nothing
   assert.equal(counter.calls.length, 0)
   assert.equal(out.payload.stop_reason, 'environment_broken')
   assert.equal(out.payload.error.kind, 'no_worktree')
+})
+
+test('a git hung in the child rejects as GitHung, never an environment_broken payload, and journals nothing', { timeout: 60_000 }, async (t) => {
+  const { dir, xc, opts } = rig(t)
+  const hangs = (cmd, args, o) => spawn(process.execPath, ['--import', HANGS, ...args], { ...o, env: childEnv() })
+  await assert.rejects(measure(xc, opts, { spawn: hangs }), (err) => err instanceof GitHung && /^git \S+$/.test(err.label))
+  assert.equal(journal(dir).length, 0)
+})
+
+test('a watch whose git hung rejects as GitHung and spawns nothing', { timeout: 60_000 }, async (t) => {
+  const { xc, opts } = rig(t)
+  const counter = counted()
+  const watch = { before: () => { throw new GitHung(['for-each-ref'], 1) }, after: () => ({ moved: [] }) }
+  await assert.rejects(measure(xc, opts, { spawn: counter.spawn, watch }), (err) => err instanceof GitHung && err.label === 'git for-each-ref')
+  assert.equal(counter.calls.length, 0)
 })
 
 test('a watch that cannot read the checkout before the check spawns nothing', { timeout: 60_000 }, async (t) => {

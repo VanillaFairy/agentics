@@ -423,7 +423,9 @@ the node again since it was cleared escalates `git_hung` as no progress (`hungRe
 reads a hang as an answer (`rethrowHung` in `lib/store.mjs`): the leaf unit rejects with a `GitHung`
 its catch-all would otherwise record as a `program` fault, a ruler's throw on a moved base or on
 adopted work holds its nodes by `git_hung`, and leaf-close's read of the worktree takes a refusal,
-never a hang, for an empty unborn worktree.
+never a hang, for an empty unborn worktree. A check's own reads and its watch let a hang through,
+and a hang inside the check's child comes back typed and is thrown again (`measure`, [Verify
+payload](#verify-payload)), never an `environment_broken` measurement.
 
 ### Programs
 
@@ -4372,7 +4374,9 @@ gave no payload `measure_failed` and a checkout the watch could not read `watch_
 JSON object, on standard input — `key`, `approved[{file, sha}]` (the red's approved version of
 each cycle test file), `expects[]`, `fences{sha: rule}`, `exclude[]` (a cycle member's predecessors'
 approved heads) and `resolves[]` (the paths the judge sent the leaf's rebase rounds) among them — and prints the payload as one
-JSON line. The series checks
+JSON line, or, exiting 1, `{error}` for a throw — with `code: 'git_hung'` and the git's `label` for
+a git killed at its ceiling, which `measure` throws as `GitHung` again rather than handing back a
+payload. The series checks
 come from `lib/commit-series.mjs`: `empty-series`, `empty-commit`, `role-breach`, `test-removed`,
 `wip-subject`, `checkpoint-commit`, `and-subject`, `subject-length`. They run over `base..HEAD`,
 each merge read by its remerge diff (`log --remerge-diff`): what it changed beyond git's own remerge

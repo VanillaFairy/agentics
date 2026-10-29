@@ -615,7 +615,7 @@ file refuses (`host_missing`) without looking further; otherwise it is the first
 (`host_missing`).
 
 **The runner records as it goes.** `dispatched {dispatch, node, thread, round, role, model, effort,
-session, brief_digest, brief_parts, carries[], prompt, cwd, pid, deny_read[]?}` is appended when the CLI starts — with `pid` 0
+session, brief_digest, brief_parts, carries[], prompt, cwd, pid, deny_read[]?, left_out[]?}` is appended when the CLI starts — with `pid` 0
 when no CLI started (its spawn failed, or the watch's read before the call failed), so every call
 reads as started — `carries` naming the messages the call delivers
 ([Conversations](#conversations)), `brief_digest` the digest of the thread's brief on every call of
@@ -684,8 +684,9 @@ Code gives way first: a bound sheds what code owns before a refusal is laid on t
 its thread brief, then every message recorded on the thread but a `brief_changed`, whose copy of an
 older brief the fresh brief supersedes; while that is past the role's room, or a message past its
 part's budget, the oldest message is left out, never the latest, and a `left_out` message leading the
-rest names each by seq, kind and round. Every message counts as carried. The dispatch returns the
-seqs it left out (`left_out`), and an execution declares them in its coverage block.
+rest names each by seq, kind and round. Every message counts as carried. The call's `dispatched` line
+records the seqs it left out (`left_out`), so a replayed dispatch returns them as the live one did,
+and every program's coverage block declares each such dispatch of its journal (`coverageOf`).
 
 The spend view flags a unit with a call whose session opened past the bound as measured
 ([Spend view](#spend-view)), which is how an estimate that errs low shows.
@@ -4099,7 +4100,7 @@ Two conventions hold throughout:
 Fields as in [Nodes](#nodes). Event lines are `{kind, node, execution, seq, ...}`:
 `planned {by}` · `replanned {reason, by}` (also `retry_escalated` and `answered`) ·
 `dispatched {dispatch, role, round, model, effort, thread, session, brief_digest, brief_parts,
-carries[], pid, deny_read[]?}` (the runner's whole record, [The agent runner](#the-agent-runner)) · `approved
+carries[], pid, deny_read[]?, left_out[]?}` (the runner's whole record, [The agent runner](#the-agent-runner)) · `approved
 {head_sha, review_rounds, at_integration}` ·
 `merged {into, merged_sha, head_sha, by?, commits?}` (`by` and `commits` only on a leaf adopted on the
 user's word, [Outside work](#outside-work); a `merged` without `by` is agentics' own) ·
@@ -4448,7 +4449,7 @@ the series check of a green or an audit.
 A program run outside an execution keeps the same kind of log, `runs/<run>/state.jsonl`, with its
 own `seq` ([Programs](#programs)): `run {program, scope, pid}`, one per start or resume;
 `dispatched {dispatch, node, round, thread, role, model, effort, session, brief_digest, carries[],
-prompt, cwd, pid, deny_read[]?}`; `returned {dispatch, session, status: returned | part | failed | cut_off, cause,
+prompt, cwd, pid, deny_read[]?, left_out[]?}`; `returned {dispatch, session, status: returned | part | failed | cut_off, cause,
 usage, context, opened, cost_total, cost_usd, denials[]}`, a `cut_off` caused `orphan_ended` or
 `process_gone`; `host_stop {dispatch, cause,
 until}`; `checkout_changed {dispatch, paths[]}`; `thread_renewed {thread, gen, why}`; `tool_used

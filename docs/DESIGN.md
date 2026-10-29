@@ -2170,16 +2170,23 @@ analyst did not fail keeps what it used (one that would hand on less keeps nothi
 narrowed round reads it in turn; a `since` with no kept ground narrows the units all the same and
 locates and derives its axes as a full round does. Kept ground holds each place once (`joinedGround`):
 a hit located again keeps its newer lines where it now stands, and a search block word for word the
-same is kept once, so a folder's rounds grow its ground only by places no round held before.
+same is kept once, so a folder's rounds grow its ground only by places no round held before, and the
+bound below keeps it within what a prober may read: what a round sheds is not kept.
 
 **A prober's brief is sized part by part.** The prober's brief is built in parts
 ([The agent runner](#the-agent-runner)) — the artefact, the settled specs, a narrowed round's carried
 findings, the units, the document's citations, the repository ground, the guidance, each beside the
-charge's own — and is sent whole, the artefact always line-numbered in full. A part past its budget,
-or a brief past the room, is refused `brief_too_large` before it is sent: the prober fails, its
-`unreached` line names the part, its size and its budget, the round records nothing, and in an
-execution the folder is held on a `role` fault naming the cause. A relaunch meets the same refusal
-until the artefact or what it rests on is smaller.
+charge's own, each guidance file one part — and is sent whole, the artefact always line-numbered in
+full. The ground and the settled specs are code's ([The agent runner](#the-agent-runner)), and grow with
+the folder's rounds and its ancestors, so they are bounded as the briefs are built (`boundedBriefs`):
+while a prober's brief is past the room, or the ground or the settled part past its budget, the
+ground's oldest places go first, a kept round's before the round's own, then the farthest settled
+spec; each place and spec shed is declared in `coverage.declared`, and a shed place leaves the kept
+ground and its `located` list, so a later round's relocate judge searches for it again. A part of the
+user's — the artefact, a guidance file — past its budget is refused `brief_too_large` before it is
+sent: the prober fails, its `unreached` line names the part, its size and its budget, the round
+records nothing, and the result's `refused` lists it; in an execution the folder escalates
+`brief_too_large` naming it (`specReviewed`), for the user to shrink or split the file.
 
 ### What a probe costs
 
@@ -4832,7 +4839,7 @@ directory; `sessions` every session the search's thread ran in; `rounds` each ro
   channel search's status and its count of hits — or null when the plan asked no such question.
 - **`probe`** — takes `artifact` (required), `roots` (default `.`), `context` (or `context_file`), `per_axis`,
   `since`, `intelligence` (`low | normal | max`, default `normal`), `search_budget` (as the survey's). Returns `{artifact, axes[{key, source}], analysts[[axis]], shared_ground{resolved, cited,
-  files, excerpts, unresolved}, guidance_read, repo_ground{status, hits, unresolved}, units{total, ruled,
+  files, excerpts, unresolved}, guidance_read, repo_ground{status, hits, unresolved}, refused[{prober, part, owner, file, bytes, budget, message}], units{total, ruled,
   open[]}, findings[{id, item, severity, axis, section, carried}], findings_file, ambiguities[],
   ratifiable, snapshot, scope{full, changed}, unrecorded[], review, coverage}`: `repo_ground.status`
   is the `locate` search's status (`''` for an unchanged round, which searches nothing, and `kept` for a

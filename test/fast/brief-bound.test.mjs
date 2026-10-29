@@ -16,7 +16,7 @@ import { fenced, joined, oversizedPart, ownerOf, sectionsOf } from '../../lib/br
 import { proberBrief } from '../../lib/briefs/probe.mjs'
 import { hitBlocks } from '../../lib/citations.mjs'
 import { briefRoomOf } from '../../lib/programs/common.mjs'
-import { joinedGround } from '../../lib/programs/probe.mjs'
+import { boundedBriefs, joinedGround } from '../../lib/programs/probe.mjs'
 import { BRIEF_BYTES, BRIEF_TOKENS, PART_BYTES } from '../../lib/roles.mjs'
 import { callsOf } from '../../lib/run.mjs'
 import { oversize, runAgent } from '../../lib/runner.mjs'
@@ -174,4 +174,31 @@ test("a failed dispatch escalates for the user when its brief's part is not code
   const [code] = dispatchFailed('a/b', 'the planner dispatch d', refused('code'), at)
   assert.deepEqual([code.kind, code.fields.channel], ['fault', 'role'])
   assert.ok(code.fields.detail.includes('brief_too_large') && code.fields.detail.includes(refused('code').message), code.fields.detail)
+})
+
+test("a prober's ground past its budget sheds its oldest places until the briefs fit, never the user's part", () => {
+  const hits = Array.from({ length: Math.ceil(PART_BYTES / bytes(hit(1))) + 5 }, (_, i) => hit(i + 1))
+  const build = (extra = {}) => (g, settled) => [proberBrief({ ...at(g), settled, ...extra })]
+  const out = boundedBriefs(build(), { ground: groundOf(hits), settled: at(null).settled }, BRIEF_BYTES)
+  assert.equal(oversizedPart(out.briefs[0].parts, BRIEF_BYTES), null, 'the briefs fit')
+  const heads = hitBlocks(groundOf(hits).text).filter((b) => b.kind === 'hit').map((b) => b.head)
+  assert.ok(out.shed.places.length > 0)
+  assert.deepEqual(out.shed.places, heads.slice(0, out.shed.places.length), 'the oldest places go first')
+  assert.ok(joined(out.briefs[0].parts).includes(heads.at(-1)), 'the latest place stays')
+  assert.ok(joined(out.briefs[0].parts).includes('SETTLED_INTENT_TOKEN'), 'the settled spec stays while the ground can give way')
+  assert.deepEqual(out.shed.specs, [])
+
+  const artefact = bigSpec(Math.ceil(PART_BYTES / bytes(bigSpec(1))) + 1)
+  const user = boundedBriefs(build({ text: artefact }), { ground: groundOf([hit(1)]), settled: [] }, BRIEF_BYTES)
+  assert.deepEqual(user.shed.places, [], "nothing of code's is shed for a part of the user's")
+  assert.equal(oversizedPart(user.briefs[0].parts, BRIEF_BYTES).part, 'artefact', 'the refusal stands for the dispatch')
+})
+
+test('a brief past its room with no ground left sheds the farthest settled spec first', () => {
+  const spec = (n) => ({ file: 'spec-' + n + '.md', intent: ('SPEC_' + n + ' ').repeat(Math.floor(PART_BYTES / 28)), decisions: '', design: '' })
+  const settled = [spec(1), spec(2), spec(3)]
+  const room = bytes(joined(proberBrief({ ...at(null), settled: settled.slice(0, 2) }).parts))
+  const out = boundedBriefs((g, s) => [proberBrief({ ...at(g), settled: s })], { ground: null, settled }, room)
+  assert.deepEqual(out.shed.specs, ['spec-3.md'])
+  assert.deepEqual(out.settled.map((s) => s.file), ['spec-1.md', 'spec-2.md'])
 })

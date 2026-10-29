@@ -476,6 +476,18 @@ test('spec-reviewed: a complete round is recorded, and its findings no dispositi
   assert.deepEqual(escalations(xc).concat(parks(xc)), [])
 })
 
+test("spec-reviewed: a prober never sent for a part only the user shrinks escalates brief_too_large naming it, and holds nothing", (t) => {
+  const xc = rig(t)
+  const message = 'the brief\'s part "artefact" (' + specPath(xc.repo, E, 'p') + ') is 9 bytes and may hold 8'
+  const result = { ...probeResult(xc, { failed: ['probe'] }), refused: [{ prober: 'prober:1', part: 'artefact', owner: 'user', file: specPath(xc.repo, E, 'p'), bytes: 9, budget: 8, message }] }
+  const out = specReviewed(xc, { folder: 'p', result })
+  assert.equal(out.status, 'stopped')
+  const stops = escalations(xc)
+  assert.deepEqual(stops.map((e) => e.reason), ['brief_too_large'])
+  assert.ok(stops[0].detail.includes(message), stops[0].detail)
+  assert.equal(ledger(xc, 'reviewed').length, 0, 'the round records nothing')
+})
+
 test('spec-reviewed: a finding a disposition settled is not fresh', (t) => {
   const xc = rig(t)
   const h = hashNow(xc)

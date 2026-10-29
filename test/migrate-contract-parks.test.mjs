@@ -25,7 +25,7 @@ const ROOT = read('root.md')
 const API = read('api.md')
 
 /** An effort whose api spec, providing config-type to `cli`, was re-approved with `edited` and compiled, then parked `cli` as 6.14.2 did. */
-function parkedAfter(t, edited) {
+function parkedAfter(t, edited, base = API) {
   const repo = mkdtempSync(join(tmpdir(), 'agentics-migrate-parks-'))
   t.after(() => rmSync(repo, { recursive: true, force: true }))
   const write = (id, text) => {
@@ -33,7 +33,7 @@ function parkedAfter(t, edited) {
     writeFileSync(specPath(repo, E, id), text)
   }
   write('.', ROOT)
-  write('api', API)
+  write('api', base)
   for (const id of ['.', 'api']) assert.equal(recordApproval(repo, E, id).ok, true)
   assert.equal(compileEffort(repo, E).ok, true)
   write('api', edited)
@@ -52,4 +52,10 @@ test('a park raised on a plan-only edit of the provider is cleared; one on an ed
   const design = parkedAfter(t, API.replace('`load(path)`, then `parse(text)`.', '`load(path)` returns a frozen object.'))
   assert.deepEqual(plan(design, E).cleared, [])
   assert.deepEqual(plan(design, E).left, [{ node: 'cli', why: 'config-type changed in .agentics/e1/api/DESIGN.md' }])
+})
+
+test('the migration keeps the reader of the time: an edit beside the paragraph naming the contract is cleared', (t) => {
+  const base = API.replace('`load(path)`, then `parse(text)`.', '`load(path)`, then `parse(text)`.\n\nconfig-type is a plain object.')
+  const beside = parkedAfter(t, base.replace('`load(path)`, then `parse(text)`.', '`load(path)` reads; `parse(text)` maps.'), base)
+  assert.deepEqual(plan(beside, E).cleared, [{ node: 'cli', contract: 'config-type', provider: '.agentics/e1/api/DESIGN.md' }])
 })

@@ -10,17 +10,118 @@
 // contract_unchanged, by: migration}`: no plan starts again, the node goes on where it stood. A park
 // whose texts are not both kept, or whose contract did change, is listed and left. The default is a
 // dry run; `--yes` writes. A second run finds nothing open to clear.
+//
+// `contractDefinition` below is a frozen copy of what lib/spec.mjs read as a contract's definition
+// when these parks were raised, so the migration keeps its meaning whatever the live reader becomes.
 
 import { pathToFileURL } from 'node:url'
 
 import { append, readLog } from '../lib/ledger.mjs'
-import { contractDefinition, parseSpec, specFolderOf } from '../lib/spec.mjs'
-import { flagOf, mainCheckout, specCopyPath } from '../lib/store.mjs'
+import { parseSpec, specFolderOf } from '../lib/spec.mjs'
+import { flagOf, mainCheckout, posix, specCopyPath } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const RAISED = /^the spec (\S+) that provides (\S+) changed — /
+
+// The frozen reader, as lib/spec.mjs had it.
+const FENCE = /^\s*(```|~~~)/
+const normalise = (text) => String(text ?? '').replace(/^﻿/, '').replace(/\r\n/g, '\n')
+
+/** Pure. A Design body's `### ` parts, in order: each its heading's text and the part, heading line included. A heading inside a fence is prose. */
+function designParts(body) {
+  const parts = []
+  let fence = false
+  for (const line of normalise(body).split('\n')) {
+    if (FENCE.test(line)) fence = !fence
+    const heading = fence ? null : /^###\s+(.*)$/.exec(line)
+    if (heading) parts.push({ heading: heading[1].trim(), lines: [line] })
+    else if (parts.length) parts[parts.length - 1].lines.push(line)
+  }
+  return parts.map((p) => ({ heading: p.heading, text: p.lines.join('\n').trim() }))
+}
+
+/** A declaration a line of code makes: the type or function it names. */
+const DECLARED = /\b(?:interface|class|type|enum|function)\s+([A-Za-z_$][\w$]*)/g
+
+/**
+ * Pure. The Design's blocks — each paragraph, and each fenced block line by line — as
+ * \`{fence, lines}\`, in order. A heading is a paragraph of its own.
+ */
+function designBlocks(design) {
+  const blocks = []
+  let at = null
+  for (const line of normalise(design).split('\n')) {
+    if (FENCE.test(line)) {
+      if (at && at.fence) {
+        blocks.push(at)
+        at = null
+      } else {
+        if (at) blocks.push(at)
+        at = { fence: true, lines: [] }
+      }
+      continue
+    }
+    if (at && at.fence) at.lines.push(line)
+    else if (line.trim() === '' || /^#{1,6}\s/.test(line)) {
+      if (at) blocks.push(at)
+      at = line.trim() === '' ? null : { fence: false, lines: [line] }
+      if (at) {
+        blocks.push(at)
+        at = null
+      }
+    } else (at ||= { fence: false, lines: [] }).lines.push(line)
+  }
+  if (at) blocks.push(at)
+  return blocks
+}
+
+/** Pure. The lines of a fenced block that state \`terms\`: each line naming one, and the whole declaration of each declared term, by its braces. */
+function fencedLines(lines, words, declared) {
+  const out = []
+  for (let i = 0; i < lines.length; i++) {
+    const decl = [...lines[i].matchAll(DECLARED)].some((m) => declared.has(m[1]))
+    if (decl) {
+      let depth = 0
+      let j = i
+      for (; j < lines.length; j++) {
+        depth += (lines[j].match(/{/g) || []).length - (lines[j].match(/}/g) || []).length
+        out.push(lines[j])
+        if (depth <= 0 && j > i - 1 && (lines[j].includes('}') || !lines[i].includes('{'))) break
+      }
+      i = j
+    } else if (words(lines[i])) out.push(lines[i])
+  }
+  return out
+}
+
+/**
+ * Pure. What defines contract \`name\` in a spec, as one string to compare across two texts of it:
+ * every entry that provides it with its paths, and what the Design says of it — each `### ` part
+ * whose heading names it, whole; elsewhere the declarations on any line naming the contract or one
+ * of its files, and every paragraph or line of code that names the contract, one of those files or
+ * one of those declarations. Nothing named, the whole
+ * Design. Text about other contracts, a plan edit, a paragraph beside the declaration, moves no consumer.
+ */
+function contractDefinition(spec, name) {
+  const providers = spec.entries.flatMap((e) => e.provides.filter((c) => c.name === name).map((c) => ({ entry: e.name, paths: [...c.paths].sort() })))
+    .sort((a, b) => (a.entry < b.entry ? -1 : 1))
+  const design = spec.sections && spec.sections.Design ? spec.sections.Design.body.trim() : ''
+  // A directory names a whole module, never one contract: only a file is a name.
+  const names = [name, ...providers.flatMap((p) => p.paths).map((x) => posix(x)).filter((x) => /\.\w+$/.test(x))]
+  const naming = (line) => names.some((n) => line.includes(n))
+  // A `### ` part whose heading names the contract is its definition whole; elsewhere, what names it.
+  const headed = designParts(design).filter((pt) => naming(pt.heading))
+  const rest = headed.reduce((t, pt) => t.replace(pt.text, ''), design)
+  const blocks = designBlocks(rest)
+  const declared = new Set(blocks.flatMap((bl) => bl.lines.filter(naming).flatMap((l) => [...l.matchAll(DECLARED)].map((m) => m[1]))))
+  const words = (line) => naming(line) || [...declared].some((d) => new RegExp('\\b' + d.replace(/\$/g, '\\$') + '\\b').test(line))
+  const text = [...headed.map((pt) => pt.text), ...blocks.flatMap((bl) => (bl.fence
+    ? fencedLines(bl.lines, words, declared)
+    : bl.lines.some(words) ? [bl.lines.join('\n')] : []))]
+  return JSON.stringify({ providers, text: text.length ? text : [design] })
+}
 
 /** The text compile kept for `folder` at `hash`, parsed, or null. */
 function kept(repo, effort, folder, hash) {

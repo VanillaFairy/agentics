@@ -3646,9 +3646,10 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
   declares.** The producer names each test file of the leaf's diff that adds none in its return's
   `upkeep` ([Producer returns](#producer-returns)) — a call site given a new argument — and
   leaf-close hands verify those files (`upkeep`), with each file an earlier measurement of the leaf
-  recorded adding none at the blob it holds at the head (`upkeepAt` in `lib/verdict.mjs`), so a
-  relaunch that measures a head before any round keeps the declaration, and an edit of the file
-  voids it. Every other file of the diff adds one: a missing declaration costs the stricter
+  recorded adding none where the file holds the same blob at the head and the same at the base
+  (`upkeepAt` in `lib/verdict.mjs`), so a relaunch that measures a head before any round keeps the
+  declaration, and an edit of the file, or a rebase onto a base that changed it (adding no case is
+  a fact about the change from base to head), voids it. Every other file of the diff adds one: a missing declaration costs the stricter
   question. The declaration is the producer's about its own work (L3), so it only ever waives a
   proof: verify reads each such file's `git diff -U0` from base to head, and one whose diff adds a
   test-case declaration it does not also remove (`addedTestCases` in `lib/commit-series.mjs`, over
@@ -4414,8 +4415,10 @@ version up; above it, a store a newer plugin wrote. A change to what the store h
 `suite_scope` (`fast` or `full` on a merged head, `scoped` for a leaf's own tests, `none` when
 nothing ran); `suite_output_tail` (only when the suite failed);
 `failing_tests[{file, id}]`; `baseline_failing[{file, id}]` (failing tests that fail at the base
-too); `discriminator[{test_id, blob, adds_test, failed_on_base, passes_now}]` (`blob` the file's
-blob at the measured head, what a ruling over the file is keyed by; `adds_test` false for a
+too); `discriminator[{test_id, blob, base_blob, adds_test, failed_on_base, passes_now}]` (`blob` the
+file's blob at the measured head, what a ruling over the file is keyed by; `base_blob` the same at
+the base, `''` for a file the base lacks, which with `blob` carries an upkeep reading
+(`upkeepAt`); `adds_test` false for a
 file declared upkeep whose diff adds no test-case declaration, or one the leaf's own diff did not
 touch; an entry without it is read as adding one);
 `static_on_base[{kind, command, failed_on_base}]` (on a tdd leaf whose every changed test file held
@@ -5043,9 +5046,10 @@ what}`. Every other line and file is kept byte for byte. It exits 1 for a store 
 blob ([Executors and review](#executors-and-review)). In each effort's `events.jsonl` it gives each
 net of a `nets` event `blob`, its file's blob at the event's `head_sha`, and drops the event's
 `all`, which version 2 derives from the measurement; in each execution's `journal.jsonl` it gives
-each `discriminator` entry of a `verify-observed` line `blob`, its file's blob at the line's
-`head_sha` ([Verify payload](#verify-payload)). A blob git cannot find, its commit gone, is `''`,
-which no measurement matches. Each log is rewritten under its effort's lock, every other line kept
+each `discriminator` entry of a `verify-observed` line what it lacks of `blob`, its file's blob at
+the line's `head_sha`, and `base_blob`, the same at its `base_sha` ([Verify
+payload](#verify-payload)). A blob git cannot find, its commit gone, is `''`, which no measurement
+matches. Each log is rewritten under its effort's lock, every other line kept
 byte for byte. It exits 1 for a store at any version but 1 or 2.
 
 The one-shots below predate the stamp and rewrite what a store's user must see or approve; each is

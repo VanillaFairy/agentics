@@ -1,6 +1,7 @@
 // test/migrate-to-2.test.mjs — tools/migrate-to-2.mjs from the command line over a real repository:
 // a dry run writes nothing, `--yes` keys each net and discriminator entry by its file's blob at the
-// head it names and stamps the store, a second run writes nothing, and a store at another version
+// head it names, and an entry by its file's blob at its base too, and stamps the store, a second run
+// writes nothing, and a store at another version
 // than 1 is refused.
 //
 // Design: docs/DESIGN.md#migrations.
@@ -29,6 +30,11 @@ function v1Store(t) {
   writeFileSync(join(repo, 'test', 'x.test.mjs'), "test('x', () => {})\n")
   git(repo, 'add', '.')
   git(repo, 'commit', '-q', '-m', 'x')
+  const base = git(repo, 'rev-parse', 'HEAD')
+  writeFileSync(join(repo, 'test', 'x.test.mjs'), "test('x', () => {})\ntest('x again', () => {})\n")
+  writeFileSync(join(repo, 'test', 'y.test.mjs'), "test('y', () => {})\n")
+  git(repo, 'add', '.')
+  git(repo, 'commit', '-q', '-m', 'y')
   const head = git(repo, 'rev-parse', 'HEAD')
   const gone = 'f'.repeat(40)
   const stamp = '20261001-120000'
@@ -43,15 +49,17 @@ function v1Store(t) {
   ]
   writeFileSync(join(state, 'events.jsonl'), events.map((e) => JSON.stringify(e) + '\n').join(''))
   const entry = { test_id: 'test/x.test.mjs', adds_test: true, failed_on_base: false, passes_now: true }
+  // Measured before the base blob was recorded: it keeps its blob and gains the base's.
+  const keyed = { test_id: 'test/y.test.mjs', blob: git(repo, 'rev-parse', head + ':test/y.test.mjs'), adds_test: false, failed_on_base: false, passes_now: true }
   const journal = [
-    { seq: 3, kind: 'verify-observed', node: 'a', head_sha: head, discriminator: [entry] },
-    { seq: 4, kind: 'verify-observed', node: 'a', head_sha: gone, discriminator: [entry] },
+    { seq: 3, kind: 'verify-observed', node: 'a', base_sha: base, head_sha: head, discriminator: [entry, keyed] },
+    { seq: 4, kind: 'verify-observed', node: 'a', base_sha: base, head_sha: gone, discriminator: [entry] },
     { seq: 5, kind: 'series-done', node: 'a', head_sha: head },
   ]
   writeFileSync(join(state, 'executions', stamp, 'journal.jsonl'), journal.map((e) => JSON.stringify(e) + '\n').join(''))
   return {
     repo, events: join(state, 'events.jsonl'), journal: join(state, 'executions', stamp, 'journal.jsonl'),
-    blob: git(repo, 'rev-parse', head + ':test/x.test.mjs'), merged, series: journal[2],
+    blob: git(repo, 'rev-parse', head + ':test/x.test.mjs'), baseBlob: git(repo, 'rev-parse', base + ':test/x.test.mjs'), keyed, merged, series: journal[2],
   }
 }
 
@@ -70,8 +78,9 @@ test('a dry run lists the logs and writes nothing; --yes keys nets and entries b
   assert.equal('all' in nets, false, 'version 2 derives all from the measurement')
   assert.deepEqual(merged, s.merged)
   const [at, gone, series] = lines(s.journal)
-  assert.equal(at.discriminator[0].blob, s.blob)
-  assert.equal(gone.discriminator[0].blob, '', 'a commit git does not hold keys the entry to nothing')
+  assert.deepEqual(at.discriminator.map((d) => [d.blob, d.base_blob]), [[s.blob, s.baseBlob], [s.keyed.blob, '']],
+    'each entry keyed by its file at head and at base, a file the base lacks by none, a blob it had kept')
+  assert.deepEqual(gone.discriminator.map((d) => [d.blob, d.base_blob]), [['', s.baseBlob]], 'a commit git does not hold keys the entry to nothing')
   assert.deepEqual(series, s.series)
   assert.equal(storeVersion(s.repo), 2)
 

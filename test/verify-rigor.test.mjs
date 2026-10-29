@@ -110,7 +110,7 @@ test('a red leaf runs no mutation and no named check, and says what it was given
 
   assert.equal(payload.stop_reason, 'completed')
   assert.deepEqual(payload.discriminator, [
-    { test_id: 'test/widget.test.mjs', blob: rev(worktree, head + ':test/widget.test.mjs'), adds_test: true, failed_on_base: true, passes_now: false },
+    { test_id: 'test/widget.test.mjs', blob: rev(worktree, head + ':test/widget.test.mjs'), base_blob: '', adds_test: true, failed_on_base: true, passes_now: false },
   ])
   assert.deepEqual(payload.mutations, [])
   assert.deepEqual(payload.checks, [])
@@ -131,7 +131,7 @@ test('a green leaf is discriminated over its cycle\'s tests, which its own diff 
   assert.equal(payload.stop_reason, 'completed')
   assert.deepEqual(payload.series_findings, [], 'the green series touches no test')
   assert.deepEqual(payload.discriminator, [
-    { test_id: 'test/widget.test.mjs', blob: rev(worktree, head + ':test/widget.test.mjs'), adds_test: true, failed_on_base: true, passes_now: true },
+    { test_id: 'test/widget.test.mjs', blob: rev(worktree, head + ':test/widget.test.mjs'), base_blob: rev(worktree, red + ':test/widget.test.mjs'), adds_test: true, failed_on_base: true, passes_now: true },
   ], 'the red test fails at the red head and passes now')
   assert.equal(git(worktree, 'status', '--porcelain').stdout.trim(), '')
   assert.equal(rev(worktree, 'HEAD'), head)
@@ -202,8 +202,8 @@ test('a tdd leaf that only keeps another test file up to date, declared upkeep, 
   assert.equal(payload.stop_reason, 'completed', payload.notes)
   const byFile = Object.fromEntries(payload.discriminator.map((d) => [d.test_id, d]))
   const blob = (file) => rev(worktree, head + ':' + file)
-  assert.deepEqual(byFile['test/widget.test.mjs'], { test_id: 'test/widget.test.mjs', blob: blob('test/widget.test.mjs'), adds_test: true, failed_on_base: true, passes_now: true })
-  assert.deepEqual(byFile['test/base.test.mjs'], { test_id: 'test/base.test.mjs', blob: blob('test/base.test.mjs'), adds_test: false, failed_on_base: false, passes_now: true })
+  assert.deepEqual(byFile['test/widget.test.mjs'], { test_id: 'test/widget.test.mjs', blob: blob('test/widget.test.mjs'), base_blob: '', adds_test: true, failed_on_base: true, passes_now: true })
+  assert.deepEqual(byFile['test/base.test.mjs'], { test_id: 'test/base.test.mjs', blob: blob('test/base.test.mjs'), base_blob: rev(worktree, base + ':test/base.test.mjs'), adds_test: false, failed_on_base: false, passes_now: true })
   assert.match(payload.notes, /1 of 2 test file\(s\) add a test case; upkeep or untouched, adding none: test\/base\.test\.mjs/)
   assert.deepEqual(measurementOk(payload, normalizeNode({ id: 'w1', kind: 'leaf', rigor: 'tdd', expects: ['src/'] })).failures, [])
   const undeclared = verify(given).discriminator.find((d) => d.test_id === 'test/base.test.mjs')

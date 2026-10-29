@@ -9,8 +9,9 @@
 // Version 2 keys a regression net by its file's blob. For each effort under `.agentics/`, each
 // `nets` event in its `events.jsonl` has every net given `blob`, the file's blob at the event's
 // `head_sha`, and loses `all`; each `verify-observed` line of each execution's `journal.jsonl` has
-// every `discriminator` entry given `blob`, its `test_id`'s blob at the line's `head_sha`. A blob git
-// cannot find (a commit gone) is '', which no measurement matches: that net stands nowhere. Every
+// every `discriminator` entry given what it lacks of `blob`, its `test_id`'s blob at the line's
+// `head_sha`, and `base_blob`, the same at its `base_sha`. A blob git cannot find (a commit gone, or
+// a file the base lacks) is '', which no net or measured head matches: that net stands nowhere. Every
 // other line is kept byte for byte, each log rewritten under its effort's lock. Then the store is
 // stamped `{version: 2}`. The default is a dry run; `--yes` writes. A store at 2 is left alone, so a
 // second run writes nothing; exit 1 for a store at any version but 1 or 2, or a file it could not
@@ -69,7 +70,11 @@ export function specsOf(text) {
     if (!r || typeof r.head_sha !== 'string' || !r.head_sha) continue
     if (r.kind === 'nets') for (const n of Array.isArray(r.nets) ? r.nets : []) if (n && typeof n.file === 'string') specs.push(r.head_sha + ':' + n.file)
     if (r.kind === 'verify-observed') {
-      for (const d of Array.isArray(r.discriminator) ? r.discriminator : []) if (d && typeof d.test_id === 'string') specs.push(r.head_sha + ':' + d.test_id)
+      for (const d of Array.isArray(r.discriminator) ? r.discriminator : []) {
+        if (!d || typeof d.test_id !== 'string') continue
+        specs.push(r.head_sha + ':' + d.test_id)
+        if (typeof r.base_sha === 'string' && r.base_sha) specs.push(r.base_sha + ':' + d.test_id)
+      }
     }
   }
   return specs
@@ -92,10 +97,11 @@ export function logRewrite(text, blobs) {
       return next
     }
     const entries = Array.isArray(r.discriminator) ? r.discriminator : []
-    if (!entries.some((d) => d && typeof d.test_id === 'string' && !('blob' in d))) return line
+    const unkeyed = (d) => d && typeof d.test_id === 'string' && (!('blob' in d) || !('base_blob' in d))
+    if (!entries.some(unkeyed)) return line
     changed++
-    return JSON.stringify({ ...r, discriminator: entries.map((d) => (d && typeof d.test_id === 'string' && !('blob' in d)
-      ? { test_id: d.test_id, blob: blob(r.head_sha, d.test_id), ...d } : d)) })
+    return JSON.stringify({ ...r, discriminator: entries.map((d) => (unkeyed(d)
+      ? { test_id: d.test_id, blob: blob(r.head_sha, d.test_id), base_blob: blob(r.base_sha, d.test_id), ...d } : d)) })
   })
   return { text: lines.join('\n'), changed }
 }

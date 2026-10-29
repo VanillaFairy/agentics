@@ -58,7 +58,7 @@ const disc = (failed_on_base, passes_now, test_id = 'test/x.test.mjs') => ({ tes
 // A regression net over a file, ruled at the blob `disc` measures it at.
 const net = (file) => ({ file, blob: 'blob of ' + file, why: 'a net' })
 // A changed test file that adds no test case: it passes at base by construction.
-const upkeep = (passes_now) => ({ test_id: 'test/y.test.mjs', blob: 'blob of test/y.test.mjs', adds_test: false, failed_on_base: false, passes_now })
+const upkeep = (passes_now) => ({ test_id: 'test/y.test.mjs', blob: 'blob of test/y.test.mjs', base_blob: 'base of test/y.test.mjs', adds_test: false, failed_on_base: false, passes_now })
 const bites = { file: 'src/x.mjs', applied: true, unapplied_reason: '', expect_failing: ['test/x.test.mjs'], observed_failing: ['test/x.test.mjs'], bites: true }
 const survives = { ...bites, observed_failing: [], bites: false }
 const stale = { ...bites, applied: false, unapplied_reason: 'stale', observed_failing: [], bites: false }
@@ -335,12 +335,19 @@ test('a net stands wherever its file holds the blob it was ruled over, and a lea
 })
 
 
-test('a file is upkeep where its round declares it, or where an earlier measurement read it so at the blob it holds now', () => {
-  const earlier = [{ discriminator: [upkeep(true), disc(true, true)] }]
-  const blobs = new Map([['test/y.test.mjs', 'blob of test/y.test.mjs'], ['test/x.test.mjs', 'blob of test/x.test.mjs']])
-  assert.deepEqual(upkeepAt([], earlier, blobs), ['test/y.test.mjs'], 'a relaunch with no return keeps the declaration')
-  assert.deepEqual(upkeepAt([], earlier, new Map([['test/y.test.mjs', 'edited']])), [], 'an edit of the file voids it')
-  assert.deepEqual(upkeepAt(['test/z.test.mjs'], [], new Map()), ['test/z.test.mjs'])
+test('a file is upkeep where its round declares it, or where an earlier measurement read it so at the blobs it holds at head and base now', () => {
+  const kept = upkeep(true)
+  const earlier = [{ discriminator: [kept, disc(true, true)] }]
+  const head = new Map([[kept.test_id, kept.blob], ['test/x.test.mjs', 'blob of test/x.test.mjs']])
+  const base = new Map([[kept.test_id, kept.base_blob]])
+  assert.deepEqual(upkeepAt([], earlier, { head, base }), [kept.test_id], 'a relaunch with no return keeps the declaration')
+  assert.deepEqual(upkeepAt([], earlier, { head: new Map([[kept.test_id, 'edited']]), base }), [], 'an edit of the file voids it')
+  assert.deepEqual(upkeepAt([], earlier, { head, base: new Map([[kept.test_id, 'rebased']]) }), [],
+    'a base that changed the file voids it: the same head may add a case over the new base')
+  assert.deepEqual(upkeepAt([], earlier, { head, base: new Map() }), [], 'and so does one that lacks the file')
+  const added = { ...kept, base_blob: '' }
+  assert.deepEqual(upkeepAt([], [{ discriminator: [added] }], { head, base: new Map() }), [kept.test_id], 'a file new at the base stays new there')
+  assert.deepEqual(upkeepAt(['test/z.test.mjs'], [], { head: new Map(), base: new Map() }), ['test/z.test.mjs'])
 })
 
 test('...but not when a test does not pass now, which an implementer can move', () => {

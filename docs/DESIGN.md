@@ -3271,7 +3271,7 @@ the review it feeds is whole, which costs one review and needs no migration.
 
 | Review | Units, each anchored to | Owner | The prior it reads |
 |---|---|---|---|
-| a leaf's review | `criterion:<n>`: its text and the head · `file:<path>`: its blob at the head · `approved-case:<file>#<id>`: the head | `reviewUnits` in `lib/boundaries/leaf-review.mjs` | the review record before it in the execution: its `rulings` ([Executors and review](#executors-and-review)) |
+| a leaf's review | `criterion:<n>`: its text and the head · `file:<path>`: its blob at the head · `approved-case:<file>#<id>`: the head · a unit the review before left unruled and the span no longer names: the head | `reviewUnits` in `lib/boundaries/leaf-review.mjs` | the review record before it in the execution: its `rulings` ([Executors and review](#executors-and-review)) |
 | a folder's integration review | `decision:<id>`: its text and the merges beneath the folder carrying an entry that realises it · `file:<path>`: its blob at the head (`fileUnits` in `lib/review-delta.mjs`) · `spec`: the spec's text hash · `claim:<n>`: the head under review | `integrationUnits` and `priorRulings` in `lib/boundaries/integration.mjs` | the folder's last `claims` event with `review: done`: its `anchors`, and its passing claims at its `head_sha` ([Executors and review](#executors-and-review)) |
 | a probe's narrowed round — a spec's review, and a plan's, which `planFolder` runs as one | `<axis>@<section>`: its section's text | `sectionUnits` in `lib/evidence.mjs` | the `since` round's kept rulings beside its snapshot (`<hash>.rulings.json`, [Probe](#probe)) |
 
@@ -3338,9 +3338,12 @@ the same way, and a fallback is no longer a separate path but the empty prior.
   `leaf-review` computes the exit (`reviewExit` in `lib/verdict.mjs`), never judged:
   - The units are ruled over the review before's (`reviewDelta`, [Review delta](#review-delta)):
     `reviewUnits` in `lib/boundaries/leaf-review.mjs` anchors a criterion to its text and the head,
-    a changed file to its blob there, a failing approved case to the head; the review record keeps
-    the `rulings` that stand after it — each that stood and each unit the reviewer ruled examined —
-    and the next review of the leaf in the execution reads them. Round 1 reviews the whole series;
+    a changed file to its blob there, a failing approved case to the head, and each unit the review
+    before left unruled (`unit:<u>`) that is none of those to the head, so a unit the moved span no
+    longer reaches is still put to a reviewer; the review record keeps the `rulings` that stand
+    after it (`heldRulings`) — each that stood, each unit the reviewer ruled examined, and each gone,
+    which stands again at its anchor when its unit returns to the span — and the next review of the
+    leaf in the execution reads them. Round 1 reviews the whole series;
     a later round reads the span since the head the review before judged, its criteria ruled again
     over the moved head, its files only where their blobs moved; a fresh reviewer at the same head,
     after one left units unruled, reads the round's span and rules only those units, every other

@@ -139,18 +139,28 @@ test('a criterion and a failing case stand only at the head they were ruled at; 
   assert.notEqual(edited[0].anchor, prior[0].anchor, 'a criterion whose text changed is ruled again')
 })
 
-test('the review record keeps the rulings that stood and each unit the return ruled examined, at its anchor', async (t) => {
+test('a unit an earlier reviewer left unruled is ruled at the head though the span no longer reaches it, and named once', () => {
+  const units = reviewUnits({ acceptance: [{ text: 'first' }] }, {
+    head: 'h2', changed: ['src/a.mjs'], blobs: new Map([['src/a.mjs', 'blob-a']]), unruled: ['file:src/old.mjs', 'file:src/a.mjs', 'file:src/old.mjs'],
+  })
+  assert.deepEqual(units.map((u) => u.unit), ['criterion:1', 'file:src/a.mjs', 'file:src/old.mjs'])
+  assert.equal(units[2].anchor, 'h2')
+  assert.deepEqual(reviewDelta([], units).rule.map((r) => r.unit).slice(-1), ['file:src/old.mjs'], 'no prior ruling: the next reviewer rules it')
+})
+
+test('the review record keeps the rulings that stood, each unit the return ruled examined, at its anchor, and each gone', async (t) => {
   const w = world(t)
   produced(w, { node: 'a', round: 1 })
   const standing = { unit: 'criterion:1', anchor: 'c1', ruling: 'clean' }
-  const delta = reviewDelta([standing], [{ unit: 'criterion:1', anchor: 'c1' }, { unit: 'file:src/a.mjs', anchor: 'b1' }, { unit: 'file:src/b.mjs', anchor: 'b2' }])
+  const gone = { unit: 'file:src/old.mjs', anchor: 'b0', ruling: 'clean' }
+  const delta = reviewDelta([standing, gone], [{ unit: 'criterion:1', anchor: 'c1' }, { unit: 'file:src/a.mjs', anchor: 'b1' }, { unit: 'file:src/b.mjs', anchor: 'b2' }])
   const ret = { units: [{ unit: 'file:src/a.mjs', ruling: 'clean', why: 'read it' }, { unit: 'file:src/b.mjs', ruling: 'unexamined', why: 'not reached' }], findings: [], fix_rulings: [], claims: [], notes: '' }
   const dispatch = reviewed(w, { node: 'a', round: 1, review_round: 1, value: ret })
   const result = await leafReview(w.xc, { node: 'a', round: 1, review_round: 1, dispatch, delta })
 
   const record = recordOf(w, 'a', 1)
   assert.deepEqual(record.units, ['file:src/a.mjs', 'file:src/b.mjs'], 'only what the delta rules is the round\'s to rule')
-  assert.deepEqual(record.rulings, [standing, { unit: 'file:src/a.mjs', anchor: 'b1', ruling: 'clean' }])
+  assert.deepEqual(record.rulings, [standing, { unit: 'file:src/a.mjs', anchor: 'b1', ruling: 'clean' }, gone], 'a unit out of the span keeps its ruling for when it returns')
   assert.equal(result.decision.next, 'fix', 'the unexamined file is open')
   assert.deepEqual(record.open.map((f) => f.id), ['unit:file:src/b.mjs'])
 })

@@ -29,6 +29,7 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { relaunchRun } from '../lib/boundary.mjs'
 import { ARGS, execute, homeOf, scopeOf } from '../lib/programs/execute.mjs'
 import { PROGRAM_NAMES } from '../lib/run.mjs'
 import {
@@ -222,6 +223,27 @@ describe('the execute program', { concurrency: 4 }, () => {
     assert.equal(again.result.execution, stampNow(now()), 'and the same execution')
     assert.equal(again.result.checkpoint.reason, 'parked')
     assert.equal(w.calls.length, 0)
+  })
+
+  test('a relaunch past a start whose child died before recording starts the run, that start recorded launch_failed', T, async (t) => {
+    const w = world(t, { leaves: ['a'] })
+    const { rig } = w
+    rmSync(join(rig.dir, 'execution.json'))
+    const file = commandsFile(rig)
+    const now = () => new Date('2026-03-04T05:06:07.000Z')
+    const run = executionRunId(E, stampNow(now()))
+    const dead = { now, alive: () => false }
+    const started = await w.start(['--effort', E, '--detach', '--plan-only', '--commands-file', file], { ...dead, spawnChild: () => 4242 })
+    assert.equal(started.ok, true, JSON.stringify(started))
+
+    const out = await relaunchRun(rig.repo, run, {
+      launchRun: (o) => w.start([...o.argv.slice(1, -3), '--commands-file', file], { ...dead, relaunch: o.relaunch }),
+    })
+    assert.equal(out.ok, true, JSON.stringify(out))
+    assert.equal(out.relaunched.ok, true, JSON.stringify(out.relaunched))
+    assert.equal(out.relaunched.run, run)
+    assert.equal(out.relaunched.result.checkpoint.reason, 'parked')
+    assert.ok(stateOf(rig, stampNow(now())).some((e) => e.kind === 'fault' && e.channel === 'launch_failed'), 'the dead start is recorded')
   })
 
   test('a second start while the run is live is refused run_live, even during a long check', T, async (t) => {

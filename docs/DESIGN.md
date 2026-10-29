@@ -504,7 +504,9 @@ program may name its run's home instead (`homeOf(args, {repo, now})`, asked insi
 lock, `now` the launch's own time, so the program never reads the clock). `execute`'s is the latest
 open execution of its effort whose root is its folder, else a new execution stamped from `now`
 (`-2`, `-3`… when taken); its run id is `<effort>.<stamp>`. A live home refuses `run_live`; a
-stopped one whose current run recorded nothing since its `run` line refuses `launch_failed`;
+stopped one whose current run recorded nothing since its `run` line refuses `launch_failed`, but
+for a relaunch (`relaunchRun` in `lib/boundary.mjs`), which records that start's `launch_failed` and
+goes on;
 otherwise the run starts there with the arguments it was given, whatever an earlier run of it was
 given, and `run.json` is rewritten. A program may also ask for its result once its `ended` is on
 disk (`afterEnded(ctx, args, result, {launchRun})`), `launchRun` a start of this CLI as the

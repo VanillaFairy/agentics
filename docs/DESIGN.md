@@ -754,7 +754,9 @@ watch ([Roles](#roles)).
 
 ### Host stops
 
-The runner classifies a call that failed. A usage or rate limit, an overloaded or unavailable host
+The runner classifies a call that failed from what the host said (`classifyCall` in
+`lib/runner.mjs`): its stderr, its status code, and the result text only of a return the host marked
+an error, never the model's own words. A usage or rate limit, an overloaded or unavailable host
 and a network failure are **host stops**: the dispatch stays in progress, the runner records
 `host_stop {dispatch, cause, until}` (`until` when the host said when), and the program waits and
 then resumes the same session with the `cut_off` message. It asks again a minute past the time the

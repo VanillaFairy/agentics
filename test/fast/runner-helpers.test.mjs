@@ -416,6 +416,12 @@ test('an exit-0 call whose effort the CLI rejected is a host error carrying the 
   }
 })
 
+test("a model's own words naming a limit or the network are no host stop", () => {
+  const said = 'the rate limit was hit, then the network failed; the service is overloaded'
+  const p = parseStream(stream(resultLine({ subtype: 'success', is_error: false, result: said, structured_output: { status: 'done' } })))
+  failed(classifyCall({ code: 1, stderr: '', parsed: p }), 'host_error')
+})
+
 test('anything else is a host error', () => {
   const got = classifyCall({ code: 1, stderr: 'boom', parsed: NOTHING() })
   failed(got, 'host_error')

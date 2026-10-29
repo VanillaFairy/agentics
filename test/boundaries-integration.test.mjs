@@ -10,7 +10,8 @@ import { join } from 'node:path'
 import { rmSync } from 'node:fs'
 
 import { executionContext } from '../lib/boundaries/records.mjs'
-import { folderReview, ruleClose } from '../lib/boundaries/integration.mjs'
+import { folderReview, priorRulings, ruleClose } from '../lib/boundaries/integration.mjs'
+import { reviewDelta } from '../lib/review-delta.mjs'
 import { executionLog, readLog } from '../lib/ledger.mjs'
 import { dispatchKey, posix, returnPath, specPath, writeJson } from '../lib/store.mjs'
 import { readTree, unsettledClaims } from '../lib/tree.mjs'
@@ -156,7 +157,7 @@ test('a folder review of a node not in the tree throws', (t) => {
   assert.throws(() => folderReview(xc, { target: 'nope', head: 'h1', dispatch: review(xc, {}), spec_path: 'S' }), /no such node/)
 })
 
-// ---------------------------------------------------------------- a re-rule
+// ---------------------------------------------------------------- a later review
 
 const unit = (name) => ({ unit: name, ruling: 'clean', why: 'ruled' })
 const PRIOR = {
@@ -165,30 +166,36 @@ const PRIOR = {
     { claim: 'd', ruling: 'under', failure_scenario: 'it breaks' }, { claim: 'e', ruling: 'cant_tell' },
   ],
   head_sha: 'h1',
+  anchors: { spec: 's1', 'decision:D1': 'd1' },
 }
 
-test('a re-rule keeps the prior claims it passed, replaces the ones the return restates and records rerule', (t) => {
+/** The delta of a review at `head` over `prior`: its claims anchored to that head, beside the `units` given. */
+const deltaAt = (prior, head, units = []) => reviewDelta(priorRulings(prior), [...prior.claims.map((_, i) => ({ unit: 'claim:' + (i + 1), anchor: head })), ...units])
+
+test('a later review keeps the passes that stand, replaces the claims the return restates, and anchors each unit that holds a ruling', (t) => {
   const { r, xc } = setup(t, [A])
+  const delta = deltaAt(PRIOR, 'h1', [{ unit: 'spec', anchor: 's2' }, { unit: 'decision:D1', anchor: 'd1' }, { unit: 'file:src/a.mjs', anchor: 'b1' }, { unit: 'file:src/b.mjs', anchor: 'b2' }])
+  assert.deepEqual(delta.rule.map((u) => u.unit), ['claim:4', 'claim:5', 'spec', 'file:src/a.mjs', 'file:src/b.mjs'], 'the passes at the head they were ruled at stand')
   const dispatch = review(xc, {
-    units: [unit('claim:4'), unit('claim:5'), unit('change')],
+    units: [unit('claim:4'), unit('claim:5'), unit('spec'), unit('file:src/a.mjs'), { unit: 'file:src/b.mjs', ruling: 'unexamined', why: 'not reached' }],
     claims: [{ ...claim('met', 'd as the spec now words it'), unit: 'claim:4' }, { ...claim('met', 'e as the spec now words it'), unit: 'claim:5' }, claim('met', 'b'), claim('met', 'a new claim')],
   })
-  const out = folderReview(xc, { target: '.', head: 'h1', dispatch, spec_path: 'S', prior: PRIOR })
+  const out = folderReview(xc, { target: '.', head: 'h1', dispatch, spec_path: 'S', prior: PRIOR, delta })
 
   assert.deepEqual(out.stops, [], 'every unit claim was ruled a pass')
   const [c] = events(r, 'claims')
-  assert.equal(c.rerule, true)
   assert.deepEqual(c.claims.map((x) => [x.claim, x.ruling]), [
     ['a', 'met'], ['c', 'accepted'],
     ['d as the spec now words it', 'met'], ['e as the spec now words it', 'met'], ['b', 'met'], ['a new claim', 'met'],
   ])
   assert.equal(out.claims_n, 6)
+  assert.deepEqual(c.anchors, { 'decision:D1': 'd1', spec: 's2', 'file:src/a.mjs': 'b1' }, 'what stood and what was examined; a unit left unexamined holds no ruling')
 })
 
-test('a re-rule carries a prior claim whose unit the return did not rule, so it still parks', (t) => {
+test('a later review carries a prior claim whose unit the return did not rule, so it still parks', (t) => {
   const { r, xc } = setup(t, [A])
-  const dispatch = review(xc, { units: [unit('claim:5'), unit('change')], claims: [{ ...claim('met', 'e as the spec now words it'), unit: 'claim:5' }] })
-  const out = folderReview(xc, { target: '.', head: 'h1', dispatch, spec_path: 'S', prior: PRIOR })
+  const dispatch = review(xc, { units: [unit('claim:5'), unit('spec')], claims: [{ ...claim('met', 'e as the spec now words it'), unit: 'claim:5' }] })
+  const out = folderReview(xc, { target: '.', head: 'h1', dispatch, spec_path: 'S', prior: PRIOR, delta: deltaAt(PRIOR, 'h1') })
 
   assert.deepEqual(out.stops.map((s) => s.reason), ['integration_critical'])
   const [c] = events(r, 'claims')
@@ -197,7 +204,7 @@ test('a re-rule carries a prior claim whose unit the return did not rule, so it 
 })
 
 test('a prior open critical stays open until ruled fixed: a finding of another severity under its id does not close it', (t) => {
-  const prior = { claims: [], head_sha: 'h1', open: [{ id: 'F1', claim: 'saves are lost', failure_scenario: 'a reload reads empty' }] }
+  const prior = { claims: [], head_sha: 'h1', anchors: {}, open: [{ id: 'F1', claim: 'saves are lost', failure_scenario: 'a reload reads empty' }] }
   const cases = [
     ['a minor under the same id', { findings: [{ ...critical, severity: 'minor', claim: 'a name' }] }, ['F1'], 'saves are lost'],
     ['no ruling at all', {}, ['F1'], 'saves are lost'],
@@ -216,28 +223,29 @@ test('a prior open critical stays open until ruled fixed: a finding of another s
 
 test('over a moved head a prior pass nobody ruled again reads cant_tell; one ruled again is the return\'s', (t) => {
   const { r, xc } = setup(t, [A])
-  const prior = { claims: [{ claim: 'saves round-trip', ruling: 'met' }, { claim: 'names match', ruling: 'met' }], head_sha: 'h0', open: [] }
+  const prior = { claims: [{ claim: 'saves round-trip', ruling: 'met' }, { claim: 'names match', ruling: 'met' }], head_sha: 'h0', anchors: {}, open: [] }
+  const delta = deltaAt(prior, 'h1')
+  assert.deepEqual(delta.rule.map((u) => u.unit), ['claim:1', 'claim:2'], 'a pass judged before the work moved is ruled again')
   const dispatch = review(xc, { units: [unit('claim:2')], claims: [{ ...claim('met', 'names match as now worded'), unit: 'claim:2' }] })
-  folderReview(xc, { target: '.', head: 'h1', dispatch, spec_path: 'S', prior })
+  folderReview(xc, { target: '.', head: 'h1', dispatch, spec_path: 'S', prior, delta })
   const [c] = events(r, 'claims')
   assert.deepEqual(c.claims.map((x) => [x.claim, x.ruling]), [['saves round-trip', 'cant_tell'], ['names match as now worded', 'met']])
 })
 
 test('a unit ruled in units but left out of claims restates nothing: its prior claim is carried', (t) => {
-  const prior = { claims: [{ claim: 'names match', ruling: 'met' }, { claim: 'loads survive reload', ruling: 'under', failure_scenario: 'a reload reads empty' }], head_sha: 'h0', open: [] }
+  const prior = { claims: [{ claim: 'names match', ruling: 'met' }, { claim: 'loads survive reload', ruling: 'under', failure_scenario: 'a reload reads empty' }], head_sha: 'h0', anchors: {}, open: [] }
   const { r, xc } = setup(t, [A])
-  const out = folderReview(xc, { target: '.', head: 'h1', dispatch: review(xc, { units: [unit('claim:1'), unit('claim:2')], claims: [] }), spec_path: 'S', prior })
+  const out = folderReview(xc, { target: '.', head: 'h1', dispatch: review(xc, { units: [unit('claim:1'), unit('claim:2')], claims: [] }), spec_path: 'S', prior, delta: deltaAt(prior, 'h1') })
   const [c] = events(r, 'claims')
   assert.deepEqual(c.claims.map((x) => [x.claim, x.ruling]), [['names match', 'cant_tell'], ['loads survive reload', 'under']])
   assert.deepEqual(out.stops.map((s) => s.reason), ['integration_critical'], 'the drift that parked still parks')
 })
 
-test('a review without a prior records the return as it is, and no rerule', (t) => {
+test('a review without a prior records the return as it is', (t) => {
   const { r, xc } = setup(t, [A])
   folderReview(xc, { target: '.', head: 'h1', dispatch: review(xc, { claims: [claim('met', 'only')] }), spec_path: 'S' })
   const [c] = events(r, 'claims')
   assert.deepEqual(c.claims.map((x) => x.claim), ['only'])
-  assert.equal(c.rerule, undefined)
 })
 
 // ---------------------------------------------------------------- rule close

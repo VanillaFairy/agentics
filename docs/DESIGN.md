@@ -1206,7 +1206,7 @@ event is newer than its last clearing (a replan or a revision) and than every `m
 it, since each merge moves the head the review judged, and than every `outside` event on the folder
 or beneath it, which moves it the same way (`standingReview` in `lib/tree.mjs`). A park an
 integration review raised — one whose `said` is the `said` of a `claims` event on the composite — is
-cleared by any later `claims` event on it with `review: done`: a new review, a re-rule or the
+cleared by any later `claims` event on it with `review: done`: a new review, a later one ruling what moved, or the
 session's acceptance supersedes the verdict the park came from (a `not_earned` one judged nothing
 and clears nothing), and a newer one that earns a park records its own after
 it. The derived status also carries the composite's `review` — `pending` while `reviewing`, then the
@@ -2896,7 +2896,7 @@ attached).
 | **leaf-review** | read the reviewer's stored rulings over the units its brief listed; compute the review loop's exit (`reviewExit`) against what the round before left open; record the approval or the escalation, or the open findings as `findings` messages, one per thread, for the next round — an approval a cycle's last member owes its consolidation round records the `consolidate` message instead; write the review record, its `retire` findings kept; read the stored ruling of the leaf's convergence ruler, asked before a round opened (`convergenceRuling`): `not_converging` escalates `not_converging`, `said` the ruler's dispatch, `converging` records nothing, and a return with no ruling holds the leaf on a `role` fault; and, once the session retried a leaf its review loop stopped, record the stopping review's open findings as the next round's `findings` messages (`reviewResumed`) |
 | **merge-batch** | under the branch lock, set aside for the judge each leaf or cycle whose contention facts no standing ruling covers ([The judge](#the-judge)); read back the outcome of a batch already taken at its identity, and escalate each child `merge_no_progress` when every part of it was taken up ([Merging](#merging)); record `batch-started` with the head it starts from and its identity; merge every other approved child into one integration branch in dependency order; verify the merged head with the fast suite; bisect a red one; write the batch's record and the ruler's brief, then append the `batch` state line, then `merged` and `merge-observed` for each child not merged before, so a batch run again never resets the merges its outcome names; remove each merged leaf's clean worktree, keeping its branch; send each leaf that fails alone a `failures` message (`source: integration`); hand a leaf's conflict to the judge when its executor can conclude a merge and no failed resolve of it stands; record what stops — any other conflict, a combination failure, a composite or a cycle failing alone, a batch that could not run. A batch that started and never recorded its outcome is reset to where it started and done again, so an unverified merge is never recorded as landed; one during which the user's checkout moved is reset and decides nothing (a `checkout` fault) |
 | **suite-gate** | on a composite whose children have all merged, under its branch lock: run the full suite and the criterion checks of its plan on its integration head, against the head it was cut from; record the measurement and a `gate` state line; escalate `fails_full_suite`, `fails_on_integration` or `suite_gate_failed`. It runs nothing where the repository does not split its tests and its plan names no check, or where a gate over the same checks already passed at that head in this execution ([The suite gate](#the-suite-gate)). A gate that passes says whether the integration review is earned, and records one that is not as `claims` with `review: not_earned`; one during which the user's checkout moved decides nothing (a `checkout` fault) |
-| **folder-review** | read the integration reviewer's stored rulings; record its claim rulings as `claims` at the head it judged, `said` the reviewer's dispatch (a re-rule, `rerule: true`, with the prior claims it left standing, [Executors and review](#executors-and-review)); record the one park they earn, a new record after the claims it follows even where an older park stood; a review that returned nothing holds the folder on a `role` fault |
+| **folder-review** | read the integration reviewer's stored rulings; record its claim rulings as `claims` at the head it judged, `said` the reviewer's dispatch, with the prior claims it left standing and the anchor of each unit that holds a ruling ([Review delta](#review-delta)); record the one park they earn, a new record after the claims it follows even where an older park stood; a review that returned nothing holds the folder on a `role` fault |
 | **rule-close** | read a ruler's stored rulings on drift or a moved base; record `drift-ruled` or `stale-ruled` with the ruler's `why`; park what the user must answer and hand the program what the planner replans; park a drifted consumer no ruling reached (`contract_drift`), hold a moved leaf no ruling reached on a `role` fault |
 | **postflight** | release this execution's slots; summarize the subtree from the records (the nodes the user must act on, the leaves waiting behind each, cycle members held); append `closed {status: done}` when every leaf in scope merged; count the branches eligible for cleanup. The run's `ended` is `lib/run.mjs`'s |
 
@@ -3098,7 +3098,7 @@ too, fails the gate; with the suite passing, the composite escalates `fails_on_i
 `gate` line carries the checks' digest, so a passing gate stands only for the checks it ran. The
 integration reviewer is handed the results under `## Measured` and is told to leave those criteria
 out of its claims, as it leaves out a `HUMAN:` one; no such criterion is a unit it rules, and a
-re-rule decides a prior claim about one by its result. A criterion's verdict is an observation, and
+later review decides a prior claim about one it rules again by its result. A criterion's verdict is an observation, and
 no reviewer's `cant_tell` stands in for one.
 
 Where the repository does not split its tests and the plan names no check, every merge-batch
@@ -3263,6 +3263,10 @@ An anchor is computed by code, from git and the store, never by a model, and eac
 owner that names it and computes its anchor. A record that keeps no anchors is read as no prior:
 the review it feeds is whole, which costs one review and needs no migration.
 
+| Review | Units, each anchored to | Owner | The prior it reads |
+|---|---|---|---|
+| a folder's integration review | `decision:<id>`: its text and the merges beneath the folder carrying an entry that realises it · `file:<path>`: its blob at the head (`fileUnits` in `lib/review-delta.mjs`) · `spec`: the spec's text hash · `claim:<n>`: the head under review | `integrationUnits` and `priorRulings` in `lib/boundaries/integration.mjs` | the folder's last `claims` event with `review: done`: its `anchors`, and its passing claims at its `head_sha` ([Executors and review](#executors-and-review)) |
+
 **Why:** a ruling stands until what it judged moves. Narrowing grew in each review on its own terms,
 each with its own fallbacks to a whole review; one delta over anchored rulings narrows every review
 the same way, and a fallback is no longer a separate path but the empty prior.
@@ -3414,7 +3418,7 @@ the same way, and a fallback is no longer a separate path but the empty prior.
   `integration:<folder>:<n>` (`n` counting the folder's recorded reviews in the execution) over
   the merged diff of its children, against its decision list, the criteria of every child reviewed
   there, and the folder's spec as its yardstick. Its units are each decision the folder defines
-  (`decision:<id>`) and each changed file (`file:<path>`). No criterion is a unit: one with a check
+  (`decision:<id>`), each changed file (`file:<path>`) and `spec`, the claims the spec makes. No criterion is a unit: one with a check
   was measured by the suite gate at the head under review, and the reviewer is handed its result
   ([The suite gate](#the-suite-gate)); a `HUMAN:` one is the user's. A leaf adopted on the user's
   word ([Outside work](#outside-work)) is a child with no review loop of its own whatever its
@@ -3454,31 +3458,35 @@ the same way, and a fallback is no longer a separate path but the empty prior.
   same observable behaviour, only a name, a signature's shape or an internal structure differing,
   and nothing outside the folder relies on the difference.
 
-  **After its first review, a folder is reviewed only where it moved.** Once a finished review of
-  the folder recording the blockers it left `open` stands no more — a revision of the folder, a
-  `replanned` event on it, or a merge beneath it came after it — and no work agentics did not
-  produce reached the folder since, an `outside` event on or under it or a leaf adopted on the
-  user's word (`narrowableReview` in `lib/tree.mjs`), the next review is not redone whole.
-  `reviewUnit` dispatches `integrationRerule`, briefed by `narrowPlan`: the folder's span for
-  context; what merged since, the span from the head that review judged to the head now; the leaves
-  merged since that no test discriminates, and the existing tests rewritten in the files that moved;
-  the spec's edit since the text it judged (the folder's latest `compiled` ledger line before it, the
-  kept copy of that hash, diffed by `keptSpecDiff` in `lib/spec.mjs`, the diff `respec` shows), when
-  it changed; the last review's claims numbered `claim:<n>`; the blockers it left open, each to be
-  ruled in `fix_rulings`; every answer the user recorded on the folder, the latest per question, as
-  settled; the units and the spec whole. The units are `claim:<n>` for each claim not ruled `met`,
-  `equivalent` or `accepted` — for every claim once the head moved, since a pass judged before the
-  work moved is no pass of the work now — `change` over an edit, `file:<path>` for each file changed
-  since that head, and `decision:<id>` for each decision the folder defines that a leaf merged since
-  realises. The reviewer returns only the claims it ruled; `folderReview` records `rerule: true`
-  with the returned claims and each prior claim the return did not restate (a returned claim restates
-  `claim:<n>` by naming it in `unit`, or by its very text; a unit ruled in `units` alone restates
-  nothing): one ruled other than a pass carried as it was, so that it still parks; a pass carried over the
-  same head as it was, and over a moved head as `cant_tell`, never a pass. Every review records the
-  criticals it leaves `open`: its own, and each prior one it did not rule `fixed`, dropped only as the
-  same critical reported again (`openBlockers`), which parks as its own do. A spec whose judged text
-  cannot be diffed, a moved head git cannot diff, outside or adopted work since, and a first review
-  are reviewed whole.
+  **After its first review, a folder is reviewed only where it moved** ([Review delta](#review-delta)).
+  `reviewUnit` computes its units with their anchors (`integrationUnits` in
+  `lib/boundaries/integration.mjs`, the owner of these unit kinds): `decision:<id>` for each decision
+  the folder defines, anchored to its text and the merges beneath the folder that carry an entry
+  realising it; `file:<path>` for each file the span changed, anchored to its blob at the head;
+  `spec`, the claims the spec makes, anchored to the spec's text hash; and `claim:<n>` for each claim
+  of the folder's last finished review, anchored to the head under review. The prior is that review's
+  `claims` event (`priorRulings`): each unit it anchored, and each claim it ruled `met`, `equivalent`
+  or `accepted` at the head it judged. A claim ruled otherwise is open and ruled again by every
+  review, as is each unit the reviewer left unexamined. A review that kept no anchors leaves the next
+  review whole: no claim carried, no blocker carried. One brief serves every review
+  (`integrationBrief`): the folder's span; what merged since the head the last review judged, when it
+  moved; the leaves no test discriminates whose nets are among the files to rule, and the existing
+  tests rewritten among them; the spec's edit since the text the `spec` ruling was made on (the kept
+  copy of that hash, diffed by `keptSpecDiff` in `lib/spec.mjs`, the diff `respec` shows), when one is
+  kept; the last review's claims numbered `claim:<n>`; the blockers it left open, each to be ruled in
+  `fix_rulings`; every answer the user recorded on the folder, the latest per question, as settled;
+  the units to rule, and those whose rulings stand, named apart; and the spec whole. Ruling `spec`
+  means giving every claim the spec makes on a first review, every claim the changed lines make or
+  alter over a kept edit, and otherwise every claim the spec makes that no claim of the last review
+  states. The reviewer returns the claims it ruled; `folderReview` records them with each prior
+  claim the return did not restate (a returned claim restates `claim:<n>` by naming it in `unit`, or
+  by its very text; a unit ruled in `units` alone restates nothing): one ruled other than a pass
+  carried as it was, so that it still parks; a pass that stands carried as it was, and one whose unit
+  the review ruled (the head moved under it) as `cant_tell`, never a pass. It anchors each unit
+  other than a claim that stood or that the return ruled examined. Every review records the criticals
+  it leaves `open`: its own, and each prior one it did not rule `fixed`, dropped only as the same
+  critical reported again (`openBlockers`), which parks as its own do. Work agentics did not produce
+  needs no whole review: its files' blobs moved, so they are ruled, and the brief names it.
 
   **Why:** a fix round moves a few files, yet a whole review re-rules every file and every claim
   of the folder, buys a fresh batch of nits, and parks the folder again on what the user just
@@ -4096,11 +4104,12 @@ at its approved head, [The judge](#the-judge); `contentionOf`, `waitsOn` and `co
 nets[{file, blob, why}], by}` (the ruling, the session's or the user's, that test files are regression nets, each at
 the blob the measurement it was ruled over read, `net` under [Session calls](#session-calls)) · `claims
 {head_sha, review: done | not_earned, claims[{claim, ruling, failure_scenario?}], open?[{id, claim,
-failure_scenario}], said?, by?, accepted?[{claim, was, why}], rerule?}` (`open` is every critical a
-finished review leaves open, its own and the prior's it did not rule fixed) (`ruling` is the reviewer's `met`, `equivalent`, `under`, `over`, `deviates`, `spec_defect` or
+failure_scenario}], said?, by?, accepted?[{claim, was, why}], anchors?{<unit>: anchor}}` (`open` is every critical a
+finished review leaves open, its own and the prior's it did not rule fixed; `anchors` holds, for each unit other than a
+claim that holds a ruling after the review, the anchor it was ruled at, a claim's anchor being the event's `head_sha`
+([Review delta](#review-delta)); a review that kept none leaves the next one whole) (`ruling` is the reviewer's `met`, `equivalent`, `under`, `over`, `deviates`, `spec_defect` or
 `cant_tell`, or `accepted`, the session's on a drift claim, which `by: session` and `accepted` record
-with the ruling it had and its reason, and `rerule: true` marks a narrowed review, which ruled only
-what moved since the review before it; `failure_scenario` is kept only on a drift that names one, the one that parks; each
+with the ruling it had and its reason, carrying the review's `anchors`; `failure_scenario` is kept only on a drift that names one, the one that parks; each
 ruling's evidence is in the reviewer's stored return) · `noted {by, text}` (what a session learned about the node; no status
 is derived from it) · `message {thread, from, msg, payload, round, guard?}` (a message code delivers to a
 thread's session, [Conversations](#conversations); its `execution` is `''` only on one the migration
@@ -4945,11 +4954,11 @@ threw.
 minor, claim, evidence, failure_scenario, remedy?: code | tests | retire}], fix_rulings[{id, status: fixed |
 not_fixed | regressed, evidence}], claims[{claim, ruling: met | equivalent | under | over |
 deviates | spec_defect | cant_tell, evidence, failure_scenario, unit}], notes}` (`failure_scenario` is
-`''` on every claim but a drift that names its failure; `unit` is the `claim:<n>` of a narrowed
-review's prior claim the entry restates, else `''`). The units are those the brief lists — a
-leaf review's criteria, changed files and failing approved cases, an integration review's decisions, the
-criteria of its children with no review of their own, and its changed files — and a unit with no
-ruling is open. A leaf review returns `claims: []`. `remedy` is who must change to fix a finding
+`''` on every claim but a drift that names its failure; `unit` is the `claim:<n>` of the last
+review's claim the entry restates, else `''`). The units are those the brief lists to rule — a
+leaf review's criteria, changed files and failing approved cases, an integration review's decisions,
+changed files, `spec` and the last review's claims — never one it lists as standing
+([Review delta](#review-delta)); a unit with no ruling is open. A leaf review returns `claims: []`. `remedy` is who must change to fix a finding
 — the implementation (`code`, read when absent) or the cycle's tests (`tests`) — or `retire`, a
 test that should go or merge, which never blocks (`retires`); `remedyOf` in `lib/verdict.mjs` reads
 it. A leaf review record keeps the round's `retire` findings as `retire[{claim, evidence}]`, which

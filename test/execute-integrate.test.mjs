@@ -414,7 +414,7 @@ test('a second review of a folder is a fresh reviewer on the next integration th
  */
 async function respecced(t, { first, findings = [], edit = true, moved = false }) {
   const w = abWorld(t)
-  w.rig.script({ [reviewerKey()]: [reviewed(first, findings)] })
+  w.rig.script({ [reviewerKey()]: [{ output: { ...reviewed(first, findings).output, units: WHOLE_UNITS.map(clean) } }] })
   assert.equal((await review(w)).outcome, 'reviewed')
   if (moved) commitIn(w.wt, { 'src/c.mjs': 'export const c = () => 3\n' }, 'More work')
   const file = specPath(w.rig.repo, w.rig.effort, '.')
@@ -422,33 +422,35 @@ async function respecced(t, { first, findings = [], edit = true, moved = false }
   w.rig.log.append('replanned', { node: '.', reason: 'answered' })
   return w
 }
-const rerun = { output: { ...REVIEW_EMPTY, units: [{ unit: 'claim:2', ruling: 'clean', why: 'ruled' }, { unit: 'change', ruling: 'clean', why: 'ruled' }], claims: [claim('b is there')] } }
-const isRerule = (brief) => brief.includes('# Integration re-rule of folder .')
+const clean = (unit) => ({ unit, ruling: 'clean', why: 'ruled' })
+// Every unit of the root's first review: its decisions, the files its children changed, and the claims its spec makes.
+const WHOLE_UNITS = ['decision:D1', 'decision:D2', 'file:src/a.mjs', 'file:src/b.mjs', 'file:test/a.test.mjs', 'file:test/b.test.mjs', 'spec']
+const rerun = { output: { ...REVIEW_EMPTY, units: [clean('claim:2'), clean('spec')], claims: [{ ...claim('b is there'), unit: 'claim:2' }] } }
 const THREAD_SECOND = 'integration:.:2'
+const unitsIn = (brief) => brief.split('## The units you rule')[1].split('\n## ')[0].split('\n').filter((l) => l.startsWith('- '))
+const standingIn = (brief) => brief.split('## Rulings that stand')[1].split('\n## ')[0].split('\n').filter((l) => l.startsWith('- '))
 
-test('a spec re-approved over an unchanged head is re-ruled: the edit and the claims not passed, the rest standing', SLOW, async (t) => {
+test('a spec re-approved over an unchanged head is ruled where it moved: the edit and the claims not passed, every other ruling standing', SLOW, async (t) => {
   const w = await respecced(t, { first: [claim('a is there'), claim('b is there', 'under')] })
+  const first = kinds(w.rig, 'claims')[0]
+  assert.deepEqual(Object.keys(first.anchors).sort(), [...WHOLE_UNITS].sort(), 'the first review anchored every unit it ruled')
   w.rig.script({ [reviewerKey(THREAD_SECOND)]: [rerun] })
   const out = await review(w)
 
   assert.equal(out.outcome, 'reviewed')
   const c = w.rig.calls.at(-1)
   assert.equal(c.thread.key, THREAD_SECOND)
-  assert.equal(isRerule(c.brief), true)
   assert.ok(c.brief.includes('and the names are free.'), 'the edit')
-  const units = c.brief.split('## The units you rule')[1].split('## Measured')[0].split('\n').filter((l) => l.startsWith('- '))
-  assert.deepEqual(units, ['- claim:2', '- change'])
-  assert.equal(c.brief.includes('decision:D1'), false, 'not the whole review')
+  assert.deepEqual(unitsIn(c.brief), ['- spec', '- claim:2'])
+  assert.deepEqual(standingIn(c.brief), [...WHOLE_UNITS.filter((u) => u !== 'spec'), 'claim:1'].map((u) => '- ' + u), 'what nothing moved under')
   const [, second] = kinds(w.rig, 'claims')
-  assert.equal(second.rerule, true)
   assert.deepEqual(second.claims.map((x) => [x.claim, x.ruling]), [['a is there', 'met'], ['b is there', 'met']])
-  assert.equal(kinds(w.rig, 'parked').length, 1, 'the first review\'s park is the only one: the re-rule earned none')
+  assert.notEqual(second.anchors.spec, first.anchors.spec, 'the spec ruled again at its new text')
+  assert.equal(kinds(w.rig, 'parked').length, 1, 'the first review\'s park is the only one: the later review earned none')
   assert.equal(statusOf(w.rig, '.'), 'integrated')
 })
 
-const unitsIn = (brief) => brief.split('## The units you rule')[1].split('\n## ')[0].split('\n').filter((l) => l.startsWith('- '))
-
-test('a review after work merged is narrowed to what moved: its files, the decisions it realises, and every prior claim judged again', SLOW, async (t) => {
+test('a review after work merged rules what moved: its files, the decisions it realises, and every prior claim judged again', SLOW, async (t) => {
   const w = await respecced(t, { first: [claim('a is there'), claim('b is there', 'under')], moved: true, edit: false })
   w.rig.log.append('merged', { node: 'b', into: w.rig.branchOf('.'), merged_sha: w.head, head_sha: w.head })
   const ruled = ['claim:1', 'claim:2', 'file:src/c.mjs', 'decision:D2'].map((unit) => ({ unit, ruling: 'clean', why: 'ruled' }))
@@ -457,13 +459,11 @@ test('a review after work merged is narrowed to what moved: its files, the decis
 
   assert.equal(out.outcome, 'reviewed')
   const c = w.rig.calls.at(-1)
-  assert.equal(isRerule(c.brief), true)
   assert.ok(c.brief.includes('## What merged since the last review'))
   assert.equal(c.brief.includes('## The edit to the spec'), false, 'the spec did not change')
-  assert.deepEqual(unitsIn(c.brief), ['- claim:1', '- claim:2', '- file:src/c.mjs', '- decision:D2'],
-    'every prior claim over moved work, the files that moved, and the decision b merged since realises')
+  assert.deepEqual(unitsIn(c.brief), ['- decision:D2', '- file:src/c.mjs', '- claim:1', '- claim:2'],
+    'the decision b merged since realises, the file that moved, and every prior claim over moved work')
   const second = kinds(w.rig, 'claims').at(-1)
-  assert.equal(second.rerule, true)
   assert.deepEqual(second.claims.map((x) => [x.claim, x.ruling]), [['a is there', 'met'], ['b is there', 'met']])
   assert.equal(statusOf(w.rig, '.'), 'integrated')
 })

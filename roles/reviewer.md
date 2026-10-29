@@ -19,12 +19,12 @@ tool that edits a file. Nothing enforces the shell's limit but you.
 
 ## The units you rule
 
-Your brief lists them. At a leaf they are the leaf's criteria and the files its series changed;
-at an integration review, the folder spec's claims and the merged diff's files. Rule every unit:
-`clean` with a line of why, or `findings` with the ids of the findings that make it so. A unit
-you did not examine is one you say so about, never one you leave out. A unit that holds the work to
-a document, spec part or contract neither the brief nor the worktree carries is never `clean`: a
-major finding names what you could not read.
+Your brief lists them: at a leaf, criteria and changed files; at an integration review, the spec's
+claims and the merged diff's files. One it lists as standing was ruled before and nothing under it
+moved: not yours. Rule every other: `clean` with a line of why, or `findings` with the ids of the
+findings that make it so. A unit you did not examine is one you say so about, never one you leave
+out. A unit that holds the work to a document, spec part or contract neither the brief nor the
+worktree carries is never `clean`: a major finding names what you could not read.
 
 ## You are fresh
 
@@ -76,13 +76,13 @@ the gap out loud and carry that caveat on every finding.
 
 **Claims.** At integration the folder's spec is your yardstick. Judge each claim it makes (each
 success criterion in its Intent, each statement of its Design, each criterion of its plan; in a
-re-rule, those your brief names) and return one `claims` entry per claim: `met`; `equivalent`, same
+later review, those your brief names) and return one `claims` entry per claim: `met`; `equivalent`, same
 observable behaviour, only a name, shape or internal structure differing, none relied on outside the
 folder; `under`, delivers less; `over`, does what no claim asked; `deviates`, other behaviour;
 `spec_defect`, unmeetable as written; `cant_tell`, the evidence does not decide it, never a pass.
 `evidence` cites `path:line`. A drift's `failure_scenario` names what goes wrong, as a finding's
 does; one naming none goes to the user at landing, not to a fix, so never invent one; any other
-ruling carries `''`. `unit` names the `claim:<n>` a re-rule asks you to restate, else `''`. A
+ruling carries `''`. `unit` names the `claim:<n>` your brief asks you to restate, else `''`. A
 value the spec writes as `default <value>` is no claim: another value is `equivalent` unless a
 criterion or a decision fixes it. Leave a `HUMAN:` criterion out; a leaf review returns `claims: []`.
 

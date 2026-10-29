@@ -8,7 +8,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { criterionChecks } from '../../lib/boundaries/merge.mjs'
-import { integrationBrief, integrationRerule } from '../../lib/briefs/execute.mjs'
+import { integrationBrief } from '../../lib/briefs/execute.mjs'
 
 const node = (id, kind, acceptance = []) => [id, { id, kind, acceptance }]
 const crit = (text, check = '') => ({ text, check })
@@ -27,18 +27,22 @@ test("the gate's checks are the criteria of the folder's own plan, its groups' t
 })
 
 const SPAN = { base: 'b0', head: 'h1' }
+const WHOLE = { rule: [{ unit: 'spec', anchor: 's', was: null }], stand: [] }
 const MEASURED = [{ command: 'npm run build && npm run test:e2e -- --workers=1', status: 'passed' }]
 
 test('the integration reviewer is handed the measured checks and leaves their criteria out of its claims', () => {
-  const brief = integrationBrief({ folder: { id: 'f' }, spec: '# F', units: [], span: SPAN, measured: MEASURED })
+  const brief = integrationBrief({ folder: { id: 'f' }, spec: '# F', delta: WHOLE, span: SPAN, measured: MEASURED })
   assert.ok(brief.includes('## Measured'))
   assert.ok(brief.includes('`npm run build && npm run test:e2e -- --workers=1`: passed'))
   assert.match(brief, /criterion with a `check:` is the harness's/)
-  assert.ok(!integrationBrief({ folder: { id: 'f' }, spec: '# F', units: [], span: SPAN }).includes('## Measured'), 'nothing measured, nothing said')
+  assert.ok(!integrationBrief({ folder: { id: 'f' }, spec: '# F', delta: WHOLE, span: SPAN }).includes('## Measured'), 'nothing measured, nothing said')
 })
 
-test('a re-rule decides a measured criterion by its result', () => {
-  const brief = integrationRerule({ folder: { id: 'f' }, spec: '# F', diff: '', prior: [{ claim: 'conform-check#3', ruling: 'cant_tell' }], span: SPAN, measured: MEASURED })
+test('a later review decides a measured criterion it rules again by its result', () => {
+  const brief = integrationBrief({
+    folder: { id: 'f' }, spec: '# F', span: SPAN, measured: MEASURED,
+    last: { head_sha: 'h0', claims: [{ claim: 'conform-check#3', ruling: 'cant_tell' }], open: [] }, delta: { rule: [{ unit: 'claim:1', anchor: 'h1', was: null }], stand: [] },
+  })
   assert.ok(brief.includes('## Measured'))
   assert.match(brief, /decided by its result under Measured/)
 })

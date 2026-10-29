@@ -327,11 +327,11 @@ const accepted = (r) => eventsOf(r, 'claims').filter((e) => e.by === 'session')
  * Folder `c` with its only child merged, reviewed at head `h`: the review's `claims` event, its
  * stored return and the park it earned, each said the reviewer's dispatch. `park: null` records none.
  */
-function judged(t, { claims = [drift('names match'), drift('shape matches', 'deviates'), drift('it builds', 'met')], findings = [], park = 'integration_critical', review = 'done' } = {}) {
+function judged(t, { claims = [drift('names match'), drift('shape matches', 'deviates'), drift('it builds', 'met')], findings = [], park = 'integration_critical', review = 'done', anchors = { spec: 's1' } } = {}) {
   const r = seeded(t)
   append(r, E, 'events', { kind: 'merged', node: 'c/a', execution: OLDER, into: 'agentics/e1/c', merged_sha: 'a'.repeat(40), head_sha: 'a'.repeat(40) })
   writeJson(returnPath(executionDir(r, E, OLDER), REVIEW_THREAD), { units: [], findings, fix_rulings: [], claims, notes: '' })
-  append(r, E, 'events', { kind: 'claims', node: 'c', execution: OLDER, head_sha: 'h', review, claims, said: REVIEW_THREAD })
+  append(r, E, 'events', { kind: 'claims', node: 'c', execution: OLDER, head_sha: 'h', review, claims, said: REVIEW_THREAD, anchors })
   if (park) append(r, E, 'events', { kind: 'parked', node: 'c', execution: OLDER, return: park, question: 'q', said: REVIEW_THREAD })
   return r
 }
@@ -351,6 +351,7 @@ test('accepting every drift claim records the acceptance with its reason and the
   ])
   assert.equal(event.said, REVIEW_THREAD)
   assert.equal(event.head_sha, 'h')
+  assert.deepEqual(event.anchors, { spec: 's1' }, "the review's rulings stand for the next review as they did")
   assert.equal(event.execution, OLDER)
   assert.equal(settle(r, 'c').status, 'integrated', 'the park the review raised is cleared and the acceptance stands')
   const tree = readTree(r, E)

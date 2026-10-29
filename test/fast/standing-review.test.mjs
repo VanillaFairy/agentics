@@ -1,12 +1,11 @@
 // test/fast/standing-review.test.mjs — an `outside` event voids a folder's standing integration
-// review as a merge beneath it does; a review voided by the folder's own change or a merge beneath
-// it is what a narrowed review builds on (`narrowableReview`); a park an integration review raised is cleared by a
-// later review of the folder and by nothing else.
+// review as a merge beneath it does; a park an integration review raised is cleared by a later
+// review of the folder and by nothing else.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { deriveStatus, liveNodes, narrowableReview, standingReview } from '../../lib/tree.mjs'
+import { deriveStatus, liveNodes, standingReview } from '../../lib/tree.mjs'
 
 const NODES = new Map([['.', { seq: 1 }], ['c', { seq: 2 }], ['c/sub', { seq: 3 }], ['c/sub/x', { seq: 4 }], ['d', { seq: 5 }]])
 const claims = (node, seq) => ({ kind: 'claims', node, seq, head_sha: 'h', review: 'done', claims: [] })
@@ -30,36 +29,6 @@ test("an outside event on a sibling or an ancestor leaves the folder's review st
   assert.equal(standingReview(NODES, [review, outside('d', 11), outside('c', 12), outside('.', 13)], 'c/sub'), review)
 })
 
-// ------------------------------------------------------------------ narrowableReview
-
-const revised = (seq) => new Map([['.', { seq: 1 }], ['c', { seq }], ['c/sub', { seq: 3 }], ['c/sub/x', { seq: 4 }]])
-const replanned = (node, seq) => ({ kind: 'replanned', node, seq, execution: '', reason: 'answered' })
-const merged = (node, seq) => ({ kind: 'merged', node, seq, execution: '', head_sha: 'h' })
-const finished = (seq) => ({ ...claims('c', seq), open: [] })
-
-test("a review voided by the folder's revision, a replan on it or a merge beneath it is the one a narrowed review builds on", () => {
-  const review = finished(10)
-  assert.equal(narrowableReview(revised(20), [review], 'c'), review, 'a revision newer than the review')
-  assert.equal(narrowableReview(NODES, [review, replanned('c', 11)], 'c'), review, 'a replan on the folder')
-  assert.equal(narrowableReview(NODES, [review, merged('c/sub/x', 12)], 'c'), review, 'a merge beneath it')
-})
-
-test('an outside event on or beneath the folder since the review leaves it to a whole review', () => {
-  const review = finished(10)
-  assert.equal(narrowableReview(NODES, [review, merged('c/sub/x', 11), outside('c', 12)], 'c'), null)
-  assert.equal(narrowableReview(NODES, [review, merged('c/sub/x', 11), outside('c/sub', 12)], 'c'), null)
-  assert.equal(narrowableReview(NODES, [review, merged('c/sub/x', 11), outside('d', 12)], 'c'), review, 'one on a sibling does not')
-})
-
-test('a review that stands, one not earned, one recording no open blockers and none at all leave nothing to narrow from', () => {
-  const review = finished(10)
-  assert.equal(narrowableReview(NODES, [review], 'c'), null, 'it stands')
-  assert.equal(narrowableReview(NODES, [review, replanned('c/sub', 11)], 'c'), null, "a replan below is not the folder's own")
-  assert.equal(narrowableReview(revised(20), [{ ...review, review: 'not_earned' }], 'c'), null, 'nothing was judged')
-  assert.equal(narrowableReview(revised(20), [claims('c', 10)], 'c'), null, 'a review that recorded no open blockers')
-  assert.equal(narrowableReview(revised(20), [], 'c'), null)
-})
-
 // ------------------------------------------------------------------ a park an integration review raised
 
 const TREE = [{ id: '.', kind: 'composite', title: 'root' }, { id: 'c', kind: 'composite', title: 'c' }, { id: 'c/x', kind: 'leaf', title: 'x', rigor: 'tdd', expects: ['src/x.mjs'] }]
@@ -69,7 +38,7 @@ const statusOf = (events, id = 'c') => {
 }
 const review = (seq, said, extra = {}) => ({ kind: 'claims', node: 'c', seq, head_sha: 'h', review: 'done', said, claims: [{ claim: 'k', ruling: 'under' }], ...extra })
 const park = (seq, ret, said) => ({ kind: 'parked', node: 'c', seq, return: ret, question: 'q', ...(said ? { said } : {}) })
-const MERGED = merged('c/x', 10)
+const MERGED = { kind: 'merged', node: 'c/x', seq: 10, execution: '', head_sha: 'h' }
 
 test('a claims event after the park an integration review raised clears it, and the newer review stands', () => {
   const held = [MERGED, review(11, 'r1'), park(12, 'integration_critical', 'r1')]

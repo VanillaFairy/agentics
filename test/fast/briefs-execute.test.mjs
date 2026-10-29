@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  driftBrief, integrationBrief, integrationRerule, investigatorBrief, plannerBrief, reviewerBrief, staleBrief,
+  driftBrief, integrationBrief, investigatorBrief, plannerBrief, reviewerBrief, staleBrief,
 } from '../../lib/briefs/execute.mjs'
 import { normalizeNode } from '../../lib/tree.mjs'
 
@@ -28,29 +28,39 @@ const review = (extra = {}) => ({
 
 const blocker = { id: 'F1', severity: 'critical', claim: 'upper-case keys are dropped', evidence: 'src/api/parse.js:30', failure_scenario: 'a key "A" reads as missing', remedy: 'code' }
 
-const rerule = (extra = {}) => ({
-  folder: { id: 'api', title: 'The api layer', worktree: '/wt/api' },
+const PRIOR = [
+  { claim: 'configs load', ruling: 'met' }, { claim: 'keys are cased', ruling: 'under' },
+  { claim: 'parse is named read', ruling: 'equivalent' }, { claim: 'errors are typed', ruling: 'cant_tell' },
+  { claim: 'the key is shorter', ruling: 'accepted' },
+]
+
+const rule = (...units) => units.map((unit) => ({ unit, anchor: 'a:' + unit, was: null }))
+
+/** A later review of the folder: its spec edited, claims 2 and 4 open, a file moved since the head the last one judged. */
+const narrowed = (extra = {}) => integration({
   spec: '# The api layer\n\n## Intent\n\nConfigs load from disk, case blind.\n',
   diff: '@@ -3,3 +3,3 @@\n-Configs load from disk.\n+Configs load from disk, case blind.',
-  prior: [
-    { claim: 'configs load', ruling: 'met' }, { claim: 'keys are cased', ruling: 'under' },
-    { claim: 'parse is named read', ruling: 'equivalent' }, { claim: 'errors are typed', ruling: 'cant_tell' },
-    { claim: 'the key is shorter', ruling: 'accepted' },
-  ],
-  span: { base: 'a0a0a0a', head: 'd4d4d4d' },
-  guidance: '',
+  last: { head_sha: 'c3c3c3c', claims: PRIOR, open: [{ id: 'F1', claim: 'two loaders race', failure_scenario: 'a config read twice' }] },
+  delta: {
+    rule: [...rule('claim:2', 'claim:4', 'file:src/api/parse.js'), { unit: 'spec', anchor: 's2', was: { unit: 'spec', anchor: 's1' } }],
+    stand: [{ unit: 'file:src/api/types.js', anchor: 'b1' }, { unit: 'decision:D1', anchor: 'd1' }],
+  },
+  answers: [{ question: 'Are keys case blind?', answer: 'Yes, always.' }],
   ...extra,
 })
 
 const integration = (extra = {}) => ({
   folder: { id: 'api', title: 'The api layer', worktree: '/wt/api' },
   spec: '# The api layer\n\n## Intent\n\nConfigs load from disk.\n',
-  units: ['file:src/api/parse.js', 'file:src/api/types.js'],
+  delta: { rule: rule('decision:D1', 'file:src/api/parse.js', 'file:src/api/types.js', 'spec'), stand: [] },
   span: { base: 'a0a0a0a', head: 'd4d4d4d' },
   caveat: '',
   guidance: '',
   ...extra,
 })
+
+/** The bullets a brief lists under `heading`, up to the next heading. */
+const listed = (text, heading) => text.split(heading)[1].split('\n## ')[0].split('\n').filter((l) => l.startsWith('- ')).map((l) => l.slice(2))
 
 const consumer = normalizeNode({
   id: 'api/load', kind: 'leaf', title: 'Load configs', intent: 'configs load through the parser', rigor: 'tdd',
@@ -153,13 +163,16 @@ test('a leaf review returns no claim rulings', () => {
 
 // ------------------------------------------------------------------ integrationBrief
 
-test("the integration brief carries the folder's spec as its yardstick, the merged span and its units", () => {
-  const text = integrationBrief(integration())
+test("the integration brief carries the folder's spec as its yardstick, the merged span and every unit of a first review", () => {
+  const input = integration()
+  const text = integrationBrief(input)
   assert.ok(text.includes('# The api layer\n\n## Intent\n\nConfigs load from disk.'), 'the spec, inline')
   assert.ok(text.includes('git diff a0a0a0a d4d4d4d'))
   assert.ok(text.includes('/wt/api'))
-  for (const u of integration().units) assert.ok(text.includes('- ' + u), u)
+  assert.deepEqual(listed(text, '## The units you rule'), input.delta.rule.map((r) => r.unit))
+  assert.match(text, /`spec` is every claim the spec makes — each success criterion/)
   for (const r of ['met', 'equivalent', 'under', 'over', 'deviates', 'spec_defect', 'cant_tell']) assert.ok(text.includes(r), r)
+  for (const h of ['## Rulings that stand', '## The last review', '## What merged since', '## Blockers']) assert.ok(!text.includes(h), h)
 })
 
 test('the caveat is in the integration brief only when given', () => {
@@ -179,16 +192,29 @@ test("the repository's guidance closes a brief when given", () => {
   ]) assert.ok(text.trimEnd().endsWith(guidance), name)
 })
 
-test('the re-rule brief carries the edit, the last rulings numbered, a unit for each claim not passed and the spec whole', () => {
-  const input = rerule()
-  const text = integrationRerule(input)
+test('a later review rules only the units its delta rules, the standing ones named apart, with the edit, the last claims and what merged since', () => {
+  const input = narrowed()
+  const text = integrationBrief(input)
+  assert.deepEqual(listed(text, '## The units you rule'), input.delta.rule.map((r) => r.unit))
+  assert.deepEqual(listed(text, '## Rulings that stand'), input.delta.stand.map((u) => u.unit))
   assert.ok(text.includes(input.diff), 'the edit')
-  assert.ok(text.includes(input.spec.trim()), 'the spec as it now reads')
-  assert.ok(text.includes('git diff a0a0a0a d4d4d4d'), 'the span the last review judged')
-  input.prior.forEach((c, i) => assert.ok(text.includes('claim:' + (i + 1) + ' [' + c.ruling + '] ' + c.claim), 'ruling ' + (i + 1)))
-  const units = text.split('## The units you rule')[1].split('## Claims')[0].split('\n').filter((l) => l.startsWith('- '))
-  assert.deepEqual(units, ['- claim:2', '- claim:4', '- change'], 'a unit for each claim not met, equivalent or accepted, then the change')
-  assert.equal(text.includes('decision:'), false, "the whole review's units are not here")
+  assert.match(text, /`spec` is every claim the changed lines make or alter/)
+  PRIOR.forEach((c, i) => assert.ok(text.includes('claim:' + (i + 1) + ' [' + c.ruling + '] ' + c.claim), 'claim ' + (i + 1)))
+  assert.ok(text.includes('git diff c3c3c3c d4d4d4d'), 'what merged since the head the last review judged')
+  assert.ok(text.includes('F1: two loaders race — fails: a config read twice'), 'the blocker it left open')
+  assert.ok(text.includes('Answered: Yes, always.'), "the user's word")
+})
+
+test("a later review over an unmoved head shows no merge since; one with the spec's edit unkept asks for the claims beyond the last review's", () => {
+  const text = integrationBrief(narrowed({ diff: '', last: { head_sha: 'd4d4d4d', claims: PRIOR, open: [] } }))
+  assert.ok(!text.includes('## What merged since'))
+  assert.ok(!text.includes('## The edit to the spec'))
+  assert.match(text, /`spec` is every claim the spec makes that no claim of the last review states/)
+})
+
+test('a review that rules no claim-making unit asks for none', () => {
+  const text = integrationBrief(integration({ delta: { rule: rule('file:src/api/parse.js'), stand: [{ unit: 'spec', anchor: 's' }] } }))
+  assert.match(text, /here none: `claims` is \[\]/)
 })
 
 // ------------------------------------------------------------------ driftBrief, staleBrief
@@ -291,7 +317,7 @@ test('the same input gives the same text, and the input is left as it was', () =
   const calls = [
     [reviewerBrief, review({ prior: [blocker] })],
     [integrationBrief, integration({ caveat: 'c' })],
-    [integrationRerule, rerule()],
+    [integrationBrief, narrowed()],
     [driftBrief, drift()],
     [staleBrief, stale()],
     [plannerBrief, planner({ mode: 'settle', spec: 's', findings: [probeFinding('P1', 'gap', 'Plan', 'x')] })],
@@ -325,7 +351,7 @@ test('the convergence brief names the ruling and its schema, and carries each ro
 
 test('an integration brief names the work agentics did not produce, with its shas', () => {
   const text = integrationBrief({
-    folder: { id: 'c', title: 'c' }, spec: '# c', units: ['criterion:c/a#1'], span: { base: 'b0', head: 'h0' },
+    folder: { id: 'c', title: 'c' }, spec: '# c', delta: { rule: [{ unit: 'spec', anchor: 's', was: null }], stand: [] }, span: { base: 'b0', head: 'h0' },
     outside: { leaves: [{ id: 'c/a', commits: ['a1a1a1a1a1', 'a2a2a2a2a2'] }], commits: ['s1s1s1s1s1'] },
   })
   assert.ok(text.includes('## Work agentics did not produce'))
@@ -333,7 +359,7 @@ test('an integration brief names the work agentics did not produce, with its sha
 })
 
 test('an integration brief with no outside work has no such section', () => {
-  const text = integrationBrief({ folder: { id: 'c', title: 'c' }, spec: '# c', units: [], span: { base: 'b0', head: 'h0' } })
+  const text = integrationBrief({ folder: { id: 'c', title: 'c' }, spec: '# c', delta: { rule: [], stand: [] }, span: { base: 'b0', head: 'h0' } })
   assert.equal(text.includes('Work agentics did not produce'), false)
 })
 

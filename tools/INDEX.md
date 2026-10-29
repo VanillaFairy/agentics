@@ -5,7 +5,8 @@
 `lint.mjs` and its rules in `tools/rules/` check the form of the plugin's source (programs,
 boundaries, schemas, roles, skills and the fast test tier) against the Laws and Principles.
 `suite.mjs` runs the tests and reruns failures before calling anything red. `budgets.json` sizes
-each role and skill file. `migrate-*.mjs` are the one-shot migrations of on-disk state.
+each role and skill file. A format change ships its one-shot migration of on-disk state here as
+`migrate-<what>.mjs`.
 
 ## KEY ABSTRACTIONS
 
@@ -24,13 +25,17 @@ each role and skill file. `migrate-*.mjs` are the one-shot migrations of on-disk
 
 ## CONCURRENCY MODEL
 
-Lint is synchronous. `suite.mjs` runs `node --test` at `DEFAULT_CONCURRENCY`, then reruns only the
-files with a failed test at `RERUN_CONCURRENCY`.
+Lint is synchronous. `suite.mjs` runs `node --test` at `DEFAULT_CONCURRENCY`, half the logical
+cores, then reruns only the files with a failed test at `RERUN_CONCURRENCY`. The slow tier is bound
+by process starts, so raising the count slows each file about as much as it gains (method: the full
+suite timed at 8, 16 and 24 on 32 threads; another user's session on the same machine moves every
+figure, so re-measure on an idle machine, do not carry forward). `node --test` sorts the files it
+is given, so no order passed to it can start the long files first.
 
 ## RESOURCE LIFECYCLE
 
-`migrate-legacy.mjs` writes each copy to a `.<pid>.migrating` path and renames it in, so a killed
-run leaves at most an orphan temp file, never a partial target.
+`suite.mjs` keeps its rerun state and failure files in one `mkdtemp` directory per invocation,
+removed in its `finally`.
 
 ## INVARIANTS & GOTCHAS
 
@@ -48,12 +53,9 @@ run leaves at most an orphan temp file, never a partial target.
 - `fast-tier` reads imports only. A `lib/` module that spawns when called is caught at run time by
   `test/fast/harness/no-spawn.mjs`, which `suite.mjs --fast` preloads; a bare `node --test` over
   `test/fast/` skips that check.
-- Migrations never delete. `migrate-legacy.mjs` refuses an effort's whole migration when a target
-  holds other bytes rather than pick a side.
 
 ## DEPENDENCIES
 
-- lib — the migrations write through `store.mjs`, `ledger.mjs` and `integration.mjs`;
-  `role-frontmatter` takes `ROLE_NAMES`, the tier tables and `SCHEMAS` from `lib/roles.mjs` and
+- lib — `role-frontmatter` takes `ROLE_NAMES`, the tier tables and `SCHEMAS` from `lib/roles.mjs` and
   `lib/schemas.mjs` rather than keeping lists of its own.
 - roles, skills, lib/programs, lib/boundaries, test — what the rules judge.

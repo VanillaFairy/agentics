@@ -33,13 +33,22 @@ The worlds are builders with nothing run at import. Test files run in parallel u
 
 ## RESOURCE LIFECYCLE
 
-`verify-fixture.mjs` and `seeded-repo.mjs` build one template per distinct shape per process, cache
-it in a module-level Map and hand each caller a `cpSync` copy; templates are swept only by a
-`process.on('exit')` handler. `verify-fixture.mjs` runs `git worktree repair` on every worktree of a
-copy, because an unrepaired copied worktree silently resolves back into the template; a fixture
-that grows a worktree adds it to that list. Copies are removed in `t.after`.
+`template.mjs` (`templated`, behind `executionRig`), `verify-fixture.mjs` and `seeded-repo.mjs`
+build one template per distinct shape per process, cache it in a module-level Map and hand each
+caller a `cpSync` copy; templates are swept only by a `process.on('exit')` handler. Every copy runs
+`git worktree repair` on the template's linked worktrees, because an unrepaired copied worktree
+silently resolves back into the template. `templated` lists them from the template itself;
+`verify-fixture.mjs` keeps its own list, so a fixture there that grows a worktree adds it to that
+list. A `templated` build returns no path: a path in it names the template, not the copy. Copies
+are removed in `t.after`. The cache dies with its process and `node --test` runs each file in one, so
+a template is built once per file, not once per run.
 
 ## INVARIANTS & GOTCHAS
+
+- There is no canned-measurement port. `measure`'s `verify.mjs` child runs beside the test process's
+  own synchronous git, off the critical path: canning every measurement saved about 2% of a full run
+  at 16 files at once (method: the full suite timed with `measure` returning a fixed payload, against
+  the same run with the real child). Re-measure before adding one; do not carry this forward.
 
 - `verify-fixture.mjs` and `boundary-fixture.mjs` delete `process.env.NODE_TEST_CONTEXT` at load,
   because a grandchild `node --test` that inherits it runs nothing and exits 0, which reads as a

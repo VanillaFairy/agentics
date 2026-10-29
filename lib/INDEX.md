@@ -57,5 +57,5 @@ branch; its sweep deletes only branches git sees merged and keeps dirty worktree
 
 - lib/programs, lib/boundaries — the in-process callers of nearly everything here.
 - skills — call the CLIs directly; a flag or printed-shape change edits every skill that names the CLI.
-- tools — the migrations write through `store.mjs`, `ledger.mjs` and `integration.mjs`; a naming
-  change here is a migration there.
+- tools — a one-shot migration writes through `store.mjs`, `ledger.mjs` and `integration.mjs`; a
+  naming change here is a migration there.

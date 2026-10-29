@@ -40,3 +40,16 @@ test('a block copied elsewhere and then edited where it was is suspect, not stan
   commit(repo)
   assert.equal(stateOf(repo, id).state, 'suspect')
 })
+
+test('a check repeated in one process sees a second edit of a file already dirty, and the file put back', () => {
+  const repo = gitRepo({ 'src/a.js': text(lines(30)) })
+  const id = record(repo, span('src/a.js', 10, 14))
+  write(repo, 'src/a.js', text([...lines(30), 'appended']))
+  assert.equal(stateOf(repo, id).state, 'standing', 'an edit below the span: dirty, still standing')
+  const edited = lines(30)
+  edited[11] = 'changed'
+  write(repo, 'src/a.js', text([...edited, 'appended', 'and more']))
+  assert.equal(stateOf(repo, id).state, 'suspect', 'the same file, dirty before and after, edited inside the span')
+  write(repo, 'src/a.js', text(lines(30)))
+  assert.equal(stateOf(repo, id).state, 'standing', 'put back')
+})

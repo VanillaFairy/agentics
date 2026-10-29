@@ -2104,8 +2104,9 @@ spec, is a finding its folder settled as the gate counts it (`settledFindings` i
 `lib/approval.mjs`): one discarded, or one incorporated whose section a later review ruled clean.
 An incorporation no review has ruled on yet is still carried, and an ambiguity so carried keeps the
 gate shut. An earlier `clean` ruling is not carried: the
-sections no hunk touched are out of the round's scope. An artefact unchanged since `since` buys no
-agent at all and records one empty round, every earlier finding carried; a `since` the store does
+sections no hunk touched are out of the round's scope. An artefact unchanged since `since` — no
+section unit to rule and no changed line, so an edit outside every section, which moves no anchor,
+is still probed — buys no agent at all and records one empty round, every earlier finding carried; a `since` the store does
 not hold intact makes the round whole. A relaunched round whose journaled scope names a snapshot
 the store has since pruned refuses that scope (`snapshot_missing`): it runs over the artefact as
 given and records nothing. A carried ambiguity is an open ambiguity.

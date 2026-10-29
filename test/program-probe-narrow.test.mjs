@@ -542,6 +542,15 @@ test('an artefact unchanged since since buys no agent', async (t) => {
   assert.equal(result.snapshot, since)
 })
 
+test('an edit outside every section, the title alone, moves no anchor and is still probed', async (t) => {
+  const edited = editLine(DOC, 1, '# Rate limiter')
+  const w = reviewedThenEdited(t, { edited, findings: [NOTE] })
+  const run = w.rig.relaunch(narrowed(edited, w.scope).script)
+  const result = await probe(run.ctx, argsFor(w.rig.repo, ART, { since: w.since }))
+  assert.deepEqual(result.scope.changed, [{ start: 1, end: 1 }])
+  assert.ok(run.calls.length > 0, 'a changed line buys the round its agents')
+})
+
 test('an unchanged artefact with nothing open is ratifiable', async (t) => {
   const { result } = await unchangedRound(t, [NOTE])
   assert.deepEqual(result.ambiguities, [])

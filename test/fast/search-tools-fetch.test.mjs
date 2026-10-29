@@ -7,9 +7,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 
-import { fnv1a } from '../lib/plan-digest.mjs'
-import { canonicalUrl } from '../lib/search/query.mjs'
-import * as tools from '../lib/search/tools.mjs'
+import { fnv1a } from '../../lib/plan-digest.mjs'
+import { canonicalUrl } from '../../lib/search/query.mjs'
+import * as tools from '../../lib/search/tools.mjs'
 
 const { fetchUrl } = tools
 

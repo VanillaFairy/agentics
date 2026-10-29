@@ -22,6 +22,7 @@ import { renderMessage } from '../lib/conversation.mjs'
 import { readOnlyPermissions } from '../lib/permissions.mjs'
 import { raiseTier, reviewerTier } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
+import { append } from '../lib/ledger.mjs'
 import { readJson, reviewPath } from '../lib/store.mjs'
 import {
   T, YARD, bLeaf, work, world, ofKind, messages, stateOf, faultsOf, startsOf, headOf, approvals, stopsOn,
@@ -222,6 +223,32 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.ok(first.open.length > 0 && first.open.every((o) => String(o.id).startsWith('unit:')), 'what stayed open is unruled units alone')
     assert.deepEqual(messages(w.rig, 'producer:b'), [], 'no message waits on the producer, whatever its kind')
     assert.equal(approvals(w.rig).length, 1)
+  })
+
+  test('a unit two reviewers of a round leave unruled stops review_incomplete; a retry asks a fresh reviewer, never a producer round', T, async (t) => {
+    const w = world(t, { leaves: [bLeaf(YARD)] })
+    w.job('implementer|b#1', (cwd) => work(cwd, { 'src/b.txt': 'ok\n', 'src/b2.txt': 'one\n' }, 'round one'))
+    w.rig.script({
+      [IMPL]: [done()],
+      [REV(1)]: [verdict({ ruled: ALL_UNITS.filter((u) => u !== 'criterion:1') })],
+      [REV(2)]: [verdict({ ruled: [] })],
+      [REV(3)]: [verdict()],
+    })
+    const first = await w.run('b')
+    assert.equal(first.outcome, 'stopped')
+    const stops = ofKind(w.rig, 'escalated', 'b')
+    assert.deepEqual(stops.map((e) => e.reason), ['review_incomplete'], 'the second miss of criterion:1 stops, not a third reviewer')
+    assert.match(stops[0].detail, /criterion:1/)
+    assert.equal(stops[0].said, keyOf('b', 'reviewer', 'reviewer:b:2', 1))
+    assert.equal(startsOf(w.rig, 'reviewer', 'b').length, 2)
+
+    append(w.rig.repo, w.rig.effort, 'events', [{ kind: 'replanned', node: 'b', execution: w.rig.stamp, reason: 'retry_escalated', by: 'session' }])
+    const second = await w.run('b')
+    assert.equal(second.outcome, 'approved')
+    assert.deepEqual(startsOf(w.rig, 'reviewer', 'b').map((c) => [c.thread.key, c.round, c.resume]),
+      [['reviewer:b:1', 1, false], ['reviewer:b:2', 1, false], ['reviewer:b:3', 1, false]], 'a fresh reviewer at the same producer round')
+    assert.equal(startsOf(w.rig, 'implementer', 'b').length, 1, 'no producer round with nothing to fix')
+    assert.deepEqual(messages(w.rig, 'producer:b'), [])
   })
 
   test('a reviewer dispatch that fails holds the leaf on a fault', T, async (t) => {

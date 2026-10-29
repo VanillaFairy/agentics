@@ -2924,10 +2924,12 @@ so the same question replays its ruling and changed facts or the user's word ask
 merged into, tool-less, handed both sides' plan entries and changes (for a conflict, what merged into
 the folder since the unit was cut); it rules each contended leaf, or the one unit `integration` for a
 conflict, `serialize`, `resolve`, `replan` or `cant_rule`. A unit the ruler left out of its rulings is
-its miss, as a reviewer's is: it is asked once more, on the same thread, for those units by name,
-and their rulings join the first (`judgeClose`'s `also`). Code combines (`combineRulings`): a unit
-still left unruled or `cant_rule` escalates the leaf (`contention_unruled`, or `merge_conflict` for a
-conflict) — the only way the judge reaches the user; else a `replan` goes to the program's replan, as
+its miss, as a reviewer's is ([Executors and review](#executors-and-review)): a fresh ruler on
+`<thread>:<n>` is handed only the units still unruled, and their rulings join the first
+(`judgeClose`'s `also`); a unit an earlier ruler of the question missed too ends the asking and
+escalates the leaf `review_incomplete`. Code combines (`combineRulings`): a `cant_rule` escalates the
+leaf (`contention_unruled`, or `merge_conflict` for a conflict) — with a miss, the only ways the judge
+reaches the user; else a `replan` goes to the program's replan, as
 a ruler's `affected` does ([Replanning](#replanning)), and the unit stays out of merges until its
 plan revised it; else a `serialize` makes the unit wait, but only on a leaf first dispatched before
 it, so waits never form a cycle (a serialize against a later leaf reads as `resolve`, and that leaf's
@@ -3195,7 +3197,15 @@ and reviewed like any other.
     re-report, plus every unit the round left unruled. Never narrow this to the round's criticals
     alone. A unit the reviewer left unruled (`unit:<u>`) is the reviewer's miss: it stays open for
     the next fresh reviewer, at the same producer round, and never goes to a producer, so an open
-    set of those alone sends no message and goes straight to a fresh reviewer.
+    set of those alone sends no message and goes straight to a fresh reviewer. One policy holds for
+    every judge's misses, a reviewer's and a contention or conflict ruler's alike (`missedAgain` in
+    `lib/verdict.mjs`): a unit an earlier reviewer of the same producer round, since the leaf was
+    cleared, left unruled too escalates `review_incomplete`. A question has finitely many units, so
+    the fresh judges end on a state: each rules a unit no judge ruled before, or misses one a judge
+    already missed. A retry of that stop clears the leaf, so the next reviewer is fresh and no
+    earlier reviewer's miss counts against it; when the stopping review left only such misses open,
+    the retry goes on with that fresh reviewer at the same round, never to a producer round with
+    nothing to fix.
   - Each finding names its `remedy`: `code` (the default), `tests`, or `retire` — a test that
     should go or merge into another, whatever severity the reviewer gave it never blocking here or
     at integration (`retires` in `lib/verdict.mjs`). The review record keeps a round's `retire`
@@ -3840,7 +3850,7 @@ everything else and hands the same stop back at the end.
 **Who settles a stop.** The user owns decisions (L4), so a stop that needs one is theirs. A stop
 whose cause is mechanical is the session's, which settles it, notes what it ruled on the node and
 names it in its report: a transient (`blocked`), a command the work runs that its entry does not
-name (`command_not_in_runs`: added to the entry's `runs`, the edit ruled, then retried), a reviewer's miss
+name (`command_not_in_runs`: added to the entry's `runs`, the edit ruled, then retried), a judge's miss
 (`review_incomplete`), a suite or verify failure that is only
 timeouts or load passing alone (retried once), a changed test file that only pins behaviour held at
 base (ruled a `net`), a file a node needs inside its own folder (added to its entry), and code that

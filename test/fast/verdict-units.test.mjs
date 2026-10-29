@@ -6,7 +6,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { reviewExit, unitsOpen, verdictOf } from '../../lib/verdict.mjs'
+import { missedAgain, reviewExit, unitsOpen, verdictOf } from '../../lib/verdict.mjs'
 
 const clean = (unit) => ({ unit, ruling: 'clean', why: 'read it' })
 
@@ -95,4 +95,23 @@ test('a unit a judge keeps declaring unexamined is unfixed, and two such rounds 
   const third = round(second)
   assert.equal(third.next, 'escalate')
   assert.match(third.detail, /unit:u1/)
+})
+
+test('reviewers whose unruled units alternate stop once any unit is missed by a second reviewer of the question', () => {
+  const units = ['u1', 'u2']
+  const only = (unit) => [{ unit, ruling: 'clean', why: 'read it' }]
+  const missed = (exit) => exit.open.filter((o) => String(o.id).startsWith('unit:')).map((o) => o.id.slice(5))
+  const first = reviewExit({ units, rulings: only('u1') })
+  assert.equal(first.next, 'fix', 'u2 goes to a fresh reviewer')
+  const second = reviewExit({ units, rulings: only('u2'), prior: first, missedBefore: missed(first) })
+  assert.equal(second.next, 'fix', 'u1 is a miss no earlier reviewer made: one more fresh reviewer')
+  const third = reviewExit({ units, rulings: only('u1'), prior: second, missedBefore: [...missed(first), ...missed(second)] })
+  assert.deepEqual([third.next, third.reason], ['escalate', 'review_incomplete'], 'u2 missed again')
+  assert.match(third.detail, /u2/)
+  assert.equal(reviewExit({ units, rulings: only('u1'), prior: second, missedBefore: [] }).next, 'fix', 'a reviewer from before the clearing counts no miss')
+})
+
+test("a judge's miss counts again only against misses of the same question", () => {
+  assert.deepEqual(missedAgain(['a', 'b'], [['b'], ['c']]), ['b'])
+  assert.deepEqual(missedAgain(['a'], []), [])
 })

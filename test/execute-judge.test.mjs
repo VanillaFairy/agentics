@@ -215,24 +215,28 @@ test("a leaf a resolve sent a rebase opens the rebase round, never resuming what
   assert.equal(out.outcome, 'stopped')
 })
 
-test('a ruler that leaves a contended unit out is asked once more for it, by name, before anything escalates', SLOW, async (t) => {
+test('a ruler that leaves a contended unit out is its miss: a fresh ruler is asked for it, before anything escalates', SLOW, async (t) => {
   const { rig, a } = contended(t)
-  rig.script({ [rulerKey('contention', a)]: [rulings(), rulings(['y/b', 'resolve'])] })
+  rig.script({ [rulerKey('contention', a)]: [rulings()], [rulerKey('contention', a) + ':2']: [rulings(['y/b', 'resolve'])] })
   await merge(rig, 'x', a)
-  const calls = kinds(rig, 'dispatched').filter((e) => e.role === 'ruler').map((e) => e.round)
-  assert.deepEqual(calls, [1, 2], 'the second call is the re-ask')
+  const calls = kinds(rig, 'dispatched').filter((e) => e.role === 'ruler')
+  assert.equal(calls.length, 2)
+  assert.deepEqual(calls.map((e) => e.round), [1, 1], 'each a fresh ruler, not a second round of the first')
+  assert.equal(calls[1].thread, calls[0].thread + ':2')
+  assert.notEqual(calls[1].session, calls[0].session)
   const [judged] = kinds(rig, 'judged')
-  assert.equal(judged.outcome, 'resolve', 'the re-asked ruling counts')
+  assert.equal(judged.outcome, 'resolve', 'the fresh ruling counts')
   assert.deepEqual(kinds(rig, 'escalated'), [], 'nothing reached the user')
 })
 
-test('a ruler that leaves the unit out again escalates contention_unruled, naming it', SLOW, async (t) => {
+test('a unit a fresh ruler leaves out again stops review_incomplete, naming it, and asks no third', SLOW, async (t) => {
   const { rig, a } = contended(t)
-  rig.script({ [rulerKey('contention', a)]: [rulings(), rulings()] })
+  rig.script({ [rulerKey('contention', a)]: [rulings()], [rulerKey('contention', a) + ':2']: [rulings()] })
   await merge(rig, 'x', a)
+  assert.equal(kinds(rig, 'dispatched').filter((e) => e.role === 'ruler').length, 2)
   const [stop] = kinds(rig, 'escalated')
-  assert.deepEqual([stop.node, stop.reason], ['x/a', 'contention_unruled'])
-  assert.match(stop.detail, /y\/b: left unruled/)
+  assert.deepEqual([stop.node, stop.reason], ['x/a', 'review_incomplete'])
+  assert.match(stop.detail, /y\/b/)
 })
 
 test('after the session retries a leaf, a new ruling at the head an earlier one stopped it at is recorded and decides', SLOW, async (t) => {

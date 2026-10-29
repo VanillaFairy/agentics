@@ -306,6 +306,11 @@ const dispatchedCall = (over = {}) => ({
   tier: { model: 'opus' }, brief: 'b', cwd: 'C:/work/tree', ...over,
 })
 
+test('dispatched records what the call was denied reading, and nothing when it was denied nothing', () => {
+  assert.deepEqual(dispatchedEntry(dispatchedCall({ denyRead: ['src/r.mjs'] }), { pid: 1, session: 's' }).deny_read, ['src/r.mjs'])
+  for (const denyRead of [undefined, []]) assert.ok(!('deny_read' in dispatchedEntry(dispatchedCall({ denyRead }), { pid: 1, session: 's' })))
+})
+
 test('dispatched records the prompt digest and cwd', () => {
   const entry = dispatchedEntry(dispatchedCall(), { pid: 1, session: 's' })
   assert.equal(entry.prompt, '0a1b2c3d', 'the digest in the system-prompt file name, not the role name')

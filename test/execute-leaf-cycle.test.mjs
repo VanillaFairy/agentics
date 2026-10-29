@@ -19,7 +19,7 @@ import { renderMessage } from '../lib/conversation.mjs'
 import { attach } from '../lib/integration.mjs'
 import {
   T, leafEntry, write, work, world, messages, startsOf, approvals, sessionFor, done, said, verdict, finding,
-  fixed, headOf,
+  fixed, headOf, ofKind,
 } from './harness/execute-leaf-world.mjs'
 
 // The rig does not clear NODE_TEST_CONTEXT, and a measurement's nested `node --test` that inherits
@@ -84,6 +84,9 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.equal(authors[0].round, 2)
     assert.equal(authors[0].thread.key, 'producer:r')
     assert.equal(authors[0].thread.session, sessionFor(w.rig, { node: 'r', role: 'test-author', thread: 'producer:r', gen: 0 }), "the red's generation-0 session")
+    const line = (call) => ofKind(w.rig, 'dispatched', 'g').find((e) => e.dispatch === call.dispatch)
+    assert.deepEqual(line(authors[0]).deny_read, ['src/r.mjs'], "the test round's dispatched line records the green's source it was denied")
+    assert.ok(!('deny_read' in line(startsOf(w.rig, 'implementer', 'g')[0])), 'the implementer is denied nothing')
     const sent = messages(w.rig, 'producer:r', 'findings')
     assert.equal(sent.length, 1)
     assert.ok(authors[0].brief.includes(renderMessage({ msg: 'findings', payload: sent[0].payload })), 'the test round carries the finding')

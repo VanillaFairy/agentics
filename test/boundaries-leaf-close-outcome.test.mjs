@@ -53,23 +53,27 @@ test('a return with no status holds the round', () => {
 })
 
 test('a done return naming a document it could not read escalates unread_reference at every rigor, never measured', () => {
-  const ret = { status: 'done_with_concerns', text: TEXT, concerns: ['shapes guessed'], unread: ['the Design\'s "Ports" block', ' '] }
+  const ports = { kind: 'doc', path: '.agentics/e1/DESIGN.md', what: 'the Ports part of the Design' }
+  const ret = { status: 'done_with_concerns', text: TEXT, concerns: ['shapes guessed'], unread: [ports, { kind: 'doc', path: ' ', what: '' }] }
   for (const leaf of [node({ rigor: 'trivial' }), PLAIN, GREEN]) {
     const out = po({ leaf, ret })
     assert.equal(out.next, 'stop', leaf.rigor)
-    assert.deepEqual(out.records, [escalated(leaf.id, 'unread_reference', 'the Design\'s "Ports" block', 'd7')], leaf.rigor)
+    assert.deepEqual(out.records, [escalated(leaf.id, 'unread_reference', '[doc] .agentics/e1/DESIGN.md — the Ports part of the Design', 'd7')], leaf.rigor)
   }
   assert.equal(po({ ret: { status: 'done', text: TEXT, unread: [] } }).next, 'measure', 'an empty list reads nothing unread')
-  assert.equal(po({ ret: { status: 'done', text: TEXT, unread: ['', '  '] } }).next, 'measure', 'blank lines name nothing')
+  assert.equal(po({ ret: { status: 'done', text: TEXT, unread: [{ kind: 'doc', path: '', what: ' ' }] } }).next, 'measure', 'an entry naming nothing names nothing')
 })
 
-test("a cycle's test round naming the implementation it is kept from as unread is measured; a document it names still escalates", () => {
+test('an unread entry is dropped only when its path is exactly one the round was denied reading', () => {
   const ret = (unread) => ({ status: 'done_with_concerns', text: TEXT, unread })
-  const source = ['src/core/critters/RoamBrain.ts — denied to this role; mutation placed in steering.ts instead']
-  assert.equal(po({ leaf: GREEN, role: 'test-author', ret: ret(source) }).next, 'measure', 'withheld by design, not a reference it was told to match')
-  const spec = ['.agentics/e1/roamers/DESIGN.md, the Ports block of the Design']
-  assert.equal(po({ leaf: GREEN, role: 'test-author', ret: ret(spec) }).next, 'stop', 'a document it was told to follow')
-  assert.equal(po({ ret: ret(source) }).next, 'stop', 'an implementer is never kept from the source: the same entry is a real gap')
+  const denyRead = ['src/core/critters/RoamBrain.ts']
+  const source = { kind: 'source', path: 'src/core/critters/RoamBrain.ts', what: 'denied; mutation placed in steering.ts instead' }
+  assert.equal(po({ leaf: GREEN, role: 'test-author', denyRead, ret: ret([source]) }).next, 'measure', 'withheld by design, not a reference it was told to match')
+  const near = [{ ...source, path: './src/core/critters/RoamBrain.ts' }, { ...source, path: 'src/core/critters/roambrain.ts' }, { ...source, path: 'src/core/critters' }]
+  for (const u of near) assert.equal(po({ leaf: GREEN, role: 'test-author', denyRead, ret: ret([u]) }).next, 'stop', 'no near match drops: ' + u.path)
+  const spec = { kind: 'doc', path: '.agentics/e1/roamers/DESIGN.md', what: 'the Ports part of the Design' }
+  assert.equal(po({ leaf: GREEN, role: 'test-author', denyRead, ret: ret([source, spec]) }).next, 'stop', 'a document it was told to follow')
+  assert.equal(po({ leaf: GREEN, role: 'test-author', ret: ret([source]) }).next, 'stop', 'a round denied nothing has no entry dropped, whatever its role')
 })
 
 test("an auditor's return, which carries no status, is measured", () => {
@@ -234,6 +238,17 @@ test("an implementer's round is measured whether it moved or not: no status alon
 // ================================================================== before measuring
 
 describe('leaf-close before it measures', { concurrency: 4 }, () => {
+  test("a cycle test round's unread source is dropped only by the deny_read its dispatched line records", SLOW, async (t) => {
+    const ret = { status: 'done_with_concerns', text: TEXT, unread: [{ kind: 'source', path: 'src/r.mjs', what: 'kept from me' }] }
+    const round = { node: 'g', role: 'test-author', round: 2, thread: 'producer:r', ret }
+    const denied = cycle(t)
+    const kept = await run(denied.w, { ...round, denyRead: ['src/r.mjs'], base_sha: denied.green.base_sha, head_before: denied.greenHead })
+    assert.notEqual(kept.out.decision.reason, 'unread_reference', JSON.stringify(kept.out.decision))
+    const open = cycle(t)
+    const gap = await run(open.w, { ...round, base_sha: open.green.base_sha, head_before: open.greenHead })
+    assert.deepEqual(gap.out.stops.map((s) => s.reason), ['unread_reference'])
+  })
+
   test('a dispatch with no stored return holds the leaf on a role fault, and nothing is measured', SLOW, async (t) => {
     const { w, o } = tdd(t)
     const { out, dispatch } = await run(w, { node: 'a', role: 'implementer', round: 1, base_sha: o.base_sha })

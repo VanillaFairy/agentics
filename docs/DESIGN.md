@@ -388,11 +388,17 @@ the user becomes a park or an escalation the session's watch picks up ([Progress
 an answer the user gave reaches a program only as the `answered` ledger line the session recorded
 ([The user's word](#the-users-word)). An agent is where judgment happens, and nowhere else.
 
-A program's process carries every live call's stream on one event loop, so work that spawns git
-again and again runs in a child the program awaits: a check
-(`lib/measure.mjs`), and a probe round's anchor checks, its review scope computed by
-`childCall` (`lib/child-call.mjs`) and its carried findings handed to `recordProbe` rather than
-checked again.
+A program's process carries every live call's stream on one event loop. Git that runs once, O(1),
+stays inline, so the work between two awaits stays atomic over worktrees and refs; work whose git
+count grows with its input runs off the main thread: a check in a child the program awaits
+(`lib/measure.mjs`), and a leaf brief's evidence and a probe round's review scope, whose anchor
+checks run git per item, on the one long-lived offload worker (`offload` in `lib/offload.mjs`), a
+worker thread started on first use and kept warm. There is no in-process fallback: a request the
+worker cannot answer rejects, and its unit faults (`program`), never a silent stall; a git it
+killed at its ceiling rejects as `GitHung`. A probe round's carried findings are handed to
+`recordProbe` rather than checked again. The main thread watches every request in flight
+(`watchdog`): one running past 15 seconds is recorded `stalled {label, since}` in the run's log
+while it still runs, which the watch prints.
 
 Only `lib/store.mjs` starts git (`gitSync`, `gitAsync`, `readBlobs`; the `git-spawn` lint rule), under
 one held environment and one ceiling, `GIT_CEILING_MS`, ten minutes. The ceiling is a hang detector,
@@ -1059,7 +1065,7 @@ A turn that comes more than 15 seconds late is recorded `stalled {ms, since, spe
 in the run's log once the thread turns, which the watch prints: `spent` is the synchronous git time
 counted meanwhile by subcommand (`noteSync` and `takeSync` in `lib/store.mjs`), the largest first,
 so the line names what held the thread. Every git the plugin runs goes through `gitSync` (or, in the
-search server, `gitCommand`) in `lib/store.mjs`, held to what nobody answers mid-run: no credential
+search server, `gitAsync`) in `lib/store.mjs`, held to what nobody answers mid-run: no credential
 prompt, no editor, no lazy fetch of a partial clone's missing object, no optional index lock, and no
 automatic gc or maintenance. At its
 start a run removes the files `writeWhole` staged under its home whose writer's pid is gone

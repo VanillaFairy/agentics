@@ -640,3 +640,19 @@ test('a task that still writes locus is refused, naming the migration', () => {
   const problems = checkFolder(effortOnDisk({ '.': ROOT, 'store-layout': old }), 'e1', 'store-layout').problems
   assert.ok(problems.some((p) => p.line === lineOf(old, '**paths**') && /migrate-expects/.test(p.problem)), JSON.stringify(problems))
 })
+
+test("checkFolder refuses a task whose text or recipe names a project script its runs does not list", () => {
+  const swapped = (context, fields = '') => swap(ROOT, '  Each refusal names its line.', '  ' + context)
+    .replace('  · ground: docs/DESIGN.md#storage', '  · ground: docs/DESIGN.md#storage' + fields)
+  const runsOf = (repo) => checkFolder(repo, 'e1', '.').problems.filter((p) => /which its runs does not list/.test(p.problem))
+
+  const named = effortOnDisk({ '.': swapped('Add it with `npm run asset:add -- prop.x --tiles 1x1`.') })
+  assert.deepEqual(runsOf(named).map((p) => p.problem), ['spec-parser runs `npm run asset:add` (named in its text), which its runs does not list: add it to runs, or its producer is denied it'])
+  assert.deepEqual(runsOf(effortOnDisk({ '.': swapped('Add it with `npm run asset:add`.', '\n  · runs: `npm run asset:add`') })), [])
+
+  const recipe = effortOnDisk({ '.': swapped('Follow the recipe.').replace('reads: `lib/store.mjs`', 'reads: .claude/skills/add-asset/SKILL.md') })
+  mkdirSync(join(recipe, '.claude/skills/add-asset'), { recursive: true })
+  writeFileSync(join(recipe, '.claude/skills/add-asset/SKILL.md'), '# Adding\n\nSee `npm run lint` first.\n\n```sh\nnpm run asset:add -- <id>\nnpm run shadow:draw\n```\n')
+  assert.deepEqual(runsOf(recipe).map((p) => p.problem), ['spec-parser runs `npm run asset:add` (named in .claude/skills/add-asset/SKILL.md), which its runs does not list: add it to runs, or its producer is denied it'],
+    'the recipe is its first fenced script; prose and later lines are not asked for')
+})

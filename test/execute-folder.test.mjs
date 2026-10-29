@@ -827,15 +827,25 @@ test('a verify finding on a planner folder is replanned in its own spec and revi
   const was = readSpec(w.rig)
   const ask = request('verify_finding', 'the suite fails on the empty input')
   const out = await w.run({ request: ask })
-  assert.equal(out.outcome, 'prepared', 'no replan check on a verify finding')
+  assert.equal(out.outcome, 'prepared', 'a spec that changed answers a verify finding')
   const [call] = plannerCalls(w.rig)
   sameBrief(call.brief, briefFor(w.rig, { mode: 'answer', spec: was, request: { node: 'p/x', status: 'verify_finding', text: ask.text } }))
   assert.equal(nodeOf(w.rig, 'p/x').seq, before, 'the fixture: p/x is as it was')
   assert.equal(escalations(w.rig, 'p/x').length, 0)
+  assert.deepEqual(events(w.rig, 'replanned', (e) => e.node === 'p/x').map((e) => e.reason), ['spec_answered'],
+    'the answer clears the leaf: it is measured again against the replanned folder, never routed to the same plan again')
   const reviewed = ledger(w.rig, 'reviewed')
   assert.equal(reviewed.length, 1)
   assert.equal(reviewed[0].hash, approvalState(w.rig.repo, E, 'p').hash)
   assert.equal(ledger(w.rig, 'prepared').length, 1)
+})
+
+test('a verify finding answered with neither the leaf nor the spec changed escalates replan_not_converging', async (t) => {
+  const w = planned(t, { steps: clean(folderSpec()), writes: {} })
+  const out = await w.run({ request: request('verify_finding', 'the suite fails on the empty input') })
+  assert.equal(out.outcome, 'stopped')
+  assert.deepEqual(escalations(w.rig, 'p/x').map((e) => e.reason), ['replan_not_converging'])
+  assert.equal(events(w.rig, 'replanned', (e) => e.node === 'p/x').length, 0, 'nothing clears the leaf')
 })
 
 test('a spec_changed park on a planner folder is re-derived from its spec as it stands, and prepared', async (t) => {

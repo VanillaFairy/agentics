@@ -1689,7 +1689,8 @@ writing the folder's spec and nothing else: `needs_context` reaches it as its me
 request as a brief of its own. No planner writes a spec outside its own folder,
 so a task is promoted only by a spec the user writes. The answer goes through the
 [autonomous review](#autonomous-review) and is compiled; a replan that leaves the asking leaf at
-the revision it asked from escalates `replan_not_converging`, and a request whose planning ends on
+the revision it asked from escalates `replan_not_converging`, unless it answers a verify finding
+with a changed spec (below; `replanOf` in `lib/programs/execute/folder.mjs`), and a request whose planning ends on
 a fault is a `program` fault on the asking leaf as well. The request stands while the asking leaf is
 at the revision its round was dispatched on and no retry cleared it: a relaunch rebuilds it from the
 round's close record and stored return (`routeOf` in `lib/boundaries/leaf-close.mjs`) and sends it
@@ -1697,8 +1698,9 @@ to the planner again, never opening a round whose producer would have nothing to
 the same way: the planner rewrites the folder's spec when the planner wrote it, and the folder
 parks `needs_respec` for the user when the user did. Under a planner's folder the finding is the
 route: leaf-close records no escalation of the leaf, so none outlives the planner's replan, and the
-leaf is measured again against the folder as replanned; a replan that leaves the verify leaf as it
-was escalates `replan_not_converging`, as any request a leaf routed does. Under a folder the user wrote the leaf is
+leaf is measured again against the folder as replanned: an answer that changed the spec but not the
+verify leaf clears the leaf (`replanned {reason: spec_answered}`), so it is never routed to the same
+plan again, and one that changed neither escalates `replan_not_converging`. Under a folder the user wrote the leaf is
 escalated `verify_finding` beside the park. Every spec the planner writes passes the autonomous
 review before compile builds from it.
 
@@ -2252,7 +2254,8 @@ execution journaled (`sweepTrees`); a dirty one is never forced, and preflight r
    (missing, stating a decision, or with problems) escalates `prepare_refused`, a compile refusal
    `compile_refused`, a folder compiled with nothing beneath it `planner_wrote_nothing`, and a leaf
    the planner was asked to replan that the compile left at the revision it asked from
-   `replan_not_converging`. A leaf whose `expects` grew onto another leaf's file is no stop: an
+   `replan_not_converging`, unless the request was a verify finding and the spec prepared is not the
+   one the answer started from: that leaf is cleared (`replanned {reason: spec_answered}`). A leaf whose `expects` grew onto another leaf's file is no stop: an
    expectation claims nothing, and the scheduler keeps the two apart. A `spec_changed` park the
    compile raised on the folder itself is cleared at once (`replanned {reason: spec_rederived}`).
 

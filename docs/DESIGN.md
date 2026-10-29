@@ -1316,7 +1316,10 @@ realise every decision the task did. It appends only what changed, through `addN
 `by: 'compile'`, and records the hash it built from, so a second run appends nothing. A spec
 edited since approval is left out, and develop keeps the last approved graph, but its folder's own
 node still takes what its parent's entry says of it (`realises`, `after`, contracts, ground,
-context): those are the parent spec's to say. When a spec is
+context): those are the parent spec's to say. A folder is **stale** (`stale` in `lib/approval.mjs`, the
+one predicate) while its spec is edited past its latest `approved` or `prepared` line, or while the
+`spec_changed` park compile raised on it stands: its children are the plan being replaced. The
+schedule, the preflight trace and the integration review's guard all read it. When a spec is
 approved again with other text, compile parks every consumer of a contract whose definition the
 edit changed (`contract_changed`) — the entries that provide it with their paths and the parts they
 declare, and the part of the Design its `provides` declares, or the whole Design when it declares
@@ -1999,8 +2002,8 @@ request's items, written by develop and approved by the user. Before anything is
 `lib/traceability.mjs` computes over the compiled tree:
 
 - decisions no child realises — a **blocking gap** (a `design` node with no spec yet is frontier,
-  not a gap, and so is a planner's folder whose spec is edited past its compile, which the execution
-  plans again: its new plan is traced once it compiles);
+  not a gap, and so is a stale planner's folder ([Specs, approval and compile](#specs-approval-and-compile)),
+  which the execution plans again: its new plan is traced once it compiles);
 - criteria that trace to no decision — reported, for the user to accept or remove.
 
 The integration review receives the decision list of the subtree it reviews, and the folder's spec
@@ -2279,8 +2282,8 @@ as the user's (its problems escalate `spec_refused`); a gate already open on tha
 prepared at once, else it is reviewed and its findings settled by the planner; it is prepared and
 compiled, and its preparation clears the park it answers (`replanned {reason: spec_edited}`). A
 stop of that plan the session clears, by `retry` or an answer, plans the text again, so an edited spec whose gate opens on
-the session's word is prepared; and while a planner's spec stands edited past its preparation, no
-integration review of the folder runs over the graph compiled before it. The same park on a folder the user wrote waits for the user; a change ruled to move nothing never raises it
+the session's word is prepared; and while a planner's folder is stale, no integration review of
+the folder runs over the graph compiled before it. The same park on a folder the user wrote waits for the user; a change ruled to move nothing never raises it
 ([A changed spec](#a-changed-spec)).
 
 **Why:** the parts the user lets go autonomously still get a reader that did not write them
@@ -3108,8 +3111,9 @@ parked (but for `spec_changed` and `design_spend`), or whose latest stop is clea
 newer than it: a retry, an answer), is planned `spec_edited`: one plan per stop and clearing, its
 first step keyed by both (`editedPlanKey` in `lib/boundaries/execution.mjs`), so a relaunch resumes
 the plan a dead run left, whatever the text became under it. A plan that stops leaves a stop of its
-own, and one that prepares leaves nothing edited. Such a folder launches no integration review
-until the edit is compiled.
+own, and one that prepares leaves nothing edited. A stale planner's folder
+([Specs, approval and compile](#specs-approval-and-compile)) launches no integration review until its
+new plan is compiled.
 
 A merge-batch runs whenever approved children wait on an integration branch nobody is merging into,
 at the heads their approvals named; a leaf still running (a fix round after it failed on the

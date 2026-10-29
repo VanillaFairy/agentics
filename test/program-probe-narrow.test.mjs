@@ -278,7 +278,7 @@ test("a finding the spec's folder settled as its gate counts it is not carried; 
 })
 
 test("a narrowed round's anchor checks leave the event loop free, so the run's heartbeat keeps beating", async (t) => {
-  const many = Array.from({ length: 40 }, (_, i) => finding('yagni', 'note', 'intent', 4, 'MANY_' + i + ' the key is never defined'))
+  const many = Array.from({ length: 160 }, (_, i) => finding('yagni', 'note', 'intent', 4, 'MANY_' + i + ' the key is never defined'))
   const w = reviewedThenEdited(t, { findings: many })
   const t0 = Date.now()
   assert.equal(reviewScope(w.rig.repo, w.file, w.since).carried.length, many.length)

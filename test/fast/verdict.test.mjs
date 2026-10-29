@@ -70,7 +70,7 @@ const red = { suite: 'failed', failing_tests: [{ file: 'test/x.test.mjs', id: 'x
 const ROWS = [
   ['a discriminating test, green suite', m({ discriminator: [disc(true, true)] }), {
     tdd: true, 'tests-only': ['mutation'], trivial: true, verify: true, green: true,
-    red: ['discriminator', 'suite'], audit: ['mutation'], 'green-tests': ['mutation'],
+    red: ['discriminator', 'suite'], audit: ['mutation'], 'green-tests': true,
   }],
   ['a discriminating test and a net that bites', m({ discriminator: [disc(true, true)], mutations: [bites] }), {
     tdd: true, 'tests-only': true, audit: true, trivial: true, 'green-tests': true,
@@ -80,7 +80,7 @@ const ROWS = [
   }],
   ['no test at all', m(), {
     tdd: ['new-test'], 'tests-only': ['mutation', 'new-test'], trivial: true, verify: true,
-    red: ['new-test', 'suite'], green: ['new-test'], audit: ['mutation'], 'green-tests': ['mutation', 'new-test'],
+    red: ['new-test', 'suite'], green: ['new-test'], audit: ['mutation'], 'green-tests': ['new-test'],
   }],
   ['a red measurement, placed in its own test file', m(red), {
     red: true, tdd: ['discriminator', 'suite'], green: ['discriminator', 'suite'], trivial: ['suite'],
@@ -108,7 +108,7 @@ const ROWS = [
     tdd: ['series-unreadable'],
   }],
   ['a net that survives its break', m({ discriminator: [disc(false, true)], mutations: [survives] }), {
-    'tests-only': ['mutation'], audit: ['mutation'], tdd: ['discriminator', 'mutation'], 'green-tests': ['mutation'],
+    'tests-only': ['mutation'], audit: ['mutation'], tdd: ['discriminator', 'mutation'], 'green-tests': ['discriminator', 'mutation'],
   }],
   ['a stale mutation spec', m({ discriminator: [disc(false, true)], mutations: [stale] }), {
     'tests-only': ['mutation'], audit: ['mutation'],
@@ -197,16 +197,18 @@ test('profileOf: a role outranks its rigor, and an unknown rigor is judged as td
   assert.equal(profileOf(LEAVES.red, 'test-author'), 'red', 'a red is always a test-author\'s: its round is no test gap')
 })
 
-test('a green\'s test-author round shows every test it added catches a break; the red\'s untouched tests owe none', () => {
+test('a green\'s test-author round, blind to the implementation, shows each test it added fails at the red\'s stubs or is named by a biting break', () => {
   const redTest = { test_id: 'test/x.test.mjs', adds_test: false, failed_on_base: true, passes_now: true }
-  const added = disc(false, true, 'test/table.test.mjs')
+  const atStubs = disc(true, true, 'test/table.test.mjs')
+  assert.deepEqual(measurementOk(m({ discriminator: [redTest, atStubs] }), LEAVES.green, 'test-author').failures, [],
+    'no break to declare: it cannot read the code it would break')
+  const passesAtStubs = disc(false, true, 'test/table.test.mjs')
   const named = { ...bites, expect_failing: ['test/table.test.mjs'], observed_failing: ['test/table.test.mjs'] }
-  assert.deepEqual(measurementOk(m({ discriminator: [redTest, added], mutations: [named] }), LEAVES.green, 'test-author').failures, [])
-  const blind = measurementOk(m({ discriminator: [redTest, added], mutations: [bites] }), LEAVES.green, 'test-author').failures
-  assert.deepEqual(blind.map((f) => f.claim), ['test/table.test.mjs adds a test no biting mutation names'])
-  assert.equal(closeDecision(m({ discriminator: [redTest, added], mutations: [named] }), LEAVES.green, 'test-author').next, 'review')
-  assert.equal(closeDecision(m({ discriminator: [redTest, added] }), LEAVES.green, 'test-author').next, 'fix',
-    'a round with no declared break measured nothing about its tests')
+  assert.deepEqual(measurementOk(m({ discriminator: [redTest, passesAtStubs], mutations: [named] }), LEAVES.green, 'test-author').failures, [])
+  const hollow = measurementOk(m({ discriminator: [redTest, passesAtStubs] }), LEAVES.green, 'test-author').failures
+  assert.deepEqual(hollow.map((f) => f.check), ['discriminator'])
+  assert.match(hollow[0].claim, /^test\/table\.test\.mjs adds a test that passes at the red's stubs too/)
+  assert.equal(closeDecision(m({ discriminator: [redTest, atStubs] }), LEAVES.green, 'test-author').next, 'review')
 })
 
 test('the suite tail rides a suite failure as its evidence', () => {
@@ -545,7 +547,7 @@ test('a consolidation round is held to the breaks it declares and the audit held
   assert.equal(profileOf(LEAVES.audit, CONSOLIDATION), 'consolidation')
   const failing = (over) => measurementOk(m(over), LEAVES.green, CONSOLIDATION).failures.map((f) => f.check)
   assert.deepEqual(failing({ mutations: [bites] }), [])
-  assert.deepEqual(failing({}), ['mutation'], 'a round that declares no break showed it lost nothing')
+  assert.deepEqual(failing({}), [], 'a blind round is not asked for a break of its own')
   assert.deepEqual(failing({ mutations: [bites, survives] }), ['mutation'])
   assert.deepEqual(failing({ suite: 'not_run', mutations: [bites] }), ['suite'])
 })

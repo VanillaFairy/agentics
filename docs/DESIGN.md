@@ -1764,8 +1764,10 @@ of the suite that catches it, so a break another test already kills asks for no 
     implementer otherwise. A unit the reviewer left unruled (`unit:<u>`, `unruledUnit` in
     `lib/verdict.mjs`) is the reviewer's miss, never a producer's finding, and weighs on neither
     choice. A mixed open set goes to the implementer first, with the tests' findings listed as
-    carried, then to the cycle's test session once only they remain. A test-author round is measured
-    by the breaks it catches (the `green-tests` profile, [Verification](#verification)).
+    carried, then to the cycle's test session once only they remain. A test-author round never reads
+    the implementation, so it is not asked to break it: each new test file fails at the round's base,
+    the red's head where the implementation is its stubs, or is named by a break listed to it that it
+    redeclares and that bites (the `green-tests` profile, [Verification](#verification)).
   - Either way the round writes test files and nothing else, never at the cost of a test the cycle
     approved (`test-removed`) but in the consolidation round below. Its permissions admit only test
     files ([Role rules](#role-rules)); leaf-close commits only those, journals the commit as
@@ -1777,10 +1779,10 @@ of the suite that catches it, so a break another test already kills asks for no 
   latest replan), carrying every test the cycle's judges asked to retire — the `retire` of each
   review record of a member and of each auditor return — and the mutations an audit holds. Its
   round goes to the test session (leaf-open), which merges cases, shares fixtures and retires
-  red-step scaffolding and tests that earn nothing, and declares the breaks its tests must still
-  catch. It never holds the cycle up: leaf-close approves the leaf at the head as it stands when
+  red-step scaffolding and tests that earn nothing, and redeclares the audit's breaks whose tests it
+  renamed or merged; blind to the implementation, it declares none of its own. It never holds the cycle up: leaf-close approves the leaf at the head as it stands when
   the round returns another status than `done` or `done_with_concerns`, or writes nothing; measures a commit by the `consolidation`
-  profile — no approved case binds it, while its tests pass and every mutation it declared and every
+  profile — no approved case binds it, while its tests pass and every mutation it redeclared and every
   one the audit held bites — and approves it there when it passes; and when it does not, reverts the
   commit with a new one (`git revert`, journalled `authored`) and approves the tree the review
   approved, the measured failures on the close record (`consolidation_dropped`). A revert git
@@ -3421,9 +3423,9 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
 | tdd | yes | full: fails at base, passes now; an upkeep file passes now | when declared | when given |
 | red | yes | red: fails now, fails at base; an upkeep file passes now | no | — |
 | green | yes | the red leaf's tests pass now | no | when given |
-| green, a test-author round | yes | the red leaf's tests and the round's new ones pass now | required, this round's alone | when given |
+| green, a test-author round | yes | the red leaf's tests and the round's new ones pass now; each new test file fails at base (the red's stubs) | when redeclared, each biting; a new test file failing at base needs none | when given |
 | audit | no series expected | no | required | — |
-| a cycle's consolidation round, on its green or audit | yes; no approved case binds it | no: its tests and the ones it changed pass now | required, beside an audit's held ones | a green's |
+| a cycle's consolidation round, on its green or audit | yes; no approved case binds it | no: its tests and the ones it changed pass now | an audit's held ones and any it redeclares; none of its own | a green's |
 
 - **Absent is never inferred, in either direction.** `absent` means the repository defines no such
   command; `failed` means a command ran and exited non-zero. A command nobody named and nobody
@@ -3496,10 +3498,10 @@ when none adds one, every file is held to the whole discriminator; a tests-only 
 every held mutation bites and each test file that adds a case is one a biting mutation names; a red
 leaf's test files that add a case fail now and at base, and its upkeep files pass now, under the same
 rule as a tdd leaf's; a green leaf's cycle tests pass; a green's test-author round's
-cycle tests and new tests pass, at least one mutation it declared this round, each biting, and each
-test file that adds a case one a biting mutation names; an audit's held mutations all bite over the
-cycle's tests; a consolidation round's tests run and pass, and every mutation it declared, at
-least one, and every one an audit held bites; trivial, verify, tdd, tests-only and green need their
+cycle tests and new tests pass, and each test file that adds a case fails at the round's base (the
+red's stubs) or is named by a biting mutation it redeclared; an audit's held mutations all bite over
+the cycle's tests; a consolidation round's tests run and pass, and every mutation it redeclared and
+every one an audit held bites; trivial, verify, tdd, tests-only and green need their
 named checks and their own tests not to have failed). The profile is the leaf's rigor and role
 and, on a green, the measured round's producer (`profileOf(leaf, producer)`; a consolidation
 round's is `consolidation`, `CONSOLIDATION` in `lib/verdict.mjs`): leaf-close passes it
@@ -4338,7 +4340,9 @@ measured before any producer round ([Resume and checkpoints](#resume-and-checkpo
 names each document, spec part or contract the brief told the producer to follow or match that
 neither its brief nor its worktree held: a declaration of what it worked without, never a ruling. A
 return that names any stops before it is measured, at every rigor, escalated `unread_reference`
-with them as its `detail`: work matched against a guess never merges. The reviewer's side of the
+with them as its `detail`: work matched against a guess never merges. A cycle's test round is kept
+from the implementation by design, so an entry of its naming a source file is dropped
+(`namesSource` in `lib/boundaries/leaf-close.mjs`): only a document it was told to follow counts. The reviewer's side of the
 same rule (`roles/reviewer.md`): a unit held to a document neither its brief nor the worktree carries
 is never ruled clean, but a major finding naming it. `status` is
 `done | done_with_concerns | blocked | needs_context | needs_tests | decompose | unsplittable |

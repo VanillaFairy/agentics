@@ -1,18 +1,18 @@
 // test/heart.test.mjs — pins lib/heart.mjs and the staged-file sweep in lib/store.mjs: a run beats
 // while synchronous work holds its main thread, says when that thread last turned, records the
-// stall once it turns again, stops beating when stopped; a staged file whose writer is gone is
+// stall once it turns again, stops beating when stopped, and starts an earlier process's heart file afresh; a staged file whose writer is gone is
 // removed, a living writer's never.
 //
 // Design: docs/DESIGN.md#detached-runs.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { startHeart } from '../lib/heart.mjs'
-import { noteSync, readJson, sleepMs, sweepStaged, writeJson } from '../lib/store.mjs'
+import { noteSync, readBeat, sleepMs, sweepStaged } from '../lib/store.mjs'
 
 const dir = (t) => {
   const d = mkdtempSync(join(tmpdir(), 'agentics-heart-'))
@@ -22,15 +22,15 @@ const dir = (t) => {
 const pause = (ms) => new Promise((go) => setTimeout(go, ms))
 
 test('the heart beats while synchronous work holds the main thread, and the stall is told once the thread turns', { timeout: 20000 }, async (t) => {
-  const file = join(dir(t), 'run.json')
-  writeJson(file, { run: 'r', pid: 0, heartbeat_at: new Date(0).toISOString() })
+  const file = join(dir(t), 'heart.jsonl')
+  writeFileSync(file, JSON.stringify({ pid: 1, heartbeat_at: new Date(0).toISOString(), loop_at: new Date(0).toISOString() }) + '\n')
   const stalls = []
   const heart = startHeart({ file, everyMs: 50, stallMs: 500, stalled: (ms, since, spent) => stalls.push({ ms, since, spent }) })
   await pause(1300)
   const held = Date.now()
   sleepMs(2500)
   noteSync('git merge', 2500)
-  const during = readJson(file)
+  const during = readBeat(file)
   await pause(1300)
   await heart.stop()
 
@@ -40,9 +40,10 @@ test('the heart beats while synchronous work holds the main thread, and the stal
   assert.equal(stalls.length, 1, JSON.stringify(stalls))
   assert.ok(stalls[0].ms >= 1000, JSON.stringify(stalls))
   assert.deepEqual(stalls[0].spent, [{ label: 'git merge', n: 1, ms: 2500 }], 'the stall names the synchronous work counted while it held')
-  const after = readJson(file).heartbeat_at
+  const after = readBeat(file).heartbeat_at
   await pause(300)
-  assert.equal(readJson(file).heartbeat_at, after, 'no beat after stop')
+  assert.equal(readBeat(file).heartbeat_at, after, 'no beat after stop')
+  assert.ok(!readFileSync(file, 'utf8').includes('"pid":1,'), 'the first beat started the file afresh')
 })
 
 test('sweepStaged removes a staged file whose writer is gone, at any depth, and keeps a living writer\'s and its own', (t) => {

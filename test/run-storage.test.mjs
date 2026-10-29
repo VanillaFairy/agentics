@@ -14,7 +14,7 @@ import {
   append, appendProject, appendRun, readLog, readProjectLog, readRunLog, runLog, runState,
 } from '../lib/ledger.mjs'
 import {
-  posix, resolveHandle, resultPath, runDir, runJsonPath, runLogFile, runLogPath, writeJson,
+  heartPath, posix, resolveHandle, resultPath, runDir, runJsonPath, runLogFile, runLogPath, writeJson,
 } from '../lib/store.mjs'
 import { DEAD_PID } from './harness/dead-pid.mjs'
 
@@ -178,6 +178,22 @@ test('a live pid with a stale heartbeat is stopped', (t) => {
   writeJson(runJsonPath(r, RUN), runJson({ heartbeat_at: ago(120001) }))
   assert.equal(runState(r, RUN, { now: NOW, alive: () => true }).state, 'stopped')
   assert.equal(runState(r, RUN, { now: NOW, alive: () => true, staleMs: 200000 }).state, 'live')
+})
+
+test('the heart file\'s last whole beat is the heartbeat when it names run.json\'s pid', (t) => {
+  const r = repo(t)
+  writeJson(runJsonPath(r, RUN), runJson({ heartbeat_at: ago(130000) }))
+  const beat = (at) => JSON.stringify({ pid: 4242, heartbeat_at: ago(at), loop_at: ago(at) }) + '\n'
+  writeFileSync(heartPath(r, RUN), beat(125000) + beat(5000) + '{"pid":42')
+  const st = runState(r, RUN, { now: NOW, alive: (pid) => pid === 4242 })
+  assert.equal(st.state, 'live')
+  assert.equal(st.run.pid, 4242)
+  assert.equal(st.run.heartbeat_at, ago(5000))
+  assert.equal(st.run.program, 'survey')
+  writeJson(runJsonPath(r, RUN), runJson({ pid: 4243, heartbeat_at: ago(1000) }))
+  const restarted = runState(r, RUN, { now: NOW, alive: (pid) => pid === 4243 })
+  assert.equal(restarted.run.heartbeat_at, ago(1000), 'a beat of another pid belongs to an earlier process')
+  assert.equal(restarted.state, 'live')
 })
 
 test('a dead pid with a fresh heartbeat is stopped', (t) => {

@@ -20,7 +20,7 @@ import { launch } from '../lib/run.mjs'
 import { costOf as costReport } from '../lib/status.mjs'
 import {
   claimLockPath, executionDir, executionRunId, posix, readJson, resolveHandle, resultPath, runDir,
-  runHome, runJsonPath, runLogFile, runLogPath, runsDir, writeJson, writeWhole,
+  heartPath, runHome, runJsonPath, runLogFile, runLogPath, runsDir, writeJson, writeWhole,
 } from '../lib/store.mjs'
 import { scriptedRunner } from './fast/harness/scripted-runner.mjs'
 import { DEAD_PID } from './harness/dead-pid.mjs'
@@ -110,6 +110,8 @@ function stopHome(repo, { cut = 'ended', pid = DEAD_PID, heartbeat_at } = {}) {
   writeFileSync(runLogPath(repo, HOME), kept.map((e) => JSON.stringify(e) + '\n').join(''))
   const meta = readJson(runJsonPath(repo, HOME))
   writeFileSync(runJsonPath(repo, HOME), JSON.stringify({ ...meta, pid, ...(heartbeat_at ? { heartbeat_at } : {}) }))
+  const at = heartbeat_at || meta.heartbeat_at
+  writeFileSync(heartPath(repo, HOME), JSON.stringify({ pid, heartbeat_at: at, loop_at: at }) + String.fromCharCode(10))
 }
 
 function held() {

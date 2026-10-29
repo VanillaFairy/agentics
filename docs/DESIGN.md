@@ -4751,8 +4751,8 @@ when none did, which is what ties the run's headless sessions to the session tha
 It is written whole when the run starts, `heartbeat_at` the start. Its `heart.jsonl` gets one
 `{pid, heartbeat_at, loop_at}` line every 10 seconds while the run's process lives, appended by
 `startHeart` in `lib/heart.mjs` and started afresh by each process's first beat; `runState` lays
-the last whole line (`readBeat`) over `run.json` unless `run.json`'s `heartbeat_at` is newer, so
-a missing heart file, or one an earlier process left, is no beat.
+the last whole line (`readBeat`) over `run.json` when it names `run.json`'s `pid`, so a missing heart
+file, or one an earlier process of the run left, is no beat.
 `result.json` is the program's result with `run` and `cost`.
 A search keeps its files in `searches/<search key>/` (the key's `:` written `~`): `calls.jsonl`, the
 call log; `server-<digest>.json`, the tool server's spec; `mcp-<digest>.json`, its MCP config

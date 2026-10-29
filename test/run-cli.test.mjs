@@ -17,7 +17,7 @@ import { canonical, fnv1a } from '../lib/plan-digest.mjs'
 import { coverageOf, dispatch, step } from '../lib/programs/common.mjs'
 import { HEARTBEAT_MS, PROGRAM_NAMES, launch } from '../lib/run.mjs'
 import {
-  configPath, effortDir, mainCheckout, posix, projectStateDir, readJson, resultPath, runDir, runJsonPath,
+  configPath, effortDir, heartPath, mainCheckout, posix, projectStateDir, readBeat, readJson, resultPath, runDir, runJsonPath,
   runLogFile, runLogPath, specPath, stampNow, writeJson,
 } from '../lib/store.mjs'
 import { scriptedRunner } from './fast/harness/scripted-runner.mjs'
@@ -103,6 +103,8 @@ function stop(repo, run, { cut = 'ended', pid = DEAD_PID, heartbeat_at } = {}) {
   writeFileSync(runLogPath(repo, run), kept.map((e) => JSON.stringify(e) + '\n').join(''))
   const meta = readJson(runJsonPath(repo, run))
   writeFileSync(runJsonPath(repo, run), JSON.stringify({ ...meta, pid, ...(heartbeat_at ? { heartbeat_at } : {}) }))
+  const at = heartbeat_at || meta.heartbeat_at
+  writeFileSync(heartPath(repo, run), JSON.stringify({ pid, heartbeat_at: at, loop_at: at }) + String.fromCharCode(10))
 }
 
 const FILE_ARGS = { question_file: { kind: 'file', required: true, as: 'question' } }
@@ -669,7 +671,7 @@ test('a run whose name is taken takes the next free -n', async (t) => {
   assert.equal(c.run, base + '-3')
 })
 
-test('the heartbeat rewrites heartbeat_at while the program runs and stops after its end', { timeout: 20_000 }, async (t) => {
+test('the heartbeat appends beats to the heart file while the program runs and stops after its end', { timeout: 20_000 }, async (t) => {
   const repo = makeRepo(t)
   let ticks = 0
   const clock = () => new Date(T0 + 1000 * ticks++)
@@ -679,24 +681,24 @@ test('the heartbeat rewrites heartbeat_at while the program runs and stops after
   await h.began
   const [run] = runDirs(repo)
   let first
-  for (let i = 0; !(first = readJson(runJsonPath(repo, run))?.heartbeat_at); i++) {
-    if (i > 500) assert.fail('run.json never readable')
+  for (let i = 0; !(first = readBeat(heartPath(repo, run))?.heartbeat_at); i++) {
+    if (i > 500) assert.fail('no beat ever landed')
     await sleep(10)
   }
   let moved = first
   for (let i = 0; moved === first; i++) {
     if (i > 500) assert.fail('heartbeat_at never changed while the program ran')
     await sleep(10)
-    moved = readJson(runJsonPath(repo, run))?.heartbeat_at ?? first
+    moved = readBeat(heartPath(repo, run))?.heartbeat_at ?? first
   }
   assert.ok(Date.parse(moved) > Date.parse(first))
   h.open()
   await running
-  const after = readJson(runJsonPath(repo, run))?.heartbeat_at
-  assert.ok(after, 'run.json is readable after the end')
+  const after = readBeat(heartPath(repo, run))?.heartbeat_at
+  assert.ok(after, 'the heart file is readable after the end')
   await sleep(200)
-  const later = readJson(runJsonPath(repo, run))?.heartbeat_at
-  assert.ok(later, 'run.json is readable after the end')
+  const later = readBeat(heartPath(repo, run))?.heartbeat_at
+  assert.ok(later, 'the heart file is readable after the end')
   assert.equal(later, after)
 })
 
@@ -864,7 +866,7 @@ test('a child runs the program under its run with the arguments its claim record
   assert.deepEqual(kinds(repo, parent.run), ['run', 'ended'])
   assert.deepEqual(seen.calls[0].args, claimed.args)
   assert.equal(seen.calls[0].args.question, QUESTION)
-  assert.equal(readJson(runJsonPath(repo, parent.run)).pid, process.pid)
+  assert.equal(readBeat(heartPath(repo, parent.run)).pid, process.pid, 'the child beats under its own pid')
 })
 
 test('a child of no recorded run is refused unknown_run', async (t) => {

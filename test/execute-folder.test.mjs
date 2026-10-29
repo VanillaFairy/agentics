@@ -30,7 +30,7 @@ import { planFolder } from '../lib/programs/execute/folder.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
 import { checkFolder, hashSpec } from '../lib/spec.mjs'
-import { dispatchKey, mainCheckout, posix, readConfig, readJson, sessionOf, specPath } from '../lib/store.mjs'
+import { GitHung, dispatchKey, mainCheckout, posix, readConfig, readJson, sessionOf, specPath } from '../lib/store.mjs'
 import { clearedAt, readTree } from '../lib/tree.mjs'
 import { closedSearch, closingRound, hitTurn } from './fast/harness/scout.mjs'
 import { executionRig } from './harness/program-rig.mjs'
@@ -1080,4 +1080,17 @@ test('a unit that settles waiting (requeued, routed, paused) is no fault, and is
   assert.equal(planned, 2, 'the requeued plan ran again: ' + seen.notes.join(' | '))
   const faults = w.rig.log.entries().filter((e) => e.kind === 'fault' && e.node === 'p')
   assert.deepEqual(faults.map((f) => f.detail), ['settled with nothing recorded'], 'only the second plan, which waited on nothing')
+})
+
+test("a unit whose git hung past its ceiling holds its node on a git_hung stop, never a program fault", async (t) => {
+  const w = world(t, { steps: clean(), writes: { 1: S1 } })
+  assert.equal((await w.run()).outcome, 'prepared', 'the fixture: p is planned and compiled')
+  recordAll(w.rig.xc, [parked('p', 'integration_critical', 'the landed work lacks y')])
+  putSpec(w.rig, EDITED_SPEC)
+  const hangs = async () => { throw new GitHung(['merge', 'x'], 1) }
+  const units = { planFolder: hangs, runLeaf: hangs, mergeUnit: hangs, reviewUnit: hangs }
+  const seen = { notes: [], leaves: new Map(), reviews: [], reviewsLost: [], surveysLost: [], drift: [], failed: [], stopped: '' }
+  await runUnits(w.ctx, w.rig.xc, {}, {}, seen, units)
+  const faults = w.rig.log.entries().filter((e) => e.kind === 'fault' && e.node === 'p')
+  assert.deepEqual(faults.map((f) => f.channel), ['git_hung'], JSON.stringify(faults))
 })

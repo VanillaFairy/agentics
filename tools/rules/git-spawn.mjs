@@ -1,8 +1,8 @@
 // tools/rules/git-spawn.mjs — only lib/store.mjs starts git.
 //
 // Design: docs/DESIGN.md#the-process-model. Every git the plugin runs is held to one environment
-// (`gitCommand`: no prompt, no editor, no lazy fetch, no optional lock, no automatic gc) and
-// counted; a git started anywhere else escapes both.
+// (`gitCommand`: no prompt, no editor, no lazy fetch, no optional lock, no automatic gc), counted,
+// and killed at one ceiling; a git started anywhere else escapes all three.
 
 export const id = 'git-spawn'
 
@@ -23,6 +23,6 @@ export function check(source, filePath = '') {
   const lineOf = (index) => source.slice(0, index).split('\n').length
   return [...source.matchAll(STARTS)].map((m) => ({
     line: lineOf(m.index),
-    message: 'git is started only by lib/store.mjs (gitSync, gitAsync, readBlobs): its env and its count hold every git',
+    message: 'git is started only by lib/store.mjs (gitSync, gitAsync, readBlobs): its env, its count and its ceiling hold every git',
   }))
 }

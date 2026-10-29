@@ -406,10 +406,8 @@ dispatched; what it found is printed by
 | `existing_execution` | an open execution's root is an ancestor or descendant of this one (`detail`) | resume that one (step 3 on its root; `lib/status.mjs list` shows it); relaunch with `--confirmed <checkpoint.seq>` only when both are meant to run |
 | `blocking_gaps` | a decision no entry realises, or evidence a node needs was not reached (the checkpoint's `gaps`) | a re-spec (c): an entry that realises the decision — or, on the user's go, relaunch with `--confirmed <checkpoint.seq>` |
 | `integration_lost` | an integration branch is gone or lost a recorded merge (the checkpoint's `lost`, each with the branches that hold its merge) | ask the user: restore the branch and relaunch, or, when their branch holds the work, record its landing (`landing.md`, "Already in the user's branch"); `--confirmed` never passes it |
-| `outside_work` | an integration branch holds commits no record accounts for (the checkpoint's `branches`) | adopt them: read `outside-work.md` beside this skill and follow it, then relaunch; `--confirmed` never passes it |
+| `outside_work` | an integration branch holds commits no record accounts for (the checkpoint's `branches`) | adopt them: read `outside-work.md` beside this skill and follow it (read it too when the user says work was done by hand), then relaunch; `--confirmed` never passes it |
 | `parked` | `--plan-only`: the plan is on disk and nothing was dispatched | show the plan (`lib/status.mjs show`); relaunch without `--plan-only` |
-
-When the user says work was done by hand, read `outside-work.md` too.
 
 **b. Escalations** — `{id, reason, said}`: its text is on the node's card (step 0), read from the
 return `said` names. A stop with a mechanical cause is yours: settle it as the table says, note
@@ -429,6 +427,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e> --node
 | `compile_refused`, `prepare_refused` | a planner-written folder's — retry: its planner is sent the refusals (`detail`) and revises, or returns `contract_changed`, which parks for the user. A problem in a spec the user wrote is a re-spec (`respec.md`) |
 | `unread_reference` | always — the producer could not read what `detail` names: when the node's brief now carries it, retry; else put the text in the entry or in the Design part it cites, have the edit ruled (`respec.md`), then retry |
 | `fails_full_suite`, `verify_not_converging` | its failures are timeouts or load faults that pass alone: retry once; the same again is the user's |
+| `git_hung` | never — a git hung past its ceiling twice at the same head: the user's machine (antivirus scanning the repository, a network drive); retry once they dealt with it |
 | `discriminator_undecidable` | it comes only after the file went back to the producer once and still passes at base. A file that only pins behaviour that held at base: rule it a net (below). One that should fail at base, for behaviour the leaf adds: note what it must assert, then retry. The user's only when you cannot tell which |
 
 `discriminator_undecidable`: a changed test file passes at base too. To rule it a regression
@@ -447,7 +446,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" note --repo . --effort <e> --node 
 ```
 
 **Faults** — `{id, channel}`: a plugin fault, never a question. Relaunch at once (step 3), asking
-nothing; a fault on the same node again is a plugin defect: take it through `self-improve`.
+nothing; a fault on the same node again is a plugin defect: take it through `self-improve`. A `git_hung` fault is the machine's, never a defect: relaunch.
 
 **c. Parked nodes** — `{id, return, said}`, the question on the node's card (step 0). A park
 whose answer the spec already gives is yours, settled as its row below says, and named in your

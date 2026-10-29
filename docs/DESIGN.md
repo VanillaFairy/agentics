@@ -394,6 +394,17 @@ again and again runs in a child the program awaits: a check
 `childCall` (`lib/child-call.mjs`) and its carried findings handed to `recordProbe` rather than
 checked again.
 
+Only `lib/store.mjs` starts git (`gitSync`, `gitAsync`, `readBlobs`; the `git-spawn` lint rule), under
+one held environment and one ceiling, `GIT_CEILING_MS`, ten minutes. The ceiling is a hang detector,
+not a budget ([L2](#l2--states-end-work-counts-dont)): git on a large or scanned repository takes
+seconds or a minute, and one still running at ten minutes waits on something nobody will answer. A
+synchronous git past it is killed and throws `GitHung`, so no caller reads a killed git as an answer;
+an awaited one resolves failed with the same message. A hang is the environment's, never a fault of
+the plugin's: in an execution the unit's node is held for the run by a `git_hung` stop, which the
+session relaunches past, and the same hang (the same git, at the same head of the node's branch) on
+the node again since it was cleared escalates `git_hung` as no progress (`hungRecords` in
+`lib/boundaries/records.mjs`); a run outside one records it on the `git_hung` channel.
+
 ### Programs
 
 A program is an async function over three ports: the store, git and the runner. A test hands it
@@ -1081,8 +1092,10 @@ nothing, a leaf a ruler on a moved base did not rule), `host_error` (a failure t
 classify), `checkout` (the user's `HEAD` or a branch ref moved during a call or a check, or the
 watch could not read the checkout: `watch_failed`, whose kept return is not read and whose call
 the next run resumes), `launch_failed` (a run that recorded nothing since it last started, or whose
-process never started). A fault in a run outside an execution names no node, and such a run
-records only `program` and `launch_failed`: a call of its that failed — a moved ref, a schema
+process never started). `git_hung` (a git killed at its ceiling, [The process model](#the-process-model))
+shares the channel's record and its hold, and is no plugin fault: the session relaunches past it, and
+the same hang again escalates instead. A fault in a run outside an execution names no node, and such a run
+records only `program`, `git_hung` and `launch_failed`: a call of its that failed — a moved ref, a schema
 failed twice, a failure the runner could not classify — is the `cause` on its `returned` line and
 a loss the program's coverage block reports ([Coverage block](#coverage-block)). No `escalated`
 event lands, so the node's status is what its last real record says. In an execution the node is
@@ -4205,7 +4218,8 @@ fix, answers?}]}`, one per unit of the brief.
   `host_stop`, `checkout_changed`, `thread_renewed`, `tool_used`); `deliver` and `step` in
   `lib/programs/common.mjs` (`message`, `step`);
   `lib/run.mjs` (`run`, `ended`, and `fault` on the
-  `program` and `launch_failed` channels); the execute program (`fault` on a unit's node);
+  `program`, `git_hung` and `launch_failed` channels); the execute program (`fault` on a unit's node,
+  and `hungRecords` in `lib/boundaries/records.mjs` the `git_hung` stop);
   `journalLine` in `lib/verify.mjs`; `measure` in `lib/measure.mjs` (`measure-done`); `executionLog`
   and `runLog` in `lib/ledger.mjs` (where each record goes).
 - **Restated in:** `lib/resume.mjs` and `lib/status.mjs` (readers); `runState` in `lib/ledger.mjs`

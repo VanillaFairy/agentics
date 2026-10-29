@@ -1,6 +1,6 @@
 // test/offload.test.mjs — lib/offload.mjs: lib work runs on one warm worker thread, its failures
 // reject (no in-process fallback), a hung git stays GitHung, a worker that died is replaced, and the
-// watchdog records a long request while it still runs.
+// watchdog records a long request while it still runs, counted from when the worker started it.
 //
 // Design: docs/DESIGN.md#the-process-model.
 
@@ -35,4 +35,14 @@ test('the watchdog records a long request while it still runs, once, with its la
   dog.stop()
   assert.deepEqual(seen.map((s) => [s.label, s.settled]), [['the long one', false]])
   assert.ok(Number.isFinite(Date.parse(seen[0].since)))
+})
+
+test('the watchdog counts a request from when the worker starts it: one queued behind a slow one is no stall', async () => {
+  const seen = []
+  const dog = watchdog((s) => seen.push(s.label), { stallMs: 300, everyMs: 20 })
+  const slow = offload(WORK, 'hold', [900], { label: 'slow' })
+  const queued = offload(WORK, 'hold', [1], { label: 'queued' })
+  assert.deepEqual(await Promise.all([slow, queued]), [900, 1])
+  dog.stop()
+  assert.deepEqual(seen, ['slow'])
 })

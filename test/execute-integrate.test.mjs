@@ -168,7 +168,8 @@ function driftWorld(t) {
   const pre = rootHead(rig)
   return {
     rig, a, pre, thread: 'ruler:drift:root:*',
-    brief: mergePath(rig.repo, rig.effort, rig.stamp, '.', pre).replace(/\.json$/, '.drift.md'),
+    // The brief the last batch wrote, beside its record, named by its identity.
+    brief: () => mergePath(rig.repo, rig.effort, rig.stamp, '.', kinds(rig, 'batch').at(-1).identity).replace(/\.json$/, '.drift.md'),
     merge: (extra = {}) => mergeUnit(rig.ctx, rig.xc, { intelligence: 'normal', target: '.', children: handed(a), ...extra }),
   }
 }
@@ -203,10 +204,10 @@ test('the drift ruler is one fresh ruler on its own thread of the root, briefed 
   const c = call(w.rig)
   assert.equal(c.role.name, 'ruler')
   assert.equal(c.node, '.')
-  assert.equal(c.thread.key, driftThread(readJson(w.brief.replace(/\.drift\.md$/, '.json'))), "the thread names the record's open drift")
+  assert.equal(c.thread.key, driftThread(readJson(w.brief().replace(/\.drift\.md$/, '.json'))), "the thread names the record's open drift")
   assert.equal(c.resume, false)
   assert.deepEqual(c.schema, schemaOf('ruler_premises'))
-  assert.equal(c.brief, readFileSync(w.brief, 'utf8'), 'the brief is the text of the drift brief file')
+  assert.equal(c.brief, readFileSync(w.brief(), 'utf8'), 'the brief is the text of the drift brief file')
   assert.ok(c.brief.includes('b'), 'and the file is not empty')
   assert.deepEqual(c.tier, tierFor(loadRole('ruler').role, { intelligence: 'normal' }))
   const dispatched = dispatchedOf(w.rig, 'ruler')

@@ -178,7 +178,7 @@ test('a conflict holds back its own unit and what is built on it; an unrelated s
   assert.notEqual(statusOf(w.r, 'p'), 'merged', 'p is built on n, so it waits with it')
 })
 
-test('a cycle member handed without its tip waits: nothing of the cycle merges, verifies or stops', SLOW, async (t) => {
+test('a cycle member handed without its tip is refused: nothing of the cycle merges, verifies or stops', SLOW, async (t) => {
   const w = world(inTest(t), [root(),
     leaf('r', { rigor: 'tdd-pair', role: 'red', expects: ['test/r.test.mjs'] }),
     leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'], expects: ['src/r.mjs'] })])
@@ -187,14 +187,13 @@ test('a cycle member handed without its tip waits: nothing of the cycle merges, 
   const recorded = stateOf(w.r).length
   const out = await mergeBatch(w.xc, { target: '.', children: handed(r), cycles: [['r', 'g']] })
 
-  assert.equal(out.status, 'waiting')
-  assert.deepEqual(out.merged, [])
+  assert.deepEqual([out.ok, out.error.kind], [false, 'cycle_split'])
   assert.deepEqual(stopsOf(out), [], 'no merge_no_progress, no fails_on_integration')
   assert.equal(headOf(w.r, '.'), pre)
   assert.equal(stateOf(w.r).length, recorded, 'no batch-started, no measurement')
 })
 
-test('the same children at the same heads onto the same head are batched once; another try records nothing', SLOW, async (t) => {
+test('the same children at the same heads onto the same head are batched once; handed again with the outcome taken up, each child stops merge_no_progress', SLOW, async (t) => {
   const w = world(inTest(t), [root(),
     leaf('m', { rigor: 'trivial', expects: ['README.md'] }),
     leaf('n', { rigor: 'trivial', expects: ['README.md'], deps: ['m'] })])
@@ -203,20 +202,17 @@ test('the same children at the same heads onto the same head are batched once; a
   assert.deepEqual(ids((await batch(w, handed(m, n))).merged), ['m'])
   const first = await batch(w, handed(n))
   assert.equal(first.conflict.id, 'n', 'the first try at the head m left')
-  const recorded = stateOf(w.r).length
+  const started = kindOf(stateOf(w.r), 'batch-started').length
+  const replayed = await batch(w, handed(n))
+  assert.deepEqual(replayed.conflict, first.conflict, 'the outcome read back: its conflict still owes its ruling')
+  assert.equal(kindOf(stateOf(w.r), 'batch-started').length, started, 'nothing merged or measured again')
+  w.xc.log.append('judged', { node: 'n', trigger: 'conflict', head_sha: n.head_sha, heads: {}, facts: [], paths: first.conflict.paths, outcome: 'replan', after: [], why: 'w', said: 'r1' })
   const again = await batch(w, handed(n))
   assert.deepEqual(again.merged, [])
   assert.equal(again.conflict, null, 'n was handed a conflict once already, at this very head')
-  assert.equal(again.status, 'repeated')
-  assert.equal(stateOf(w.r).length, recorded, 'nothing recorded: the program waits for something to change')
-})
-
-test('a batch that merged nothing and saw nothing fail escalates merge_no_progress', SLOW, async (t) => {
-  const w = world(inTest(t), [root(), addOne('x')])
-  integrationOf(w)
-  const out = await batch(w, [])
-  assert.deepEqual(stopsOf(out), [['.', 'escalated', 'merge_no_progress']])
-  assert.equal(statusOf(w.r, '.'), 'escalated')
+  assert.equal(kindOf(stateOf(w.r), 'batch-started').length, started, 'nothing merged or measured again')
+  assert.deepEqual(stopsOf(again), [['n', 'escalated', 'merge_no_progress']], 'the child stops, never the target')
+  assert.deepEqual(kindOf(eventsOf(w.r), 'escalated', '.'), [], 'the target carries no stop of its own')
 })
 
 test('a batch that cannot run escalates merge_batch_failed, once', SLOW, async (t) => {

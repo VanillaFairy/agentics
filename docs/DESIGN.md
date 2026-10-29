@@ -1004,7 +1004,10 @@ if it does. A run that beats while `loop_at` is stale reads `turning: false`, an
 A turn that comes more than 15 seconds late is recorded `stalled {ms, since, spent[{label, n, ms}]}`
 in the run's log once the thread turns, which the watch prints: `spent` is the synchronous git time
 counted meanwhile by subcommand (`noteSync` and `takeSync` in `lib/store.mjs`), the largest first,
-so the line names what held the thread. At its
+so the line names what held the thread. Every git the plugin runs goes through `gitSync` (or, in the
+search server, `gitCommand`) in `lib/store.mjs`, held to what nobody answers mid-run: no credential
+prompt, no editor, no lazy fetch of a partial clone's missing object, no optional index lock, and no
+automatic gc or maintenance. At its
 start a run removes the files `writeWhole` staged under its home whose writer's pid is gone
 (`sweepStaged` in `lib/store.mjs`): a process killed between a write and its rename leaves one. One without `ended` whose pid is
 gone, or whose pid the system gave another program, shows as stopped, and starting the same command

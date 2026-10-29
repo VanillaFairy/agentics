@@ -4806,7 +4806,8 @@ which `recordCommands` writes as the investigator's.
   or Task tool, a `subagent_type`, or an `agentics:` name that is not a skill; `self-improve` alone
   starts its plugin fix agent); gate clauses in
   gated skills (`design-gate`); a stated task-tool fallback (`task-tool-fallback`); size budgets
-  (`size-budget`); and that nothing in `test/fast/` imports `child_process` or a helper from `test/`
+  (`size-budget`); only `lib/store.mjs` starts git (`git-spawn`: no child-process call in `lib/` whose
+  program is git elsewhere), so one environment and one count hold every git; and that nothing in `test/fast/` imports `child_process` or a helper from `test/`
   outside it (`fast-tier`).
 - **The suite** runs through `tools/suite.mjs`: `node tools/suite.mjs` runs everything and `--fast`
   only `test/fast/`, the files that spawn no process, which finish in about a second. The fast tier

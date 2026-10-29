@@ -65,6 +65,19 @@ function play(step, session, key) {
   return { code: 0, lines: [init, ...searched, turn, result({ subtype: 'success', is_error: false, structured_output: output })], stderr: '' }
 }
 
+/**
+ * Whether a call's key reads as script key `k`, segment by `:` segment: a segment of `k` ending in
+ * `*` matches any segment with its prefix, so a test names a thread whose digest it does not compute.
+ */
+const fits = (k, key) => {
+  const want = k.split(':')
+  const got = key.split(':')
+  return want.length === got.length && want.every((w, i) => w === got[i] || (w.endsWith('*') && got[i].startsWith(w.slice(0, -1))))
+}
+
+/** The steps the script names for `key`: its own entry, else the one entry whose `*` key it fits. */
+const stepsOf = (script, key) => script[key] || Object.entries(script).find(([k]) => k.includes('*') && fits(k, key))?.[1] || []
+
 export function scriptedRunner(script, { log, now = () => '2026-01-01T00:00:00.000Z' }) {
   const next = new Map()
   const calls = []
@@ -76,7 +89,7 @@ export function scriptedRunner(script, { log, now = () => '2026-01-01T00:00:00.0
   const proc = { alive: () => false, kill() {} }
   const starts = []
   const spawnFor = (key, call) => async (args, { stdin = '', onSpawn = () => {}, onLine = () => {} } = {}) => {
-    const steps = script[key] || []
+    const steps = stepsOf(script, key)
     const i = next.get(key) || 0
     if (i >= steps.length) throw new Error('the script has no start ' + (i + 1) + ' for ' + key)
     next.set(key, i + 1)

@@ -83,7 +83,9 @@ function readyLeaf(rig, id, files) {
 
 const approve = (rig, leaf) => rig.log.append('approved', { node: leaf.id, head_sha: leaf.head_sha, review_rounds: 0, at_integration: true })
 const merge = (rig, folder, ...leaves) => mergeUnit(rig.ctx, rig.xc, { target: folder, children: leaves.map((l) => ({ id: l.id, head_sha: l.head_sha })), intelligence: 'normal' })
-const rulerKey = (trigger, leaf) => `ruler|${leaf.id.split('/')[0]}|ruler:${trigger}:${nodeKey(leaf.id)}:${leaf.head_sha.slice(0, 8)}`
+/** A ruler's script key: its thread up to the facts digest and the clearing, which `*` stands in for. */
+const rulerKey = (trigger, leaf) => `ruler|${leaf.id.split('/')[0]}|ruler:${trigger}:${nodeKey(leaf.id)}:${leaf.head_sha.slice(0, 8)}:*:c*`
+
 const rulings = (...list) => ({ output: { rulings: list.map(([unit, ruling, question = '']) => ({ unit, ruling, why: unit + ' ' + ruling, question })) } })
 
 /** What the schedule would merge now, from the records. */

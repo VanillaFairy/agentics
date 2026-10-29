@@ -136,16 +136,19 @@ test('a fault lands once per node and channel in a run, and again after a new ru
   assert.equal(fresh(repo, [fault('a', 'program')]).length, 1, 'a new run')
 })
 
-test('a drift ruling lands once per node, contract and head; a stale ruling once per node and base', (t) => {
+test('a ruling lands once per node and the dispatch that said it: the same ruler replayed lands nothing, any other lands', (t) => {
   const repo = store(t)
-  const drift = (head, contract = 'C1') => ({ kind: 'drift-ruled', fields: { node: 'a', contract, head_sha: head, ruling: 'unaffected', why: 'w', said: 'd1' } })
-  const stale = (base) => ({ kind: 'stale-ruled', fields: { node: 'a', base_now: base, ruling: 'unaffected', why: 'w', said: 'd2' } })
-  write(repo, drift('h1'))
-  write(repo, stale('b1'))
-  assert.deepEqual(fresh(repo, [drift('h1'), stale('b1')]), [])
-  assert.equal(fresh(repo, [drift('h2')]).length, 1, 'another head')
-  assert.equal(fresh(repo, [drift('h1', 'C2')]).length, 1, 'another contract')
-  assert.equal(fresh(repo, [stale('b2')]).length, 1, 'another base')
+  const drift = (said, contract = 'C1', head = 'h1') => ({ kind: 'drift-ruled', fields: { node: 'a', contract, head_sha: head, ruling: 'unaffected', why: 'w', said } })
+  const stale = (said, base = 'b1') => ({ kind: 'stale-ruled', fields: { node: 'a', base_now: base, ruling: 'unaffected', why: 'w', said } })
+  const judged = (said, head = 'h1') => ({ kind: 'judged', fields: { node: 'a', trigger: 'contention', head_sha: head, outcome: 'resolve', said } })
+  write(repo, drift('d1'))
+  write(repo, stale('d2'))
+  write(repo, judged('d3'))
+  assert.deepEqual(fresh(repo, [drift('d1'), stale('d2'), judged('d3')]), [], 'each replayed')
+  assert.equal(fresh(repo, [drift('d1', 'C2')]).length, 1, 'another contract')
+  assert.equal(fresh(repo, [drift('d4')]).length, 1, 'another ruler on the same drift: the question re-asked')
+  assert.equal(fresh(repo, [stale('d5')]).length, 1, 'another ruler on the same base')
+  assert.equal(fresh(repo, [judged('d6')]).length, 1, 'another ruler at the same head, uncleared')
 })
 
 test('a message lands once per node, thread, round and msg', (t) => {

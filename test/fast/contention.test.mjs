@@ -18,7 +18,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { combineRulings, contentionOf, mergedWhereTheyMeet, waitsOn } from '../../lib/contention.mjs'
-import { conflictJudged } from '../../lib/boundaries/judge.mjs'
+import { conflictJudged, judgeThread } from '../../lib/boundaries/judge.mjs'
 import { deriveStatus, liveNodes } from '../../lib/tree.mjs'
 
 const leaf = (id, extra = {}) => ({ id, kind: 'leaf', title: 'do ' + id, rigor: 'tdd', expects: [], ...extra })
@@ -126,9 +126,34 @@ test('a conflict never serializes: what it conflicts with has already merged', (
 })
 
 test('a standing serialize makes the unit wait at its head only', () => {
-  const events = [{ kind: 'judged', node: 'u', trigger: 'contention', head_sha: 'H', outcome: 'serialize', after: ['p'], seq: 1 }]
-  assert.deepEqual(waitsOn(events, 'u', 'H'), ['p'])
-  assert.deepEqual(waitsOn(events, 'u', 'H2'), [])
+  const tree = effort([folder('.'), leaf('u'), leaf('p')], [{ kind: 'judged', node: 'u', trigger: 'contention', head_sha: 'H', outcome: 'serialize', after: ['p'] }])
+  assert.deepEqual(waitsOn(tree, 'u', 'H'), ['p'])
+  assert.deepEqual(waitsOn(tree, 'u', 'H2'), [])
+})
+
+test('a ruling from before its node was cleared orders and covers nothing: the retried or revised node is a new question', () => {
+  const judged = { kind: 'judged', node: 'y/b', trigger: 'contention', head_sha: 'B', outcome: 'serialize', after: ['x/a'] }
+  const cleared = { kind: 'replanned', node: 'y/b', reason: 'retry_escalated', by: 'session' }
+  const ask = (tree) => contentionOf(tree, 'x/a', { head: 'A', net: ['src/shared.js'], ...reads({ 'y/b': ['src/shared.js'] }) })
+  assert.deepEqual(ask(effort(TWO_FOLDERS, [judged])), [], 'the serialize stands')
+  assert.equal(ask(effort(TWO_FOLDERS, [judged, cleared])).length, 1, 'the retry cleared it')
+  assert.deepEqual(waitsOn(effort(TWO_FOLDERS, [judged]), 'y/b', 'B'), ['x/a'])
+  assert.deepEqual(waitsOn(effort(TWO_FOLDERS, [judged, cleared]), 'y/b', 'B'), [], 'a cleared serialize holds nothing')
+})
+
+// ---------------------------------------------------------------- the ruler's replay identity
+
+test('a judge question replays on the same observations of an uncleared node; changed facts or a clearing ask a fresh ruler', () => {
+  const facts = [{ node: 'y/b', kind: 'overlap', paths: ['src/shared.js'] }]
+  const ask = { trigger: 'contention', id: 'x/a', head: 'A'.repeat(40), facts, heads: { 'y/b': 'B1' }, paths: ['src/shared.js'] }
+  const tree = effort(TWO_FOLDERS)
+  const thread = judgeThread(tree, ask)
+  assert.equal(judgeThread(effort(TWO_FOLDERS), ask), thread, 'the same question, the same thread')
+  assert.notEqual(judgeThread(tree, { ...ask, heads: { 'y/b': 'B2' } }), thread, 'the other leaf moved')
+  assert.notEqual(judgeThread(tree, { ...ask, facts: [...facts, { node: 'y/b', kind: 'folder', paths: ['src/b.js'] }] }), thread, 'another fact')
+  const retried = effort(TWO_FOLDERS, [{ kind: 'replanned', node: 'x/a', reason: 'retry_escalated', by: 'session' }])
+  assert.notEqual(judgeThread(retried, ask), thread, "the user's word on the unit re-asks it")
+  assert.equal(judgeThread(effort(TWO_FOLDERS, [{ kind: 'replanned', node: 'y/b', reason: 'retry_escalated' }]), ask), thread, "another node's clearing is not this question's")
 })
 
 // ---------------------------------------------------------------- which conflicts the judge rules

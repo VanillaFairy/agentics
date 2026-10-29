@@ -39,10 +39,10 @@ import { append } from '../lib/ledger.mjs'
 import { readOnlyPermissions } from '../lib/permissions.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
-import { dispatchKey, mergePath, nodeKey, specPath, stalePath, writeWhole } from '../lib/store.mjs'
+import { dispatchKey, mergePath, nodeKey, readJson, specPath, stalePath, writeWhole } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
 import { programContext } from '../lib/programs/common.mjs'
-import { gateUnit, mergeUnit, reviewUnit, ruleUnit } from '../lib/programs/execute/integrate.mjs'
+import { driftThread, gateUnit, mergeUnit, reviewUnit, ruleUnit } from '../lib/programs/execute/integrate.mjs'
 import { executionRig } from './harness/program-rig.mjs'
 
 // merge-batch and the gate measure through `node --test` grandchildren, which refuse to run under
@@ -167,7 +167,7 @@ function driftWorld(t) {
   const a = readyLeaf(rig, 'a', { 'src/api.mjs': 'export const api = 2\n' }, 'Change the api')
   const pre = rootHead(rig)
   return {
-    rig, a, pre, thread: 'ruler:drift:root:' + pre.slice(0, 8),
+    rig, a, pre, thread: 'ruler:drift:root:*',
     brief: mergePath(rig.repo, rig.effort, rig.stamp, '.', pre).replace(/\.json$/, '.drift.md'),
     merge: (extra = {}) => mergeUnit(rig.ctx, rig.xc, { intelligence: 'normal', target: '.', children: handed(a), ...extra }),
   }
@@ -203,7 +203,7 @@ test('the drift ruler is one fresh ruler on its own thread of the root, briefed 
   const c = call(w.rig)
   assert.equal(c.role.name, 'ruler')
   assert.equal(c.node, '.')
-  assert.equal(c.thread.key, w.thread)
+  assert.equal(c.thread.key, driftThread(readJson(w.brief.replace(/\.drift\.md$/, '.json'))), "the thread names the record's open drift")
   assert.equal(c.resume, false)
   assert.deepEqual(c.schema, schemaOf('ruler_premises'))
   assert.equal(c.brief, readFileSync(w.brief, 'utf8'), 'the brief is the text of the drift brief file')
@@ -713,7 +713,7 @@ test('a stale ruler whose dispatch failed is unruled: the leaf is held on a role
   assert.equal(kinds(w.rig, 'parked').length, 0)
 })
 
-test("a drift over a sub-folder is ruled on the folder's own thread, named by the record's pre", SLOW, async (t) => {
+test("a drift over a sub-folder is ruled on the folder's own thread, named by the record's open drift", SLOW, async (t) => {
   const rig = executionRig(t, { spec: TRIVIAL_FOLDER })
   const pre = 'abcdef0123456789abcdef0123456789abcdef01'
   const record = mergePath(rig.repo, rig.effort, rig.stamp, 'c', pre)
@@ -721,7 +721,8 @@ test("a drift over a sub-folder is ruled on the folder's own thread, named by th
   const text = 'DRIFT BRIEF OVER c\n'
   writeWhole(brief, text)
   writeWhole(record, { target: 'c', pre, head_sha: pre, drift: [{ node: 'y', contract: 'api', files: ['src/y.mjs'] }] })
-  const thread = 'ruler:drift:' + nodeKey('c') + ':' + pre.slice(0, 8)
+  const thread = driftThread(readJson(record))
+  assert.ok(thread.startsWith('ruler:drift:' + nodeKey('c') + ':'))
   rig.script({ [rulerKey(thread)]: [rulings(ruling('y', 'unaffected'))] })
   const out = await ruleUnit(rig.ctx, rig.xc, { kind: 'drift', record, brief, intelligence: 'normal' })
 

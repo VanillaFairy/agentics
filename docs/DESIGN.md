@@ -246,6 +246,16 @@ answered a question the user's word or a new plan has since re-asked. A `brief_c
 clears nothing: it is code telling a resumed thread its context moved, never the user's word on the
 node.
 
+A replay identity is the question code puts to a judge (a digest of its observations) plus where the
+node it rules on was cleared, wherever the user's word may re-ask the same observations: a contention
+or conflict ruler's thread (`judgeThread`), a merge-batch's identity, the standing of a `judged`
+ruling, the cut-off of a journalled measurement. Content-addressed caches — anchors, surveys, probe
+steps, a measurement's key — take no clearing, and nor do the threads a retry resumes on purpose: a
+leaf's producers, its reviewers and its convergence ruler. A ruling recorded from a dispatch stands
+exactly while a record with the same `said` does: the same dispatch replayed lands nothing, any other
+ruler's lands. A decision that outlives a unit's settle comes from records. Only what is in flight in
+this process lives in memory.
+
 **Why:** a record written after the fact by someone else leaves a window where work exists and
 nothing says so; a status written down outlives what it described.
 
@@ -486,7 +496,7 @@ over:
 
 | program | scope | threads (roles) |
 |---|---|---|
-| `execute` | the effort and the folder | `producer:<leaf>` (implementer or test-author; a cycle's test rounds on `producer:<red>`), `auditor:<leaf>` (auditor), `reviewer:<leaf>:<n>` and `integration:<folder>:<n>` (reviewer), `planner:<folder>` (planner), `ruler:drift:<target key>:<pre8>` and `ruler:stale:<base head>` (ruler), `ruler:converge:<leaf>:<n>` (ruler, the convergence ruling after a leaf's review round `n`), `investigator` (investigator), and its nested runs' own under `survey:<folder>:<basis>/` and `probe:<folder>:<n>/` |
+| `execute` | the effort and the folder | `producer:<leaf>` (implementer or test-author; a cycle's test rounds on `producer:<red>`), `auditor:<leaf>` (auditor), `reviewer:<leaf>:<n>` and `integration:<folder>:<n>` (reviewer), `planner:<folder>` (planner), `ruler:drift:<target key>:<digest of its open drift>` (`driftThread`), `ruler:<trigger>:<unit key>:<head8>:<digest>:c<cleared>` (`judgeThread`) and `ruler:stale:<base head>` (ruler), `ruler:converge:<leaf>:<n>` (ruler, the convergence ruling after a leaf's review round `n`), `investigator` (investigator), and its nested runs' own under `survey:<folder>:<basis>/` and `probe:<folder>:<n>/` |
 | `survey` | the question's digest, the roots, the ground | `plan` (analyst), `scout:<topic>` (scout), `history` (historian), `docs` (doc-researcher), `ruler:search:<name>:<turn>` (ruler, a search's convergence ruling), `judge:<n>` and `rejudge:<n>` (analyst) |
 | `probe` | the artefact, by its absolute path | `locate` (scout), `ruler:search:locate:<turn>` (ruler), `axes` (analyst), `relocate` (analyst), `prober:<n>` (analyst) |
 | `solutions` | the capability's digest | `frame` (analyst), `research:<angle>` (doc-researcher), `repo` (scout), `ruler:search:<name>:<turn>` (ruler), `assess` (analyst) |
@@ -2779,7 +2789,8 @@ The spec boundaries of a planner's folder are in [Autonomous review](#autonomous
 
 **A record lands once.** A boundary appends a record only while it is not already the node's word
 (`freshRecords`): a stop while it stands, an approval at the same head, a review's claims at the
-same head while they stand, a fault once per node and channel in a run, a ruling once per head, a
+same head while they stand, a fault once per node and channel in a run, a ruling (`judged`,
+`drift-ruled`, `stale-ruled`) once per node and ruling dispatch (`said`), a
 message once per node, thread, round and `msg`. So a boundary run again
 after a crash lands nothing twice, and the same decision taken again — after a retry cleared a stop,
 at a new round — lands again.
@@ -2878,14 +2889,17 @@ merge, a `ruler_contention` ruling, about two things (`lib/contention.mjs`, `lib
   lowest common ancestor has not merged): a path of the unit's net diff that the other leaf's net
   diff also holds is an `overlap`; one the other leaf only expects is a `folder` fact. A fact a
   standing `resolve` ruling of the unit covers is none, and a ruling stands only while the unit's
-  head and the other leaf's are the ones it was given. A unit with facts is set aside from the
+  head and the other leaf's are the ones it was given and its node has not been cleared since
+  ([P3](#p3--state-is-derived-records-are-written-as-things-happen)). A unit with facts is set aside from the
   batch.
 - **Conflict.** A leaf whose executor has a shell to conclude a merge, whose merge conflicted — a
   cycle's tip only when every conflicting path is one its implementer may write, and its rebase
-  round goes to that implementer — unless a `resolve` of a conflict on the same paths at an earlier approved head stands:
-  that remedy failed, and the conflict escalates `merge_conflict`.
+  round goes to that implementer — unless a `resolve` of a conflict on the same paths at an earlier approved head stands
+  since the leaf was cleared: that remedy failed, and the conflict escalates `merge_conflict` until the user's retry asks again.
 
-The merge unit dispatches the ruler on `ruler:<trigger>:<unit key>:<head>`, on the folder being
+The merge unit dispatches the ruler on `judgeThread`'s `ruler:<trigger>:<unit key>:<head8>:<digest>:c<cleared>`
+— the digest of the facts, the other leaves' heads and the paths, and where the unit was cleared —
+so the same question replays its ruling and changed facts or the user's word ask a fresh one, on the folder being
 merged into, tool-less, handed both sides' plan entries and changes (for a conflict, what merged into
 the folder since the unit was cut); it rules each contended leaf, or the one unit `integration` for a
 conflict, `serialize`, `resolve`, `replan` or `cant_rule`. A unit the ruler left out of its rulings is
@@ -2897,7 +2911,7 @@ a ruler's `affected` does ([Replanning](#replanning)), and the unit stays out of
 plan revised it; else a `serialize` makes the unit wait, but only on a leaf first dispatched before
 it, so waits never form a cycle (a serialize against a later leaf reads as `resolve`, and that leaf's
 own merge meets this unit); else it is resolved. Every outcome is one `judged` event, once per node,
-trigger and head.
+trigger and ruling dispatch (`said`).
 
 - **serialize** — the unit stays approved, so it occupies no slot, and `schedule` merges it only once
   each leaf it waits on has merged where they meet. It then merges into its folder's branch, which
@@ -3896,8 +3910,8 @@ messages' `execution`; no session is told them again, and no status is derived f
 {by}` and `resumed {by}` (node `''`, the session's pause of the execution it names and its end,
 `pause` and `resume` under [Session calls](#session-calls); no status is derived from them). A boundary appends an event only while it is not
 already the node's word (`freshRecords` in `lib/boundaries/records.mjs`, [Boundaries](#boundaries)); a
-`judged` at a head is the node's word only until the node is cleared, so the ruling a retried
-node is given again at the same head is recorded and read. When the tick loop has nothing left to
+`judged` lands once per node, trigger and `said`, and is read only while it is newer than where its
+node was cleared, so the ruling a retried node is given again at the same head is recorded and read. When the tick loop has nothing left to
 run and nothing waiting, every unit that last settled with nothing recorded is stopped,
 `merge_no_progress` for a merge and `no_progress` for any other, so a run never ends over work it
 never reached without a stop that names it (L1).

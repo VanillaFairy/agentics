@@ -63,6 +63,15 @@ test('a done return naming a document it could not read escalates unread_referen
   assert.equal(po({ ret: { status: 'done', text: TEXT, unread: ['', '  '] } }).next, 'measure', 'blank lines name nothing')
 })
 
+test("a cycle's test round naming the implementation it is kept from as unread is measured; a document it names still escalates", () => {
+  const ret = (unread) => ({ status: 'done_with_concerns', text: TEXT, unread })
+  const source = ['src/core/critters/RoamBrain.ts — denied to this role; mutation placed in steering.ts instead']
+  assert.equal(po({ leaf: GREEN, role: 'test-author', ret: ret(source) }).next, 'measure', 'withheld by design, not a reference it was told to match')
+  const spec = ['.agentics/e1/roamers/DESIGN.md, the Ports block of the Design']
+  assert.equal(po({ leaf: GREEN, role: 'test-author', ret: ret(spec) }).next, 'stop', 'a document it was told to follow')
+  assert.equal(po({ ret: ret(source) }).next, 'stop', 'an implementer is never kept from the source: the same entry is a real gap')
+})
+
 test("an auditor's return, which carries no status, is measured", () => {
   assert.equal(po({ leaf: AUDIT, role: 'auditor', ret: AUDITOR_RETURN }).next, 'measure')
 })

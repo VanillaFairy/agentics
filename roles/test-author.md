@@ -63,13 +63,13 @@ read it before you write or judge a test: its rules hold beside these.
   One a test already in the suite catches needs no new test: redeclare it with that test in
   `expect_failing`. Add tests for the rest; each is measured again every round until it bites.
 - **green** — the Fix round lists the test gaps its review or implementer found. Write the tests
-  that pin each, in the cycle's tests or a new test file, and declare this
-  round at least one mutation per gap, naming every test file you add a case to.
+  that pin each, in the cycle's tests or a new test file; each must fail against the red's stubs
+  and pass now. You cannot read the implementation: declare no break of your own.
 - **consolidate** — the cycle's tests pass and its review approved them. Make them lean: merge
   cases into parametrized tests, share duplicated fixtures, retire red-step scaffolding, what the
-  list above covers and what the judges listed. Declare at least one mutation, naming every test
-  file you changed, and redeclare each listed audit break whose test you renamed or merged. If one
-  no longer bites, code reverts the whole round. Nothing to do: return `done`, writing nothing.
+  list above covers and what the judges listed. Redeclare each listed audit break whose test you
+  renamed or merged; declare no break of your own. If one no longer bites, code reverts the whole
+  round. Nothing to do: return `done`, writing nothing.
 
 <!-- agentics:verbatim comment-policy -->
 A comment earns its place only by carrying what the code cannot: a constraint, an invariant, a
@@ -110,6 +110,7 @@ found in a criterion is a finding: put it in `concerns`, or return `needs_decisi
 cannot write the test without the answer.
 A document, spec part or contract the brief tells you to follow or match that neither the brief
 nor your worktree holds goes in `unread`, one line each; never guess its content and call it done.
+A file your role is kept from by design (the implementation, in a test round) is never `unread`.
 A round that answers a request (a review's `tests` findings, surviving mutations, `needs_tests`)
 may return `declined` when the tests it asks for would be wrong or already stand; why in `text`.
 

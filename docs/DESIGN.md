@@ -1222,8 +1222,10 @@ edited since approval is left out, and develop keeps the last approved graph, bu
 node still takes what its parent's entry says of it (`realises`, `after`, contracts, ground,
 context): those are the parent spec's to say. When a spec is
 approved again with other text, compile parks every consumer of a contract whose definition the
-edit changed (`contract_changed`) — the entries that provide it with their paths, and the Design's
-`### ` parts naming it or those paths, or the whole Design when none does (`contractDefinition` in
+edit changed (`contract_changed`) — the entries that provide it with their paths, and what the
+Design says of it: a `### ` part whose heading names it, whole; elsewhere the declarations on lines
+naming it or one of its files, and each paragraph or line of code naming the contract, one of those
+files or one of those declarations; the whole Design when nothing names it (`contractDefinition` in
 `lib/spec.mjs`), compared with the text it last compiled; a plan-only edit parks no consumer — gives every node realising a changed decision a `decision_changed`
 revision, parks the folder when work under it was dispatched (`spec_changed`), and retires the
 entries it no longer lists — refusing, by name, one with dispatched or merged work. A parked node
@@ -2856,8 +2858,10 @@ merge, a `ruler_contention` ruling, about two things (`lib/contention.mjs`, `lib
 The merge unit dispatches the ruler on `ruler:<trigger>:<unit key>:<head>`, on the folder being
 merged into, tool-less, handed both sides' plan entries and changes (for a conflict, what merged into
 the folder since the unit was cut); it rules each contended leaf, or the one unit `integration` for a
-conflict, `serialize`, `resolve`, `replan` or `cant_rule`. Code combines (`combineRulings`): a unit
-left unruled or `cant_rule` escalates the leaf (`contention_unruled`, or `merge_conflict` for a
+conflict, `serialize`, `resolve`, `replan` or `cant_rule`. A unit the ruler left out of its rulings is
+its miss, as a reviewer's is: it is asked once more, on the same thread, for those units by name,
+and their rulings join the first (`judgeClose`'s `also`). Code combines (`combineRulings`): a unit
+still left unruled or `cant_rule` escalates the leaf (`contention_unruled`, or `merge_conflict` for a
 conflict) — the only way the judge reaches the user; else a `replan` goes to the program's replan, as
 a ruler's `affected` does ([Replanning](#replanning)), and the unit stays out of merges until its
 plan revised it; else a `serialize` makes the unit wait, but only on a leaf first dispatched before

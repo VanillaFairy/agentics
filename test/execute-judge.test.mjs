@@ -211,3 +211,23 @@ test("a leaf a resolve sent a rebase opens the rebase round, never resuming what
   assert.deepEqual(rounds.at(-1), [2, 'implementer'], 'round 1 returned unclosed is not closed again; the rebase opens round 2')
   assert.equal(out.outcome, 'stopped')
 })
+
+test('a ruler that leaves a contended unit out is asked once more for it, by name, before anything escalates', SLOW, async (t) => {
+  const { rig, a } = contended(t)
+  rig.script({ [rulerKey('contention', a)]: [rulings(), rulings(['y/b', 'resolve'])] })
+  await merge(rig, 'x', a)
+  const calls = kinds(rig, 'dispatched').filter((e) => e.role === 'ruler').map((e) => e.round)
+  assert.deepEqual(calls, [1, 2], 'the second call is the re-ask')
+  const [judged] = kinds(rig, 'judged')
+  assert.equal(judged.outcome, 'resolve', 'the re-asked ruling counts')
+  assert.deepEqual(kinds(rig, 'escalated'), [], 'nothing reached the user')
+})
+
+test('a ruler that leaves the unit out again escalates contention_unruled, naming it', SLOW, async (t) => {
+  const { rig, a } = contended(t)
+  rig.script({ [rulerKey('contention', a)]: [rulings(), rulings()] })
+  await merge(rig, 'x', a)
+  const [stop] = kinds(rig, 'escalated')
+  assert.deepEqual([stop.node, stop.reason], ['x/a', 'contention_unruled'])
+  assert.match(stop.detail, /y\/b: left unruled/)
+})

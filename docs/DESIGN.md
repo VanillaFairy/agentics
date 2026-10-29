@@ -489,7 +489,10 @@ open execution of its effort whose root is its folder, else a new execution stam
 (`-2`, `-3`… when taken); its run id is `<effort>.<stamp>`. A live home refuses `run_live`; a
 stopped one whose current run recorded nothing since its `run` line refuses `launch_failed`;
 otherwise the run starts there with the arguments it was given, whatever an earlier run of it was
-given, and `run.json` is rewritten. A run is live while the pid in its `run.json` is alive and its
+given, and `run.json` is rewritten. A program may also ask for its result once its `ended` is on
+disk (`afterEnded(ctx, args, result, {launchRun})`), `launchRun` a start of this CLI as the
+session makes one: `execute`'s starts itself again when it stopped for a pause the session has
+cleared since ([Session calls](#session-calls)). A run is live while the pid in its `run.json` is alive and its
 heartbeat fresh, or while that pid, its heartbeat stale, is still a node process running a `run.mjs`
 ([Detached runs](#detached-runs)). The scope is what a second start is refused
 over:
@@ -1011,7 +1014,11 @@ variable ([Self-checks](#self-checks)).
 A program started with `--detach` runs in a child process that outlives the tool call that started
 it, and its records are how anything follows it. The parent claims the run, starts the same command
 with `--child <run>` as a detached child whose output goes to the run's `run.log`, writes the
-child's pid into `run.json` inside the claim, and prints `{run, pid, log, result_file}` at once.
+child's pid into `run.json` and appends the run's `run` line naming it, both inside the claim, so a
+start racing it sees the run live and is refused `run_live`; it prints `{run, pid, log, result_file}`
+at once. Once a run's `ended` is on disk, a program that asks (`afterEnded`) is handed its result:
+an execution that stopped for the session's pause, which the session has cleared since, starts
+again detached.
 `lib/status.mjs watch --run <run>` prints a line for every `host_stop` and `fault` recorded after
 the `seq` its `--since <seq>` names (a non-negative safe integer; any other is refused), or after it
 began when it is given none (`host_stop <dispatch>: <cause> until <until or ->`, `fault <channel>:
@@ -1020,7 +1027,7 @@ event of the execution that is still its node's open stop when the watch reads i
 <reason>`, `<id> parked <return>`); then `ended <status>: complete=<bool> result=<file>` at the
 run's end — the `ended` after the run's latest `run` line, wherever it stands against `--since`, and
 on an execution's run only one whose `seq` is above the `--since` given, so a relaunch whose child
-has not yet appended its `run` line is not ended by the previous run's `ended` — or `stopped: start
+has no `run` line yet is not ended by the previous run's `ended` — or `stopped: start
 the same command again to resume run <run>` when the run reads stopped. The session's monitor shows
 each line as it comes. A program run's monitor passes `--since 0`, so a fault recorded before the
 watch began, or between two of its re-arms, is printed all the same: the run's log is its own. An
@@ -4398,15 +4405,19 @@ the session's, called as CLIs:
   nothing new. One `paused` event under that execution (`pauseExecution`), unless one already
   stands. The running program reads it at its next tick, each of its leaves before its next round
   or review and again once its slot is open, and a merge batch once its branch lock is held
-  (`pausedAt` in `lib/boundaries/execution.mjs`): a wait never carries a unit past a pause; what runs finishes and records, nothing
+  (`pausedNow` in `lib/boundaries/execution.mjs`, the one reader): a wait never carries a unit past a pause; what runs finishes and records, nothing
   new is launched, a merge included, and the run ends `stopped: pause` once nothing runs, resumable.
   The pause stands over a relaunch until `resume`. Prints `{ok, paused, already, run, live}`
   (`paused` the event's seq) or `{ok: false, error}`: `unknown_run`, `not_an_execution`, `closed`.
 - **resume** — `resume --repo <r> --run <run>`: a `resumed` event after the standing pause
   (`resumeExecution`; `resumed: 0` when none stands); a live run goes on at its next tick, and a
   run that is no longer live is started again, detached, with the arguments its run.json records
-  but those that shape only a new execution or stop it (`relaunchArgv`): `{ok, resumed, run,
-  relaunched}`, `relaunched` what `run.mjs` prints for a start, or null for a live run.
+  but those that shape only a new execution or stop it (`relaunchRun`, `relaunchArgv`): `{ok, resumed, run,
+  relaunched}`, `relaunched` what `run.mjs` prints for a start, or null for a live run. The resume
+  appends `resumed` and then reads whether the run is live; a run ending appends `ended` and then
+  reads the pause (`afterEnded` in `lib/programs/execute.mjs`), starting itself again when it stopped
+  for a pause that is cleared. Whichever writes second sees the other's write, so a resume that
+  lands while a paused run ends is never lost, and the claim refuses the second of two starts.
 - **retry** — `retry --node <id>…`: `{retried[], error}`; each `replanned {reason:
   retry_escalated}` names the open execution holding the node (the latest open one whose root is
   the node or above it), or `''`.

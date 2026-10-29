@@ -21,6 +21,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { pauseRun, resumeRun } from '../lib/boundary.mjs'
+import { afterEnded } from '../lib/programs/execute.mjs'
 import { append } from '../lib/ledger.mjs'
 import { acquireAsync, releaseSlots } from '../lib/locks.mjs'
 import { dispatchKey } from '../lib/store.mjs'
@@ -154,6 +155,33 @@ describe('the execute program', { concurrency: 4 }, () => {
     assertComplete(resumed.relaunched.result)
     assert.equal(statusOf(rig, 'b'), 'merged')
     assert.equal((await resumeRun(rig.repo, rig.run, { launchRun: async () => ({ ok: true }) })).resumed, 0, 'nothing stands to resume')
+  })
+
+  test('a resume that saw the run live before its end is read back once it ended: the run starts again, and a second start is refused', T, async (t) => {
+    const w = world(t, { spec: chainSpec('a', 'b') })
+    const { rig } = w
+    w.script({ [IMPL('a')]: [done()], [IMPL('b')]: [done()] }, rootReview(1, claim('D1 holds')))
+    let paused = null
+    w.before.push((call) => { if (call.node === 'a' && !paused) paused = pauseRun(rig.repo, rig.run) })
+    const spawned = []
+    const over = { spawnChild: ({ args }) => { spawned.push(args); return 4242 }, alive: () => true }
+    const held = await w.start(['--effort', E], over)
+    assert.equal(held.result.stopped, 'pause', 'the fixture: the run stopped for the pause')
+    assert.deepEqual(spawned, [], 'the pause stood when it ended: nothing started again')
+
+    // The race: the session's resume landed while the run was still live, so resumeRun started nothing.
+    append(rig.repo, E, 'events', [{ kind: 'resumed', node: '', execution: rig.stamp, by: 'session' }])
+    const launched = []
+    const out = await afterEnded({ repo: rig.repo, run: rig.run, execution: rig.stamp }, { effort: E }, held.result, {
+      launchRun: async (o) => { launched.push(o.argv); return { ok: true } },
+    })
+    assert.equal(out.ok, true)
+    assert.deepEqual(launched, [['execute', '--effort', E, '--repo', rig.repo, '--detach']], 'read after its ended: the cleared pause starts the run again')
+
+    const first = await w.start(['--effort', E, '--detach'], over)
+    assert.equal(first.ok, true, JSON.stringify(first))
+    const second = await w.start(['--effort', E, '--detach'], over)
+    assert.equal(second.error && second.error.kind, 'run_live', 'the claim saw the first start: ' + JSON.stringify(second))
   })
 
   test('budget: a leaf the target cannot cover at the measured tokens per merged leaf is not started', T, async (t) => {

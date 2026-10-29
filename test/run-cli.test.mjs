@@ -816,7 +816,7 @@ test('a detached start prints its run, pid, log and result file at once', async 
   assert.equal(out.log, runLogFile(repo, out.run))
   assert.equal(out.result_file, resultPath(repo, out.run))
   assert.equal(seen.calls.length, 0)
-  assert.deepEqual(entries(repo, out.run), [])
+  assert.deepEqual(entries(repo, out.run).map((e) => [e.kind, e.pid]), [['run', 4242]], "the claim's run record, naming the child: a start racing it sees it live")
 })
 
 test('the detached child is the same command with --child, its output to run.log', async (t) => {

@@ -690,6 +690,7 @@ test('contractDefinition is the providers and the declared part, or the whole De
   assert.equal(def(design({ other: 'Proximity may run inside a drain.' })), def(design()), 'text outside the declared part moves nothing')
   assert.notEqual(def(design({ den: 'A den is set up twice.' })), def(design()), 'the declared part')
   assert.notEqual(def(design({ paths: 'src/den2.ts' })), def(design()), 'a provider\'s paths')
+  assert.notEqual(def(design({ part: ' "Proximity"' }), 'Den'), def(design()), 'a provider that declared another part, read under this one')
   const whole = { part: '' }
   assert.equal(declaredPart(parseSpec(design(whole)), 'den-port'), '')
   assert.notEqual(def(design({ ...whole, other: 'Proximity may run inside a drain.' })), def(design(whole)),

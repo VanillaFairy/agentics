@@ -1317,11 +1317,11 @@ edited since approval is left out, and develop keeps the last approved graph, bu
 node still takes what its parent's entry says of it (`realises`, `after`, contracts, ground,
 context): those are the parent spec's to say. When a spec is
 approved again with other text, compile parks every consumer of a contract whose definition the
-edit changed (`contract_changed`) — the entries that provide it with their paths, and the part of
-the Design its `provides` declares, or the whole Design when it declares none (`contractDefinition`
-in `lib/spec.mjs`), the text it last compiled and the text now both read under the declaration as it
-stands now (`declaredPart`); a part the kept text does not hold counts as changed, and a plan-only
-edit parks no consumer. No pattern over the Design's prose ever narrows a definition: code slices
+edit changed (`contract_changed`) — the entries that provide it with their paths and the parts they
+declare, and the part of the Design its `provides` declares, or the whole Design when it declares
+none (`contractDefinition` in `lib/spec.mjs`), the text it last compiled and the text now both read
+under the declaration as it stands now (`declaredPart`); a part the kept text does not hold, or any
+change of the declaration, counts as changed, and a plan-only edit parks no consumer. No pattern over the Design's prose ever narrows a definition: code slices
 only by the part a spec declares — gives every node realising a changed decision a `decision_changed`
 revision, parks the folder when work under it was dispatched (`spec_changed`), and retires the
 entries it no longer lists — refusing, by name, one with dispatched or merged work. A parked node

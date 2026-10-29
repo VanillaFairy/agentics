@@ -401,7 +401,7 @@ const partedApi = ({ loader = '`load(path)`, then `parse(text)`.', type = 'The c
   API.replace('`load(path)`, then `parse(text)`.', '### Loader\n\n' + loader + '\n\n' + heading + '\n\n' + type)
     .replace('provides: config-type (src/api/types.js)', 'provides: config-type (src/api/types.js)' + declared)
 
-test('a declared part moves its consumers only when that part changed, both texts read under the declaration as it stands', () => {
+test('a declared part moves its consumers only when that part or the declaration changed, both texts read under the declaration as it stands', () => {
   const reloadParked = (from, to) => {
     const repo = effort({ '.': PARTED_ROOT, api: from })
     approve(repo, '.')
@@ -414,7 +414,8 @@ test('a declared part moves its consumers only when that part changed, both text
   const frozen = '`load(path)` returns a frozen object.'
   assert.equal(reloadParked(partedApi(), partedApi({ loader: frozen })), false, 'an edit outside the part')
   assert.equal(reloadParked(partedApi(), partedApi({ type: 'The config type is frozen.' })), true, 'an edit of the part')
-  assert.equal(reloadParked(partedApi({ declared: '' }), partedApi()), false, 'a declaration added over a part the kept text holds unchanged')
+  assert.equal(reloadParked(partedApi({ declared: '' }), partedApi()), true, 'a declaration added over a part the kept text holds unchanged')
+  assert.equal(reloadParked(partedApi({ declared: ' "Loader"' }), partedApi()), true, 'a declaration moved to another part, both unchanged')
   assert.equal(reloadParked(partedApi({ declared: '', heading: '### Config' }), partedApi()), true, 'a part the kept text lacks counts as changed')
   assert.equal(reloadParked(partedApi({ declared: '' }), partedApi({ declared: '', loader: frozen })), true, 'no part declared: the whole Design')
 })

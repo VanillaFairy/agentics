@@ -1,12 +1,13 @@
 // test/fast/git-command.test.mjs — pins what every git the plugin runs is held to, so a run never
-// waits on a prompt, an editor, a lazy fetch or an automatic gc nobody started.
+/// waits on a prompt, an editor, a lazy fetch or an automatic gc nobody started; and the oldest git
+// preflight runs on.
 //
 // Design: docs/DESIGN.md#the-process-model.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { gitCommand } from '../../lib/store.mjs'
+import { GIT_MIN, gitCommand, gitTooOld } from '../../lib/store.mjs'
 
 test('a git command can wait on nothing nobody will answer', () => {
   const { argv, env } = gitCommand('/repo', ['merge', '--no-edit', 'b'])
@@ -24,4 +25,15 @@ test("a caller's env goes over the held env and the process's own", () => {
   assert.equal(env.GIT_INDEX_FILE, '/tmp/i')
   assert.equal(env.GIT_EDITOR, 'vi')
   assert.equal(env.PATH ?? env.Path, process.env.PATH ?? process.env.Path)
+})
+
+test('a git older than the one the series check needs, or one whose version cannot be read, is too old', () => {
+  const at = (major, minor) => 'git version ' + major + '.' + minor + '.0'
+  const [major, minor] = GIT_MIN
+  assert.equal(gitTooOld(at(major, minor)), false)
+  assert.equal(gitTooOld(at(major, minor + 17) + '.windows.3'), false)
+  assert.equal(gitTooOld(at(major + 1, 0)), false)
+  assert.equal(gitTooOld(at(major, minor - 1)), true)
+  assert.equal(gitTooOld(at(major - 1, 99)), true)
+  assert.equal(gitTooOld(''), true)
 })

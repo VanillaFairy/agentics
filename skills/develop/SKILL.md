@@ -394,7 +394,7 @@ never sees, does not count, nor does a re-ask that refers to one ("given those u
 
 **First, when the result holds `error`:** preflight refused and nothing was dispatched (the
 unreached line `preflight refused (<kind>)`). `no_base`: `--base-ref` names no commit;
-`commands_unreadable`: the commands file is not JSON; any other `kind`, what its `message` says.
+`commands_unreadable`: the commands file is not JSON; `git_too_old`: the user updates git; any other `kind`, what its `message` says.
 Fix it and start again (step 3).
 
 **a. Checkpoint.** `checkpoint {reason, detail, seq}`, non-null, means nothing new was

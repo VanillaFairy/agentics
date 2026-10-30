@@ -32,14 +32,15 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 import { ensureIntegration, ensureLeaf } from '../lib/integration.mjs'
 import { append } from '../lib/ledger.mjs'
 import { readOnlyPermissions } from '../lib/permissions.mjs'
 import { loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
-import { dispatchKey, mergePath, nodeKey, readJson, specPath, stalePath, writeWhole } from '../lib/store.mjs'
+import { parseSpec } from '../lib/spec.mjs'
+import { dispatchKey, mergePath, nodeKey, posix, readJson, specPath, stalePath, writeWhole } from '../lib/store.mjs'
 import { readTree } from '../lib/tree.mjs'
 import { programContext } from '../lib/programs/common.mjs'
 import { driftThread, gateUnit, mergeUnit, reviewUnit, ruleUnit } from '../lib/programs/execute/integrate.mjs'
@@ -366,8 +367,9 @@ test("the integration reviewer is a fresh read-only reviewer in the folder's wor
   assert.deepEqual(c.tier, tierFor(role, { intelligence: 'low' }))
   assert.deepEqual(c.schema, schemaOf('reviewer'))
 
-  const spec = readFileSync(specPath(w.rig.repo, w.rig.effort, '.'), 'utf8').replace(/\r\n/g, '\n').trim()
-  assert.ok(c.brief.includes(spec), 'the root spec\'s text')
+  const spec = parseSpec(readFileSync(specPath(w.rig.repo, w.rig.effort, '.'), 'utf8'))
+  for (const name of ['Intent', 'Decisions', 'Design', 'Plan']) assert.ok(c.brief.includes(spec.sections[name].body), 'the root spec\'s ' + name)
+  assert.ok(c.brief.includes('Its Evidence is at ' + posix(resolve(specPath(w.rig.repo, w.rig.effort, '.')))), 'its Evidence, by absolute path')
   assert.ok(c.brief.includes('git diff ' + w.rig.base_sha + ' ' + w.head), 'the span, base to the gate\'s head')
   const files = git(w.rig.repo, 'diff', '--name-only', w.rig.base_sha, w.head).split('\n').filter(Boolean)
   assert.deepEqual(files.sort(), ['src/a.mjs', 'src/b.mjs', 'test/a.test.mjs', 'test/b.test.mjs'])
@@ -543,8 +545,14 @@ test("a folder's integration reviewer is handed its sub-efforts' specs and the e
   const out = await reviewUnit(rig.ctx, rig.xc, { id: '.', where: { base: rig.base_sha, worktree: rootWt }, unreviewed: ['c/k', 'y'], intelligence: 'normal' })
   assert.equal(out.outcome, 'reviewed', JSON.stringify(out))
   const root = rig.calls.find((c) => c.thread.key === THREAD_ROOT).brief
-  const child = readFileSync(specPath(rig.repo, rig.effort, 'c'), 'utf8').replace(/\r\n/g, '\n').trimEnd()
-  assert.ok(root.split('## The specs of its sub-efforts')[1].includes(child), "the root's reviewer reads c's own spec")
+  const full = specPath(rig.repo, rig.effort, 'c')
+  const whole = parseSpec(readFileSync(full, 'utf8'))
+  const section = root.split('## The specs of its sub-efforts')[1].split('## The spec, your yardstick')[0]
+  assert.ok(section.includes(posix(resolve(full))), "the root's reviewer is given the absolute path of c's full spec")
+  for (const name of ['Intent', 'Decisions', 'Plan']) assert.ok(section.includes('## ' + name), name + ' is in the brief')
+  assert.ok(section.includes(whole.sections.Plan.body), "c's plan is in the brief whole")
+  assert.ok(!section.includes('## Design'), "c's Design is behind the path")
+  assert.ok(!section.includes('## Evidence'), "c's Evidence is behind the path")
 })
 
 test("a sub-folder's integration review is not earned when no child lacked a review and fewer than two met there", SLOW, async (t) => {

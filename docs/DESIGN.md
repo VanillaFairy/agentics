@@ -650,9 +650,10 @@ fails `brief_too_large`, a terminal class like `budget`, so a relaunch builds th
 meets the same refusal unless what it is built from changed. A resumed call is not checked: its
 session carries the brief, and a session past half its window is renewed instead (below).
 
-**A brief is sized when it is built, and sent whole or not at all.** A brief is the evidence its
-agent is handed inline; a part cut from it and replaced by a path to open would send the agent to
-read what code should have handed it, so no part ever is. The budgets sit beside the window: one
+**A brief is sized when it is built, and sent whole or not at all.** A brief is the core its agent
+works from; a builder may hand text an agent reaches for only sometimes as an absolute path instead
+(the integration review's links to each sub-effort's Design and Evidence), by what the text is and
+never by how large it is, so nothing is ever cut to make a brief fit. The budgets sit beside the window: one
 part of a brief may hold half of what a first read may (`PART_BYTES` in `lib/roles.mjs`), so no one
 body of text crowds out the rest, and the whole may hold what the role leaves of the bound
 (`briefRoomOf` in `lib/programs/common.mjs`: `BRIEF_BYTES` less the role's system prompt and charge).
@@ -676,7 +677,7 @@ shaped part's key:
 | owner | its parts | a refusal naming one |
 |---|---|---|
 | `work` | a leaf's own work: its Task, criteria, decisions, expected files and reads, its cited Design part, what it consumes, its effort files, measures, commands; its plan entry a ruler reads; a folder's spec a planner or reviewer reads | in a leaf's dispatch (its round, its reviewer, its convergence ruler), a `decompose` to the folder's planner, or `needs_respec` in a folder the user wrote ([Replanning](#replanning)); elsewhere, as `user` |
-| `user` | the repository's guidance, one part per file; a changed spec's diff, the user's answers, each fenced so no answer opens a section, and the specs a ruler reads whole, one part per spec; a folder's spec edit and the user's word on it, and its sub-efforts' specs, one part per spec, that an integration reviewer reads; a probed artefact | a stop for the user naming the file and its size: in an execution `escalated brief_too_large` (`dispatchFailed` in `lib/boundaries/records.mjs`), from `rule` `shrink_brief` ([A changed spec](#a-changed-spec)); the message names the remedy (`remedyOf` in `lib/briefs/size.mjs`): a guidance file, which every brief carries, the user cuts or splits; anything else means the work is too big, and it is split into subtasks, or at an effort's root into separate efforts that land in turn |
+| `user` | the repository's guidance, one part per file; a changed spec's diff, the user's answers, each fenced so no answer opens a section, and the specs a ruler reads, one part per spec; a folder's spec edit and the user's word on it, and its sub-efforts' specs, one part per spec, that an integration reviewer reads; a probed artefact | a stop for the user naming the file and its size: in an execution `escalated brief_too_large` (`dispatchFailed` in `lib/boundaries/records.mjs`), from `rule` `shrink_brief` ([A changed spec](#a-changed-spec)); the message names the remedy (`remedyOf` in `lib/briefs/size.mjs`): a guidance file, which every brief carries, the user cuts or splits; anything else means the work is too big, and it is split into subtasks, or at an effort's root into separate efforts that land in turn |
 | `code` | everything else: the charge, thread messages, a probe's ground and settled specs, rendered records; a leaf's evidence and gotchas, a ruler's changes, a producer's return a reviewer reads, a survey's evidence a planner reads, each bounded where it is built (`bounded` and `boundedDiff` in `lib/briefs/size.mjs`), whole items or files kept first and a closing line naming what was left out | none in practice: code bounds what it accumulates as it builds the brief, shedding the least valuable first and declaring what it shed; a refusal that still names one is a defect of its builder, a `role` fault whose detail carries the part, its bytes and budget |
 
 Code gives way first: a bound sheds what code owns before a refusal is laid on the work or the user.
@@ -1366,7 +1367,11 @@ criterion corrected — is ruled, and the user is never asked to approve it. The
 `lib/respec.mjs` brief it inline, the text `rulerBrief`'s (`lib/briefs/respec.mjs`): it previews the
 compile of the text as it stands (`compileEffort` with `preview`, which reads the edited spec as
 approved, validates the batch and writes nothing) and writes one brief: the change as a diff against
-the copy compile kept, every node it reaches, and every spec it names, whole. The spec itself is one
+the copy compile kept, every node it reaches, and every spec it names: the changed spec but for its
+Evidence, each other as its Intent, Decisions and Plan, each with the absolute path of the whole.
+A ruling that rests on a spec's Design cites what it read in `design_read`; one whose citation does
+not resolve, or names a spec the journal shows the ruler did not open, goes back (`citationHolds`).
+The spec itself is one
 node, ruled with the work dispatched or merged under it and with every stop its approval would clear
 — a park compile answers because the spec owns the node, a stop on an entry that gets a new
 revision, wherever it is stated — each with its question. Every consumer of a contract it provides,
@@ -3465,9 +3470,17 @@ the same way, and a fallback is no longer a separate path but the empty prior.
   adopted leaf with its commits, and the commits that belong to no leaf; and "Leaves with no
   discriminating test": each leaf `undiscriminated` names (`lib/verdict.mjs`), its nets and their
   whys, for the reviewer to judge whether its criterion checks pin the change. It carries "The specs
-  of its sub-efforts", each child with a spec of its own in a fence (`childSpecs` in
-  `lib/programs/execute/integrate.mjs`), the yardstick for what the folder's entry for it claims;
-  and "Entries that run after this folder" (`laterEntries`): every unmerged entry outside the folder
+  of its sub-efforts", the yardstick for what the folder's entry for each child claims: each child
+  with a spec of its own as its Intent, Decisions and Plan in a fence, under the absolute path of the
+  full spec, which holds its Design and Evidence (`childSpecs` and `specSections`; the store is
+  outside the reviewer's worktree). The folder's own spec is handed whole but for its Evidence, whose
+  path it names. Evidence needs no citation. A claim resting on a child's Design names what it read in
+  `design_read`, and code holds it to that (`heldToDesign` in `lib/boundaries/integration.mjs`): the
+  citation must resolve in that child's Design, and the runner's journal must show the reviewer read
+  that spec (`tool_used`, a Read inside a store). A claim that fails is recorded `cant_tell`, whatever
+  it ruled, so it reaches landing as unsettled. Whether a claim rests on a Design at all is the
+  reviewer's to say: code holds a citation to the file, and cannot find a claim that should have made one. It carries
+  "Entries that run after this folder" (`laterEntries`): every unmerged entry outside the folder
   that waits on it, topmost first, with the decisions it realises. A claim one of them realises is
   not the folder's to have met: the reviewer leaves it out of its claims and names it in its notes.
   Besides findings it returns a
@@ -5000,9 +5013,10 @@ threw.
 `{units[{unit, ruling: clean | findings, ids[], why}], findings[{id, severity: critical | major |
 minor, claim, evidence, failure_scenario, remedy?: code | tests | retire}], fix_rulings[{id, status: fixed |
 not_fixed | regressed, evidence}], claims[{claim, ruling: met | equivalent | under | over |
-deviates | spec_defect | cant_tell, evidence, failure_scenario, unit}], notes}` (`failure_scenario` is
-`''` on every claim but a drift that names its failure; `unit` is the `claim:<n>` of the last
-review's claim the entry restates, else `''`). The units are those the brief lists to rule — a
+deviates | spec_defect | cant_tell, evidence, failure_scenario, unit, design_read}], notes}`
+(`failure_scenario` is `''` on every claim but a drift that names its failure; `unit` is the
+`claim:<n>` of the last review's claim the entry restates, else `''`; `design_read` is the
+`<sub-effort id>#<Design part>` a claim rests on, else `''`). The units are those the brief lists to rule — a
 leaf review's criteria, changed files and failing approved cases, an integration review's decisions,
 changed files, `spec` and the last review's claims — never one it lists as standing
 ([Review delta](#review-delta)); a unit with no ruling is open. A leaf review returns `claims: []`. `remedy` is who must change to fix a finding

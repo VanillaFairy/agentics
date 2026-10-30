@@ -23,6 +23,7 @@ import { rule } from '../lib/programs/rule.mjs'
 import { launch } from '../lib/run.mjs'
 import { rulerBrief } from '../lib/briefs/respec.mjs'
 import { respecBrief, respecSettle } from '../lib/respec.mjs'
+import { parseSpec } from '../lib/spec.mjs'
 import { BRIEF_BYTES, loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
 import { mainCheckout, pidAlive, posix, readJson, resultPath, runLogFile, specPath } from '../lib/store.mjs'
@@ -114,7 +115,7 @@ test('a change that cannot be ruled is refused with its next step and dispatches
 })
 
 test('a ruler whose brief is past what it can read is never sent it: the change is refused for the user to shrink the spec it names', async (t) => {
-  const pad = (text, mark) => text.replace('## Design\n', '## Design\n\n' + Array.from({ length: 900 }, (_, i) => mark + ' ' + i + ' ' + 'z'.repeat(100)).join('\n') + '\n')
+  const pad = (text, mark) => text.replace('## Intent\n', '## Intent\n\n' + Array.from({ length: 900 }, (_, i) => mark + ' ' + i + ' ' + 'z'.repeat(100)).join('\n') + '\n')
   const rig = programRig({ files: { 'CLAUDE.md': GUIDE + '\n' + 'g'.repeat(30000) + '\n' } })
   t.after(() => rig.cleanup())
   writeSpec(rig.repo, '.', pad(ROOT, 'ROOT_PAD'))
@@ -156,8 +157,8 @@ test("the ruler's brief holds the change, every node and every spec it names who
   assert.ok(text.includes('+`load(path)` returns a frozen object.'), 'the line the change added')
   const lines = text.split('\n').map((l) => l.trim())
   for (const id of brief.nodes) assert.ok(lines.includes('### ' + id), 'a heading for ' + id)
-  assert.ok(text.includes(EDITS.wording.text.trim()), 'the changed spec as it now stands, whole')
-  assert.ok(text.includes(ROOT.trim()), 'the root spec, which states the entry of the consumer cli, whole')
+  assert.ok(text.includes(parseSpec(EDITS.wording.text).sections.Design.body), 'the changed spec as it now stands, its Design too')
+  assert.ok(text.includes(parseSpec(ROOT).sections.Plan.body), 'the root spec, which states the entry of the consumer cli')
 })
 
 test("the ruler's brief carries the repository's guidance", async (t) => {
@@ -167,11 +168,11 @@ test("the ruler's brief carries the repository's guidance", async (t) => {
   assert.ok(run.calls[0].brief.includes(GUIDE))
 })
 
-test("the ruler's brief names no file to read or write", async (t) => {
+test("the ruler's brief names no file to read or write but each spec's full text", async (t) => {
   const { rig, folder, brief } = changed(t)
   const run = rig.relaunch(rulerScript(rulingsOf(brief)))
   await rule(run.ctx, args(folder))
-  const text = run.calls[0].brief
+  const text = run.calls[0].brief.replace(/^Full spec: .*$/gm, '')
   const repoPaths = [posix(mainCheckout(rig.repo)), mainCheckout(rig.repo), posix(rig.repo), rig.repo]
   for (const p of repoPaths) assert.ok(!text.includes(p), 'a path into the repository: ' + p)
   for (const p of [brief.rulings, brief.brief]) {
@@ -340,6 +341,18 @@ test('refused rulings go back to the ruler, and its corrected rulings settle', a
   assert.equal(run.calls[1].brief, renderMessage({ msg: message.msg, payload: message.payload }))
   assert.equal(out.status, 'approved', JSON.stringify(out))
   assert.deepEqual(JSON.parse(readFileSync(brief.rulings, 'utf8')), rulingsOf(brief), 'the rulings file holds the corrected round, whole')
+})
+
+test('a ruling citing a Design the ruler never opened goes back, and is refused when it stands', async (t) => {
+  const { rig, folder, brief } = changed(t)
+  const path = brief.parts.specs[0].path
+  const citing = { rulings: rulingsOf(brief).rulings.map((r) => ({ ...r, design_read: path + '#Design' })) }
+  const run = rig.relaunch(rulerScript(citing, citing))
+  const out = await rule(run.ctx, args(folder))
+  assert.equal(run.calls.length, 2, 'it went back once')
+  assert.deepEqual([out.status, out.next], ['refused', 'rule_it'])
+  assert.ok(out.why.includes('did not open'), out.why)
+  assert.equal(ledger(run.repo, 'approved').filter((l) => l.hash === brief.hash).length, 0, 'nothing is approved on it')
 })
 
 test('the refusals message to the ruler says the settle refused its rulings', async (t) => {
@@ -562,20 +575,20 @@ function promoted(t) {
   return { brief, specs: brief.text.slice(brief.text.indexOf('\n## The specs\n')), heading }
 }
 
-test("the inline brief holds whole a reached node's own spec that is no named node's entry file", (t) => {
+test("the inline brief holds the core of a reached node's own spec that is no named node's entry file", (t) => {
   const { brief, specs, heading } = promoted(t)
   assert.ok(brief.nodes.includes('cli'), JSON.stringify(brief.nodes))
   assert.ok(!brief.nodes.some((id) => id.startsWith('cli/')), 'no node the cli spec states is named')
   assert.ok(specs.split('\n').includes(heading('cli')), 'the cli spec under "The specs"')
-  assert.ok(specs.includes(CLI_SPEC.trim()), 'the cli spec whole')
+  assert.ok(specs.includes(parseSpec(CLI_SPEC).sections.Plan.body), 'the plan of the cli spec')
 })
 
-test('the inline brief holds whole the spec that states work under the changed spec, named by no reached node', (t) => {
+test('the inline brief holds the core of the spec that states work under the changed spec, named by no reached node', (t) => {
   const { brief, specs, heading } = promoted(t)
   assert.ok(!brief.nodes.some((id) => id.startsWith('api/parse')), JSON.stringify(brief.nodes))
   assert.ok(brief.text.split('\n').some((l) => l.startsWith('- api/parse/tokens — ')), 'the dispatched leaf is work under api')
   assert.ok(specs.split('\n').includes(heading('api/parse')), 'the api/parse spec under "The specs"')
-  assert.ok(specs.includes(PARSE.trim()), 'the api/parse spec whole')
+  assert.ok(specs.includes(parseSpec(PARSE).sections.Plan.body), 'the plan of the api/parse spec')
 })
 
 // --- through launch, as the CLI starts it ----------------------------------------------------------------------------

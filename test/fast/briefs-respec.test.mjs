@@ -18,17 +18,18 @@ const PARTS = {
   clears: [{ node: 'api/types', status: 'parked', why: 'needs_decision', question: 'what type?' }],
   reached: [{ id: 'cli', why: ['realises D2, whose text changed'], entry: '.agentics/e1/DESIGN.md:30', own: '' }],
   standing: ['api/old'],
-  specs: [{ path: '.agentics/e1/api/DESIGN.md', text: '# api' }, { path: '.agentics/e1/DESIGN.md', text: '# root' }],
+  specs: [{ path: '.agentics/e1/api/DESIGN.md', full: '/r/.agentics/e1/api/DESIGN.md', text: '# api' }, { path: '.agentics/e1/DESIGN.md', full: '/r/.agentics/e1/DESIGN.md', text: '# root' }],
 }
 
-test("the ruler's brief rules the changed spec and every node it reaches, and holds every spec whole", () => {
+test("the ruler's brief rules the changed spec and every node it reaches, and holds every spec with its path", () => {
   const text = rulerBrief(PARTS)
   for (const line of [
     '# A changed spec: api of effort e1', '~~~~diff\n-old line\n+new line\n~~~~', 'Decisions whose text changed: D2.',
     '### api\n', '- api/parse — active — its entry is unchanged — .agentics/e1/api/DESIGN.md:12',
     '- api/types — parked (needs_decision): what type?', '### cli\n\nReached because it realises D2, whose text changed.',
     '- api/old: already waits on the user; its stop stands',
-    '### .agentics/e1/api/DESIGN.md\n\n~~~~markdown\n# api\n~~~~', '### .agentics/e1/DESIGN.md\n\n~~~~markdown\n# root\n~~~~',
+    '### .agentics/e1/api/DESIGN.md\n\nFull spec: /r/.agentics/e1/api/DESIGN.md\n\n~~~~markdown\n# api\n~~~~',
+    '### .agentics/e1/DESIGN.md\n\nFull spec: /r/.agentics/e1/DESIGN.md\n\n~~~~markdown\n# root\n~~~~',
   ]) assert.ok(text.includes(line), line)
   assert.match(text, /Return the rulings as your structured output/)
 })

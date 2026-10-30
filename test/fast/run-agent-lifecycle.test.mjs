@@ -405,7 +405,7 @@ test('WebSearch is journaled as it streams', async () => {
   assert.ok(used.every((u) => u.seq < ofKind(mine, 'returned')[0].seq), 'each is journaled before its call returns')
 })
 
-test('only WebSearch is journaled as tool_used', async () => {
+test('a call using neither WebSearch nor a Read of the store journals no tool_used', async () => {
   const { mine } = await run({}, { script: [{ pid: 4242, lines: contextIn(S) }] })
   assert.equal(ofKind(mine, 'tool_used').length, 0)
 })

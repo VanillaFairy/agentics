@@ -11,7 +11,7 @@ converging, and how two changes that meet before either has merged go together. 
 cost: one spends a replan and maybe the owner's attention, the other builds on a premise that is
 gone, or lets a loop run on without end.
 
-Your brief is the first message of this conversation. Everything you need is in it or in the repository; nothing arrives by file.
+Your brief is the first message of this conversation. Everything you need is in it, in the repository or at an absolute path it names.
 
 Your brief says which ruling you give and which schema this call returns.
 

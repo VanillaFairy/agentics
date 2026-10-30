@@ -83,14 +83,17 @@ describe('the leaf unit', { concurrency: 4 }, () => {
   // Repository guidance past what one part of a brief may hold: the user's file, which no plan shrinks.
   const HUGE_GUIDANCE = { 'CLAUDE.md': 'g'.repeat(PART_BYTES + 1) + '\n' }
   // A task whose own intent is past what one part of a brief may hold: the leaf's own work.
-  const hugeLeaf = (id) => {
-    const [head, ...rest] = leafEntry(id, { expects: ['src/' + id + '.txt'] })
-    return [head, '  ' + 'w'.repeat(PART_BYTES + 1), ...rest]
+  // A spec that size is refused when it is checked, so the node grows past the check.
+  const hugeLeaf = (id) => leafEntry(id, { expects: ['src/' + id + '.txt'] })
+  const enlarge = (w, ...ids) => {
+    const { nodes } = readTree(w.rig.repo, E)
+    assert.equal(append(w.rig.repo, E, 'nodes', ids.map((id) => ({ kind: 'node', node: { ...nodes.get(id), context: 'w'.repeat(PART_BYTES + 1) } }))).ok, true)
+    return w
   }
   const PLANNED = specText([['- **f** — sub-effort · realises: D1 · author: planner', '  Fold f', '']])
 
   test("a leaf whose own task is past its budget, under a planner's folder, goes to that planner to split, nothing sent", T, async (t) => {
-    const w = world(t, { spec: { '.': PLANNED, f: specText([hugeLeaf('b')], { decisions: false }) } })
+    const w = enlarge(world(t, { spec: { '.': PLANNED, f: specText([hugeLeaf('b')], { decisions: false }) } }), 'f/b')
     w.rig.script({})
     const out = await w.run('f/b')
     assert.equal(w.rig.calls.length, 0, 'no producer is started')
@@ -103,7 +106,7 @@ describe('the leaf unit', { concurrency: 4 }, () => {
   })
 
   test('a leaf its planner revised that is refused on the same part again escalates replan_not_converging, not routed again', T, async (t) => {
-    const w = world(t, { spec: { '.': PLANNED, f: specText([hugeLeaf('b'), hugeLeaf('c')], { decisions: false }) } })
+    const w = enlarge(world(t, { spec: { '.': PLANNED, f: specText([hugeLeaf('b'), hugeLeaf('c')], { decisions: false }) } }), 'f/b', 'f/c')
     w.rig.script({})
     assert.equal((await w.run('f/b')).outcome, 'route')
     const sibling = await w.run('f/c')
@@ -139,7 +142,7 @@ describe('the leaf unit', { concurrency: 4 }, () => {
   })
 
   test('a leaf whose own task is past its budget, in a folder the user wrote, parks needs_respec, nothing sent', T, async (t) => {
-    const w = world(t, { leaves: [hugeLeaf('b')] })
+    const w = enlarge(world(t, { leaves: [hugeLeaf('b')] }), 'b')
     w.rig.script({})
     const out = await w.run('b')
     assert.equal(w.rig.calls.length, 0, 'no producer is started')

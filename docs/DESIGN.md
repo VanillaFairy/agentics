@@ -1684,6 +1684,17 @@ any fails:
    is checked again when a round builds it: one past its budget is never sent, and the leaf goes
    to its planner as a `decompose` ([Replanning](#replanning)).
 
+**A plan too big for one reader is split when it is planned.** Every spec check (`checkFolder`, so
+the draft's gate, approval and compile alike) refuses what `specSizeProblems` in `lib/atomicity.mjs`
+finds. A spec past one part of a brief (`PART_BYTES`) is split into sub-efforts with specs of their
+own. An effort whose specs together pass one brief (`BRIEF_BYTES`) has no split inside it, because
+the root's integration review grows with the whole effort: its remedy is separate efforts that land
+in turn. Both measure the whole spec, Design and Evidence and every file of the effort's store its
+links reach, whatever part of it a brief holds, so linking text away hides none of it. The specs a
+plan no longer names are not counted. The check binds until the effort's first merge: past it the
+plan can no longer be split, a refusal would only strand its fixes, and a brief still past its bound
+is refused when it is built.
+
 Conditions 2, 4 and 7 are computed by `lib/atomicity.mjs`; 1, 3, 5 and 6 are judgment and are
 never reported by a script, because a script that claimed to check "one concern" would be a script
 whose silence meant nothing.

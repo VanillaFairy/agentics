@@ -292,3 +292,40 @@ test('a folder compile parked spec_changed is stale while the park stands, whate
   const parkedTree = effort(nodes, [{ kind: 'dispatched', node: 'x/a' }, { kind: 'parked', node: 'x', return: 'spec_changed' }])
   assert.equal(stale('/no/such/repo', 'e', parkedTree, 'x'), true)
 })
+
+// A folder merged up, and then a task added beneath it.
+const REOPEN = [folder('.'), folder('c'), leaf('c/a'), leaf('d')]
+const mergedAt = (node) => ({ kind: 'merged', node, into: 'x', merged_sha: 's', head_sha: 'h' })
+const statusIn = (input, id) => input.status.get(id).status
+
+test('new work under a merged folder reopens it, holds its parent and merges up again', () => {
+  const up = [mergedAt('c/a'), mergedAt('d'), mergedAt('c')]
+  assert.equal(statusIn(effort(REOPEN, up), 'c'), 'merged', 'with nothing newer the merge stands')
+
+  const added = [...REOPEN, leaf('c/new')]
+  const planned = effort(added, up, { integrationOf: WHERE })
+  assert.notEqual(statusIn(planned, 'c'), 'merged', 'a child not merged is not a merged folder')
+  assert.notEqual(statusIn(planned, '.'), 'reviewing', 'the parent is not reviewed over it')
+  assert.deepEqual(launched(planned, 'review'), [])
+  assert.deepEqual(leafIds(planned), ['c/new'])
+
+  const landedBelow = [...up, mergedAt('c/new')]
+  const below = effort(added, landedBelow, { integrationOf: WHERE })
+  assert.equal(statusIn(below, 'c'), 'reviewing', 'its branch moved: it owes a review and a merge')
+  assert.notEqual(statusIn(below, '.'), 'reviewing', 'the parent still lacks those commits')
+  assert.deepEqual(launched(below, 'review').map((r) => r.id), ['c'])
+
+  const claims = { kind: 'claims', node: 'c', review: 'done', claims: [] }
+  const integrated = effort(added, [...landedBelow, claims], { integrationOf: WHERE })
+  assert.equal(statusIn(integrated, 'c'), 'integrated')
+  assert.deepEqual(launched(integrated, 'merge').flatMap((m) => m.children.map((k) => k.id)), ['c'])
+
+  const again = effort(added, [...landedBelow, claims, mergedAt('c')])
+  assert.equal(statusIn(again, 'c'), 'merged', 'merged up again')
+  assert.equal(statusIn(again, '.'), 'reviewing', 'and now the parent is due its review')
+})
+
+test('commits adopted outside any leaf onto a merged folder reopen it', () => {
+  const events = [mergedAt('c/a'), mergedAt('c'), { kind: 'outside', node: 'c', commits: ['z'], by: 'session' }]
+  assert.notEqual(statusIn(effort(REOPEN, events), 'c'), 'merged')
+})

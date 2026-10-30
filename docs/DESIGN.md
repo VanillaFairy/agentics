@@ -1201,7 +1201,10 @@ Events: `planned`, `replanned`, `dispatched`, `approved`, `merged`, `escalated`,
 `landed`, `claims`, `noted`, `message`, `outside`, `nets`. A leaf's status is, first match: `merged`; `escalated` or
 `parked` when newer than its last replan and last revision (a replan or the user's answer clears
 it); `approved` when newer than its last dispatch (a held cycle member is approved and not merged);
-`active` while a dispatch has nothing terminal after it; `planned`. A composite is `merged` on its
+`active` while a dispatch has nothing terminal after it; `planned`. A composite's own `merged` event
+stands only while every child is merged and no merge or `outside` event beneath it is newer: new work
+under a merged folder reopens it, it is reviewed and merges up again, and its ancestors wait for that
+because a child of theirs is no longer merged. A composite is `merged` on its
 own event, the root `landed` on its, `escalated` or `parked` on its own open event (cleared like a
 leaf's), and otherwise summarizes its children: once all have merged it is `reviewing` until its
 integration review stands, then `integrated`. A review stands when the composite's latest `claims`

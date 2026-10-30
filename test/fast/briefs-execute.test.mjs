@@ -356,6 +356,17 @@ test('the convergence brief names the ruling and its schema, and carries each ro
   assert.equal(convergenceBrief({ leaf: leaf(), loop }), text, 'the same input gives the same text')
 })
 
+test('the convergence brief gives a failures send-back each whole claim, never its guard key cut at the colon', async () => {
+  const { convergenceBrief } = await import('../../lib/briefs/execute.mjs')
+  const claim = 'src/a.test.ts adds a test no biting mutation names'
+  const failures = [{ check: 'mutation', claim, evidence: 'declare a mutation it fails under' }, { check: 'suite', claim: 'the test suite exited non-zero', evidence: '✖ parses x (3ms)' }]
+  const key = 'mutation:' + claim + ':|suite:the test suite exited non-zero:parses x'
+  const text = convergenceBrief({ leaf: leaf(), loop: [{ round: 2, messages: [{ msg: 'failures', payload: { source: 'verification', failures }, guard: { kind: 'verification', key, at: 'abcdef0123456789' } }] }] })
+  assert.ok(text.includes('- [mutation] ' + claim + '\n'), 'the claim ends where the failure ends')
+  assert.ok(text.includes('- [suite] the test suite exited non-zero — failed: parses x'), 'what the key names failed is kept')
+  assert.equal(text.includes(claim + ':'), false)
+})
+
 test('an integration brief names the work agentics did not produce, with its shas', () => {
   const text = integrationBrief({
     folder: { id: 'c', title: 'c' }, spec: '# c', delta: { rule: [{ unit: 'spec', anchor: 's', was: null }], stand: [] }, span: { base: 'b0', head: 'h0' },

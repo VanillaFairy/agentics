@@ -3392,7 +3392,8 @@ the same way, and a fallback is no longer a separate path but the empty prior.
     `lib/boundaries/loop-guard.mjs`): after every third, and at once when a send-back repeated a
     lossy state of an earlier one — a fresh ruler on `ruler:converge:<leaf>:<n>`, `n` the round the
     last send-back answered, rules it from the loop handed inline (`convergenceBrief` in
-    `lib/briefs/execute.mjs`). `not_converging` escalates `not_converging`, `said` the ruler's
+    `lib/briefs/execute.mjs`: a `failures` send-back as each failure's whole claim and what its key
+    names failed, never the key's raw text). `not_converging` escalates `not_converging`, `said` the ruler's
     dispatch; `converging` lets the round open, and stands for the same loop in a later execution.
     A relaunch replays a returned ruling and resumes one cut off. A retry ends the stopped loop: the next round opens through leaf-open with the `retried` message, the stopping review's
     open findings wait for it as `findings`, and the stopping review and ruling are never replayed —

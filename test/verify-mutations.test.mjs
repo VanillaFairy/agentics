@@ -46,3 +46,23 @@ test('a net that survives its break does not bite, and a stale, an ambiguous or 
 
   assert.equal(git(worktree, 'status', '--porcelain').stdout.trim(), '', 'no spec leaves its break in the tree')
 })
+
+test('a mutation naming its test by name runs the leaf\'s test files and places the name in the one whose output fails it', (t) => {
+  const { worktree, base, head } = order(t)
+  const payload = verify(options({ worktree, base, head, extra: [
+    '--rigor', 'tests-only',
+    ...mutations([
+      // A name with a ` > ` path: handed to a shell, the `>` would redirect the run into a file.
+      { file: 'src/widget.mjs', find: "'hi'", replace: "'bye'", expect_failing: ['widget > the widget is labelled hi'] },
+      { file: 'src/widget.mjs', find: "'hi'", replace: "'bye'", expect_failing: ['a test no file of the leaf holds'] },
+    ]),
+  ] }))
+  const [named, nowhere] = payload.mutations
+
+  assert.equal(named.bites, true, 'the test of that name fails under the break')
+  assert.deepEqual(named.observed_failing, ['widget > the widget is labelled hi'])
+  assert.deepEqual(named.failing_files, ['test/widget.test.mjs'], 'the file is read from the run that failed it')
+  assert.equal(nowhere.bites, false, 'a name no run of the leaf\'s files fails is not observed')
+  assert.deepEqual(nowhere.failing_files, [])
+  assert.equal(git(worktree, 'status', '--porcelain').stdout.trim(), '', 'no name reaches the shell, so nothing is written beside the tests')
+})

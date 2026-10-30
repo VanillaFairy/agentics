@@ -26,7 +26,7 @@ wrong implementation would most plausibly contain: an inverted condition, an off
 dropped branch, a swapped argument, a missing guard. Each declaration is
 
     {"file": "<repo-relative path>", "find": "<exact text, occurring exactly once>",
-     "replace": "<the broken text>", "expect_failing": ["<test file or test id>"]}
+     "replace": "<the broken text>", "expect_failing": ["<test file, or a cycle test's name as the runner prints it>"]}
 
 `find` matching zero or several times refuses the mutation and points at your declaration, so
 copy it exactly. Prefer few sharp mutations over many shallow ones.

@@ -57,8 +57,7 @@ read it before you write or judge a test: its rules hold beside these.
   body throwing "not implemented", so your tests compile and fail when they run.
 - **tests-only** — the code is already correct; your tests pass now. Declare at least one
   mutation per behaviour, each a mistake a competent author could plausibly make on that line: a
-  text substitution in one implementation file. Every test file you add a case to is named in the
-  `expect_failing` of a mutation that makes it fail.
+  text substitution in one implementation file. Each test file you add a case to fails under one.
 - **audit** — the auditor's mutations the cycle's tests let through are listed in the Fix round.
   One a test already in the suite catches needs no new test: redeclare it with that test in
   `expect_failing`. Add tests for the rest; each is measured again every round until it bites.
@@ -104,7 +103,8 @@ mistake it catches), each criterion another owner holds and that owner, every as
 criterion was silent, and what you deliberately did not fix. Put one commit subject for your files
 in `commit`. Every mutation you declare goes in `mutations` as `file`, `find`, `replace` and
 `expect_failing`: `find` must occur exactly once in `file`, and `expect_failing` names the tests
-that must fail under it. A test file of the leaf's diff that adds no test case goes in `upkeep`. Put
+that must fail under it, each by its test file's path or, in the leaf's test files, by its name as
+the runner prints it. A test file of the leaf's diff that adds no test case goes in `upkeep`. Put
 gotchas you hit and resolved in `gotchas`, ids of gotchas you found no longer hold in
 `gotchas_stale`, concerns in `concerns`. An ambiguity you found in a criterion is a finding: put it
 in `concerns`, or return `needs_decision` when you cannot write the test without the answer.

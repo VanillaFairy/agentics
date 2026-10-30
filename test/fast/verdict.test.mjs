@@ -495,6 +495,18 @@ test('a tests-only file that adds a test no biting mutation names is not shown t
   assert.equal(measurementOk(m({ discriminator: [disc(false, true), upkeep(true)], mutations: [bites] }), LEAVES['tests-only']).ok, true, 'an upkeep file adds no test to catch anything')
 })
 
+test('a tests-only file is shown by a biting mutation that names its tests by name, through the files they failed in', () => {
+  const file = 'src/game/controls/TapToMove.test.ts'
+  const byName = (name) => ({ ...bites, file: 'src/game/controls/TapToMove.ts', expect_failing: [name], observed_failing: [name], failing_files: [file] })
+  const measured = m({
+    discriminator: [{ test_id: file, blob: 'b', base_blob: 'a', adds_test: true, failed_on_base: false, passes_now: true }],
+    mutations: [byName('TapToMove pursuing a body > re-routes toward the body once it moves past her first route'), byName('follows a body that moves off her first route')],
+  })
+  assert.deepEqual(measurementOk(measured, LEAVES['tests-only']).failures, [])
+  const elsewhere = m({ ...measured, mutations: measured.mutations.map((x) => ({ ...x, failing_files: ['src/other.test.ts'] })) })
+  assert.deepEqual(measurementOk(elsewhere, LEAVES['tests-only']).failures.map((f) => f.claim), [file + ' adds a test no biting mutation names'])
+})
+
 test('a leaf measured by its mutations is held to every one an earlier round applied; others are not', () => {
   const declared = (x) => ({ file: x.file, find: x.find, replace: x.replace, expect_failing: x.expect_failing })
   const old = { ...survives, find: 'a < b', replace: 'a <= b' }

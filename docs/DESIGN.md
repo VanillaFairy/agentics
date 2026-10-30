@@ -1894,7 +1894,8 @@ of the suite that catches it, so a break another test already kills asks for no 
   held, and the audit's gap below, are read from the leaf's `verify-observed` lines of every
   execution, as resume reads them (`journalsOf`).
 - **Every new test is shown to catch something.** A `tests-only` leaf's test file that adds a case
-  is named in the `expect_failing` of a mutation that bites, or the leaf fails.
+  is caught by a mutation that bites — among its `failing_files`, or named by path in its
+  `expect_failing` — or the leaf fails.
 - **A cycle's test gap is closed inside the cycle.** A gap in the cycle's tests found after the red
   is approved — by an audit's mutation, by a green's review, by a green's implementer — goes to a
   test-author round of the leaf that found it, never to an agent that cannot write tests and never
@@ -3784,7 +3785,8 @@ measurement, no failed build or typecheck and no blocking series finding. Then e
 file under measurement is of one class, and the profile asks of it the facts of its cell in one
 table (`DISCRIMINATOR` in `lib/verdict.mjs`): what it does now, and a proof, any one of which shows
 it bites — `base`, it failed at base with the tests under measurement restored, or `mutation`, a
-biting mutation names it in `expect_failing`.
+biting mutation caught it: the file is among the mutation's `failing_files`, or its path is in
+`expect_failing`.
 
 | profile | adds | upkeep | net | static-pin |
 |---|---|---|---|---|
@@ -4523,7 +4525,10 @@ touch; an entry without it is read as adding one);
 at base, the established typecheck, `kind: typecheck`, and each criterion check that runs it, `kind:
 check`, each run at base with the tests under measurement restored; empty otherwise);
 `mutations[{file, find, replace, applied, unapplied_reason, expect_failing, observed_failing,
-bites}]`; `series_findings[{sha, check, message, blocking}]`; `checks[{command, status,
+failing_files, bites}]` (an `expect_failing` entry is a test file's path, run as it stands, or a
+test's name, never handed to the shell: each of the leaf's test files is run and the name is
+observed where that run's output names a failing case by it; `failing_files` the test files the
+observed entries failed in); `series_findings[{sha, check, message, blocking}]`; `checks[{command, status,
 failing_tests, baseline_failing}]` (`status` `passed | failed | unrunnable`);
 `approved_failing[{file, id}]` (approved cases that fail when the red's approved version of their
 file runs in its place at the head); `notes`; `error` (`null` or `{kind, message}`: `no_worktree`,

@@ -3983,7 +3983,17 @@ resume step, verdict or review reads it, and it is dropped once the dispatch ret
 ### The node card
 
 A session started on one node reads one thing first: `lib/status.mjs node --node <id>`, the node's
-entry of the snapshot. Beside the status and the stop it carries the card, computed on every read:
+entry of the snapshot. Beside the status and the stop it carries the card, computed on every read.
+
+The `event` of a parked or escalated node names who holds the stop in `holder`, derived from the
+records and never from the stop's reason, which a session's judgement can settle either way. `user`,
+with the question's seq in `asked`: a question opened since the stop and not yet answered
+([The user's word](#the-users-word), `lib/answers.mjs`). `session`: an execution's run is live, or
+the session that started the latest execution wrote its transcript in the last ten minutes.
+`nobody`: neither, so the stop waits on no one and must not read as in hand. A session left idle at
+its prompt counts as nobody: nothing is moving the stop.
+
+The card:
 
 - **the next action** a relaunch would take for the leaf, from the resume ladder itself
   (`resumeLeaves`), so the card and the relaunch cannot disagree;
@@ -4200,7 +4210,8 @@ who writes the node's spec, `you` or `planner`, so a reader can tell an open des
 on the user from one develop's planner writes; `status` from `deriveStatus`; `event` is the
 escalated or parked node’s own event (`{kind, seq, reason, detail, said}` or `{kind, seq, return,
 question, said}`, the text read through `saidOf`, `said` the dispatch whose return holds its text,
-else empty), else, for work agentics did not build, `{kind: merged, seq, by, commits, into,
+else empty, each with `holder`, and `asked` when the holder is `user`, as [the node
+card](#the-node-card) says), else, for work agentics did not build, `{kind: merged, seq, by, commits, into,
 merged_sha}` on a leaf adopted on the user's word or `{kind: outside, seq, by, commits}` on a folder
 that carries `outside` events, and null for every other node; the new kinds are additive and the
 format stays 4; `stage` is `todoFor`’s `activeForm` while its `status` is

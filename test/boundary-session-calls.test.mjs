@@ -14,8 +14,9 @@ import { fileURLToPath } from 'node:url'
 
 import { acceptDrift, land, landAct, ruleNets } from '../lib/boundary.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
-import { dispatchKey, executionDir, returnPath, revParse, writeJson } from '../lib/store.mjs'
+import { configPath, dispatchKey, executionDir, executionRunId, returnPath, revParse, runJsonPath, writeJson } from '../lib/store.mjs'
 import { readTree, standingReview, unsettledClaims } from '../lib/tree.mjs'
+import { DEAD_PID } from './harness/dead-pid.mjs'
 import { seedTree } from './harness/seed-tree.mjs'
 import { commitIn, git, leaf, repo, root } from './harness/boundary-fixture.mjs'
 
@@ -470,4 +471,23 @@ test('net refuses a file its measurement holds no blob of, writing nothing: a ne
   measured('b'.repeat(40))
   assert.equal(ruleNets(r, E, 'b', ruling).ok, true, 'measured with its blob, the same file is ruled')
   assert.deepEqual(eventsOf(r, 'nets').map((e) => e.nets.map((n) => n.blob)), [['b'.repeat(40)]])
+})
+
+// ================================================================== resume
+
+test('resume through the CLI prints its result over a run it starts again, whose start loads the execute program', (t) => {
+  const r = seeded(t)
+  execution(r, OLDER, '.')
+  append(r, E, 'events', { kind: 'paused', node: '', execution: OLDER, by: 'session' })
+  const run = executionRunId(E, OLDER)
+  writeJson(runJsonPath(r, run), { run, program: 'execute', raw: { effort: E }, pid: DEAD_PID, heartbeat_at: new Date(0).toISOString() })
+  writeJson(configPath(r), { claude_cli: join(r, 'no-claude') })
+  const out = spawnSync(process.execPath, [BOUNDARY, 'resume', '--repo', r, '--run', run], {
+    encoding: 'utf8', env: { ...process.env, NODE_TEST_CONTEXT: '' }, timeout: 30_000,
+  })
+  assert.equal(out.status, 0, out.stderr)
+  const printed = JSON.parse(out.stdout)
+  assert.equal(printed.ok, true, out.stdout)
+  assert.equal(printed.run, run)
+  assert.equal(printed.relaunched.error.kind, 'host_missing', 'the start got past loading the program')
 })

@@ -4095,7 +4095,12 @@ Two conventions hold throughout:
   keys sorted, `undefined` read as `null`.
 - **A CLI a session calls** prints one JSON result and exits 0, even when the result reports a
   typed error (`{ok: false, error: {kind}}`, its reason on stderr). `{error}` with exit 1 means
-  the program itself failed. Every argument that names a thing goes through `resolveHandle`, which
+  the program itself failed. A CLI whose call awaits runs it through `runCli` in `lib/cli.mjs`,
+  never by a top-level await: the call starts once the module has evaluated, so a dynamic import
+  that reaches back into it (`launch` loading the execute program, which imports
+  `lib/boundary.mjs`) cannot wait on that evaluation, and a call still pending when nothing is left
+  to run prints its `{error}` as `unsettled` and exits 1 rather than ending with nothing printed.
+  Every argument that names a thing goes through `resolveHandle`, which
   refuses a name that resolves to nothing (`unknown_<kind>`) and never reads its absence as an
   empty thing (L1).
 

@@ -3338,7 +3338,8 @@ the same way, and a fallback is no longer a separate path but the empty prior.
   same survivors were sent before. lib/verdict.mjs escalates what no commit of
   the leaf can move — on a `tdd` or `red` leaf, discriminator failures that are each a file of class
   adds passing at base and now ([What a verdict is computed from](#what-a-verdict-is-computed-from)):
-  a test over behaviour that already holds (`discriminator_undecidable`); a tdd leaf's producer is
+  a test over behaviour that already holds (`discriminator_undecidable`), a test file nothing could
+  execute (`test_not_measured`); a tdd leaf's producer is
   first sent such files back once (`discriminator_sent_back`, a fix round telling it the test passes
   at base and must fail without its change; every file a discriminator send-back named since the
   leaf was cleared counts as sent) — and any environment error by its kind. Such a file may be ruled
@@ -3760,6 +3761,19 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
   did.
 - A test that could not be launched at base is `test_unrunnable`; a suite failure that cannot be
   placed against a test file raises `suite_failures_unnamed`.
+- **A run that executed no test is unmeasured: neither a pass nor a failure, whatever it exited.**
+  A runner told to pass with no tests exits 0 over a file it does not own, and one not told so exits
+  non-zero. `ranNoTest` in `lib/verify.mjs` reads the runners' own reports, a closed list a line
+  counting a test outranks; a runner it misses reads by its exit status. Every file run goes through
+  `runTestFile`: where `test_one` executed nothing, a criterion check that runs that file and no other
+  test file, as one command with no shell composition and not a whole suite, measures it instead
+  (`measured_by`), at the head, at base with the tests restored, or under a mutation; its failing exit
+  counts only where its output names the file, since a server that would not start says nothing of
+  the test. A file nothing could run has `null` for that half and a row in `unmeasured`, and
+  stops the leaf `test_not_measured` where the verdict asks that half (the head always, the base where
+  the file's cell needs it, a mutation only when it did not bite); no commit of the leaf moves it, so
+  no fix round is bought. A named check that executed no test is `unrunnable`, and a merged head's
+  suite that executed none is `not_run`.
 - **A changed test file either adds a test case or keeps existing ones working, as its producer
   declares.** The producer names each test file of the leaf's diff that adds none in its return's
   `upkeep` ([Producer returns](#producer-returns)) — a call site given a new argument — and
@@ -4551,12 +4565,16 @@ version up; above it, a store a newer plugin wrote. A change to what the store h
 `suite_scope` (`fast` or `full` on a merged head, `scoped` for a leaf's own tests, `none` when
 nothing ran); `suite_output_tail` (only when the suite failed);
 `failing_tests[{file, id}]`; `baseline_failing[{file, id}]` (failing tests that fail at the base
-too); `discriminator[{test_id, blob, base_blob, adds_test, failed_on_base, passes_now}]` (`blob` the
+too); `discriminator[{test_id, blob, base_blob, adds_test, failed_on_base, passes_now, measured_by}]`
+(`failed_on_base` or `passes_now` `null` where no test ran there; `measured_by`, only where it applies, the
+criterion check that ran the file because `test_one` executed nothing; `blob` the
 file's blob at the measured head, what a ruling over the file is keyed by; `base_blob` the same at
 the base, `''` for a file the base lacks, which with `blob` carries an upkeep reading
 (`upkeepAt`); `adds_test` false for a
 file declared upkeep whose diff adds no test-case declaration, or one the leaf's own diff did not
 touch; an entry without it is read as adding one);
+`unmeasured[{file, at, command}]` (`at` `head | base | mutation`, each file nothing executed there,
+`command` the `test_one` it was tried by);
 `static_on_base[{kind, command, failed_on_base}]` (on a tdd leaf whose every changed test file held
 at base, the established typecheck, `kind: typecheck`, and each criterion check that runs it, `kind:
 check`, each run at base with the tests under measurement restored; empty otherwise);

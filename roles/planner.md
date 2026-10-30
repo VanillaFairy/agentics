@@ -130,7 +130,7 @@ Headings in this order: `# <title>`, `## Intent`, `## Decisions`, `## Design`, `
   · dispatch: producer=sonnet/medium · label: <the work in free text, at most 16 characters: World tests, not world-red>
   <title: one imperative line>
   <context: self-contained, for an executor who never saw your conversation>
-  - [ ] <criterion> — check: `<command>`
+  - [ ] <criterion> — check: `<command>` (a test file `test_one`'s runner does not own: its own runner on that file alone, one command)
   - [ ] HUMAN: <a criterion only the user can judge>
 ```
 

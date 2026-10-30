@@ -244,6 +244,24 @@ test('passing: review where the leaf buys its own loop, approve otherwise, appro
   assert.deepEqual(closeDecision(green, LEAVES.tdd).failures, [])
 })
 
+test('a file no test ran of stops as such: never as passing at base, and never as a fix round', () => {
+  const blind = { test_id: 'e2e/x.spec.ts', blob: 'b', base_blob: '', adds_test: true, failed_on_base: null, passes_now: null }
+  const rows = [{ file: blind.test_id, at: 'base', command: 'npx vitest run e2e/x.spec.ts' }, { file: blind.test_id, at: 'head', command: 'npx vitest run e2e/x.spec.ts' }]
+  for (const leaf of [LEAVES.tdd, LEAVES.red]) {
+    const d = closeDecision(m({ suite: 'not_run', discriminator: [blind], unmeasured: rows }), leaf, '', { sentBack: [blind.test_id] })
+    assert.deepEqual([d.next, d.reason], ['escalate', 'test_not_measured'])
+    assert.ok(d.failures.some((f) => f.claim.includes('could not be run by the known command "npx vitest run e2e/x.spec.ts"')), JSON.stringify(d.failures))
+    assert.ok(!d.failures.some((f) => f.claim.includes('passes at base')), JSON.stringify(d.failures))
+  }
+  // The base half is asked of a tdd file that adds a case, and of no upkeep file.
+  const baseOnly = { ...blind, passes_now: true }
+  const baseRow = [rows[0]]
+  assert.equal(closeDecision(m({ discriminator: [baseOnly], unmeasured: baseRow }), LEAVES.tdd).reason, 'test_not_measured')
+  const upkeepFile = { ...baseOnly, adds_test: false }
+  const beside = disc(true, true)
+  assert.ok(measurementOk(m({ discriminator: [beside, upkeepFile], unmeasured: baseRow }), LEAVES.tdd).ok)
+})
+
 test('an unknown command goes to the investigator; any other broken measurement escalates by kind', () => {
   const unknown = m({ stop_reason: 'environment_broken', error: { kind: 'command_unknown', message: 'no build' } })
   assert.deepEqual([closeDecision(unknown, LEAVES.tdd).next, closeDecision(unknown, LEAVES.tdd).reason],

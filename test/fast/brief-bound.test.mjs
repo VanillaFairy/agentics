@@ -80,6 +80,17 @@ test("a prober's brief within its budgets is sent whole: the ground's excerpts a
   assert.ok(text.includes('SETTLED_INTENT_TOKEN '.repeat(200)), 'the settled spec, whole')
 })
 
+test('a refusal names the split as the remedy, and cutting the file only for repository guidance', () => {
+  const big = 'x'.repeat(PART_BYTES + 1)
+  const refusal = (section, file = '') => oversizedPart([{ key: file || section, section, file, text: big }], BRIEF_BYTES).message
+  for (const spec of [refusal('The specs of its sub-efforts', 'a/DESIGN.md'), refusal('The spec, your yardstick'), refusal('Task')]) {
+    assert.ok(spec.includes('the work is too big') && spec.includes('split it into subtasks') && spec.includes('separate efforts'), spec)
+  }
+  const guidance = refusal('Repository guidance', 'CLAUDE.md')
+  assert.ok(guidance.includes('guidance file is too big') && guidance.includes('splits it or cuts it') && !guidance.includes('the work is too big'), guidance)
+  assert.ok(!refusal('Evidence').includes('too big'), 'a part code owns is no one\'s to split')
+})
+
 test('a part past what one part may hold is refused by name, even where the whole brief would fit', () => {
   const lines = Math.ceil(PART_BYTES / bytes(bigSpec(1))) + 1
   const { parts } = proberBrief({ ...at(groundOf([hit(1)])), text: bigSpec(lines) })

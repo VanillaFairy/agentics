@@ -24,5 +24,5 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" rule --repo . --detach --effort <e> --f
   step 2 does and compile as its step 3 does; `fix_spec`, edit what `problems` name;
   `rule_parent_first`, rule the spec `why` names; `rule_it`, rule it again; `shrink_brief`, a part
   of the ruler's brief is past what it reads, never fixed by ruling again: do what `why` ends on,
-  the user's word on how a spec they wrote is cut; `planner`, leave it to
+  the user's word on how a spec they wrote is split; `planner`, leave it to
   the run, which reviews and prepares the edit at its next tick; `nothing`: approved.

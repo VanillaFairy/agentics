@@ -676,7 +676,7 @@ shaped part's key:
 | owner | its parts | a refusal naming one |
 |---|---|---|
 | `work` | a leaf's own work: its Task, criteria, decisions, expected files and reads, its cited Design part, what it consumes, its effort files, measures, commands; its plan entry a ruler reads; a folder's spec a planner or reviewer reads | in a leaf's dispatch (its round, its reviewer, its convergence ruler), a `decompose` to the folder's planner, or `needs_respec` in a folder the user wrote ([Replanning](#replanning)); elsewhere, as `user` |
-| `user` | the repository's guidance, one part per file; a changed spec's diff, the user's answers, each fenced so no answer opens a section, and the specs a ruler reads whole, one part per spec; a folder's spec edit and the user's word on it, and its sub-efforts' specs, one part per spec, that an integration reviewer reads; a probed artefact | a stop for the user naming the file and its size: in an execution `escalated brief_too_large` (`dispatchFailed` in `lib/boundaries/records.mjs`), from `rule` `shrink_brief` ([A changed spec](#a-changed-spec)); the user settles it by shrinking or splitting the file |
+| `user` | the repository's guidance, one part per file; a changed spec's diff, the user's answers, each fenced so no answer opens a section, and the specs a ruler reads whole, one part per spec; a folder's spec edit and the user's word on it, and its sub-efforts' specs, one part per spec, that an integration reviewer reads; a probed artefact | a stop for the user naming the file and its size: in an execution `escalated brief_too_large` (`dispatchFailed` in `lib/boundaries/records.mjs`), from `rule` `shrink_brief` ([A changed spec](#a-changed-spec)); the message names the remedy (`remedyOf` in `lib/briefs/size.mjs`): a guidance file, which every brief carries, the user cuts or splits; anything else means the work is too big, and it is split into subtasks, or at an effort's root into separate efforts that land in turn |
 | `code` | everything else: the charge, thread messages, a probe's ground and settled specs, rendered records; a leaf's evidence and gotchas, a ruler's changes, a producer's return a reviewer reads, a survey's evidence a planner reads, each bounded where it is built (`bounded` and `boundedDiff` in `lib/briefs/size.mjs`), whole items or files kept first and a closing line naming what was left out | none in practice: code bounds what it accumulates as it builds the brief, shedding the least valuable first and declaring what it shed; a refusal that still names one is a defect of its builder, a `role` fault whose detail carries the part, its bytes and budget |
 
 Code gives way first: a bound sheds what code owns before a refusal is laid on the work or the user.
@@ -2209,7 +2209,7 @@ ground and its `located` list, so a later round's relocate judge searches for it
 user's — the artefact, a guidance file — past its budget is refused `brief_too_large` before it is
 sent: the prober fails, its `unreached` line names the part, its size and its budget, the round
 records nothing, and the result's `refused` lists it; in an execution the folder escalates
-`brief_too_large` naming it (`specReviewed`), for the user to shrink or split the file.
+`brief_too_large` naming it (`specReviewed`), with the remedy the refusal names.
 
 ### What a probe costs
 

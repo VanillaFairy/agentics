@@ -131,7 +131,7 @@ test('a ruler whose brief is past what it can read is never sent it: the change 
   assert.equal(run.calls.length, 0, 'no ruler is started')
   assert.deepEqual([out.status, out.next], ['refused', 'shrink_brief'], 'ruling it again would build the same brief')
   const spec = brief.parts.specs.find((s) => s.text.includes('ROOT_PAD')).path
-  assert.ok(out.why.includes('"' + spec + '"') && out.why.endsWith('the user shrinks or splits ' + spec + ', then it is ruled again'), out.why)
+  assert.ok(out.why.includes('"' + spec + '"') && out.why.includes('the work is too big') && out.why.endsWith('then it is ruled again'), out.why)
   assert.equal(ledger(run.repo, 'ruled').length, 0)
 })
 

@@ -3601,8 +3601,11 @@ the same way, and a fallback is no longer a separate path but the empty prior.
   states. The reviewer returns the claims it ruled; `folderReview` records them with each prior
   claim the return did not restate (a returned claim restates `claim:<n>` by naming it in `unit`, or
   by its very text; a unit ruled in `units` alone restates nothing): one ruled other than a pass
-  carried as it was, so that it still parks; a pass that stands carried as it was, and one whose unit
-  the review ruled (the head moved under it) as `cant_tell`, never a pass. It anchors each unit
+  carried as it was, so that it still parks; a pass that stands carried as it was, as is one whose
+  unit the review was asked to rule (the head moved under it) and ruled `clean`, the judge's word
+  that nothing it rests on moved since; one asked again and left unruled or ruled `findings` without
+  a restatement as `cant_tell`, never a pass. So a claim's latest ruling travels from review to
+  review, across executions, for as long as each review that was asked keeps it `clean`. It anchors each unit
   other than a claim that stood or that the return ruled examined. Every review records the criticals
   it leaves `open`: its own, and each prior one it did not rule `fixed`, dropped only as the same
   critical reported again (`openBlockers`), which parks as its own do. Work agentics did not produce
@@ -5318,6 +5321,14 @@ compile reads the new hash as a change and parks it `spec_changed`. `provides` n
 contract with no declared part is defined by the whole Design. It dry-runs by default, applies with
 `--yes`, and a second run finds nothing to do; it exits 1 while a declaration or a carry is refused
 or a compile failed.
+
+`tools/migrate-carried-claims.mjs` corrects the `claims` events of a folder's narrowed integration
+reviews that recorded `cant_tell` over a pass whose `claim:<n>` the reviewer ruled `clean`. For each
+composite it replays the events in seq order under the rule `folderReview` records by ([Executors and
+review](#executors-and-review)), reading each review's stored return, and rewrites each event the
+replay changes in place, its seq and every other field kept, under the effort's lock. A folder
+whose return is missing, or whose review before kept no anchors, is listed and left. It dry-runs by
+default, applies with `--yes`, and a second run changes nothing.
 
 `tools/migrate-contract-parks.mjs` clears the `contract_changed` parks an earlier version raised on
 an edit that left the contract as it was, read with a frozen copy of the contract reader those parks

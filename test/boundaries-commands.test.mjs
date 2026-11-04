@@ -95,7 +95,7 @@ test('a command the commands file leaves out or gives empty writes no gotcha', (
   preflight(relaunch(r), { commands_file: commandsFile(t, { suite: '  node --test ', build: '', typecheck: '   ', absent: { suite_fast: false } }) })
   assert.deepEqual(ids(r), ['command-suite'])
   assert.equal(commandsOf(r, E).suite, 'node --test', 'the value is trimmed')
-  assert.deepEqual(commandsOf(r, E).absent, { build: false, typecheck: false, suite: false, suite_fast: false })
+  assert.deepEqual(commandsOf(r, E).absent, { setup: false, build: false, typecheck: false, suite: false, suite_fast: false })
 })
 
 test('each command the commands file marks absent becomes an absent session command gotcha', (t) => {
@@ -114,7 +114,7 @@ test('each command the commands file marks absent becomes an absent session comm
   assert.equal(readFileSync(fileOf(r, 'suite'), 'utf8'), before, 'the investigator\'s suite stands')
   assert.deepEqual(gotchaOf(r, 'test_one').command, { name: 'test_one', value: 'node --test {file}', absent: false }, 'test_one has no absent')
   const found = commandsOf(r, E)
-  assert.deepEqual(found.absent, { build: true, typecheck: true, suite: false, suite_fast: true })
+  assert.deepEqual(found.absent, { setup: false, build: true, typecheck: true, suite: false, suite_fast: true })
   assert.deepEqual([found.build, found.typecheck, found.suite, found.suite_fast], ['', '', 'npm test', ''])
 })
 
@@ -277,6 +277,21 @@ test('a test_one map names a test_one per scope, which commandsOf, the brief and
   assert.ok(text.includes('test_one for files under viewer/: `' + VITEST + '`'))
   const got = roleCommands(loadRole('implementer').role, found, readTree(r, E).nodes.get('a'))
   assert.ok(got.includes(VITEST.split('{file}')[0].trim()))
+})
+
+test('a resumed execution\'s commands file adds a setup per folder, which the brief shows as run and the implementer may run', (t) => {
+  const r = world(t)
+  preflight(relaunch(r), { commands_file: commandsFile(t, { test_one: 'node --test {file}' }) })
+  const steps = 'npm --prefix viewer install && npm --prefix viewer run build'
+  const again = preflight(relaunch(r), { commands_file: commandsFile(t, { setup: { viewer: steps } }) })
+  assert.equal(again.ok, true, JSON.stringify(again))
+  const found = commandsOf(r, E)
+  assert.deepEqual([found.setup, found.setup_by_path], ['', { viewer: steps }])
+  const { text } = leafBrief(r, E, 'a', { worktree: join(r, 'wt'), commands: found })
+  assert.ok(text.includes('setup of viewer/: `' + steps + '`'))
+  assert.ok(text.includes('Setup has run in your worktree'))
+  const got = roleCommands(loadRole('implementer').role, found, readTree(r, E).nodes.get('a'))
+  assert.ok(got.includes(steps))
 })
 
 test('a commands file handed to a resumed execution adds the scopes it names, and the tree\'s test_one stands', (t) => {

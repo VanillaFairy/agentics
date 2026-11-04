@@ -19,17 +19,18 @@ You work in a throwaway worktree, where any command may run. You judge no work a
 1. Read the repository's manifests and docs: `package.json` scripts, `Makefile`, `CMakeLists.txt`,
    `*.uproject`/`*.Build.cs`, `pyproject.toml`, `Cargo.toml`, CI configuration, the README's
    build section. Prefer what CI runs.
-2. For each of `build`, `typecheck`, `suite` (every test), `suite_fast` (the fast tests only,
-   where the repository splits its tests into fast and big ones) and `test_one` (a template
-   running one test file, with `{file}` where the repo-relative path goes: the one most tests use, and
-   for each folder another runner owns, one more with `"paths": ["<folder>"]`), choose the command, then **run it in the worktree your brief names**, observing the exit
-   status and that a test ran. A command you did not run, or that ran no test, is not established.
-3. A repository with no such step (no separate typecheck, nothing to build, tests not split into
-   fast and big) is recorded `absent: true` — only when you established that there is none, never
-   because you did not find one quickly.
-4. A command that fails for an environment reason you can resolve (a missing install step, a
-   flag the platform needs) is resolved and the working form recorded, with the trap you hit as
-   a pitfall gotcha.
+2. For each of `setup` (what a fresh checkout needs before anything runs: installs, generated
+   files; it must leave tracked files unchanged; per folder with `"paths": ["<folder>"]`),
+   `build`, `typecheck`, `suite` (every test), `suite_fast` (the fast tests only, where the
+   repository splits its tests into fast and big ones) and `test_one` (a template running one test
+   file, `{file}` where the repo-relative path goes: the one most tests use, and for each folder
+   another runner owns, one more with `"paths": ["<folder>"]`), choose the command, then **run it
+   in the worktree your brief names**, observing the exit status and that a test ran. A command
+   you did not run, or that ran no test, is not established.
+3. A repository with no such step (nothing to set up or build, no separate typecheck, tests not
+   split) is recorded `absent: true` — only when you established that there is none.
+4. A missing install step is `setup`; another environment fault you can resolve (a flag the
+   platform needs) is resolved, the working form recorded, the trap as a pitfall gotcha.
 
 ## Return
 
@@ -39,10 +40,9 @@ command you established, each a gotcha of kind `command`:
     {"kind": "command", "roles": ["implementer", "investigator"], "paths": [],
      "trigger": "building|typechecking|running the suite|running one test in this repository",
      "action": "<how>", "evidence": {"command": "<what you ran>", "output": "<the line that showed it>"},
-     "command": {"name": "build|typecheck|suite|suite_fast|test_one", "value": "<command>", "absent": false}}
+     "command": {"name": "setup|build|typecheck|suite|suite_fast|test_one", "value": "<command>", "absent": false}}
 
-`unresolved` names the commands you could not establish.
-"I could not establish it" and "there is none" are different answers: the first goes in
-`unresolved`, the second is an entry with `absent: true`. `text` carries what you established,
-what you tried and what you need, its first line the gist. Write nothing to any file for anyone
-to read.
+`unresolved` names the commands you could not establish. "I could not establish it" and "there
+is none" are different answers: the first goes in `unresolved`, the second is an entry with
+`absent: true`. `text` carries what you established, what you tried and what you need, its first
+line the gist. Write nothing to any file for anyone to read.

@@ -117,8 +117,8 @@ test('commandsOf reads only command gotchas an investigator or the session wrote
   writeGotcha(r, E, command('test_one', 'npm test -- {file}'), { source: { role: 'session' } })
   writeGotcha(r, E, pitfall(), { source: { role: 'investigator' } })
   assert.deepEqual(commandsOf(r, E), {
-    build: 'npm run build', typecheck: '', suite: '', suite_fast: '', test_one: 'npm test -- {file}', test_one_by_path: {},
-    absent: { build: false, typecheck: true, suite: false, suite_fast: false },
+    setup: '', setup_by_path: {}, build: 'npm run build', typecheck: '', suite: '', suite_fast: '', test_one: 'npm test -- {file}', test_one_by_path: {},
+    absent: { setup: false, build: false, typecheck: true, suite: false, suite_fast: false },
   })
 })
 
@@ -136,4 +136,16 @@ test('a command gotcha scoped by a path is a test_one only, with its own id, and
   const found = commandsOf(r, E)
   assert.equal(found.test_one, 'node --test {file}')
   assert.deepEqual(found.test_one_by_path, { viewer: 'vitest run {file}' })
+})
+
+test('a setup gotcha may be scoped by a path too, with its own id, and commandsOf maps it by scope', () => {
+  const r = repo()
+  const viewer = command('setup', 'npm --prefix viewer install', { paths: ['viewer'] })
+  assert.equal(gotchaProblem(viewer), null)
+  assert.equal(gotchaId(viewer), 'command-setup-' + fnv1a('viewer'))
+  assert.match(gotchaProblem(command('setup', '', { paths: ['viewer'], command: { name: 'setup', absent: true } })), /no absent/)
+  writeGotcha(r, E, viewer, { source: { role: 'session' } })
+  writeGotcha(r, E, command('setup', 'npm ci'), { source: { role: 'investigator' } })
+  const found = commandsOf(r, E)
+  assert.deepEqual([found.setup, found.setup_by_path], ['npm ci', { viewer: 'npm --prefix viewer install' }])
 })

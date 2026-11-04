@@ -287,8 +287,7 @@ label. A change is an edit and a new ask, with the token `state` prints then. Wh
 node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" approve --repo . --effort <e> --folder .
 ```
 
-It refuses unless the answer to that token chose `Approve` on the spec as it stands. Step 3's
-compile builds it.
+It refuses unless that token's answer chose `Approve` on the spec as it stands; step 3 compiles it.
 
 ## Step 3 — Launch
 
@@ -302,14 +301,15 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/compile.mjs" --repo . --effort <e> --folder <id>
 `ok: false` lists refusals by file and line and wrote nothing: show them, stop; re-spec (step 4c).
 
 A new execution is told the project's commands. Write those you know (from the user, `CLAUDE.md`,
-build files) with Write as JSON `{build, typecheck, suite, suite_fast, test_one}` to a file outside
-the repository, `test_one` with `{file}` where a test file's repo-relative path goes — where folders
-use other runners, a map `{".": "<template>", "<folder>": "<template>"}`, a file run by its deepest
-folder's; leave out one you do not know, and the run's investigator establishes it.
+build files) with Write as JSON `{setup, build, typecheck, suite, suite_fast, test_one}` to a file
+outside the repository, `test_one` with `{file}` where a test file's repo-relative path goes.
+`setup` prepares a fresh worktree (installs dependencies, builds what a test reads); code runs it
+before every measurement and every round, and it must leave the files git sees as they are. Where
+folders differ, `test_one` and `setup` take a map `{".": "<command>", "<folder>": "<command>"}`, a
+file run by its deepest folder's. Leave out one you do not know: the run's investigator establishes it.
 
-Read the effort's `seq` before you start, so the watch misses nothing raised in between: the
-`seq <n>` that `node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" list --repo .` prints on the effort's
-line. Then start the run:
+Read the effort's `seq` first, so the watch misses nothing raised meanwhile:
+`node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" list --repo .` prints `seq <n>` on its line. Start the run:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" execute --repo . --detach --effort <e> --folder <id> --intelligence <tier> --commands-file <file> [--pace <pace>] [--base-ref <branch>] [--plan-only] [--pause] [--budget <tokens>] [--confirmed <seq>]
@@ -429,6 +429,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e> --node
 | `unread_reference` | always — the producer could not read what `detail` names: when the node's brief now carries it, retry; else put the text in the entry or in a Design part its `cites` names, have the edit ruled (`respec.md`), then retry |
 | `fails_full_suite`, `verify_not_converging` | its failures are timeouts or load faults that pass alone: retry once; the same again is the user's |
 | `brief_too_large` | never — the work is too big for one agent; `detail` names the part, its file and bytes. A spec: a re-spec (c) that splits it into subtasks, or at an effort's root into separate efforts that land in turn; never ask the user to cut text to fit. Only a guidance file (a `CLAUDE.md`, a `guidance` entry of the config) is the user's to cut or split. Then retry |
+| `setup_failed`, `setup_dirtied` | never — setup could not prepare a worktree, or changed a file git sees (`detail`): name the working `setup` in a commands file (step 3; listed under `"replace"` to correct one), retry, then relaunch with it |
 | `git_hung` | never — a git hung past its ceiling twice at the same head: the user's machine (antivirus scanning the repository, a network drive); retry once they dealt with it |
 | `test_not_measured` | never — the known command executed no test of the file `detail` names (another runner's, or a config excluding it), so nothing is known of it: neither a pass nor a net. A re-spec gives its criterion a `check:` running that file alone with its own runner, as one command, or name its folder's `test_one` (step 3); then retry. So too a failure that is another runner's crash |
 | `discriminator_undecidable` | on a tdd leaf it comes only after the file went back to the producer once and still passes at base; on a red, at once. A file that only pins behaviour that held at base: rule it a net (below). One that should fail at base, for behaviour the leaf adds: note what it must assert, then retry. The user's only when you cannot tell which |
@@ -499,8 +500,7 @@ majors are the user's decision queue, reported as written. A review that ran wit
 carries that caveat on every finding — say so.
 
 **f. `HUMAN:` criteria.** `node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" land --repo . --effort <e>
---action check` is read-only; put every entry of its `human` in front of the user, verbatim, prefix
-included.
+--action check` is read-only; put every entry of its `human` before the user, verbatim, prefix too.
 
 **g. What was built.** `implemented` per task: rigor and role (a `red` task's tests are required to
 fail), rounds, `salvaged` — adopted from an earlier run, not done now; say which; `undiscriminated`

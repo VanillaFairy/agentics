@@ -2891,7 +2891,11 @@ scope holds is run by the tree's `test_one`. Build, typecheck and the suites ans
 tree, so a scope on them is refused; a suite over two runners is one command that runs both. The
 session names scopes in its commands file as a map, `"test_one": {".": "<template>", "<folder>":
 "<template>"}`, and an investigator returns a scoped `test_one` with `paths: ["<folder>"]`. Every
-scope's template is granted where `<test>` is, and shown in the brief. A file the wrong runner loaded
+scope's template is granted where `<test>` is, and shown in the brief. A scoped runner may print its
+paths relative to its folder (`vitest --root viewer` writes `test/app.test.ts`), so every
+measurement reads a failure's path against the run file's own scope, then the tree, then every
+other scope, and records it repo-relative (`rootsOf` in `lib/verify.mjs`); a vitest failure is named
+by its test's name, once, without the file prefix or duration it prints. A file the wrong runner loaded
 and crashed on before any test registered reads as failed, not unmeasured: a red test that fails
 importing what does not exist yet is the same crash, so the remedy for a wrong runner is its scope.
 

@@ -11,7 +11,7 @@ import { testOneFor } from '../lib/gotchas.mjs'
 import { normalizeNode } from '../lib/tree.mjs'
 import { closeDecision } from '../lib/verdict.mjs'
 import { parseArgs, verify } from '../lib/verify.mjs'
-import { BUILD, git, repository, rev } from './harness/verify-fixture.mjs'
+import { BUILD, git, mutations, repository, rev } from './harness/verify-fixture.mjs'
 
 const SPEC = 'viewer/test/widget.test.mjs'
 const SOURCE = 'src/widget.mjs'
@@ -24,12 +24,17 @@ const ROOT_RUNNER = [
   "console.log('ℹ tests 1')",
 ].join('\n')
 
-// The viewer's runner: executes the file, passing once the source labels the widget hi.
+// The viewer's runner: executes the file, passing once the source labels the widget hi, and
+// reports as vitest run with `--root viewer` does, its paths relative to that folder.
 const VIEWER_RUNNER = [
   "import { label } from '../src/widget.mjs'",
   "if (label() === 'hi') { console.log('Tests  1 passed (1)'); process.exit(0) }",
-  "console.log(' FAIL  ' + process.argv[2] + ' > the widget says hi')",
-  "console.log('Tests  1 failed (1)')",
+  "const file = process.argv[2].replace(/^viewer[/]/, '')",
+  "console.log(' ❯ ' + file + ' (1 test | 1 failed) 9ms')",
+  "console.log('   × the widget says hi 2ms')",
+  "console.log(' FAIL  ' + file + ' > the widget says hi')",
+  "console.log(' Test Files  1 failed (1)')",
+  "console.log('      Tests  1 failed (1)')",
   'process.exit(1)',
 ].join('\n')
 
@@ -53,10 +58,10 @@ function leaf(t) {
   return { worktree, base: rev(dir, 'main'), head: rev(worktree, 'HEAD') }
 }
 
-const measure = ({ worktree, base, head }, testOneByPath) => verify({
+const measure = ({ worktree, base, head }, testOneByPath, extra = []) => verify({
   ...parseArgs([
     '--worktree', worktree, '--base', base, '--head', head, '--expects', SOURCE, '--expects', SPEC, '--rigor', 'tdd',
-    '--build', BUILD, '--typecheck-absent', '--suite', 'node tools/root.mjs all', '--test-one', TEST_ONE,
+    '--build', BUILD, '--typecheck-absent', '--suite', 'node tools/root.mjs all', '--test-one', TEST_ONE, ...extra,
   ]),
   testOneByPath,
 })
@@ -68,6 +73,13 @@ test('a file under a scope is measured by that scope\'s test_one, and its leaf p
   assert.deepEqual([d.test_id, d.failed_on_base, d.passes_now], [SPEC, true, true], payload.notes)
   assert.equal(payload.suite, 'passed', payload.notes)
   assert.equal(closeDecision(payload, normalizeNode({ id: 'w1', kind: 'leaf', rigor: 'tdd', title: 'x' })).next, 'approve')
+})
+
+test('a mutation of a file under a scope bites where that scope\'s runner names the expected test failing', (t) => {
+  const spec = { file: SOURCE, find: "'hi'", replace: "'ho'", expect_failing: ['the widget says hi'] }
+  const [m] = measure(leaf(t), BY_PATH, mutations([spec])).mutations
+  assert.equal(m.applied, true)
+  assert.deepEqual([m.observed_failing, m.failing_files, m.bites], [['the widget says hi'], [SPEC], true])
 })
 
 test('without the scope the tree\'s runner measures the file, and the crash reads as a failure', (t) => {

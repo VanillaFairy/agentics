@@ -91,3 +91,21 @@ test('a runner\'s own counters are still discarded, which is what the guard is f
     assert.equal(found.unplaced, 0, line + ' is a counter, not a failure nobody could place')
   }
 })
+
+test('vitest under a folder root: each failure is placed repo-relative, named once, by the test\'s own name', (t) => {
+  const worktree = tree(t, ['viewer/test/app.test.ts'])
+  const output = [
+    ' RUN  v5.0.2 ' + worktree + '/viewer', '',
+    ' ❯ test/app.test.ts (8 tests | 1 failed) 9ms',
+    '   × live flag reads exactly ended for an ended run 2ms', '',
+    ' FAIL  test/app.test.ts > live flag reads exactly ended for an ended run',
+    'AssertionError: expected 0 to be greater than 0',
+    ' ❯ test/app.test.ts:184:38', '',
+    ' Test Files  1 failed (1)', '      Tests  1 failed | 7 passed (8)',
+  ].join('\n')
+
+  const found = extractFailures(output, worktree, ['viewer', ''])
+
+  assert.equal(found.unplaced, 0)
+  assert.deepEqual(found.failures, [{ file: 'viewer/test/app.test.ts', id: 'live flag reads exactly ended for an ended run' }])
+})

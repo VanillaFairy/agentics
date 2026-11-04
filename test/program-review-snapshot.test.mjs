@@ -98,6 +98,17 @@ test('untracked files are in the snapshot, ignored files and .agentics are not',
   assert.equal(show(rig.repo, sha, '.agentics/x.md'), X_COMMITTED)
 })
 
+test('a snapshot is taken when .agentics and .claude/worktrees are ignored, and still leaves them out', async (t) => {
+  const { rig, args } = reviewRig(t, scriptOf(returnOf()))
+  write(rig.repo, '.gitignore', 'ignored.txt\n.agentics/\n.claude/worktrees\n')
+  const { sha } = (await review(rig.ctx, args())).snapshot
+  const files = filesAt(rig.repo, sha)
+  assert.ok(files.includes('c.js'), files.join(', '))
+  assert.deepEqual(files.filter((f) => f.startsWith('.claude/')), [])
+  assert.deepEqual(files.filter((f) => f.startsWith('.agentics/')), ['.agentics/x.md'])
+  assert.equal(show(rig.repo, sha, '.agentics/x.md'), X_COMMITTED)
+})
+
 test("the user's tree, index and stash are untouched by a review", async (t) => {
   const { rig, args } = reviewRig(t, scriptOf(returnOf()))
   const USER_EDIT = 'export const a = 3 // the user typed this while the review ran\n'

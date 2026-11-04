@@ -1826,7 +1826,9 @@ The inline mode has its own entry skill, `task`. Its rules:
   tool, so the snapshot does not hold it, and starts `run.mjs review --base <the commit the change
   started from> --criteria-file <file>`. The program snapshots the working tree onto `HEAD` through
   a temporary index (`GIT_INDEX_FILE`, which `git` in `lib/store.mjs` takes in its environment; `git
-  add -A`, `write-tree`, `commit-tree`; `.agentics/` and `.claude/worktrees/` left out) under
+  ls-files` of the untracked, modified and deleted paths fed to `update-index`, then `write-tree`,
+  `commit-tree`; `.agentics/` and `.claude/worktrees/` keep `HEAD`'s content, fenced by `ls-files`'
+  exclude pathspecs, which `git add` refuses when the user's ignore rules name those folders) under
   `refs/agentics/review/<run>`, so the user's tree, index and stash are never touched (the temporary
   index is removed whether or not a step fails), and runs one fresh reviewer in a throwaway worktree
   at the snapshot (`.claude/worktrees/review-<run>`, removed when the call ends; the ref is kept as

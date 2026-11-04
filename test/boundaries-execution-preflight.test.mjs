@@ -166,8 +166,10 @@ test('a later preflight adopts the envelope as written, whatever it is given', a
   assert.equal(readFileSync(envPath(r), 'utf8'), written, 'execution.json is byte for byte as it was')
   assert.deepEqual(xc.envelope().commands, COMMANDS, "the first file's commands, not the second's")
 
-  const careless = await preflight(ctxOf(r), { base_ref: 'no-such-branch', commands_file: join(tmpdir(), 'agentics-no-such-commands.json') })
-  assert.equal(careless.ok, true, 'a base_ref and a commands file the envelope never reads are never refused')
+  const careless = await preflight(ctxOf(r), { base_ref: 'no-such-branch' })
+  assert.equal(careless.ok, true, 'a base_ref the envelope never reads is never refused')
+  const unread = await preflight(ctxOf(r), { commands_file: join(tmpdir(), 'agentics-no-such-commands.json') })
+  assert.deepEqual([unread.ok, unread.error && unread.error.kind], [false, 'commands_unreadable'], 'a resume reads the commands file it is handed')
   assert.equal(readFileSync(envPath(r), 'utf8'), written)
 })
 

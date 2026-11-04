@@ -262,3 +262,57 @@ test('a later execution\'s measurement reads the session\'s absent commands from
   const { measurement } = JSON.parse(readFileSync(out.drift_record, 'utf8'))
   assert.deepEqual([measurement.build, measurement.typecheck], ['absent', 'absent'])
 })
+
+const VITEST = 'npm --prefix viewer exec -- vitest run --root viewer {file}'
+const stateOf = (r, stamp = STAMP) => readFileSync(join(executionDir(r, E, stamp), 'state.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l))
+
+test('a test_one map names a test_one per scope, which commandsOf, the brief and the role\'s commands read', (t) => {
+  const r = world(t)
+  const out = preflight(relaunch(r), { commands_file: commandsFile(t, { test_one: { '.': 'node --test {file}', 'viewer/': VITEST } }) })
+  assert.equal(out.ok, true, JSON.stringify(out))
+  const found = commandsOf(r, E)
+  assert.equal(found.test_one, 'node --test {file}')
+  assert.deepEqual(found.test_one_by_path, { viewer: VITEST })
+  const { text } = leafBrief(r, E, 'a', { worktree: join(r, 'wt'), commands: found })
+  assert.ok(text.includes('test_one for files under viewer/: `' + VITEST + '`'))
+  const got = roleCommands(loadRole('implementer').role, found, readTree(r, E).nodes.get('a'))
+  assert.ok(got.includes(VITEST.split('{file}')[0].trim()))
+})
+
+test('a commands file handed to a resumed execution adds the scopes it names, and the tree\'s test_one stands', (t) => {
+  const r = world(t)
+  preflight(relaunch(r), { commands_file: commandsFile(t, { test_one: 'node --test {file}' }) })
+  const again = preflight(relaunch(r), { commands_file: commandsFile(t, { test_one: { viewer: VITEST } }) })
+  assert.equal(again.ok, true, JSON.stringify(again))
+  const found = commandsOf(r, E)
+  assert.equal(found.test_one, 'node --test {file}')
+  assert.deepEqual(found.test_one_by_path, { viewer: VITEST })
+  assert.equal(envelopeOf(r).commands.test_one, 'node --test {file}', 'the envelope keeps what the new execution was given')
+})
+
+test('a resumed execution\'s commands file corrects the commands its replace lists, once, with a command-replaced line', (t) => {
+  const r = world(t)
+  writeGotcha(r, E, commandGotcha('suite', 'npm test'), { source: { role: 'investigator' } })
+  preflight(relaunch(r), { commands_file: commandsFile(t, { suite: 'node --test test/' }) })
+  assert.equal(commandsOf(r, E).suite, 'npm test', 'unlisted, the established command stands')
+  const fix = commandsFile(t, { suite: 'node --test test/ && npm --prefix viewer test', replace: ['suite'] })
+  assert.equal(preflight(relaunch(r), { commands_file: fix }).ok, true)
+  assert.equal(commandsOf(r, E).suite, 'node --test test/ && npm --prefix viewer test')
+  assert.equal(gotchaOf(r, 'suite').source.role, 'session')
+  const replaced = stateOf(r).filter((e) => e.kind === 'command-replaced')
+  assert.equal(replaced.length, 1)
+  assert.deepEqual([replaced[0].name, replaced[0].path, replaced[0].was.value], ['suite', '', 'npm test'])
+  preflight(relaunch(r), { commands_file: fix })
+  preflight(relaunch(r), {})
+  assert.equal(stateOf(r).filter((e) => e.kind === 'command-replaced').length, 1, 'the same correction again records nothing')
+  assert.equal(commandsOf(r, E).suite, 'node --test test/ && npm --prefix viewer test', 'the envelope does not undo the correction')
+})
+
+test('a resumed execution\'s commands file that is not JSON is refused commands_unreadable', (t) => {
+  const r = world(t)
+  preflight(relaunch(r), {})
+  const bad = commandsFile(t, {})
+  writeFileSync(bad, '{ nope')
+  const out = preflight(relaunch(r), { commands_file: bad })
+  assert.deepEqual([out.ok, out.error.kind], [false, 'commands_unreadable'])
+})

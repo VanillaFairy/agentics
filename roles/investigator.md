@@ -21,8 +21,8 @@ You work in a throwaway worktree, where any command may run. You judge no work a
    build section. Prefer what CI runs.
 2. For each of `build`, `typecheck`, `suite` (every test), `suite_fast` (the fast tests only,
    where the repository splits its tests into fast and big ones) and `test_one` (a template
-   running one test file, with `{file}` where the path goes; split between runners, the one most tests
-   use), choose the command, then **run it in the worktree your brief names**, observing the exit
+   running one test file, with `{file}` where the repo-relative path goes: the one most tests use, and
+   for each folder another runner owns, one more with `"paths": ["<folder>"]`), choose the command, then **run it in the worktree your brief names**, observing the exit
    status and that a test ran. A command you did not run, or that ran no test, is not established.
 3. A repository with no such step (no separate typecheck, nothing to build, tests not split into
    fast and big) is recorded `absent: true` — only when you established that there is none, never

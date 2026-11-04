@@ -299,13 +299,13 @@ any spec edited since its approval, so the execution keeps the last approved gra
 node "${CLAUDE_PLUGIN_ROOT}/lib/compile.mjs" --repo . --effort <e> --folder <id>
 ```
 
-`ok: false` lists refusals by file and line and wrote nothing: show them and stop; the fix is a
-re-spec (step 4c).
+`ok: false` lists refusals by file and line and wrote nothing: show them, stop; re-spec (step 4c).
 
-A new execution is told the project's commands. Write the ones you know (from the user, the
-project's `CLAUDE.md`, its build files) with your Write tool as JSON `{build, typecheck, suite,
-suite_fast, test_one}` to a file outside the repository, `test_one` with `{file}` where a test
-file's path goes; leave out one you do not know, and the run's investigator establishes it.
+A new execution is told the project's commands. Write those you know (from the user, `CLAUDE.md`,
+build files) with Write as JSON `{build, typecheck, suite, suite_fast, test_one}` to a file outside
+the repository, `test_one` with `{file}` where a test file's repo-relative path goes — where folders
+use other runners, a map `{".": "<template>", "<folder>": "<template>"}`, a file run by its deepest
+folder's; leave out one you do not know, and the run's investigator establishes it.
 
 Read the effort's `seq` before you start, so the watch misses nothing raised in between: the
 `seq <n>` that `node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" list --repo .` prints on the effort's
@@ -318,9 +318,9 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" execute --repo . --detach --effort <e> 
 - `--folder` is the folder: `.` for the root, else its path from the root. A task or a group runs
   with the folder that holds it.
 - `--intelligence` by the dial above: it tiers a new execution's agents; a resume keeps its own.
-- `--commands-file`, `--pace` and `--base-ref` shape a new execution only. A start on a folder an
-  open execution holds resumes that execution, which keeps the commands, pace and base it began
-  with: leave them off.
+- `--pace` and `--base-ref` shape a new execution only. A start on a folder an open execution holds
+  resumes it, with the pace and base it began with. A resume's `--commands-file` adds what nothing
+  established; to correct an established one, also list its name in the file's `"replace"`.
 - `--confirmed` only as step 4a directs.
 
 It prints `{run, pid, log, result_file}` at once: keep `run` (`<e>.<stamp>`, the execution's
@@ -430,7 +430,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e> --node
 | `fails_full_suite`, `verify_not_converging` | its failures are timeouts or load faults that pass alone: retry once; the same again is the user's |
 | `brief_too_large` | never — the work is too big for one agent; `detail` names the part, its file and bytes. A spec: a re-spec (c) that splits it into subtasks, or at an effort's root into separate efforts that land in turn; never ask the user to cut text to fit. Only a guidance file (a `CLAUDE.md`, a `guidance` entry of the config) is the user's to cut or split. Then retry |
 | `git_hung` | never — a git hung past its ceiling twice at the same head: the user's machine (antivirus scanning the repository, a network drive); retry once they dealt with it |
-| `test_not_measured` | never — the known command executed no test of the file `detail` names (another runner's, or a config excluding it), so nothing is known of it: neither a pass nor a net. A re-spec gives its criterion a `check:` running that file alone with its own runner, as one command, or correct `test_one`; then retry |
+| `test_not_measured` | never — the known command executed no test of the file `detail` names (another runner's, or a config excluding it), so nothing is known of it: neither a pass nor a net. A re-spec gives its criterion a `check:` running that file alone with its own runner, as one command, or name its folder's `test_one` (step 3); then retry. So too a failure that is another runner's crash |
 | `discriminator_undecidable` | on a tdd leaf it comes only after the file went back to the producer once and still passes at base; on a red, at once. A file that only pins behaviour that held at base: rule it a net (below). One that should fail at base, for behaviour the leaf adds: note what it must assert, then retry. The user's only when you cannot tell which |
 
 `discriminator_undecidable`: a changed test file passes at base too. To rule it a regression

@@ -2873,10 +2873,32 @@ One distinguished kind, **`command`**, records how to build, typecheck and test:
 `build`, `typecheck`, `suite`, `suite_fast` and `test_one` (`COMMAND_NAMES` in `lib/gotchas.mjs`),
 named or declared absent. Two writers supply it: the session, whose `commands_file` preflight
 writes as command gotchas (source role `session`; a command marked absent is written absent even
-when a value is given too, `test_one` has no absent, and a command already established stands),
-and an investigator's return. The command gotchas are the one source of the established commands:
-leaf-open, the leaf brief and every measurement read them (`commandsOf`), never the execution's
-envelope. leaf-close refuses a command gotcha a producer returns, and a stale id naming one, each
+when a value is given too, `test_one` has no absent, and a command already established stands unless the file corrects it),
+and an investigator's return. The command gotchas are the one source of the established commands.
+
+**A tree may hold more than one test runner.** `test_one` is the one command run per file, so it is
+the one a path scopes: a `test_one` gotcha may name one path, its scope (id
+`command-test_one-<fnv1a(scope)>`), and every file under that scope is run by it — the most specific
+scope holding a file wins, segment by segment (`testOneFor` in `lib/gotchas.mjs`), and a file no
+scope holds is run by the tree's `test_one`. Build, typecheck and the suites answer for the whole
+tree, so a scope on them is refused; a suite over two runners is one command that runs both. The
+session names scopes in its commands file as a map, `"test_one": {".": "<template>", "<folder>":
+"<template>"}`, and an investigator returns a scoped `test_one` with `paths: ["<folder>"]`. Every
+scope's template is granted where `<test>` is, and shown in the brief. A file the wrong runner loaded
+and crashed on before any test registered reads as failed, not unmeasured: a red test that fails
+importing what does not exist yet is the same crash, so the remedy for a wrong runner is its scope.
+
+**The session corrects a command on a resume.** A commands file handed to preflight is read on a
+resumed execution too: a command or scope it names that nothing establishes is written, and one
+already established is replaced only when the file lists the command's name under `"replace"` and
+the value differs (on a new execution's file as on a resumed one's). Each replacement is a `command-replaced` state line naming what it was, so the
+correction is on record; handing the same file again replaces nothing. The envelope keeps what the
+new execution was given and only fills a command whose gotcha is gone, so it never undoes a
+correction. A measurement's key holds every scope's template, so a corrected command is measured
+anew.
+
+Leaf-open, the leaf brief and every measurement read the established commands (`commandsOf`),
+never the execution's envelope. leaf-close refuses a command gotcha a producer returns, and a stale id naming one, each
 with a note on the round's close record, so no producer changes what verification runs.
 
 **Where and how.** `.agentics/<effort>/.state/knowledge/<id>.md`, one file per gotcha, with
@@ -2917,7 +2939,7 @@ attached).
 
 | boundary | steps |
 |---|---|
-| **preflight** | refuse what cannot run — a git older than 2.38 (`git_too_old`, `GIT_MIN` in `lib/store.mjs`: the series check reads `merge-tree --write-tree` and `log --remerge-diff`, [Role rules](#role-rules)), an effort it cannot read (`unreadable`), a folder that is no node (`no_such_node`), an effort root that is a leaf (`root_is_leaf`), a landed effort (`landed`), an execution whose envelope names another root (`wrong_root`), a store whose stamp is not this version (`store_version`, [Store stamp](#store-stamp)), and, writing a new envelope, a `base_ref` that names no commit (`no_base`) or a `commands_file` that is not readable JSON (`commands_unreadable`) — writing nothing; adopt or write the envelope (`execution.json`: base, dial, pace, and the commands the session wrote to `commands_file`); write the session's commands as command gotchas ([Gotchas](#gotchas)) — refusing `commands_unwritable`, naming each command the gotcha store refused, once the envelope is written, so a run again writes only what is missing; read every integration branch in scope for commits no record accounts for ([Outside work](#outside-work)), refusing `unreadable_branch` when git cannot read one; traceability; stop at `integration_lost` ([Outside work](#outside-work)) and then at `outside_work` before every other checkpoint, and never confirm past either, and then at a checkpoint not confirmed past ([Resume and checkpoints](#resume-and-checkpoints)), its lists (the overlapping executions, the gaps, the branches with their unaccounted commits) on its state line, for the session to read with `lib/status.mjs checkpoint`; on a resumed execution with no checkpoint, check whether the base moved under its leaves and write the ruler's brief and its record, and, with no checkpoint, write the brief on the drift of adopted records no ruling covers yet ([Landing and drift](#landing-and-drift)); free this execution's slots, its dead worktrees and merged leaves' worktrees (clean ones only — a dirty one is reported, never forced) |
+| **preflight** | refuse what cannot run — a git older than 2.38 (`git_too_old`, `GIT_MIN` in `lib/store.mjs`: the series check reads `merge-tree --write-tree` and `log --remerge-diff`, [Role rules](#role-rules)), an effort it cannot read (`unreadable`), a folder that is no node (`no_such_node`), an effort root that is a leaf (`root_is_leaf`), a landed effort (`landed`), an execution whose envelope names another root (`wrong_root`), a store whose stamp is not this version (`store_version`, [Store stamp](#store-stamp)), and, writing a new envelope, a `base_ref` that names no commit (`no_base`) or a `commands_file` that is not readable JSON (`commands_unreadable`, on a resumed execution too) — writing nothing; adopt or write the envelope (`execution.json`: base, dial, pace, and the commands the session wrote to `commands_file`); write the session's commands as command gotchas ([Gotchas](#gotchas)) — refusing `commands_unwritable`, naming each command the gotcha store refused, once the envelope is written, so a run again writes only what is missing, and on a resumed execution the commands file handed to it, recording each command its `replace` corrects as `command-replaced`; read every integration branch in scope for commits no record accounts for ([Outside work](#outside-work)), refusing `unreadable_branch` when git cannot read one; traceability; stop at `integration_lost` ([Outside work](#outside-work)) and then at `outside_work` before every other checkpoint, and never confirm past either, and then at a checkpoint not confirmed past ([Resume and checkpoints](#resume-and-checkpoints)), its lists (the overlapping executions, the gaps, the branches with their unaccounted commits) on its state line, for the session to read with `lib/status.mjs checkpoint`; on a resumed execution with no checkpoint, check whether the base moved under its leaves and write the ruler's brief and its record, and, with no checkpoint, write the brief on the drift of adopted records no ruling covers yet ([Landing and drift](#landing-and-drift)); free this execution's slots, its dead worktrees and merged leaves' worktrees (clean ones only — a dirty one is reported, never forced) |
 | **schedule** | compute what to launch from the records (`lib/schedule.mjs`, see [Scheduling](#scheduling)); park a folder the user writes that has nothing planned (`needs_design`); approve a leaf the resume ladder finds measured green, with no review loop of its own and no approval standing; what a pass records is recorded and the launch computed again, until a pass records nothing |
 | **leaf-open** | acquire a slot, asked once (`no_slot` goes back to the program, which waits); ensure the parent's integration branch (lazily, refreshed from its own parent, each branch of the chain under its own lock in turn) and cut or attach the leaf's branch and worktree, brought up to that parent's head — a round a `rebase` message waits for leaves a conflicting refresh in the worktree for its producer, and an open run again takes that merge in progress as its own ([The judge](#the-judge)); compute the round — the round of a dispatch this execution started and never got back, else one past the latest; only a producer's or an auditor's dispatch is a round — its role from the records, its thread (resumed, fresh, or fresh on a raise, [Conversations](#conversations)), its tier and its permissions from its role ([Role rules](#role-rules)); build its thread brief; record `retried` when the round resumes a thread after the user's `retry` cleared the leaf's stop, and `notes` when the round starts a thread this execution never dispatched ([Conversations](#conversations)); a refusal escalates `open_refused` |
 | **leaf-close** | first put right what a verify cut off in the worktree left ([Verification](#verification)); read the producer's stored return — a round closed again with no `dispatch`, over the work a retry measures first, has none to read and is measured as no producer's ([Resume and checkpoints](#resume-and-checkpoints)); none, or a producer's with no string `status`, holds the leaf on a `role` fault, and an auditor's, which carries no status, reads as `done`: a park, an escalation, a request for the planner (or the `needs_respec` park of a folder the user writes), a `needs_tests` or a `declined` for another session is recorded and routed without measuring, and so is a return naming what it could not read (`unread`), but a path its `dispatched` line's `deny_read` holds, escalated `unread_reference` ([Producer returns](#producer-returns)); otherwise, a round that returned no commits included: measure nothing while a rebase merge the round opened is unconcluded (a `failures` message, `source: the rebase`, naming the unmerged paths; at a head the leaf was sent back at already, the rebase's among them, it escalates `merge_conflict`); commit a shell-less author's files its role may write (`authored`) (a close cut off after that commit finds it in git and journals it), and put every other uncommitted file back to the head; journal the series as `series-done`, from git, when the producer declared it done; measure by rigor — build, typecheck, its own tests, discriminator, declared mutations and named checks; write and delete the gotchas it returned, never a command one; compute the close decision and record it — the approval, the escalation, the next round's message (`failures`, `surviving_mutations`, `tests_ready`), a verify leaf's finding (the `needs_respec` park of a folder the user writes beside the leaf's escalation; under a planner's folder the finding is the route and the leaf is not escalated, [Replanning](#replanning)), every send-back through the loop guard (`sendBack` in `lib/boundaries/loop-guard.mjs`, [L2](#l2--states-end-work-counts-dont)): `fix_without_commits`, carrying the measured failures, when the round returned a head the leaf was already sent back at, unmoved — a test round's redeclared mutations count as moving it — and it still fails, `verify_not_converging` when the failures repeat the last verification send-back at a moved head, and failures an earlier one held marked to ask the leaf's convergence ruler; hand back `command_unknown` until an investigator of this execution has returned, and escalate it after; a cycle's consolidation round approves instead of any other decision, at its commit when it passes and on its revert otherwise ([Rigor](#rigor)); write the round's close record. What it reads of the rounds before spans executions, as a leaf's rounds do ([Resume and checkpoints](#resume-and-checkpoints)) |
@@ -3796,7 +3818,7 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
   entry (`adds_test`) and in the notes, so the verdict and a resume read it off the journal line.
 - **A leaf runs the tests it is told to, and no others.** Its own tests are the test files its
   diff changed, plus the cycle's test files for a green or an audit, each run through the
-  `test_one` template (`suite_scope: scoped`; `none`, with `suite: not_run`, when there are none).
+  `test_one` template of the scope holding it (`suite_scope: scoped`; `none`, with `suite: not_run`, when there are none).
   Beside them it runs every criterion's `check:` command: the tests the planner picked to decide
   the criterion ([Atomicity](#atomicity-when-to-stop-splitting), condition 4). The fast suite runs
   once per merge-batch on the merged head (`suite_scope: fast`; `full` where the repository does not
@@ -4455,7 +4477,7 @@ fix, answers?}]}`, one per unit of the brief.
 ### State and journal lines
 
 - **Owner:** the boundaries in `lib/boundaries/` (`fault`, `drift-ruled`, `stale-ruled`, `batch`,
-  `batch-started`, `gate`, `checkpoint`, `checkpoint-confirmed`, `closed`, `merge-observed`,
+  `batch-started`, `gate`, `checkpoint`, `checkpoint-confirmed`, `command-replaced`, `closed`, `merge-observed`,
   `series-done`, `authored`); preflight in `lib/boundaries/execution.mjs` also owns
   the adopted drift record file; `lib/runner.mjs` (`dispatched`, `returned`,
   `host_stop`, `checkout_changed`, `thread_renewed`, `tool_used`); `deliver` and `step` in
@@ -4490,7 +4512,9 @@ value}` or `step {key, value_file, bytes}`; `batch {target, identity, merged[], 
 landing before the batch's `merged` events; `gate {target, head_sha, passed, checks}`, `checks` the digest of the criterion checks it ran, one per suite gate
 that ran; `checkpoint {reason, detail, executions?, gaps?, branches?, lost?}` (the lists the checkpoint found, `branches` the `[{branch, commits}]` of an `outside_work` one, `lost` the `[{branch, exists, node, merged_sha, reachable_from}]` of an `integration_lost` one;
 `lib/status.mjs checkpoint` prints them); `checkpoint-confirmed {reason, gaps?, executions?}`, the
-reason and what the confirmed checkpoint line found; `closed {status: done | migrated}`; `batch-started {target, pre, children, heads?, identity?}` (`heads` the units' heads, in order; `identity` the batch's `batchIdentity`, absent on a line from before it was recorded, which no batch reads back);
+reason and what the confirmed checkpoint line found; `command-replaced {name, path, value, absent,
+was {value, absent}}`, a command the session's commands file corrected on a resume (`path` the
+`test_one` scope, `''` for the whole tree); `closed {status: done | migrated}`; `batch-started {target, pre, children, heads?, identity?}` (`heads` the units' heads, in order; `identity` the batch's `batchIdentity`, absent on a line from before it was recorded, which no batch reads back);
 `drift-ruled {node, contract, head_sha, ruling, why, said, adopted_seq?}` (`adopted_seq` the seq of the adopted record the ruling covers, [Landing and drift](#landing-and-drift)) and `stale-ruled {node, base_now,
 ruling, why, said}` (`said` the ruler's dispatch; the newest `stale-ruled` of a leaf is its anchor
 for the next moved base once it is `unaffected` or answered on disk); `fault {node, channel, detail}`, once per node and channel
@@ -4500,8 +4524,10 @@ run's end, where a watching session stops.
 `execution.json`, the envelope preflight writes once, is `{stamp, root, base_branch, base_sha,
 dial, pace, commands}`: `base_branch` the `base_ref` the session gave (else the branch checked out
 at the start), and `commands` the session's commands file as it was handed over, `{build,
-typecheck, suite, suite_fast, test_one, absent}`, `absent` a map from a command name to `true` — a
-record of what the session gave, which nothing that measures reads. Beside it,
+typecheck, suite, suite_fast, test_one, absent, replace}`, `test_one` a template or a map from a
+path (`.` the whole tree) to one, `absent` a map from a command name to `true`, `replace` the names a
+resumed execution's file corrects — a record of what the session gave, which nothing that measures
+reads. Beside it,
 `stale-<head>.json {now, nodes}` names the leaves a ruler on a moved base was briefed on, and
 `merges/adopted-<seq>.json {kind: adopted, target, seqs[], head_sha, drift[{node, contract, files,
 adopted_seq, stopped?}]}` beside its brief `adopted-<seq>.drift.md` those a ruler on adopted work was.
@@ -4623,7 +4649,10 @@ resolved test: an observation a reviewer rules, never a failure.
 Frontmatter `{id, kind, roles, paths, observed_at, source, command?}`, `roles` naming roles of
 `ROLE_NAMES` in `lib/roles.mjs`, the roles this plugin defines (any other is refused): `source` is
 `{node, role}` for a producer's, `{role: investigator}` or `{role: session}` for a command;
-`command` is `{name, value, absent}`, `name` one of `COMMAND_NAMES`. Body `When <trigger>, do
+`command` is `{name, value, absent}`, `name` one of `COMMAND_NAMES`; a command's `paths` is empty,
+or one path for a `test_one` scoped to it. `commandsOf` returns `{build, typecheck, suite,
+suite_fast, test_one, test_one_by_path, absent}`, `test_one_by_path` a map from a scope to its
+template. Body `When <trigger>, do
 <action>.` plus the evidence. A return carries a gotcha as `{trigger, action, evidence, kind, roles,
 paths}`, and the ones it found no longer hold by id; leaf-close refuses a `command` one, and a stale
 `command-<name>` id, from a producer.
@@ -4934,8 +4963,8 @@ directory; `sessions` every session the search's thread ran in; `rounds` each ro
   fast`, default `balanced`), `plan_only`, `pause`, `budget` (tokens; 0 none), `confirmed` (the
   `seq` of the checkpoint line the user confirmed past; 0 none), `base_ref` (the base branch's
   name, kept in the envelope so a later preflight sees the base move) and `commands_file` (the
-  session's commands, `{build, typecheck, suite, suite_fast, test_one, absent}`); `intelligence`,
-  `pace`, `base_ref` and `commands_file` shape a new execution only. Returns `{effort, root,
+  session's commands, `{build, typecheck, suite, suite_fast, test_one, absent, replace}`, read on a
+  resume too, [Gotchas](#gotchas)); `intelligence`, `pace` and `base_ref` shape a new execution only. Returns `{effort, root,
   execution, checkpoint {reason, detail, seq}, nodes_n, implemented[{id, rigor, role, rounds,
   review_rounds, at_integration, salvaged, nets, undiscriminated}], escalations[{id, reason, said}], parked[{id, return,
   said}], faults[{id, channel}], blocked[{blocked_by, leaves_n}], integration{branch, head_sha,

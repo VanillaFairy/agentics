@@ -117,7 +117,23 @@ test('commandsOf reads only command gotchas an investigator or the session wrote
   writeGotcha(r, E, command('test_one', 'npm test -- {file}'), { source: { role: 'session' } })
   writeGotcha(r, E, pitfall(), { source: { role: 'investigator' } })
   assert.deepEqual(commandsOf(r, E), {
-    build: 'npm run build', typecheck: '', suite: '', suite_fast: '', test_one: 'npm test -- {file}',
+    build: 'npm run build', typecheck: '', suite: '', suite_fast: '', test_one: 'npm test -- {file}', test_one_by_path: {},
     absent: { build: false, typecheck: true, suite: false, suite_fast: false },
   })
+})
+
+test('a command gotcha scoped by a path is a test_one only, with its own id, and commandsOf maps it by scope', () => {
+  const r = repo()
+  const scoped = (name, path, value = 'vitest run {file}') => command(name, value, { paths: [path] })
+  assert.equal(gotchaProblem(scoped('test_one', 'viewer/')), null)
+  assert.match(gotchaProblem(scoped('suite', 'viewer')), /only test_one/)
+  assert.match(gotchaProblem(command('test_one', 'x', { paths: ['a', 'b'] })), /at most one path/)
+  assert.equal(gotchaId(scoped('test_one', 'viewer/')), 'command-test_one-' + fnv1a('viewer'))
+  assert.equal(gotchaId(scoped('test_one', '.')), 'command-test_one')
+  writeGotcha(r, E, command('test_one', 'node --test {file}'), { source: { role: 'session' } })
+  writeGotcha(r, E, scoped('test_one', 'viewer/'), { source: { role: 'session' } })
+  writeGotcha(r, E, scoped('test_one', 'other', 'x {file}'), { source: { role: 'implementer' } })
+  const found = commandsOf(r, E)
+  assert.equal(found.test_one, 'node --test {file}')
+  assert.deepEqual(found.test_one_by_path, { viewer: 'vitest run {file}' })
 })

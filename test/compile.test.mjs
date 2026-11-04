@@ -960,3 +960,60 @@ test('the compile CLI refuses a value that is not a handle, and a flag it does n
   assert.deepEqual(refusal('--repo', '.', '--effort', 'e`1'), [1, 'args_unreadable'])
   assert.deepEqual(refusal('--repo', '.', '--effort', 'e1', '--force'), [1, 'unknown_flag'])
 })
+
+// ------------------------------------------------------------------ dropping dispatched work
+
+const DROP_RELOAD = (text) => text.replace('- **reload** — task · realises: D3 · after: api · rigor: tdd · expects: src/reload.js, test/reload.test.js', '- **reload** — dropped · realises: D3')
+  .replace(/ {2}- \[ \] a changed file reloads.*\n/, '')
+
+test('a dropped entry whose node has dispatched work retires it, its records kept; a removed one is told to mark it dropped', () => {
+  const cli = /- \*\*cli\*\*[\s\S]*?(?=- \*\*reload\*\*)/
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  append(repo, E, 'events', { kind: 'dispatched', node: 'cli', execution: '20260926-120000', role: 'implementer', round: 1 })
+  write(repo, '.', ROOT.replace(cli, ''))
+  approve(repo, '.')
+  const removed = compileEffort(repo, E)
+  assert.equal(removed.ok, false)
+  assert.ok(removed.problems.some((p) => /\bcli\b/.test(p.problem) && /dropped/.test(p.problem)), JSON.stringify(removed.problems))
+
+  write(repo, '.', ROOT.replace(cli, '- **cli** — dropped · realises: D1\n  Read configs from the command line\n'))
+  approve(repo, '.')
+  const out = compiled(repo)
+  assert.deepEqual(out.retired, ['cli'])
+  assert.equal(nodes(repo).has('cli'), false)
+  assert.ok(readTree(repo, E).events.some((e) => e.kind === 'dispatched' && e.node === 'cli'), 'its dispatch stays on record')
+})
+
+test('a dropped entry whose node has merged work is refused with advice that keeps the entry', () => {
+  const repo = effort()
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  append(repo, E, 'events', { kind: 'merged', node: 'reload', execution: '20260926-120000' })
+  const text = DROP_RELOAD(ROOT)
+  write(repo, '.', text)
+  approve(repo, '.')
+  const before = sizes(repo)
+  const out = compileEffort(repo, E)
+  assert.equal(out.ok, false)
+  assert.ok(out.problems.some((p) => p.line === lineIn(text, '- **reload**') && /merged work/.test(p.problem) && /keep the entry as a task/.test(p.problem)), JSON.stringify(out.problems))
+  assert.equal(nodes(repo).has('reload'), true)
+  assert.deepEqual(sizes(repo), before)
+})
+
+test('a group left holding only a dropped entry is approved, and compile retires the group with it', () => {
+  const lone = ROOT.replace(/- \*\*reload\*\*[\s\S]*?(?=- \*\*later\*\*)/, '')
+    .replace('\n## Open questions', '\n' + WATCH.split('\n- **notify**')[0] + '\n\n## Open questions')
+  const repo = effort({ '.': lone, api: API })
+  approve(repo, '.')
+  approve(repo, 'api')
+  compiled(repo)
+  append(repo, E, 'events', { kind: 'dispatched', node: 'watch/reload', execution: '20260926-120000', role: 'implementer', round: 1 })
+  write(repo, '.', lone.replace(/- \*\*reload\*\* — task[^\n]*\n( {2}Reload configs on change\n) {2}- \[ \][^\n]*\n/, '- **reload** — dropped · realises: D3\n$1'))
+  approve(repo, '.')
+  const out = compiled(repo)
+  assert.deepEqual(out.retired.sort(), ['watch', 'watch/reload'])
+})

@@ -1354,7 +1354,14 @@ under the declaration as it stands now (`declaredPart`); a part the kept text do
 change of the declaration, counts as changed, and a plan-only edit parks no consumer. No pattern over the Design's prose ever narrows a definition: code slices
 only by the part a spec declares — gives every node realising a changed decision a `decision_changed`
 revision, parks the folder when work under it was dispatched (`spec_changed`), and retires the
-entries it no longer lists — refusing, by name, one with dispatched or merged work. A parked node
+nodes no entry builds any more, with their subtrees. A node with only dispatched work below it is
+retired when its entry is marked `dropped`: the entry is the account of that work, which never
+reached the folder's branch, and the node's branch, worktree and records stay as they are. The
+same node whose entry was removed outright is refused, by name, with that advice. A node with
+merged work below it is refused whatever its entry says, since that work stands in the folder's
+branch: the entry stays a task, and a task that takes the work out is how it goes. A group left
+holding only dropped entries passes the spec check (it keeps their ids) and is retired with them;
+an `after` that names a dropped entry is refused, saying so. A parked node
 whose spec was approved or prepared after the park gets a new revision (`answered`), which clears
 the park. Nothing is written when anything is refused. Compile keeps the text it built each folder
 from, by hash, under `.state/specs/`: the next change to that spec is shown against it, and the

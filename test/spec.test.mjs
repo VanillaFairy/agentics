@@ -611,9 +611,10 @@ test('a group is refused when its heading is not a group, it carries a field oth
   refusedAt(problemsOf(heading), lineOf(heading, '### Checks'), /opens a group/)
   const field = swap(GROUPED, '### checks', '### checks — group · realises: D2')
   refusedAt(problemsOf(field), lineOf(field, '### checks'), /only after/)
-  const empty = GROUPED.replace(/- \*\*lint-a\*\* — task/, '- **lint-a** — deferred').replace(/- \*\*lint-b\*\* — task/, '- **lint-b** — dropped')
+  const idle = (b) => GROUPED.replace(/- \*\*lint-a\*\* — task/, '- **lint-a** — deferred').replace(/- \*\*lint-b\*\* — task/, '- **lint-b** — ' + b)
     .replace(/ · rigor: trivial · expects: lib\/[ab]\.mjs/g, '').replace(/ {2}- \[ \] [ab] lints.*\n/g, '')
-  refusedAt(problemsOf(empty), lineOf(empty, '### checks'), /holds no task/)
+  refusedAt(problemsOf(idle('deferred')), lineOf(idle('deferred'), '### checks'), /holds no task/)
+  assert.ok(!problemsOf(idle('dropped')).some((p) => /holds no task/.test(p.problem)), 'a group holding a dropped entry keeps its id')
 })
 
 test('a group holds no sub-effort, shares one namespace with the entries, and never waits on itself', () => {

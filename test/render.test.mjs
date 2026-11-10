@@ -263,6 +263,10 @@ test('the CLI cites and renders, each printing an envelope', () => {
     assert.equal(out.payload_digest, fnv1a(canonical(out.payload)))
     return out.payload
   }
+  for (const id of ['.', 'cli']) {
+    mkdirSync(folderDir(repo, EFFORT, id), { recursive: true })
+    writeFileSync(specPath(repo, EFFORT, id), '# ' + id + '\n')
+  }
   const cited = run('evidence.mjs', 'cite', '--repo', repo, '--effort', EFFORT, '--folder', 'cli', '--items', cached, '--gap', 'docs were not read')
   assert.equal(cited.ok, true)
   const rendered = run('render.mjs', 'evidence', '--repo', repo, '--effort', EFFORT, '--folder', 'cli')

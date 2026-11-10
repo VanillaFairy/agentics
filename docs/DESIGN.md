@@ -502,7 +502,7 @@ the program the resolved values:
 | `int` | digits | a non-negative integer |
 | `bool` | the flag alone | `true`; absent, `false` |
 | `enum` | one of the program's values | that value |
-| `effort`, `folder`, `run` | a name | the name, once `resolveHandle` finds it (a folder inside the `effort` argument) |
+| `effort`, `folder`, `run` | a name | the name, once `resolveHandle` finds it (a folder inside the `effort` argument, as its id: `.` or the effort's own name is the root, [Data contracts](#data-contracts)) |
 | `ref` | a ref or a sha | the commit's sha, read in `--root` |
 | `snapshot` | `snapshot:<8 hex digits>`, as a probe returns it | that handle; a bare hash or any other form is `bad_arg` |
 
@@ -4252,6 +4252,17 @@ Two conventions hold throughout:
   Every argument that names a thing goes through `resolveHandle`, which
   refuses a name that resolves to nothing (`unknown_<kind>`) and never reads its absence as an
   empty thing (L1).
+- **A folder has one id and the root three names.** A folder's id is its path from the root, and
+  the root's is `.`. A session names the root as `lib/next.mjs folders` and the skills do, by the
+  effort's own name, so every CLI that takes `--folder` reads it through `folderFlag` in
+  `lib/store.mjs` (`run.mjs` through its `folder` kind): no `--folder`, `.` and the effort's name
+  are the root (`folderIdOf`), which an effort has from the moment it is open; a sub-folder that
+  carries its effort's name is that sub-folder once it holds a spec, and the root is then `.`. Any
+  other name is a folder only where its `DESIGN.md` exists: a name that has none is refused
+  `unknown_folder` before the call reads or writes anything, the refusal naming the file it looked
+  for and how folders are named, and a name in an effort that does not exist `unknown_effort`.
+  `effort.mjs folder` takes the id of the folder it creates, and `boundary.mjs adopt` a node's id
+  (a group has no spec), read by `folderIdOf` alone.
 
 ### Node record and events
 

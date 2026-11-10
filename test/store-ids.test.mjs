@@ -117,6 +117,17 @@ test('resolveHandle refuses a folder with no spec', (t) => {
   assert.equal(resolveHandle(repo, 'folder', 'apl', { effort: 'e1' }).error.kind, 'unknown_folder')
 })
 
+test('resolveHandle reads the root by each of its names, in an effort that exists', (t) => {
+  const repo = store(t)
+  for (const name of ['', '.', 'e1']) assert.deepEqual(resolveHandle(repo, 'folder', name, { effort: 'e1' }), { ok: true, value: '.' }, JSON.stringify(name))
+  mkdirSync(effortDir(repo, 'e3'), { recursive: true })
+  assert.deepEqual(resolveHandle(repo, 'folder', 'e3', { effort: 'e3' }), { ok: true, value: '.' }, 'an open effort has its root before its spec')
+  assert.equal(resolveHandle(repo, 'folder', '.', { effort: 'e2' }).error.kind, 'unknown_effort')
+  mkdirSync(dirname(specPath(repo, 'e1', 'e1')), { recursive: true })
+  writeFileSync(specPath(repo, 'e1', 'e1'), '# x')
+  assert.deepEqual(resolveHandle(repo, 'folder', 'e1', { effort: 'e1' }), { ok: true, value: 'e1' }, 'a sub-folder named as its effort is that sub-folder')
+})
+
 test('resolveHandle accepts an execution that exists and refuses a mistyped stamp', (t) => {
   const repo = store(t)
   assert.equal(resolveHandle(repo, 'execution', '20261003-120000', { effort: 'e1' }).ok, true)

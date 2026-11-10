@@ -16,9 +16,9 @@ import { join } from 'node:path'
 import { renderMessage } from '../lib/conversation.mjs'
 import { ITEM_KINDS, liveItems, recordItems, recordJudgement } from '../lib/evidence.mjs'
 import { readProjectLog } from '../lib/ledger.mjs'
-import { programContext } from '../lib/programs/common.mjs'
+import { briefFits, programContext } from '../lib/programs/common.mjs'
 import { survey } from '../lib/programs/survey.mjs'
-import { tierFor } from '../lib/roles.mjs'
+import { PART_BYTES, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
 import { treeOf } from '../lib/search/pin.mjs'
 import { runLogPath } from '../lib/store.mjs'
@@ -110,6 +110,72 @@ test("every brief carries the repository's guidance", async (t) => {
     assert.ok(c.freshBrief.includes(GUIDE), c.thread.key + ' round ' + c.round + ' freshBrief')
     if (c.round === 1) assert.ok(c.brief.includes(GUIDE), c.thread.key + ' brief')
   }
+})
+
+// --- a brief past its bound -------------------------------------------------------------------
+
+/** A file whose every hit's excerpt (the lines ten either side) holds 0.4 of what one part of a brief may. */
+const WIDE = Math.ceil((PART_BYTES * 0.4) / 21)
+const wide = (word) => Array.from({ length: 120 }, (_, i) => `${word} line ${i + 1} ` + 'x'.repeat(WIDE)).join('\n') + '\n'
+const WIDE_FILES = { ...FILES, [FILE.loader]: wide('alpha'), [FILE.store]: wide('beta') }
+const wideHits = (topic, at) => pathHits(at.map((line) => [FILE[topic], line, `NOTE-${topic}-${line}`]))
+const wideSearch = (topic, at) => ({ ['scout||scout:' + topic]: [hitTurn(wideHits(topic, at)), closingRound()] })
+const judgedTopic = (topic, line) => [{ output: judgeOut({ items: [behaviour(topic, `CLAIM-${topic} at line ${line}`, line)], units: [anchoredUnit(topic)] }) }]
+const notesIn = (brief) => [...brief.matchAll(/NOTE-\w+-\d+/g)].map((m) => m[0])
+
+test('two topics dealt to one judge whose brief would be past its bound get a judge each, and nothing goes unjudged', async (t) => {
+  const rig = rigFor(t, {
+    'analyst||plan': [{ output: plan({ topics: [TOPIC.loader, TOPIC.store] }) }],
+    ...wideSearch('loader', [20, 60]),
+    ...wideSearch('store', [20, 60]),
+    'analyst||judge:1.1': judgedTopic('loader', 20),
+    'analyst||judge:1.2': judgedTopic('store', 20),
+  }, { files: WIDE_FILES })
+  const result = await survey(rig.ctx, ARGS())
+  assert.equal(on(rig, 'judge:1').length, 0, 'the judge holding both was never asked')
+  const [one, two] = [on(rig, 'judge:1.1'), on(rig, 'judge:1.2')]
+  assert.deepEqual([one.length, two.length], [1, 1])
+  assert.deepEqual(notesIn(one[0].brief), ['NOTE-loader-20', 'NOTE-loader-60'])
+  assert.deepEqual(notesIn(two[0].brief), ['NOTE-store-20', 'NOTE-store-60'])
+  for (const c of [...one, ...two]) assert.ok(briefFits('analyst', c.brief), c.thread.key + ' fits what a judge may read')
+  assert.deepEqual(cov(result), { ...cov(result), complete: true, dropped: [], unreached: [] })
+  assert.deepEqual(pool(rig).map((it) => it.topic).sort(), ['loader', 'store'])
+})
+
+test('one topic whose hits are past what a judge may read is judged by its halves, each told what it holds', async (t) => {
+  const at = [15, 40, 65, 90]
+  const rig = rigFor(t, {
+    'analyst||plan': [{ output: plan() }],
+    ...wideSearch('loader', at),
+    'analyst||judge:1.1': judgedTopic('loader', 15),
+    'analyst||judge:1.2': judgedTopic('loader', 65),
+  }, { files: WIDE_FILES })
+  const result = await survey(rig.ctx, ARGS())
+  const [one, two] = [on(rig, 'judge:1.1'), on(rig, 'judge:1.2')]
+  assert.deepEqual([on(rig, 'judge:1').length, one.length, two.length], [0, 1, 1])
+  assert.deepEqual(notesIn(one[0].brief), ['NOTE-loader-15', 'NOTE-loader-40'])
+  assert.deepEqual(notesIn(two[0].brief), ['NOTE-loader-65', 'NOTE-loader-90'])
+  for (const c of [...one, ...two]) {
+    assert.ok(c.brief.includes('You hold 2 of its 4 hits'), c.thread.key + ' is told it holds a part')
+    assert.ok(briefFits('analyst', c.brief), c.thread.key + ' fits what a judge may read')
+  }
+  assert.equal(cov(result).complete, true, JSON.stringify(cov(result)))
+  assert.deepEqual(pool(rig).map((it) => it.claim).sort(), ['CLAIM-loader at line 15', 'CLAIM-loader at line 65'])
+})
+
+test('a topic judged by halves is incomplete while either half leaves its unit open, and a half that failed names what it held', async (t) => {
+  const script = (second) => ({
+    'analyst||plan': [{ output: plan() }],
+    ...wideSearch('loader', [15, 40, 65, 90]),
+    'analyst||judge:1.1': judgedTopic('loader', 15),
+    'analyst||judge:1.2': second,
+  })
+  const open = rigFor(t, script([{ output: judgeOut({ items: [behaviour('loader', 'CLAIM-loader at line 65', 65)], units: [{ unit: 'loader', ruling: 'unanchored', ids: [], why: 'not shown' }] }) }]), { files: WIDE_FILES })
+  assert.deepEqual(cov(await survey(open.ctx, ARGS())).incomplete, ['loader'])
+  const failed = rigFor(t, script([{ status: 'failed', cause: 'host_error' }]), { files: WIDE_FILES })
+  const c = cov(await survey(failed.ctx, ARGS()))
+  assert.deepEqual([c.dropped, c.incomplete], [[], ['loader']])
+  assert.deepEqual(c.unreached, ['judge 1.2 failed (host_error), so loader (2 of its 4 hits) went unjudged'])
 })
 
 // --- the record -------------------------------------------------------------------------------

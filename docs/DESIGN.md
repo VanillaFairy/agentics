@@ -539,7 +539,7 @@ over:
 | program | scope | threads (roles) |
 |---|---|---|
 | `execute` | the effort and the folder | `producer:<leaf>` (implementer or test-author; a cycle's test rounds on `producer:<red>`), `auditor:<leaf>` (auditor), `reviewer:<leaf>:<n>` and `integration:<folder>:<n>` (reviewer), `planner:<folder>` (planner), `ruler:drift:<target key>:<digest of its open drift>` (`driftThread`), `ruler:<trigger>:<unit key>:<head8>:<digest>:c<cleared>` (`judgeThread`) and `ruler:stale:<base head>` (ruler), `ruler:converge:<leaf>:<n>` (ruler, the convergence ruling after a leaf's review round `n`), `investigator` (investigator), and its nested runs' own under `survey:<folder>:<basis>/` and `probe:<folder>:<n>/` |
-| `survey` | the question's digest, the roots, the ground | `plan` (analyst), `scout:<topic>` (scout), `history` (historian), `docs` (doc-researcher), `ruler:search:<name>:<turn>` (ruler, a search's convergence ruling), `judge:<n>` and `rejudge:<n>` (analyst) |
+| `survey` | the question's digest, the roots, the ground | `plan` (analyst), `scout:<topic>` (scout), `history` (historian), `docs` (doc-researcher), `ruler:search:<name>:<turn>` (ruler, a search's convergence ruling), `judge:<n>` and `rejudge:<n>` (analyst), a split one `<n>.<half>…` ([Survey](#survey)) |
 | `probe` | the artefact, by its absolute path | `locate` (scout), `ruler:search:locate:<turn>` (ruler), `axes` (analyst), `relocate` (analyst), `prober:<n>` (analyst) |
 | `solutions` | the capability's digest | `frame` (analyst), `research:<angle>` (doc-researcher), `repo` (scout), `ruler:search:<name>:<turn>` (ruler), `assess` (analyst) |
 | `investigate` | the question's digest | the survey's, and `synthesis` (analyst) |
@@ -645,7 +645,7 @@ in. So every tier is planned against one window (`MODEL_WINDOW` in `lib/roles.mj
 of which a first read may take half (`BRIEF_TOKENS`); code checks it in bytes (`BRIEF_BYTES`), at
 2.2 bytes a token, the fewest measured over large briefs (each brief's bytes against the `opened`
 its call recorded), so the estimate errs high. The runner refuses a fresh call whose system-prompt
-file and brief together hold more (`oversize`): nothing starts and nothing is recorded, and the call
+file and brief together hold more (`oversize`): nothing starts, the runner records no call, and the call
 fails `brief_too_large`, a terminal class like `budget`, so a relaunch builds the brief again and
 meets the same refusal unless what it is built from changed. A resumed call is not checked: its
 session carries the brief, and a session past half its window is renewed instead (below).
@@ -661,7 +661,11 @@ body of text crowds out the rest, and the whole may hold what the role leaves of
 (`oversizedPart` in `lib/briefs/size.mjs`): a part past its budget, or else a whole past the room, is
 refused `brief_too_large`, the result naming the part (`part`, the whole's largest when the whole is
 over), who can make it smaller (`owner`), the `file` it is when it is one, its `bytes`, and the
-`budget` it would have to meet — beside the rest, for the whole. Nothing is sent or recorded. A plain
+`budget` it would have to meet — beside the rest, for the whole. Nothing is sent, so no `dispatched`
+or `returned` line names the call: `dispatch` journals the refusal instead, once per dispatch, as the
+step `refused:<dispatch>` holding its thread and what the refusal names (`journalRefusal`), and the
+runner's own refusal of a session it renewed mid-call the same way; a refusal is never only a line of
+a result. A plain
 brief's parts are its `## ` and `### ` sections (`sectionsOf`; what comes before the first is its
 `charge`, and a heading inside a fence is the fenced text's); a fresh call's thread messages are
 parts of their own; a brief built in parts is shaped (`{parts}`, each `{key, text, file?}`), as the
@@ -681,6 +685,13 @@ shaped part's key:
 | `code` | everything else: the charge, thread messages, a probe's ground and settled specs, rendered records; a leaf's evidence and gotchas, a ruler's changes, a producer's return a reviewer reads, a survey's evidence a planner reads, each bounded where it is built (`bounded` and `boundedDiff` in `lib/briefs/size.mjs`), whole items or files kept first and a closing line naming what was left out | none in practice: code bounds what it accumulates as it builds the brief, shedding the least valuable first and declaring what it shed; a refusal that still names one is a defect of its builder, a `role` fault whose detail carries the part, its bytes and budget |
 
 Code gives way first: a bound sheds what code owns before a refusal is laid on the work or the user.
+**A batch of units is split, never shed.** Where a brief packs units a reader rules one by one — a
+survey judge's topics and their hits, a re-judge's suspect items — leaving one out would leave it
+unruled, so its builder asks the dispatch's own check before it sends (`briefFits` in
+`lib/programs/common.mjs`) and halves the batch until each part fits (`splitToFit` in
+`lib/briefs/size.mjs`): every unit is ruled by some reader, no bound moves, and a part is named by
+the halves taken to reach it, so a relaunch names a reader by what it holds. Only a lone unit past
+the bound, or a brief past it with no unit in it, is left for its dispatch to refuse.
 **A fresh session replays its thread within its room** (`replayOf` in `lib/programs/common.mjs`):
 its thread brief, then every message recorded on the thread but a `brief_changed`, whose copy of an
 older brief the fresh brief supersedes; while that is past the role's room, or a message past its
@@ -1156,7 +1167,8 @@ shares the channel's record and its hold, and is no plugin fault: the session re
 the same hang again escalates instead. A fault in a run outside an execution names no node, and such a run
 records only `program`, `git_hung` and `launch_failed`: a call of its that failed — a moved ref, a schema
 failed twice, a failure the runner could not classify — is the `cause` on its `returned` line and
-a loss the program's coverage block reports ([Coverage block](#coverage-block)). No `escalated`
+a loss the program's coverage block reports ([Coverage block](#coverage-block)); a call refused before
+it started is the step `refused:<dispatch>` ([The agent runner](#the-agent-runner)). No `escalated`
 event lands, so the node's status is what its last real record says. In an execution the node is
 held for the rest of the run — by a fault after the run's latest `run` line, recorded once per node
 and channel — which goes on with everything else; develop relaunches once the run ends, and the
@@ -2608,7 +2620,9 @@ agents that read it: its name, status and why, its summary, then one block per h
 carrying `label` when one is given): a `path` hit's note and the lines around it through
 `resolveLocations`, which marks a path or line the tree lacks; a `commit` hit's note and the
 commit's subject; a `url` hit's note and, when it names a line, the lines around it from the run's
-pinned page. It also counts the hits and the unresolved ones.
+pinned page. It also counts the hits and the unresolved ones, and gives the text's own pieces — its
+`head` and one block a hit (`blocks`) — for a reader that holds only some of a search's hits
+(`hitsText`).
 
 **The laws.** L1: a search's coverage is code's own record — its status from the runner and the
 guard, its calls, hits and rounds from the journal — with the scout's word on what it skipped
@@ -2688,7 +2702,7 @@ stored:
    changed one is **suspect**. A line that only gains or loses its final newline is no hunk under
    `--ignore-cr-at-eol`, so it changes nothing.
 2. **Re-judge.** Suspect items whose anchors lie on the survey's ground (`bearsOn`) go, up to twenty per call, to an analyst on `haiku`, each claim and
-   each changed anchor's old and new text in its prompt. It returns a ruling per id, and
+   each changed anchor's old and new text in its prompt; twenty whose prompt is past what the analyst may read are halved until each call's fits ([The agent runner](#the-agent-runner)). It returns a ruling per id, and
    `recordRulings` records one per id it was handed: an id with no ruling, or one off the ladder, is
    `unsure`. `holds` re-anchors the item where the text now is; `fails` and `unsure` make it
    **stale**, because an unsure check is never a pass. This is the stated exception to the
@@ -2724,7 +2738,7 @@ The `survey` program gathers evidence for one question and never concludes.
    log as a `step` (`pool`), and again after the re-judge (`pool:after`) when any was suspect, so
    a relaunch sees what the run saw. An item grounded broadly whose anchors all lie elsewhere is
    neither re-judged nor reused. Standing items become known ground; suspect ones are re-judged,
-   twenty to a call, the calls side by side; stale ones, and any not standing after the re-judge,
+   twenty to a call (`rejudge:<n>`; a twenty past the analyst's bound in halves, `rejudge:<n>.<half>…`), the calls side by side; stale ones, and any not standing after the re-judge,
    make their topic a **stale candidate**, carrying what it used to claim — unless a newer standing
    item superseded them. Only an item a survey recorded, with a ground, makes a candidate: an expired
    source or a sweep's item has no topic a scout could search again, and would otherwise become a
@@ -2761,10 +2775,17 @@ The `survey` program gathers evidence for one question and never concludes.
    numbered (`judge:<n>`, from 1) in the order of each one's first topic. Each judge's prompt holds
    every one of its topics' searches as `hitExcerpts` renders it ([Searches](#searches)) — its
    status and why, its summary, its hits with their notes and the lines they point at, read from
-   the searched tree's root — with each topic's search status and the common ground's lines.
+   the searched tree's root — with each topic's search status and the common ground's lines. The
+   deal counts locations and the bound counts bytes, so a dealt group whose prompt is past what an
+   analyst may read is split, never refused ([The agent runner](#the-agent-runner), `judgesOf`):
+   by halves down to one topic a judge, and a topic that alone does not fit by the halves of its
+   hits, each judge then told how many of the topic's hits it holds. A split judge is
+   `judge:<n>.<half>…`, 1 or 2 at each split, so a judge that fits keeps its number and a relaunch
+   names every judge by what it holds.
 5. **Judge.** Each analyst, **without search tools**, returns items — one claim each, with the
    anchor its kind needs — risks, and a ruling per topic it holds, `anchored` or `unanchored`; a
-   topic's latest ruling stands. A judge that lacked evidence says so in its own return; judges
+   judge's latest ruling of a topic stands, and a topic several judges hold is anchored only when
+   each of them last ruled it so. A judge that lacked evidence says so in its own return; judges
    never wait on one another. A topic given neither items nor risks is dropped.
 6. **Record.** The program records each judge's items (`recordSurvey`), all or none: while the
    judge's latest answer holds an item the store refuses, nothing is recorded, and the refused items
@@ -2782,7 +2803,8 @@ The `survey` program gathers evidence for one question and never concludes.
    among them where they overlap it, then every other item its records stored — with the judges'
    risks and the history and docs searches' findings. The digest lands in the file's first part. The
    session, or the planner's brief, reads it; the result lists the reused items first, then this
-   run's, by topic.
+   run's, by topic. The write is journaled under the digest of the returns it was built from
+   (`context:<digest>`), so a run entered again once more judges recorded writes it again.
 
 Coverage is complete when every topic's search ended complete (`done` or `stalled`) and all its
 items stand. The survey builds its search coverage through `searchCoverage`
@@ -2790,9 +2812,9 @@ items stand. The survey builds its search coverage through `searchCoverage`
 pinned tree (`pinnedOf`): a complete search is a `declared` line; a `budget` search is named in
 `incomplete` and a `failed` one in `failed_channels`, each with its line in `unreached`. A topic
 not dropped is incomplete when its search ended `budget` or `failed`, its items went unrecorded, or
-it was given items and its judge never ruled it or ruled it last as anything but `anchored`;
+it was given items and a judge holding it never ruled it or ruled it last as anything but `anchored`;
 `history` or `docs` is incomplete when that search ended `budget`. A judge that failed is an
-unreached line naming its topics. The survey's
+unreached line naming its topics, and how many of a topic's hits it held when not all. The survey's
 evidence calls — the pool read, the re-judge's record, `recordSurvey` and `surveyContext` — read the
 tree it searched, so its anchors and absence queries are about that tree.
 

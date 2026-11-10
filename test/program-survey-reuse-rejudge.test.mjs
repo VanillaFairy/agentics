@@ -8,11 +8,14 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { survey } from '../lib/programs/survey.mjs'
+import { PART_BYTES } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
 import { programRig } from './harness/program-rig.mjs'
 import {
-  GUIDE, FILES, EDIT, seedItem, seed, editLine, stateOf, LOADER, rule, rulings, script, ARGS, on,
+  A, GUIDE, FILES, EDIT, seedItem, seed, editLine, stateOf, LOADER, rule, rulings, script, ARGS, on,
   judgedLines, topicTriples, cov, SUSPECT,
 } from './harness/survey-reuse-world.mjs'
 
@@ -75,6 +78,26 @@ test('suspect items are re-judged twenty to a call', async (t) => {
   assert.ok(two[0].brief.includes(last), 'rejudge:2 holds the 21st')
   assert.ok(!one[0].brief.includes(last), 'rejudge:1 does not hold the 21st')
   assert.deepEqual([...result.reused].sort(), sorted)
+})
+
+test('suspect items whose re-judge brief would be past its bound are re-judged in halves, none left stale unruled', async (t) => {
+  // Each item's changed text, old and new, holds 0.6 of what one part of a brief may.
+  const pad = 'x'.repeat(Math.ceil((PART_BYTES * 0.6) / 6))
+  const text = (edited) => Array.from({ length: 40 }, (_, i) => (edited && i === 10 ? EDIT : `alpha line ${i + 1}`) + ' ' + pad).join('\n') + '\n'
+  const base = programRig({ files: { ...FILES, [A]: text(false) } })
+  t.after(() => base.cleanup())
+  const ids = seed(base.repo, ['SUSPECT-one reads line eleven', 'SUSPECT-two reads line eleven'].map((claim) => seedItem({ topic: 'held', claim }))).sort()
+  writeFileSync(join(base.repo, A), text(true))
+  const rig = base.relaunch({
+    'analyst||rejudge:1.1': rulings([rule(ids[0], 'holds')]),
+    'analyst||rejudge:1.2': rulings([rule(ids[1], 'holds')]),
+    ...script({ planned: [] }),
+  })
+  const result = await survey(rig.ctx, ARGS())
+  assert.deepEqual([on(rig, 'rejudge:1').length, on(rig, 'rejudge:1.1').length, on(rig, 'rejudge:1.2').length], [0, 1, 1])
+  assert.ok(on(rig, 'rejudge:1.1')[0].brief.includes(ids[0]) && !on(rig, 'rejudge:1.1')[0].brief.includes(ids[1]), 'the first half holds the first id alone')
+  assert.deepEqual([...result.reused].sort(), ids)
+  assert.deepEqual(result.passed, [])
 })
 
 test('a suspect item whose anchors all lie off the question\'s ground is not re-judged', async (t) => {

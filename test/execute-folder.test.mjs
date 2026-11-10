@@ -374,7 +374,7 @@ test('a folder whose ground is unknown is surveyed first, nested under survey:<f
   const prefix = 'survey:p:' + basisOf(w.rig) + '/'
   const out = await w.run()
   assert.equal(out.outcome, 'prepared')
-  const context = stepValue(w.rig, prefix + 'context')
+  const context = (w.rig.log.entries().find((e) => e.kind === 'step' && e.key.startsWith(prefix + 'context:')) || {}).value
   assert.ok(context && context.context, 'the survey wrote its context file')
   assert.deepEqual(out.survey, { complete: true, context: context.context, invalidated: [] })
   const surveyed = under(w.rig, prefix)

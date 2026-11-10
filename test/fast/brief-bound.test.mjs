@@ -12,10 +12,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { dispatchFailed } from '../../lib/boundaries/records.mjs'
-import { fenced, joined, oversizedPart, ownerOf, sectionsOf } from '../../lib/briefs/size.mjs'
+import { fenced, joined, oversizedPart, ownerOf, sectionsOf, splitToFit } from '../../lib/briefs/size.mjs'
 import { proberBrief } from '../../lib/briefs/probe.mjs'
 import { hitBlocks } from '../../lib/citations.mjs'
-import { briefRoomOf } from '../../lib/programs/common.mjs'
+import { briefFits, briefRoomOf, dispatch, programContext } from '../../lib/programs/common.mjs'
 import { boundedBriefs, joinedGround } from '../../lib/programs/probe.mjs'
 import { BRIEF_BYTES, BRIEF_TOKENS, PART_BYTES } from '../../lib/roles.mjs'
 import { callsOf } from '../../lib/run.mjs'
@@ -185,6 +185,31 @@ test("a failed dispatch escalates for the user when its brief's part is not code
   const [code] = dispatchFailed('a/b', 'the planner dispatch d', refused('code'), at)
   assert.deepEqual([code.kind, code.fields.channel], ['fault', 'role'])
   assert.ok(code.fields.detail.includes('brief_too_large') && code.fields.detail.includes(refused('code').message), code.fields.detail)
+})
+
+test('a batch past what one reader takes is split by halves until each part fits, every unit kept and none cut', () => {
+  const units = [3, 3, 3, 3, 9, 1]
+  const fits = (batch) => batch.reduce((n, u) => n + u, 0) <= 6
+  const parts = splitToFit(units, fits, [4])
+  assert.deepEqual(parts.map((p) => [p.path.join('.'), p.units]), [['4.1.1', [3, 3]], ['4.1.2', [3]], ['4.2.1.1', [3]], ['4.2.1.2', [9]], ['4.2.2', [1]]])
+  assert.deepEqual(parts.flatMap((p) => p.units), units, 'in order, nothing left out; the unit past the bound alone is its dispatch\'s to refuse')
+  assert.deepEqual(splitToFit([3, 3], fits, [1]), [{ units: [3, 3], path: [1] }], 'a batch that fits is one reader\'s, under its own name')
+  assert.deepEqual(splitToFit(units, () => false, [1]), [{ units, path: [1] }], 'a brief past its bound with no unit in it is not the batch\'s to split')
+})
+
+test('a brief refused before its call is journaled once, naming the thread, the part, its owner and its sizes; nothing starts', async () => {
+  const log = memoryLog()
+  const started = []
+  const ctx = programContext({ intelligence: 'normal', repo: tmpdir(), run: '20260101-000000-test', dir: tmpdir(), log, runAgent: async (call) => { started.push(call) }, now: () => '2026-01-01T00:00:00.000Z', sleep: async () => {} })
+  const spec = { role: 'analyst', schema: 'items', thread: 'judge:1', brief: 'Judge it.\n' + 'x'.repeat(PART_BYTES + 1) }
+  const out = await dispatch(ctx, spec)
+  assert.deepEqual([out.status, out.cause, started.length], ['failed', 'brief_too_large', 0])
+  await dispatch(ctx, spec)
+  const [line, ...more] = log.entries()
+  assert.deepEqual(more, [], 'a relaunch that meets the same refusal journals nothing more')
+  assert.deepEqual([line.kind, line.key], ['step', 'refused:' + out.dispatch])
+  assert.deepEqual(line.value, { cause: 'brief_too_large', thread: 'judge:1', part: 'charge', owner: 'code', file: '', bytes: out.bytes, budget: PART_BYTES, whole: false, message: out.message })
+  assert.equal(briefFits('analyst', spec.brief), false, 'the check a builder splits on is the one the dispatch refuses by')
 })
 
 test("a prober's ground past its budget sheds its oldest places until the briefs fit, never the user's part", () => {

@@ -19,7 +19,7 @@ test('an absent build command is recorded absent only when somebody declared it 
   const declared = verify(parseArgs([
     '--worktree', worktree, '--base', base, '--head', head,
     '--expects', 'src/widget.mjs', '--expects', 'test/widget.test.mjs',
-    '--build-absent', '--typecheck-absent', '--suite', SUITE, '--test-one', TEST_ONE,
+    '--build-absent', '--typecheck-absent', '--lint-absent', '--suite', SUITE, '--test-one', TEST_ONE,
   ]))
 
   assert.equal(declared.build, 'absent')
@@ -69,7 +69,7 @@ test('a tdd leaf whose tests held at base asks the typecheck there, its tests re
   const payload = verify(parseArgs([
     '--worktree', worktree, '--base', base, '--head', head, '--rigor', 'tdd',
     '--expects', 'src/widget.mjs', '--expects', 'test/kept.test.mjs',
-    '--build', BUILD, '--typecheck', typecheck, '--suite', SUITE, '--test-one', TEST_ONE,
+    '--build', BUILD, '--typecheck', typecheck, '--lint-absent', '--suite', SUITE, '--test-one', TEST_ONE,
     '--check-b64', Buffer.from(check, 'utf8').toString('base64'),
   ]))
   assert.equal(payload.stop_reason, 'completed', payload.notes)
@@ -87,7 +87,7 @@ test('a tdd leaf with a test that fails at base asks nothing static there', (t) 
   const payload = verify(parseArgs([
     '--worktree', worktree, '--base', base, '--head', head, '--rigor', 'tdd',
     '--expects', 'src/widget.mjs', '--expects', 'test/widget.test.mjs',
-    '--build', BUILD, '--typecheck', 'node -e "process.exit(1)"', '--suite', SUITE, '--test-one', TEST_ONE,
+    '--build', BUILD, '--typecheck', 'node -e "process.exit(1)"', '--lint-absent', '--suite', SUITE, '--test-one', TEST_ONE,
   ]))
   assert.equal(payload.discriminator[0].failed_on_base, true)
   assert.deepEqual(payload.static_on_base, [], 'a behaviour change keeps its test-first discriminator alone')
@@ -105,7 +105,7 @@ test('a failing typecheck is recorded beside a PASSING suite, which is the whole
   const payload = verify(parseArgs([
     '--worktree', worktree, '--base', base, '--head', head,
     '--expects', 'src/widget.mjs', '--expects', 'test/widget.test.mjs',
-    '--build', BUILD, '--typecheck', 'node -e "process.exit(2)"',
+    '--build', BUILD, '--typecheck', 'node -e "process.exit(2)"', '--lint-absent',
     '--suite', SUITE, '--test-one', TEST_ONE,
   ]))
 

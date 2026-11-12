@@ -69,6 +69,7 @@ export const options = (over = {}) => parseArgs([
   '--expects', 'test/widget.test.mjs',
   '--build', BUILD,
   '--typecheck-absent',
+  '--lint-absent',
   '--suite', SUITE,
   '--test-one', TEST_ONE,
   ...(over.extra || []),

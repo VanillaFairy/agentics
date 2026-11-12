@@ -61,7 +61,7 @@ function leaf(t) {
 const measure = ({ worktree, base, head }, testOneByPath, extra = []) => verify({
   ...parseArgs([
     '--worktree', worktree, '--base', base, '--head', head, '--expects', SOURCE, '--expects', SPEC, '--rigor', 'tdd',
-    '--build', BUILD, '--typecheck-absent', '--suite', 'node tools/root.mjs all', '--test-one', TEST_ONE, ...extra,
+    '--build', BUILD, '--typecheck-absent', '--lint-absent', '--suite', 'node tools/root.mjs all', '--test-one', TEST_ONE, ...extra,
   ]),
   testOneByPath,
 })

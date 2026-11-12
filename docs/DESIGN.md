@@ -844,9 +844,9 @@ committed; `lib/roles.mjs` refuses a bad one when a dispatch loads it.
 | reviewer | judge | rule every unit of a span: findings with severity, a ruling per criterion, per file, per claim | Read, Grep, Glob, Bash | read-only git |
 | auditor | judge | declare mutations an implementation's tests must catch, and name tests to retire | Read, Grep, Glob | — |
 | planner | producer | write the spec of a folder develop owns, and settle its review | Read, Grep, Glob, Edit, Write | — |
-| implementer | producer | code one leaf as a focused series, or a fix round of it | Read, Grep, Glob, Edit, Write, Bash | the established build, typecheck and test commands; `git add`, `git rm`, `git commit`, `git status`, `git diff`, `git log` |
+| implementer | producer | code one leaf as a focused series, or a fix round of it | Read, Grep, Glob, Edit, Write, Bash | the established build, typecheck, lint and test commands; `git add`, `git rm`, `git commit`, `git status`, `git diff`, `git log` |
 | test-author | producer | write a leaf's or a cycle's tests and declare mutations | Read, Grep, Glob, Edit, Write | — |
-| investigator | producer | establish build, typecheck and test commands when none are known | Read, Grep, Glob, Bash | any command, in a throwaway worktree |
+| investigator | producer | establish build, typecheck, lint and test commands when none are known | Read, Grep, Glob, Bash | any command, in a throwaway worktree |
 
 A producer returns its status and its declarations; a searcher records its findings with `hit`
 as it goes and returns a summary; a judge a ruling per unit it was handed. A
@@ -2900,9 +2900,11 @@ agent fell into while working, recorded so the next agent does not.
    command and the output line that showed it.
 5. **Not in the brief.** Nothing the agent was handed already said it.
 
-One distinguished kind, **`command`**, records how to prepare, build, typecheck and test: each of
-`setup`, `build`, `typecheck`, `suite`, `suite_fast` and `test_one` (`COMMAND_NAMES` in `lib/gotchas.mjs`),
-named or declared absent. Two writers supply it: the session, whose `commands_file` preflight
+One distinguished kind, **`command`**, records how to prepare, build, typecheck, lint and test: each of
+`setup`, `build`, `typecheck`, `lint`, `suite`, `suite_fast` and `test_one` (`COMMAND_NAMES` in `lib/gotchas.mjs`),
+named or declared absent. `lint` is the project's static checks that neither build nor typecheck
+run — linters, a format check, boundary rules — as one command, so every leaf's measurement asks
+them and a finding goes back to the round that made it. Two writers supply it: the session, whose `commands_file` preflight
 writes as command gotchas (source role `session`; a command marked absent is written absent even
 when a value is given too, `test_one` has no absent, and a command already established stands unless the file corrects it),
 and an investigator's return. The command gotchas are the one source of the established commands.
@@ -2911,7 +2913,7 @@ and an investigator's return. The command gotchas are the one source of the esta
 the one a path scopes: a `test_one` gotcha may name one path, its scope (id
 `command-test_one-<fnv1a(scope)>`), and every file under that scope is run by it — the most specific
 scope holding a file wins, segment by segment (`testOneFor` in `lib/gotchas.mjs`), and a file no
-scope holds is run by the tree's `test_one`. Build, typecheck and the suites answer for the whole
+scope holds is run by the tree's `test_one`. Build, typecheck, lint and the suites answer for the whole
 tree, so a scope on them is refused; a suite over two runners is one command that runs both. The
 session names scopes in its commands file as a map, `"test_one": {".": "<template>", "<folder>":
 "<template>"}`, and an investigator returns a scoped `test_one` with `paths: ["<folder>"]`. Every
@@ -3805,9 +3807,9 @@ and sweeps as `merge` does. A landed effort is closed: preflight refuses it (`la
 ## Verification
 
 `lib/verify.mjs` runs the mechanical checks of one leaf — the commit series, the build, the
-typecheck, the leaf's own tests, the discriminator, the declared mutations and the named checks —
-in one process, and of a merged head — the build, the typecheck and the fast or the full suite, as
-the caller asks. **Nothing in it decides whether the leaf passed.** It observes, prints exactly the
+typecheck, the lint, the leaf's own tests, the discriminator, the declared mutations and the named
+checks — in one process, and of a merged head — the build, the typecheck, the lint and the fast or
+the full suite, as the caller asks. **Nothing in it decides whether the leaf passed.** It observes, prints exactly the
 fields the verdict reads, and journals its own `verify-observed` line inside the process that
 measured, so there is no window between the work and the record. An execution runs it as an awaited
 child, `node lib/verify.mjs --options -`: the options one JSON object on standard input, the payload
@@ -3831,6 +3833,13 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
   command; `failed` means a command ran and exited non-zero. A command nobody named and nobody
   declared absent is `command_unknown`, a typed error.
 - **A passing suite is not evidence that the tree compiles.** The typecheck is its own answer.
+- **A lint finding the base reports is not the change's.** A lint answers for the whole tree, and a
+  repository may carry findings already. Where it fails at the head, it is run at the base, the tree
+  prepared there, and its output compared line by line (`newFindings`): a line counts as often as
+  it occurs, and its numbers (a line, a column, a count) are dropped, so a finding that only moved
+  is the same one. The lint failed for the change (`lintFailed` in `lib/verdict.mjs`) unless it
+  failed at the base too and printed nothing new; a base it passed at, or was not seen at, excuses
+  nothing. The new lines are the failure's evidence, to the round's producer or the merge's.
 - **The environment check runs first, and it refuses.** The discriminator stashes and moves HEAD,
   so the program first establishes that it stands in a linked worktree. It always puts the tree
   back, or says `tree_not_restored`.
@@ -3918,7 +3927,8 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
 
 `lib/verdict.mjs` is the one home of the measurement verdict. `measurementOk(m, leaf)` derives pass
 or fail from the observations against the leaf's profile. Every profile needs a completed
-measurement, no failed build or typecheck and no blocking series finding. Then each changed test
+measurement, no failed build or typecheck, no lint finding of the change's and no blocking series
+finding. Then each changed test
 file under measurement is of one class, and the profile asks of it the facts of its cell in one
 table (`DISCRIMINATOR` in `lib/verdict.mjs`): what it does now, and a proof, any one of which shows
 it bites — `base`, it failed at base with the tests under measurement restored, or `mutation`, a
@@ -4608,7 +4618,7 @@ run's end, where a watching session stops.
 `execution.json`, the envelope preflight writes once, is `{stamp, root, base_branch, base_sha,
 dial, pace, commands}`: `base_branch` the `base_ref` the session gave (else the branch checked out
 at the start), and `commands` the session's commands file as it was handed over, `{setup, build,
-typecheck, suite, suite_fast, test_one, absent, replace}`, `test_one` and `setup` each a command or a
+typecheck, lint, suite, suite_fast, test_one, absent, replace}`, `test_one` and `setup` each a command or a
 map from a path (`.` the whole tree) to one, `absent` a map from a command name to `true`, `replace` the names a
 resumed execution's file corrects — a record of what the session gave, which nothing that measures
 reads. Beside it,
@@ -4617,7 +4627,8 @@ reads. Beside it,
 adopted_seq, stopped?}]}` beside its brief `adopted-<seq>.drift.md` those a ruler on adopted work was.
 
 `journal.jsonl` (what was observed, by whoever observed it): `verify-observed {node, branch,
-worktree, base_sha, head_sha, producer, key, stop_reason, setup, build, typecheck, suite, suite_scope,
+worktree, base_sha, head_sha, producer, key, stop_reason, setup, build, typecheck, lint, lint_base,
+lint_new, suite, suite_scope,
 failing_tests, baseline_failing, discriminator, mutations, series_findings, approved_failing,
 checks}` (`key` what `measure` reuses it by); `measure-done {key, moved}`, which `measure` appends
 once the after-watch has read the checkout, `moved` whether the checkout changed during the check (a
@@ -4675,7 +4686,10 @@ version up; above it, a store a newer plugin wrote. A change to what the store h
 
 `stop_reason` (`completed | environment_broken`, broken exactly when `error` is set); `build`,
 `setup` (`passed | failed | dirtied | absent`, the tree's preparation at the head); `typecheck`
-(`passed | failed | absent`); `suite` (`passed | failed | absent | not_run`) and
+(`passed | failed | absent`); `lint` (`passed | failed | absent`), `lint_base` (where it failed, what it
+did at the base: `passed | failed | unobserved`; `''` when not asked) and `lint_new` (the head's
+output lines the base's lacks, every line where the base did not fail; at most the tail's 40);
+`suite` (`passed | failed | absent | not_run`) and
 `suite_scope` (`fast` or `full` on a merged head, `scoped` for a leaf's own tests, `none` when
 nothing ran); `suite_output_tail` (only when the suite failed);
 `failing_tests[{file, id}]`; `baseline_failing[{file, id}]` (failing tests that fail at the base
@@ -4738,7 +4752,7 @@ Frontmatter `{id, kind, roles, paths, observed_at, source, command?}`, `roles` n
 `{node, role}` for a producer's, `{role: investigator}` or `{role: session}` for a command;
 `command` is `{name, value, absent}`, `name` one of `COMMAND_NAMES`; a command's `paths` is empty,
 or one path for a `test_one` or a `setup` scoped to it. `commandsOf` returns `{setup, setup_by_path,
-build, typecheck, suite, suite_fast, test_one, test_one_by_path, absent}`, each `_by_path` a map from
+build, typecheck, lint, suite, suite_fast, test_one, test_one_by_path, absent}`, each `_by_path` a map from
 a scope to its command. Body `When <trigger>, do
 <action>.` plus the evidence. A return carries a gotcha as `{trigger, action, evidence, kind, roles,
 paths}`, and the ones it found no longer hold by id; leaf-close refuses a `command` one, and a stale
@@ -5050,7 +5064,7 @@ directory; `sessions` every session the search's thread ran in; `rounds` each ro
   fast`, default `balanced`), `plan_only`, `pause`, `budget` (tokens; 0 none), `confirmed` (the
   `seq` of the checkpoint line the user confirmed past; 0 none), `base_ref` (the base branch's
   name, kept in the envelope so a later preflight sees the base move) and `commands_file` (the
-  session's commands, `{setup, build, typecheck, suite, suite_fast, test_one, absent, replace}`, read on a
+  session's commands, `{setup, build, typecheck, lint, suite, suite_fast, test_one, absent, replace}`, read on a
   resume too, [Gotchas](#gotchas)); `intelligence`, `pace` and `base_ref` shape a new execution only. Returns `{effort, root,
   execution, checkpoint {reason, detail, seq}, nodes_n, implemented[{id, rigor, role, rounds,
   review_rounds, at_integration, salvaged, nets, undiscriminated}], escalations[{id, reason, said}], parked[{id, return,

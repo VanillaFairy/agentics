@@ -27,9 +27,9 @@ import { seedTree } from './harness/seed-tree.mjs'
 
 const E = 'e1'
 const OTHER = '20260925-130000'
-const NAMES = ['build', 'typecheck', 'suite', 'suite_fast', 'test_one']
+const NAMES = ['build', 'typecheck', 'lint', 'suite', 'suite_fast', 'test_one']
 const ALL = {
-  build: 'node build.mjs', typecheck: 'node typecheck.mjs', suite: 'node --test',
+  build: 'node build.mjs', typecheck: 'node typecheck.mjs', lint: 'node lint.mjs', suite: 'node --test',
   suite_fast: 'node --test test/unit', test_one: 'node --test {file}',
 }
 
@@ -95,7 +95,7 @@ test('a command the commands file leaves out or gives empty writes no gotcha', (
   preflight(relaunch(r), { commands_file: commandsFile(t, { suite: '  node --test ', build: '', typecheck: '   ', absent: { suite_fast: false } }) })
   assert.deepEqual(ids(r), ['command-suite'])
   assert.equal(commandsOf(r, E).suite, 'node --test', 'the value is trimmed')
-  assert.deepEqual(commandsOf(r, E).absent, { setup: false, build: false, typecheck: false, suite: false, suite_fast: false })
+  assert.deepEqual(commandsOf(r, E).absent, { setup: false, build: false, typecheck: false, lint: false, suite: false, suite_fast: false })
 })
 
 test('each command the commands file marks absent becomes an absent session command gotcha', (t) => {
@@ -114,7 +114,7 @@ test('each command the commands file marks absent becomes an absent session comm
   assert.equal(readFileSync(fileOf(r, 'suite'), 'utf8'), before, 'the investigator\'s suite stands')
   assert.deepEqual(gotchaOf(r, 'test_one').command, { name: 'test_one', value: 'node --test {file}', absent: false }, 'test_one has no absent')
   const found = commandsOf(r, E)
-  assert.deepEqual(found.absent, { setup: false, build: true, typecheck: true, suite: false, suite_fast: true })
+  assert.deepEqual(found.absent, { setup: false, build: true, typecheck: true, lint: false, suite: false, suite_fast: true })
   assert.deepEqual([found.build, found.typecheck, found.suite, found.suite_fast], ['', '', 'npm test', ''])
 })
 
@@ -239,13 +239,13 @@ test('roleCommands gives the implementer the session\'s commands', (t) => {
   const r = world(t)
   preflight(relaunch(r), { commands_file: commandsFile(t, ALL) })
   const got = roleCommands(loadRole('implementer').role, commandsOf(r, E), readTree(r, E).nodes.get('a'))
-  const expected = [ALL.build, ALL.typecheck, ALL.suite, ALL.suite_fast, ALL.test_one.split('{file}')[0].trim()]
+  const expected = [ALL.build, ALL.typecheck, ALL.lint, ALL.suite, ALL.suite_fast, ALL.test_one.split('{file}')[0].trim()]
   for (const c of expected) assert.ok(got.includes(c), c)
 })
 
 test('a later execution\'s measurement reads the session\'s absent commands from their gotchas', async (t) => {
   const r = world(t)
-  preflight(relaunch(r), { commands_file: commandsFile(t, { suite: 'node --test --test-reporter=spec', absent: { build: true, typecheck: true } }) })
+  preflight(relaunch(r), { commands_file: commandsFile(t, { suite: 'node --test --test-reporter=spec', absent: { build: true, typecheck: true, lint: true } }) })
   // The next execution's session names no commands: its envelope holds none, so only the gotchas say them.
   const xc = relaunch(r, OTHER)
   preflight(xc, {})
@@ -260,7 +260,7 @@ test('a later execution\'s measurement reads the session\'s absent commands from
   const out = await mergeBatch(xc, { target: '.', children: [{ id: 'a', head_sha: head }], cycles: [] })
   assert.equal(out.verified, true, JSON.stringify(out.stops || out.error || null))
   const { measurement } = JSON.parse(readFileSync(out.drift_record, 'utf8'))
-  assert.deepEqual([measurement.build, measurement.typecheck], ['absent', 'absent'])
+  assert.deepEqual([measurement.build, measurement.typecheck, measurement.lint], ['absent', 'absent', 'absent'])
 })
 
 const VITEST = 'npm --prefix viewer exec -- vitest run --root viewer {file}'

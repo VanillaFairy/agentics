@@ -45,7 +45,7 @@ test('gotchaProblem enforces the checkable qualification rules', () => {
   assert.match(gotchaProblem(pitfall({ evidence: undefined })), /evidence/)
   assert.match(gotchaProblem(pitfall({ paths: ['../etc'] })), /repo-relative/)
   assert.match(gotchaProblem(pitfall({ paths: ['/abs'] })), /repo-relative/)
-  assert.match(gotchaProblem(command('lint', 'x')), /names its command/)
+  assert.match(gotchaProblem(command('deploy', 'x')), /names its command/)
   assert.match(gotchaProblem(command('build', '')), /no value/)
   assert.equal(gotchaProblem(command('typecheck', '', { command: { name: 'typecheck', absent: true } })), null)
   assert.match(gotchaProblem('nope'), /object/)
@@ -117,8 +117,8 @@ test('commandsOf reads only command gotchas an investigator or the session wrote
   writeGotcha(r, E, command('test_one', 'npm test -- {file}'), { source: { role: 'session' } })
   writeGotcha(r, E, pitfall(), { source: { role: 'investigator' } })
   assert.deepEqual(commandsOf(r, E), {
-    setup: '', setup_by_path: {}, build: 'npm run build', typecheck: '', suite: '', suite_fast: '', test_one: 'npm test -- {file}', test_one_by_path: {},
-    absent: { setup: false, build: false, typecheck: true, suite: false, suite_fast: false },
+    setup: '', setup_by_path: {}, build: 'npm run build', typecheck: '', lint: '', suite: '', suite_fast: '', test_one: 'npm test -- {file}', test_one_by_path: {},
+    absent: { setup: false, build: false, typecheck: true, lint: false, suite: false, suite_fast: false },
   })
 })
 

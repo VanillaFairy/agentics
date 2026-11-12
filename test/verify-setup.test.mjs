@@ -46,7 +46,7 @@ function leaf(t) {
 const measure = ({ worktree, base, head }, over = {}) => verify({
   ...parseArgs([
     '--worktree', worktree, '--base', base, '--head', head, '--expects', SOURCE, '--expects', SPEC, '--rigor', 'tdd',
-    '--build', BUILD, '--typecheck-absent', '--suite', 'node --test --test-reporter=spec test/', '--test-one', TEST_ONE,
+    '--build', BUILD, '--typecheck-absent', '--lint-absent', '--suite', 'node --test --test-reporter=spec test/', '--test-one', TEST_ONE,
   ]),
   ...over,
 })

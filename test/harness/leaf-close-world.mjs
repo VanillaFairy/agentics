@@ -201,6 +201,6 @@ export async function outside(t, { under = 'you', helper = false, failing = fals
 export const gotcha = (trigger, extra = {}) => ({ kind: 'pitfall', roles: ['implementer'], paths: [], trigger, action: 'do it differently', evidence: { command: 'node x.mjs', output: 'boom' }, ...extra })
 export const command = (name, value) => ({ kind: 'command', roles: ['implementer', 'investigator'], paths: [], trigger: 'running ' + name, action: 'use it', evidence: { command: name, output: 'ok' }, command: { name, value } })
 const absent = (name) => ({ ...command(name, ''), command: { name, value: '', absent: true } })
-export const ESTABLISHED = () => [absent('build'), absent('typecheck'), command('suite', COMMANDS.suite), command('test_one', COMMANDS.test_one)]
+export const ESTABLISHED = () => [absent('build'), absent('typecheck'), absent('lint'), command('suite', COMMANDS.suite), command('test_one', COMMANDS.test_one)]
 
 export const gotchaOf = (w, id) => listGotchas(w.r, E).find((g) => g.id === id)

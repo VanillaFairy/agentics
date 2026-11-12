@@ -60,7 +60,7 @@ function leaf(t, { exit = 0 } = {}) {
 
 const measure = ({ worktree, base, head }, ...extra) => verify(parseArgs([
   '--worktree', worktree, '--base', base, '--head', head, '--expects', SOURCE, '--expects', SPEC,
-  '--build', BUILD, '--typecheck-absent', '--suite', 'node tools/unit.mjs all', '--test-one', TEST_ONE, ...extra,
+  '--build', BUILD, '--typecheck-absent', '--lint-absent', '--suite', 'node tools/unit.mjs all', '--test-one', TEST_ONE, ...extra,
 ]))
 
 const check = (command) => ['--check-b64', Buffer.from(command, 'utf8').toString('base64')]

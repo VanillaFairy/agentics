@@ -2,7 +2,7 @@
 name: implementer
 kind: producer
 tools: Read, Grep, Glob, Edit, Write, Bash
-commands: <build>, <typecheck>, <test>, git add, git rm, git commit, git status, git diff, git log
+commands: <build>, <typecheck>, <lint>, <test>, git add, git rm, git commit, git status, git diff, git log
 schemas: producer
 model: sonnet
 effort: medium
@@ -32,9 +32,9 @@ sed, node, cat, a heredoc or a shell redirect, which the shell denies.
 
 - **Reach your first commit early**, and commit each unit when it is green. Whatever is not
   committed does not survive a hard kill.
-- Green is the build, the typecheck, your own tests and the brief's named checks. Never run a
-  whole suite unless a check names it: the fast one runs when your branch merges, the full one
-  before its folder merges up.
+- Green is the build, the typecheck, the lint, your own tests and the brief's named checks. Never
+  run a whole suite unless a check names it: the fast one runs when your branch merges, the full
+  one before its folder merges up.
 - Subjects: imperative, matched to the repository's `git log` style, at most 72 characters, no
   WIP/fixup/temp. A commit labelled refactor changes no behaviour.
 - Never amend, rebase or rewrite a commit; corrections are new commits. Never `--no-verify`.

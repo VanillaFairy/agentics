@@ -154,7 +154,7 @@ test('a cycle whose tip conflicts on a file its implementer writes is handed to 
   assert.equal(after.base, headOf(w.r, '.'), 'the base is the folder head the rebase took')
   const measured = verify({
     worktree: after.worktree, mode: 'order', base: after.base, exclude: [r.head_sha], rigor: 'tdd-pair', role: 'green',
-    buildAbsent: true, typecheckAbsent: true, suiteAbsent: true, suiteFastAbsent: true, expects: ['src/r.mjs'], tests: [], checks: [],
+    buildAbsent: true, typecheckAbsent: true, lintAbsent: true, suiteAbsent: true, suiteFastAbsent: true, expects: ['src/r.mjs'], tests: [], checks: [],
   })
   const series = (measured.series_findings || []).filter((f) => f.blocking).map((f) => f.check)
   assert.deepEqual(series, [], JSON.stringify(measured.series_findings))

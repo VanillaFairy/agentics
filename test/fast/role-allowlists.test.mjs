@@ -25,7 +25,7 @@ const PINNED = {
   planner: { kind: 'producer', tools: ['Edit', 'Glob', 'Grep', 'Read', 'Write'], commands: [], schemas: ['planner_write', 'planner_settle'] },
   implementer: {
     kind: 'producer', tools: ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write'],
-    commands: ['<build>', '<typecheck>', '<test>', 'git add', 'git rm', 'git commit', 'git status', 'git diff', 'git log'], schemas: ['producer'],
+    commands: ['<build>', '<typecheck>', '<lint>', '<test>', 'git add', 'git rm', 'git commit', 'git status', 'git diff', 'git log'], schemas: ['producer'],
   },
   'test-author': { kind: 'producer', tools: ['Edit', 'Glob', 'Grep', 'Read', 'Write'], commands: [], schemas: ['producer'] },
   investigator: { kind: 'producer', tools: ['Bash', 'Glob', 'Grep', 'Read'], commands: ['*'], schemas: ['investigator'] },

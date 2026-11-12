@@ -67,7 +67,7 @@ const RIG_SPEC = [
 /** The commands the session named, as the envelope holds them. */
 const RIG_COMMANDS = {
   suite: 'node --test --test-reporter=spec', test_one: 'node --test --test-reporter=spec {file}',
-  absent: { build: true, typecheck: true },
+  absent: { build: true, typecheck: true, lint: true },
 }
 
 const RIG_FILES = {

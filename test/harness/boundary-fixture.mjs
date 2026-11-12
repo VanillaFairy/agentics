@@ -15,7 +15,7 @@ delete process.env.NODE_TEST_CONTEXT
 export const STAMP = '20260925-120000'
 export const COMMANDS = {
   suite: 'node --test --test-reporter=spec', test_one: 'node --test --test-reporter=spec {file}',
-  absent: { build: true, typecheck: true },
+  absent: { build: true, typecheck: true, lint: true },
 }
 
 export const git = (cwd, ...args) => {

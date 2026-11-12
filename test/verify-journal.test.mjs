@@ -23,7 +23,7 @@ test('the CLI prints one line whose digest covers the payload it carries', (t) =
   const run = spawnSync(process.execPath, [CLI,
     '--worktree', worktree, '--base', base, '--head', head,
     '--expects', 'src/widget.mjs', '--expects', 'test/widget.test.mjs',
-    '--build', BUILD, '--typecheck-absent', '--suite', SUITE, '--test-one', TEST_ONE,
+    '--build', BUILD, '--typecheck-absent', '--lint-absent', '--suite', SUITE, '--test-one', TEST_ONE,
   ], { encoding: 'utf8' })
 
   assert.equal(run.status, 0, 'a payload was printed, which is what this tool produces')
@@ -38,7 +38,7 @@ test('the CLI prints one line whose digest covers the payload it carries', (t) =
 
   const dir = repository(t)
   const refused = spawnSync(process.execPath, [CLI, '--worktree', dir, '--base', rev(dir, 'HEAD'),
-    '--head', rev(dir, 'HEAD'), '--build', BUILD, '--typecheck-absent', '--suite', SUITE], { encoding: 'utf8' })
+    '--head', rev(dir, 'HEAD'), '--build', BUILD, '--typecheck-absent', '--lint-absent', '--suite', SUITE], { encoding: 'utf8' })
   assert.equal(refused.status, 0,
     'a refusal is a measurement outcome, and a non-zero exit would read as the tool failing')
   const typed = JSON.parse(refused.stdout)
@@ -54,7 +54,7 @@ test('the observation is journalled by the process that observed it, through the
   const payload = verify(parseArgs([
     '--worktree', worktree, '--base', base, '--head', head,
     '--expects', 'src/widget.mjs', '--expects', 'test/widget.test.mjs',
-    '--build', BUILD, '--typecheck-absent', '--suite', SUITE, '--test-one', TEST_ONE,
+    '--build', BUILD, '--typecheck-absent', '--lint-absent', '--suite', SUITE, '--test-one', TEST_ONE,
     '--repo', dir, '--effort', EFFORT, '--execution', EXECUTION, '--node', NODE, '--branch', BRANCH,
   ]))
   assert.equal(payload.journal.written, true)
@@ -75,7 +75,7 @@ test('the observation is journalled by the process that observed it, through the
   assert.deepEqual(line.checks, [])
   assert.deepEqual(Object.keys(line).sort(), [
     'approved_failing', 'base_sha', 'baseline_failing', 'branch', 'build', 'checks', 'discriminator', 'failing_tests',
-    'head_sha', 'key', 'kind', 'mutations', 'node', 'producer', 'seq', 'series_findings', 'setup', 'static_on_base', 'stop_reason', 'suite', 'suite_scope', 'tests_rewritten', 'typecheck',
+    'head_sha', 'key', 'kind', 'lint', 'lint_base', 'lint_new', 'mutations', 'node', 'producer', 'seq', 'series_findings', 'setup', 'static_on_base', 'stop_reason', 'suite', 'suite_scope', 'tests_rewritten', 'typecheck',
     'unmeasured', 'worktree',
   ], 'a resume re-derives the verdict from this line alone, so it carries every field ' +
      'lib/verdict.mjs reads — `typecheck`, `mutations` and `checks` included')

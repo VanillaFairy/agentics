@@ -54,7 +54,7 @@ test('a verify leaf runs no series and no discriminator: it writes nothing', (t)
 
   const payload = verify(parseArgs([
     '--worktree', worktree, '--base', base, '--head', head, '--rigor', 'verify',
-    '--build', BUILD, '--typecheck-absent', '--suite', SUITE,
+    '--build', BUILD, '--typecheck-absent', '--lint-absent', '--suite', SUITE,
     ...check('node -e "process.exit(0)"'),
   ]))
 
@@ -74,7 +74,7 @@ test('a verify leaf still refuses a command nobody named: absent is never inferr
 
   const payload = verify(parseArgs([
     '--worktree', worktree, '--base', base, '--head', head, '--rigor', 'verify',
-    '--typecheck-absent', '--suite', SUITE, ...check('node -e "0"'),
+    '--typecheck-absent', '--lint-absent', '--suite', SUITE, ...check('node -e "0"'),
   ]))
 
   assert.equal(payload.error.kind, 'command_unknown')
@@ -106,7 +106,7 @@ test('a green leaf is discriminated over its cycle\'s tests, which its own diff 
     '--worktree', worktree, '--base', red, '--head', head,
     '--rigor', 'tdd-pair', '--role', 'green', '--expects', 'src/widget.mjs',
     '--test-file', 'test/widget.test.mjs',
-    '--build', BUILD, '--typecheck-absent', '--suite', SUITE, '--test-one', TEST_ONE,
+    '--build', BUILD, '--typecheck-absent', '--lint-absent', '--suite', SUITE, '--test-one', TEST_ONE,
   ]))
 
   assert.equal(payload.stop_reason, 'completed')
@@ -124,7 +124,7 @@ test('a green leaf with no cycle tests named measures its own diff, finds none, 
   const payload = verify(parseArgs([
     '--worktree', worktree, '--base', red, '--head', head,
     '--rigor', 'tdd-pair', '--role', 'green', '--expects', 'src/widget.mjs',
-    '--build', BUILD, '--typecheck-absent', '--suite', SUITE, '--test-one', TEST_ONE,
+    '--build', BUILD, '--typecheck-absent', '--lint-absent', '--suite', SUITE, '--test-one', TEST_ONE,
   ]))
 
   assert.deepEqual(payload.discriminator, [])

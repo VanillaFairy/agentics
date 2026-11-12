@@ -169,7 +169,7 @@ test('a changed test file with no way to run one test escalates instead of skipp
   const payload = verify(parseArgs([
     '--worktree', worktree, '--base', base, '--head', head,
     '--expects', 'src/widget.mjs', '--expects', 'test/widget.test.mjs',
-    '--build', BUILD, '--typecheck-absent', '--suite', SUITE,
+    '--build', BUILD, '--typecheck-absent', '--lint-absent', '--suite', SUITE,
   ]))
 
   assert.deepEqual(payload.discriminator, [])
@@ -197,7 +197,7 @@ test("a green's own commit that changes a test is a blocking finding", (t) => {
 
   const payload = verify(parseArgs([
     '--worktree', worktree, '--base', base, '--head', head, '--rigor', 'tdd-pair', '--role', 'green',
-    '--build', BUILD, '--typecheck-absent', '--suite', SUITE, '--test-one', TEST_ONE,
+    '--build', BUILD, '--typecheck-absent', '--lint-absent', '--suite', SUITE, '--test-one', TEST_ONE,
   ]))
 
   const breach = payload.series_findings.find((f) => f.check === 'role-breach')
@@ -212,7 +212,7 @@ test('integration mode measures the merged head and reports honest emptiness', (
   const { worktree } = order(t)
 
   const payload = verify(parseArgs([
-    '--worktree', worktree, '--mode', 'integration', '--build', BUILD, '--typecheck-absent', '--suite', SUITE,
+    '--worktree', worktree, '--mode', 'integration', '--build', BUILD, '--typecheck-absent', '--lint-absent', '--suite', SUITE,
   ]))
 
   assert.equal(payload.stop_reason, 'completed')

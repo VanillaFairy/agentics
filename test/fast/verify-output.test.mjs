@@ -1,5 +1,6 @@
 // test/fast/verify-output.test.mjs — lib/verify.mjs, pure over a directory: how `extractFailures`
-// places a suite's failures in their files, and the closed test-file pattern set (`isTestPath`).
+// places a suite's failures in their files, the closed test-file pattern set (`isTestPath`), and
+// which lines of a lint's output are new against its output at the base (`newFindings`).
 // The suite's output carried through a real verify() is test/verify-output.test.mjs.
 
 import { test } from 'node:test'
@@ -8,7 +9,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
 
-import { extractFailures } from '../../lib/verify.mjs'
+import { extractFailures, newFindings } from '../../lib/verify.mjs'
 import { isTestPath } from '../../lib/store.mjs'
 
 /** A directory holding the empty `files`: a failure is placed only in a test file that exists there. */
@@ -108,4 +109,12 @@ test('vitest under a folder root: each failure is placed repo-relative, named on
 
   assert.equal(found.unplaced, 0)
   assert.deepEqual(found.failures, [{ file: 'viewer/test/app.test.ts', id: 'live flag reads exactly ended for an ended run' }])
+})
+
+test('a lint finding the base reports is not new where its line, column or count moved; a second copy of it is', () => {
+  const out = (...lines) => lines.join('\n') + '\n'
+  const base = out('src/old.ts', '  4:10  error  Unexpected any  no-explicit-any', '', 'found 1 problem')
+  assert.deepEqual(newFindings(out('src/old.ts', '  9:3  error  Unexpected any  no-explicit-any', '', 'found 1 problem'), base), [])
+  const twice = out('src/old.ts', '  4:10  error  Unexpected any  no-explicit-any', '  12:1  error  Unexpected any  no-explicit-any', '', 'found 2 problem')
+  assert.deepEqual(newFindings(twice, base), ['12:1  error  Unexpected any  no-explicit-any'])
 })

@@ -106,7 +106,7 @@ const VERIFY_FOLDER = {
 
 const SPLIT = {
   suite: 'node --test --test-reporter=spec', suite_fast: 'node --test --test-reporter=spec test/add.test.mjs',
-  test_one: 'node --test --test-reporter=spec {file}', absent: { build: true, typecheck: true },
+  test_one: 'node --test --test-reporter=spec {file}', absent: { build: true, typecheck: true, lint: true },
 }
 const BIG_TEST = "import { test } from 'node:test'\nimport assert from 'node:assert/strict'\nimport { add } from '../../src/add.mjs'\n" +
   "test('adds big', () => assert.equal(add(2, 2), 4))\n"

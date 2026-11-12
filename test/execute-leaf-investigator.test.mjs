@@ -50,7 +50,7 @@ describe('the leaf unit', { concurrency: 4 }, () => {
   const ABSENT = (name) => ({ ...COMMAND(name, ''), command: { name, value: '', absent: true } })
   const SUITE = 'node --test --test-reporter=spec'
   const TEST_ONE = 'node --test --test-reporter=spec {file}'
-  const ESTABLISHED = () => [ABSENT('build'), ABSENT('typecheck'), COMMAND('suite', SUITE), COMMAND('test_one', TEST_ONE)]
+  const ESTABLISHED = () => [ABSENT('build'), ABSENT('typecheck'), ABSENT('lint'), COMMAND('suite', SUITE), COMMAND('test_one', TEST_ONE)]
   const investigated = () => ({
     output: { commands: ESTABLISHED(), unresolved: [], text: 'found them' },
   })

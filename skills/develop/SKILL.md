@@ -301,12 +301,13 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/compile.mjs" --repo . --effort <e> --folder <id>
 `ok: false` lists refusals by file and line and wrote nothing: show them, stop; re-spec (step 4c).
 
 A new execution is told the project's commands. Write those you know (from the user, `CLAUDE.md`,
-build files) with Write as JSON `{setup, build, typecheck, suite, suite_fast, test_one}` to a file
-outside the repository, `test_one` with `{file}` where a test file's repo-relative path goes.
-`setup` prepares a fresh worktree (installs dependencies, builds what a test reads); code runs it
-before every measurement and every round, and it must leave the files git sees as they are. Where
-folders differ, `test_one` and `setup` take a map `{".": "<command>", "<folder>": "<command>"}`, a
-file run by its deepest folder's. Leave out one you do not know: the run's investigator establishes it.
+build files) with Write as JSON `{setup, build, typecheck, lint, suite, suite_fast, test_one}` to a
+file outside the repository: `test_one` with `{file}` where a test file's repo-relative path goes,
+`lint` the static checks CI runs (linters, format, boundary rules) as one command, `setup` what
+prepares a fresh worktree (installs, builds what a test reads), run before every measurement and
+round, leaving what git sees as it is. Where folders differ, `test_one` and `setup` take a map
+`{".": "<command>", "<folder>": "<command>"}`, a file run by its deepest folder's. Leave out one you
+do not know: the run's investigator establishes it.
 
 Read the effort's `seq` first, so the watch misses nothing raised meanwhile:
 `node "${CLAUDE_PLUGIN_ROOT}/lib/status.mjs" list --repo .` prints `seq <n>` on its line. Start the run:
@@ -315,8 +316,7 @@ Read the effort's `seq` first, so the watch misses nothing raised meanwhile:
 node "${CLAUDE_PLUGIN_ROOT}/lib/run.mjs" execute --repo . --detach --effort <e> --folder <id> --intelligence <tier> --commands-file <file> [--pace <pace>] [--base-ref <branch>] [--plan-only] [--pause] [--budget <tokens>] [--confirmed <seq>]
 ```
 
-- `--folder` is the folder: `.` for the root, else its path from the root. A task or a group runs
-  with the folder that holds it.
+- `--folder`: `.` for the root, else its path from the root; a task or group runs with its folder's.
 - `--intelligence` by the dial above: it tiers a new execution's agents; a resume keeps its own.
 - `--pace` and `--base-ref` shape a new execution only. A start on a folder an open execution holds
   resumes it, with the pace and base it began with. A resume's `--commands-file` adds what nothing

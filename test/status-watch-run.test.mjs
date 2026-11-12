@@ -115,6 +115,11 @@ test('a stall is a line naming how long the main thread was held, from when, and
     ['stalled: synchronous work held the main thread 30s from T (git merge x3 21s); the records around seq 9 name it'])
 })
 
+test('a request slow on the offload worker is a slow line that says the main thread is not held, never a stall', () => {
+  const lines = runWatchLines([{ kind: 'stalled', label: 'the evidence of a', since: 'T', seq: 4 }], 0).lines
+  assert.deepEqual(lines, ['slow: the evidence of a has run on the offload worker since T, past the git ceiling, and runs still; the main thread is not held'])
+})
+
 test('watch on a run that beats while its main thread has not turned says it is busy, never unresponsive', { timeout: 30000 }, async (t) => {
   const r = repo(t)
   const now = Date.now()

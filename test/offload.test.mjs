@@ -1,6 +1,7 @@
 // test/offload.test.mjs — lib/offload.mjs: lib work runs on one warm worker thread, its failures
 // reject (no in-process fallback), a hung git stays GitHung, a worker that died is replaced, and the
-// watchdog records a long request while it still runs, counted from when the worker started it.
+// watchdog records a long request while it still runs, counted from when the worker started it, and by
+// default only past the git ceiling: a request on the worker holds none of the run's threads.
 //
 // Design: docs/DESIGN.md#the-process-model.
 
@@ -8,7 +9,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { offload, watchdog } from '../lib/offload.mjs'
-import { GitHung } from '../lib/store.mjs'
+import { GIT_CEILING_MS, GitHung } from '../lib/store.mjs'
 
 const WORK = '../test/fixtures/offload-work.mjs'
 
@@ -28,7 +29,7 @@ test('a worker that died rejects what it held, and the next request is answered 
 
 test('the watchdog records a long request while it still runs, once, with its label', async () => {
   const seen = []
-  const dog = watchdog((s) => seen.push({ ...s, settled }), { stallMs: 100, everyMs: 20 })
+  const dog = watchdog((s) => seen.push({ ...s, settled }), { slowMs: 100, everyMs: 20 })
   let settled = false
   const work = offload(WORK, 'hold', [800], { label: 'the long one' }).then((v) => { settled = true; return v })
   assert.equal(await work, 800)
@@ -39,10 +40,21 @@ test('the watchdog records a long request while it still runs, once, with its la
 
 test('the watchdog counts a request from when the worker starts it: one queued behind a slow one is no stall', async () => {
   const seen = []
-  const dog = watchdog((s) => seen.push(s.label), { stallMs: 300, everyMs: 20 })
+  const dog = watchdog((s) => seen.push(s.label), { slowMs: 300, everyMs: 20 })
   const slow = offload(WORK, 'hold', [900], { label: 'slow' })
   const queued = offload(WORK, 'hold', [1], { label: 'queued' })
   assert.deepEqual(await Promise.all([slow, queued]), [900, 1])
   dog.stop()
   assert.deepEqual(seen, ['slow'])
+})
+
+test('by default the watchdog names a request only once it has run past the git ceiling', async () => {
+  const seen = []
+  const ahead = (ms) => () => Date.now() + ms
+  const under = watchdog((s) => seen.push('under ' + s.label), { everyMs: 20, now: ahead(GIT_CEILING_MS - 60_000) })
+  const past = watchdog((s) => seen.push('past ' + s.label), { everyMs: 20, now: ahead(GIT_CEILING_MS + 60_000) })
+  assert.equal(await offload(WORK, 'hold', [300], { label: 'evidence' }), 300)
+  under.stop()
+  past.stop()
+  assert.deepEqual(seen, ['past evidence'])
 })

@@ -358,7 +358,8 @@ stands: act on each once. Hold each line to `self-improve`'s signals: it decides
 - `paused: …` and `resumed: …`: a pause (below) taking hold and ending. Nothing to do.
 - `unresponsive: …`: the process lives but stopped beating, a plugin defect: take it through `self-improve`.
 - `busy: …`, `turning again: …`, `stalled: …`: synchronous work held the run's main thread. Nothing to
-  do; a `stalled` over minutes is a spend of time for `self-improve`, its seq naming where.
+  do; a `stalled` over minutes is a spend of time for `self-improve`, its seq naming where. `slow: …`
+  holds no thread: an offloaded request past the git ceiling, a spend of time for `self-improve`.
 
 **Pausing a live run**, when the user asks or a plugin fix must land before more work starts: what
 runs finishes and records, nothing new starts, and the run ends `stopped: pause`. The pause stands
@@ -370,10 +371,9 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" pause --repo . --run <run>
 node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" resume --repo . --run <run>
 ```
 
-**Resuming** is starting again. After a stop, a fault, an answer or a kill, from this session or
-another, the same start on the same folder resumes the open execution, and each task picks up at
-its next undone action (`docs/DESIGN.md#resume-and-checkpoints`); a call cut off mid-way is resumed
-in its own session.
+**Resuming** is starting again. After a stop, a fault, an answer or a kill, from any session, the
+same start on the same folder resumes the open execution, and each task picks up at its next
+undone action (`docs/DESIGN.md#resume-and-checkpoints`); a call cut off is resumed in its session.
 
 ## Step 4 — Walk the result, in this order
 

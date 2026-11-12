@@ -407,9 +407,14 @@ worker thread started on first use and kept warm. There is no in-process fallbac
 worker cannot answer rejects, and its unit faults (`program`), never a silent stall; a git it
 killed at its ceiling rejects as `GitHung`. A probe round's carried findings are handed to
 `recordProbe` rather than checked again. The main thread watches every request in flight
-(`watchdog`): one running past 15 seconds since the worker started it — the worker says when it
-does, so a request queued behind a slow one is not counted — is recorded `stalled {label, since}` in
-the run's log while it still runs, which the watch prints.
+(`watchdog`): one running past the git ceiling (`GIT_CEILING_MS`, below) since the worker started
+it — the worker says when it does, so a request queued behind a slow one is not counted — is
+recorded `stalled {label, since}` in the run's log while it still runs, which the watch prints as
+`slow: <label> …; the main thread is not held`, never as a stall. The worker's git holds the
+worker's thread alone: what a long request costs is the unit awaiting it and every request queued
+behind it, and an evidence derivation on a busy machine takes tens of seconds as a matter of
+course, so a threshold near the main thread's 15 seconds would name every leaf's brief. Only a
+request that ran longer than any single git may is worth the session's attention.
 
 Only `lib/store.mjs` starts git (`gitSync`, `gitAsync`, `readBlobs`; the `git-spawn` lint rule), under
 one held environment and one ceiling, `GIT_CEILING_MS`, ten minutes. The ceiling is a hang detector,

@@ -15,7 +15,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { itemsFor, liveItems, recordCites, recordJudgement } from '../lib/evidence.mjs'
 import { appendProject, readProjectLog } from '../lib/ledger.mjs'
-import { programContext } from '../lib/programs/common.mjs'
+import { briefFits, programContext } from '../lib/programs/common.mjs'
+import { PART_BYTES } from '../lib/roles.mjs'
 import { survey } from '../lib/programs/survey.mjs'
 import { treeOf } from '../lib/search/pin.mjs'
 import { runLogPath } from '../lib/store.mjs'
@@ -78,6 +79,23 @@ test('standing survey items over the ground are known ground', async (t) => {
   assert.deepEqual(result.reused, [s.id])
   assert.ok(planBrief(rig).includes(KNOWN))
   assert.deepEqual(scoutThreads(rig), ['scout:loader'])
+})
+
+test('a pool too large for one brief still plans: every item reused, the plan and judge within their bound, the cut declared', async (t) => {
+  const PAD = ' the resolver walks each root in turn and keeps what it found for the next caller'.repeat(30)
+  const claims = Array.from({ length: 60 }, (_, i) => 'BULK-' + i + PAD)
+  const { rig, result, s } = await surveyOver(t, (repo) =>
+    ({ ids: seed(repo, claims.map((claim, i) => seedItem({ topic: 'bulk-' + (i % 6), claim }))) }), script())
+  assert.ok(Buffer.byteLength(claims.join('\n')) > PART_BYTES, 'the claims alone are past a part of a brief')
+  assert.deepEqual([...result.reused].sort(), [...s.ids].sort())
+  assert.ok(!cov(result).failed_channels.includes('plan'), JSON.stringify(cov(result)))
+  assert.deepEqual(scoutThreads(rig), ['scout:loader'])
+  for (const brief of [planBrief(rig), judgeCalls(rig)[0].brief]) {
+    assert.equal(briefFits('analyst', brief), true)
+    assert.ok(brief.includes('NOT SHOWN — '), 'what was left out is counted by topic')
+  }
+  assert.ok(cov(result).declared.some((d) => d.includes('of the 60 standing items reused')), JSON.stringify(cov(result).declared))
+  assert.equal(result.items.filter((it) => s.ids.includes(it.id)).length, 60, 'the context still holds every one')
 })
 
 test('only survey items are reused', async (t) => {

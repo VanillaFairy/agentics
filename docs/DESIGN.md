@@ -687,7 +687,7 @@ shaped part's key:
 |---|---|---|
 | `work` | a leaf's own work: its Task, criteria, decisions, expected files and reads, its cited Design part, what it consumes, its effort files, measures, commands; its plan entry a ruler reads; a folder's spec a planner or reviewer reads | in a leaf's dispatch (its round, its reviewer, its convergence ruler), a `decompose` to the folder's planner, or `needs_respec` in a folder the user wrote ([Replanning](#replanning)); elsewhere, as `user` |
 | `user` | the repository's guidance, one part per file; a changed spec's diff, the user's answers, each fenced so no answer opens a section, and the specs a ruler reads, one part per spec; a folder's spec edit and the user's word on it, and its sub-efforts' specs, one part per spec, that an integration reviewer reads; a probed artefact | a stop for the user naming the file and its size: in an execution `escalated brief_too_large` (`dispatchFailed` in `lib/boundaries/records.mjs`), from `rule` `shrink_brief` ([A changed spec](#a-changed-spec)); the message names the remedy (`remedyOf` in `lib/briefs/size.mjs`): a guidance file, which every brief carries, the user cuts or splits; anything else means the work is too big, and it is split into subtasks, or at an effort's root into separate efforts that land in turn |
-| `code` | everything else: the charge, thread messages, a probe's ground and settled specs, rendered records; a leaf's evidence and gotchas, a ruler's changes, a producer's return a reviewer reads, a survey's evidence a planner reads, each bounded where it is built (`bounded` and `boundedDiff` in `lib/briefs/size.mjs`), whole items or files kept first and a closing line naming what was left out | none in practice: code bounds what it accumulates as it builds the brief, shedding the least valuable first and declaring what it shed; a refusal that still names one is a defect of its builder, a `role` fault whose detail carries the part, its bytes and budget |
+| `code` | everything else: the charge, thread messages, a probe's ground and settled specs, rendered records; a leaf's evidence and gotchas, a ruler's changes, a producer's return a reviewer reads, a survey's evidence a planner reads, the evidence pool's standing items and stale candidates a survey's planner and judges read ([Survey](#survey)), each bounded where it is built (`bounded` and `boundedDiff` in `lib/briefs/size.mjs`, `knownText` in `lib/evidence.mjs`), whole items or files kept first and a closing line naming what was left out | none in practice: code bounds what it accumulates as it builds the brief, shedding the least valuable first and declaring what it shed; a refusal that still names one is a defect of its builder, a `role` fault whose detail carries the part, its bytes and budget |
 
 Code gives way first: a bound sheds what code owns before a refusal is laid on the work or the user.
 **A batch of units is split, never shed.** Where a brief packs units a reader rules one by one — a
@@ -2759,7 +2759,19 @@ The `survey` program gathers evidence for one question and never concludes.
    key; that topic is searched again (`again`), its find carrying what it used to claim. A candidate
    the plan leaves out is not searched: the result lists it in `passed`, and a `declared` line names
    it. A plan given the session's reading declares that it left that reading to the session. A pool
-   that answers the question buys no search. A plan that fails searches nothing and fails the `plan`
+   that answers the question buys no search. The pool grows with every survey, so what a brief holds
+   of it is sized where it is built, never refused: the standing items go whole while they fit
+   their bound — half a part of a brief for the planner, a quarter for each judge, who reads them
+   only so as not to restate them — and past it `knownText` in `lib/evidence.mjs` keeps in full the
+   items nearest the question (by the question's words an item's topic, claim and span paths hold, a
+   word weighing more the fewer items hold it; then the newest), no item cut, and names every topic
+   of the rest with how many of its items are not shown. The planner treats what the shown items do
+   not answer as open, so a cut costs at most a search the pool could have saved; the context still
+   holds every standing item, and a `declared` line says how many the plan and the judges read. The
+   stale candidates are bounded the same way (`candidatesText` in `lib/briefs/survey.mjs`): whole
+   candidates while they fit a quarter of a part, then the keys of the rest, which the plan may
+   still adopt; and a topic's old claims, in a candidate or in the find of a topic searched again,
+   are held to a sixteenth of a part, the rest counted. A plan that fails searches nothing and fails the `plan`
    channel, the stale candidates named as dropped; the context still holds the standing items the
    run reused.
 3. **Search.** Each topic is one search ([Searches](#searches)) named `scout:<topic>`, run by the

@@ -499,15 +499,15 @@ the table before the first question. One at a time is not care here, it is forty
 
 Put the Grill's defaults on the table in the same pass, as one set. **Settle every finding**:
 incorporated (the spec's Design, Plan, Decisions or Open questions change because of it; a
-resolution that is a decision is a Decisions row with an id) or discarded. An `ambiguity` is
-incorporated, or discarded on the user's ruling, never on yours. **Settle with the smallest edit,
-in one place**: drop the reading you do not keep; state a rule once and point to it elsewhere,
-never restate it, since a restatement is the next round's ambiguity. A `gap` is designed away, or
-accepted out loud as a Decisions row in the user's words with the cost stated. A note is
-incorporated or discarded without asking. Record each disposition as it is ruled:
+resolution that is a decision is a Decisions row with an id) or discarded. An `ambiguity` is the
+user's to rule. **Settle with the smallest edit, in one place**: drop the reading you do not keep;
+state a rule once and point to it elsewhere, never restate it, since a restatement is the next
+round's ambiguity. A `gap` is designed away, or accepted out loud as a Decisions row in the user's
+words with the cost stated. A note is incorporated or discarded without asking. Record each as it
+is ruled, `--by session` for a note or a gap you designed away, else `--by user`:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" dispose --repo . --effort <e> --folder <id> --finding <finding id> --outcome incorporated|discarded --by user
+node "${CLAUDE_PLUGIN_ROOT}/lib/approval.mjs" dispose --repo . --effort <e> --folder <id> --finding <finding id> --outcome incorporated|discarded --by user|session
 ```
 
 The finding id is the finding's `item` (its evidence-item id), or `<hash>#<P<n>>` when it has

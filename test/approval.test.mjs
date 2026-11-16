@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url'
 
 import {
   approvalGate, approvalState, recordApproval, recordCompiled, recordDisposition, recordPreparation,
-  recordReviewSkipped, recordReviewed,
+  recordReviewSkipped, recordReviewed, settledFindings,
 } from '../lib/approval.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
 import { canonical, fnv1a } from '../lib/plan-digest.mjs'
@@ -279,9 +279,29 @@ test('a disposition records the finding and how it was settled; a bad one is ref
   for (const bad of [
     { finding: '', outcome: 'discarded', by: 'user' },
     { finding: 'P1', outcome: 'ignored', by: 'user' },
-    { finding: 'P1', outcome: 'discarded', by: 'session' },
+    { finding: 'P1', outcome: 'discarded', by: 'agent' },
   ]) assert.equal(recordDisposition(repo, E, '.', bad).ok, false, JSON.stringify(bad))
   assert.equal(ledger(repo).length, 1)
+})
+
+test('the session settles a note or a designed-away gap under its own name, never an ambiguity', () => {
+  const repo = effort({ '.': ROOT })
+  recordReviewed(repo, E, '.', { complete: true, remaining: [], ambiguities: ['Iaaaaaaaa'] })
+
+  const note = recordDisposition(repo, E, '.', { finding: 'Innnnnnnn', outcome: 'discarded', by: 'session' })
+  assert.equal(note.ok, true, note.error)
+  assert.equal(ledger(repo).find((l) => l.kind === 'disposition').by, 'session')
+  assert.deepEqual(settledFindings(repo, E, '.'), ['Innnnnnnn'], 'a settled note is not carried into the next round')
+
+  const before = ledger(repo).length
+  assert.equal(recordDisposition(repo, E, '.', { finding: 'Iaaaaaaaa', outcome: 'discarded', by: 'session' }).ok, false)
+  assert.equal(ledger(repo).length, before, 'a refused disposition writes nothing')
+  assert.deepEqual(approvalGate(repo, E, '.').open, ['Iaaaaaaaa'])
+
+  recordDisposition(repo, E, '.', { finding: 'Iaaaaaaaa', outcome: 'discarded', by: 'user' })
+  recordReviewed(repo, E, '.', { complete: true, remaining: [], ambiguities: ['Iaaaaaaaa', 'Innnnnnnn'] })
+  assert.deepEqual(approvalGate(repo, E, '.').open, ['Innnnnnnn'], 'the session\'s settlement of a note does not settle it once a round returns it as an ambiguity')
+  assert.deepEqual(settledFindings(repo, E, '.'), ['Iaaaaaaaa'], 'and the next round carries it')
 })
 
 test('a skipped review records its reason and the hash it was skipped at', () => {

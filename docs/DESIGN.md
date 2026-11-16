@@ -2013,7 +2013,7 @@ at any depth, and each stage writes what it settles into the spec at once.
 | Analyze | write back the understanding; survey this layer's question, and search for existing solutions when it would build a capability, the two programs side by side; cite every item their runs returned in one `lib/evidence.mjs cite --from-run` | the user confirms or corrects the understanding |
 | Grill | one question at a time, recommendation first; each answer is a Decisions row at once; a cheap choice nothing consumes is defaulted and ruled with the rest at Review; approach drafts when the decision space is open, from the `drafts` program, each recorded as it returns | no `blocking` question is open |
 | Draft | Design and Plan at this layer's level of detail, shown section by section | `lib/spec.mjs check` passes; no decision is unrealised |
-| Review | the `probe` program when earned (by length, or a contract other entries consume); a second round, earned by a resolution that reshaped the design, narrowed by `--since`, the previous round's snapshot; a partial round that left only units open finished by the next narrowed round, and one that lost a channel, ground or a finding probed whole; every round recorded from its run (`lib/approval.mjs reviewed --from-run`); its findings settled with the user, incorporated or discarded, each a recorded disposition, an ambiguity discarded only on the user's ruling, each settled by one edit in one place; then the user reads the spec | `lib/approval.mjs gate` ratifiable, or the review not earned; and the user's answer chose `Approve` |
+| Review | the `probe` program when earned (by length, or a contract other entries consume); a second round, earned by a resolution that reshaped the design, narrowed by `--since`, the previous round's snapshot; a partial round that left only units open finished by the next narrowed round, and one that lost a channel, ground or a finding probed whole; every round recorded from its run (`lib/approval.mjs reviewed --from-run`); its findings settled with the user, incorporated or discarded, each a recorded disposition, the session's own for a note or a gap it designed away and the user's for an ambiguity or an accepted gap, each settled by one edit in one place; then the user reads the spec | `lib/approval.mjs gate` ratifiable, or the review not earned; and the user's answer chose `Approve` |
 | Approve | a spec never compiled: `lib/approval.mjs approve`, which confirms the user's answer, then `lib/compile.mjs`; a spec compiled before: the `rule` program, which approves the change by ruling or hands back the questions the user must answer ([A changed spec](#a-changed-spec)) | — |
 | Move on | `lib/next.mjs` offers: design a sub-effort, develop, or stop | the user picks |
 
@@ -2065,6 +2065,13 @@ at any depth, and each stage writes what it settles into the spec at once.
   disposition from any round, an incorporated ambiguity counting only once a later round ruled its
   section clean. An edit leaves no review of the new text, so the gate shuts until one reads it. The
   design session and develop's autonomous review read the same gate.
+- **Who settles which finding.** The design session records the notes and the gaps it designs away
+  under its own name (`by: session`), so the ledger never names the user for a ruling they did not
+  make, and a narrowed round does not carry those findings back. An ambiguity, and a gap accepted
+  rather than designed away, is the user's; develop's planner settles its own spec's. The recorder
+  refuses the session a finding any `reviewed` line of the folder returned as an ambiguity, and the
+  gate and the carry (`settles` in `lib/approval.mjs`) count no session disposition of one, so a
+  note a later round returns as an ambiguity is open again.
 
 **Why:** most design errors are errors of intent or of contract, and both are cheapest to catch in
 the layer that states them; writing lower layers early pays for detail the upper layers will
@@ -4523,7 +4530,7 @@ held) · `asked {nodes[]}` (a question opened; its token
 is `answer <effort>#<seq>`) · `answered {asked, nodes[], answers[{question, answer}], by: user |
 terminal, at?}` (`at` the transcript line the batch was read from) · `prepared {folder, hash,
 review, by: planner, renamed_from?}` · `compiled {folder, hash}` · `disposition {folder, finding,
-outcome: incorporated | discarded, by: user | planner}` · `review_skipped {folder, hash, reason}` ·
+outcome: incorporated | discarded, by: user | planner | session}` (`session` never for an ambiguity) · `review_skipped {folder, hash, reason}` ·
 `reviewed {folder, hash, complete, remaining[], ambiguities[], clean[], sections{}}` (one per
 review round; `clean` the sections every unit of which the round ruled with no finding, each once,
 and `sections` the section of each settlement id; `lib/next.mjs` reads the latest, and the gate

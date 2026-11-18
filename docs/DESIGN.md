@@ -3409,7 +3409,7 @@ its open items are still carried.
 
 | Review | Units, each anchored to | Owner | The prior it reads |
 |---|---|---|---|
-| a leaf's review | `criterion:<n>`: its text and the head · `file:<path>`: its blob at the head · `approved-case:<file>#<id>`: the head · a unit the review before left unruled and the span no longer names: the head | `reviewUnits` in `lib/boundaries/leaf-review.mjs` | the review record before it in the execution: its `rulings` ([Executors and review](#executors-and-review)) |
+| a leaf's review | `criterion:<n>`: its text, the head and the work the leaf's own brief asks (`workDigest` in `lib/brief.mjs`), so a ruling made under one brief never covers another · `file:<path>`: its blob at the head · `approved-case:<file>#<id>`: the head · a unit the review before left unruled and the span no longer names: the head | `reviewUnits` in `lib/boundaries/leaf-review.mjs` | the review record before it in the execution: its `rulings` ([Executors and review](#executors-and-review)) |
 | a folder's integration review | `decision:<id>`: its text, the merges beneath the folder carrying an entry that realises it, and the blob at the head of each file those merges touched · `file:<path>`: its blob at the head (`fileUnits` in `lib/review-delta.mjs`) · `spec`: the spec's text hash · `claim:<n>`: the head under review | `integrationUnits` and `priorRulings` in `lib/boundaries/integration.mjs` | the folder's last `claims` event with `review: done` (`lastReview`): its `anchors`, and its passing claims at its `head_sha`, none of them when the spec's edit since its `spec` ruling cannot be shown (`integrationDelta`) ([Executors and review](#executors-and-review)) |
 | a probe's narrowed round — a spec's review, and a plan's, which `planFolder` runs as one | `<axis>@<section>`: its section's text | `sectionUnits` in `lib/evidence.mjs` | the `since` round's kept rulings beside its snapshot (`<hash>.rulings.json`, [Probe](#probe)) |
 
@@ -3439,6 +3439,18 @@ the same way, and a fallback is no longer a separate path but the empty prior.
   request, whatever the round itself carried (the failures of an earlier test round, say). From any
   other leaf it escalates, as `blocked` does: a plain implementer leaf owns its tests, and a
   test-author or an auditor never returns it.
+- **A round that answered replaced work is not gone on from.** A leaf unit takes up its latest
+  round where it stands (closing a return, going on to its review) only while that round's work is
+  the work as it is now. Once the leaf was cleared after the round (a compile that rewrote it, a
+  retry), the brief its producer would get now is compared with the round's `brief_parts`: when a
+  part of the work moved — every part but the ones the run fills, `Evidence`, `Gotchas`,
+  `Commands`, `Worktree` and `Repository guidance` (`workMoved` in `lib/brief.mjs`) — the next
+  round opens on the new brief and the producer's resumed thread gets `brief_changed`; a move of a
+  run part alone, or a replan that changed no brief, keeps the round and its review, and so does a
+  stopped round whose work a retry measures first ([Resume and checkpoints](#resume-and-checkpoints)),
+  which its review then rules on the new brief. A replan
+  already clears an approval, so a leaf rewritten after its approval goes back to its producer, and
+  no criterion's ruling made under the old brief stands ([Review delta](#review-delta)).
 - **Verification failures** send a fix round its failures as a `failures` message (`source:
   verification`), to the producer's session — on a green or an audit, to the session the records
   name ([Rigor](#rigor)). A round that returns no commits is measured like any other: the branch

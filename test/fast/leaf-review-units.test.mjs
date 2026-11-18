@@ -44,6 +44,12 @@ test('a criterion and a failing case stand only at the head they were ruled at; 
   assert.notEqual(edited[0].anchor, prior[0].anchor, 'a criterion whose text changed is ruled again')
 })
 
+test('a criterion ruled under one brief does not stand under a brief that asks other work, at the same head', () => {
+  const leafOf = { acceptance: [{ text: 'first' }] }
+  const prior = reviewUnits(leafOf, { head: 'h1', work: 'w1' }).map((u) => ({ ...u, ruling: 'clean' }))
+  assert.deepEqual(reviewDelta(prior, reviewUnits(leafOf, { head: 'h1', work: 'w2' })).rule.map((r) => r.unit), ['criterion:1'])
+})
+
 test('a unit an earlier reviewer left unruled is ruled at the head though the span no longer reaches it, and named once', () => {
   const units = reviewUnits({ acceptance: [{ text: 'first' }] }, {
     head: 'h2', changed: ['src/a.mjs'], blobs: new Map([['src/a.mjs', 'blob-a']]), unruled: ['file:src/old.mjs', 'file:src/a.mjs', 'file:src/old.mjs'],

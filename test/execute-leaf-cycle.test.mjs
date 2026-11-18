@@ -7,6 +7,7 @@
 //              a test gap, and the red's own session across the green's and the audit's rounds
 //   consolidation  the round a cycle's approval opens: what lands when its tests still bite, and
 //              when they do not
+//   a red approved again  a green reviewed before it runs again on the red's new head
 //
 // The rig, the scripted answers and the worlds the parts share are in
 // test/harness/execute-leaf-world.mjs.
@@ -217,5 +218,30 @@ describe('the leaf unit', { concurrency: 4 }, () => {
     assert.equal(approval.head_sha, headOf(w.rig, 'g'))
     assert.equal(w.rig.git('show', approval.head_sha + ':test/r.test.mjs'), R_TEST_TWO.trim(), 'the reviewed tests land')
     assert.match(w.rig.git('log', '-1', '--format=%s', approval.head_sha), /^Revert /, 'undone by a new commit, never rewritten')
+  })
+
+  test('a green reviewed and approved before its red was approved again at another head is not gone on from: it runs again', T, async (t) => {
+    // In a triad the green is no tip: its approval owes no consolidation, so its last round closed for review.
+    const w = cycleWorld(t, { triad: true })
+    seedRed(w)
+    w.job('implementer|g#1', (cwd) => work(cwd, { 'src/r.mjs': R_SRC }, 'implement r'))
+    w.rig.script({
+      'implementer|g|producer:g': [done(), done('the new case passes as it is')],
+      'reviewer|g|reviewer:g:1': [verdict()],
+      'reviewer|g|reviewer:g:2': [verdict()],
+    })
+    assert.equal((await w.run('g')).outcome, 'approved')
+    const head = work(w.rig.worktreeOf('r'), { 'test/r.test.mjs': R_TEST_TWO }, 'Pin r again')
+    w.rig.log.append('approved', { node: 'r', head_sha: head, review_rounds: 2, at_integration: false })
+    const again = await w.run('g')
+    assert.equal(again.outcome, 'approved', JSON.stringify(again))
+    const [moved] = messages(w.rig, 'producer:g', 'predecessor_moved')
+    assert.deepEqual(moved.payload, { node: 'r', head, files: ['test/r.test.mjs'] })
+    const rounds = startsOf(w.rig, 'implementer', 'g')
+    assert.equal(rounds.length, 2, "the green's producer runs again")
+    assert.ok(rounds[1].carries.includes(moved.seq))
+    assert.equal(startsOf(w.rig, 'reviewer', 'g').length, 2)
+    const approval = approvals(w.rig, 'g').at(-1)
+    assert.equal(w.rig.git('show', approval.head_sha + ':test/r.test.mjs'), R_TEST_TWO.trim(), "the red's new tests are what the green is approved on")
   })
 })

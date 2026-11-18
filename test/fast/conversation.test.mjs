@@ -38,6 +38,7 @@ const TABLE = [
   { msg: 'rebase', from: 'code', to: 'producer' },
   { msg: 'retried', from: 'code', to: 'thread' },
   { msg: 'notes', from: 'code', to: 'thread' },
+  { msg: 'predecessor_moved', from: 'code', to: 'thread' },
 ]
 
 const SENDERS = ['reviewer', 'code', 'implementer', 'test-author', 'probe', 'producer', 'judge',

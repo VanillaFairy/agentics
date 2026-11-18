@@ -181,6 +181,16 @@ test('a cycle merges only whole', () => {
   assert.deepEqual(launched(effort(nodes, both), 'merge')[0].cycles, [['r', 'g']])
 })
 
+test('a green approved before its red was approved again at another head runs again on it, and the cycle waits', () => {
+  const nodes = [folder('.'), leaf('r', { rigor: 'tdd-pair', role: 'red' }), leaf('g', { rigor: 'tdd-pair', role: 'green', deps: ['r'] })]
+  const cycle = [{ kind: 'dispatched', node: 'r' }, { kind: 'approved', node: 'r', head_sha: 'r1' }, { kind: 'dispatched', node: 'g' }, { kind: 'approved', node: 'g', head_sha: 'g1' }]
+  const moved = effort(nodes, [...cycle, { kind: 'dispatched', node: 'r' }, { kind: 'approved', node: 'r', head_sha: 'r2' }])
+  assert.deepEqual(launched(moved, 'merge'), [])
+  assert.deepEqual(leafIds(moved), ['g'])
+  const same = effort(nodes, [...cycle, { kind: 'replanned', node: 'r' }, { kind: 'approved', node: 'r', head_sha: 'r1' }])
+  assert.deepEqual(launched(same, 'merge')[0].cycles, [['r', 'g']], 'approved again at the same head, the green stands')
+})
+
 test('a folder whose children merged is reviewed, merges up once its review stands, and is reviewed again after a later merge or an answered park', () => {
   const nodes = [folder('.'), folder('x'), leaf('x/a'), leaf('x/b')]
   const where = { branch: 'agentics/e--x', worktree: '/wt/x', head: 'h2', base: 'h0' }

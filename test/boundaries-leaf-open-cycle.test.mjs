@@ -1,7 +1,7 @@
 // test/boundaries-leaf-open-cycle.test.mjs — pins leaf-open in-process: the round of a red-green
 // cycle: a green's round goes to the red's session after needs_tests or test findings, to the
 // implementer after a measured test round recorded tests_ready, and to the red's session for an
-// audit.
+// audit; a green whose red was approved again at another head takes that head in.
 //
 // The setup the parts share is in test/harness/leaf-open-world.mjs.
 //
@@ -13,8 +13,8 @@ import { rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { leafOpen } from '../lib/boundaries/leaf-open.mjs'
 import { closePath, worktreeOf } from '../lib/store.mjs'
-import { STAMP, commitIn, leaf } from './harness/boundary-fixture.mjs'
-import { E, mayWrite, ran, closed, reviewed, cycle, askedForTests } from './harness/leaf-open-world.mjs'
+import { STAMP, commitIn, git, leaf } from './harness/boundary-fixture.mjs'
+import { E, RED, mayWrite, ran, closed, reviewed, cycle, askedForTests } from './harness/leaf-open-world.mjs'
 
 test('a green\'s round after its implementer returned needs_tests goes to the red\'s session', async (t) => {
   const { xc } = await cycle(t)
@@ -124,4 +124,24 @@ test('an audit goes to the red\'s session once a measurement let an applied muta
   xc.log.append('verify-observed', { node: 'au', mutations: [{ ...mutation, bites: false }] })
   const gap = await leafOpen(xc, { node: 'au', intelligence: 'normal' })
   assert.deepEqual([gap.round, gap.role, gap.thread, gap.owner], [2, 'test-author', 'producer:r', 'r'])
+})
+
+test('a green whose red was reopened and approved again at another head takes that head in, told what changed', async (t) => {
+  const { r, xc, redHead } = await cycle(t)
+  const greenHead = commitIn(resolve(worktreeOf(r, E, 'g')), { 'src/r.mjs': 'export const r = (x) => x * 2\n' }, 'Implement r')
+  ran(xc, { node: 'g', round: 1, role: 'implementer', thread: 'producer:g', ret: { status: 'done' } })
+  closed(xc, { node: 'g', role: 'implementer', round: 1, decision: { next: 'review', reason: '', failures: [] } })
+  xc.log.append('approved', { node: 'g', head_sha: greenHead, review_rounds: 1, at_integration: false })
+  const again = commitIn(resolve(worktreeOf(r, E, 'r')), { 'test/r2.test.mjs': RED }, 'Pin r again')
+  ran(xc, { node: 'r', round: 2, role: 'test-author', thread: 'producer:r', ret: { status: 'done' } })
+  xc.log.append('approved', { node: 'r', head_sha: again, review_rounds: 2, at_integration: false })
+
+  const out = await leafOpen(xc, { node: 'g', intelligence: 'normal' })
+  assert.deepEqual([out.round, out.role, out.thread], [2, 'implementer', 'producer:g'])
+  assert.equal(git(r, 'merge-base', '--is-ancestor', again, out.head_sha), '', "the red's new head is on the green's branch")
+  assert.equal(git(r, 'merge-base', '--is-ancestor', greenHead, out.head_sha), '', "the green's own work stays")
+  assert.equal(out.base_sha, again, "the green's series starts at the red's new head")
+  const moved = xc.log.entries().filter((e) => e.kind === 'message' && e.msg === 'predecessor_moved')
+  assert.deepEqual(moved.map((m) => [m.thread, m.round, m.payload]), [['producer:g', 2, { node: 'r', head: again, files: ['test/r2.test.mjs'] }]])
+  assert.notEqual(redHead, again)
 })

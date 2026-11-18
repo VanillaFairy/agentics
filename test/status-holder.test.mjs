@@ -120,6 +120,17 @@ test('a question about another node does not hold this stop', (t) => {
   assert.equal(nodeOf(r, E, 'a').event.holder, 'session')
 })
 
+test('a park for design is the user\'s however active the session is, naming a question only when one is open', (t) => {
+  const { r } = world(t)
+  ranFrom(r, { pid: process.pid })
+  append(r, E, 'events', { kind: 'parked', node: 'a', execution: '', return: 'needs_design', question: 'q' })
+  const { event } = nodeOf(r, E, 'a')
+  assert.equal(event.holder, 'user')
+  assert.equal(event.asked, undefined)
+  const asked = ask(r)
+  assert.equal(nodeOf(r, E, 'a').event.asked, asked)
+})
+
 test('an escalation is held the same way', (t) => {
   const { r, config } = world(t)
   ranFrom(r)

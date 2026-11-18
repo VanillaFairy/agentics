@@ -687,7 +687,7 @@ shaped part's key:
 |---|---|---|
 | `work` | a leaf's own work: its Task, criteria, decisions, expected files and reads, its cited Design part, what it consumes, its effort files, measures, commands; its plan entry a ruler reads; a folder's spec a planner or reviewer reads | in a leaf's dispatch (its round, its reviewer, its convergence ruler), a `decompose` to the folder's planner, or `needs_respec` in a folder the user wrote ([Replanning](#replanning)); elsewhere, as `user` |
 | `user` | the repository's guidance, one part per file; a changed spec's diff, the user's answers, each fenced so no answer opens a section, and the specs a ruler reads, one part per spec; a folder's spec edit and the user's word on it, and its sub-efforts' specs, one part per spec, that an integration reviewer reads; a probed artefact | a stop for the user naming the file and its size: in an execution `escalated brief_too_large` (`dispatchFailed` in `lib/boundaries/records.mjs`), from `rule` `shrink_brief` ([A changed spec](#a-changed-spec)); the message names the remedy (`remedyOf` in `lib/briefs/size.mjs`): a guidance file, which every brief carries, the user cuts or splits; anything else means the work is too big, and it is split into subtasks, or at an effort's root into separate efforts that land in turn |
-| `code` | everything else: the charge, thread messages, a probe's ground and settled specs, rendered records; a leaf's evidence and gotchas, a ruler's changes, a producer's return a reviewer reads, a survey's evidence a planner reads, the evidence pool's standing items and stale candidates a survey's planner and judges read ([Survey](#survey)), each bounded where it is built (`bounded` and `boundedDiff` in `lib/briefs/size.mjs`, `knownText` in `lib/evidence.mjs`), whole items or files kept first and a closing line naming what was left out | none in practice: code bounds what it accumulates as it builds the brief, shedding the least valuable first and declaring what it shed; a refusal that still names one is a defect of its builder, a `role` fault whose detail carries the part, its bytes and budget |
+| `code` | everything else: the charge, thread messages, a probe's ground, settled specs and the located guidance its axes analyst reads, rendered records; a leaf's evidence and gotchas, a ruler's changes, a producer's return a reviewer reads, a survey's evidence a planner reads, the evidence pool's standing items and stale candidates a survey's planner and judges read ([Survey](#survey)), each bounded where it is built (`bounded` and `boundedDiff` in `lib/briefs/size.mjs`, `knownText` in `lib/evidence.mjs`), whole items or files kept first and a closing line naming what was left out | none in practice: code bounds what it accumulates as it builds the brief, shedding the least valuable first and declaring what it shed; a refusal that still names one is a defect of its builder, a `role` fault whose detail carries the part, its bytes and budget |
 
 Code gives way first: a bound sheds what code owns before a refusal is laid on the work or the user.
 **A batch of units is split, never shed.** Where a brief packs units a reader rules one by one — a
@@ -2258,6 +2258,14 @@ user's — the artefact, a guidance file — past its budget is refused `brief_t
 sent: the prober fails, its `unreached` line names the part, its size and its budget, the round
 records nothing, and the result's `refused` lists it; in an execution the folder escalates
 `brief_too_large` naming it (`specReviewed`), with the remedy the refusal names.
+
+**The axes analyst's brief is bounded the same way.** It is built in parts too (`axesBrief`): its
+charge, the located guidance as its `ground` part, its rules, each guidance file one part. The
+located guidance is code's and grows with every `guidance` hit the scout journals, so the same
+`boundedBriefs` fits it: while the brief is past the room or the located guidance past its budget,
+the places the scout located last go first, the search's first finds being the files a repository
+names as its guidance, and each place shed is declared in `coverage.declared`. Only a guidance file
+past its budget, which is the user's, still fails `repo-axes`.
 
 ### What a probe costs
 

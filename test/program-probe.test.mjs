@@ -23,7 +23,7 @@ import { liveItems, reviewScope, sectionsOf, unitsOf } from '../lib/evidence.mjs
 import { readLog } from '../lib/ledger.mjs'
 import { programContext } from '../lib/programs/common.mjs'
 import { locateMaterial, probe, scopeOf } from '../lib/programs/probe.mjs'
-import { loadRole, tierFor } from '../lib/roles.mjs'
+import { PART_BYTES, loadRole, tierFor } from '../lib/roles.mjs'
 import { schemaOf } from '../lib/schemas.mjs'
 import { treeOf } from '../lib/search/pin.mjs'
 import { evidenceReturnsDir, posix } from '../lib/store.mjs'
@@ -490,6 +490,24 @@ test('an axes analyst that finds no guidance adds no axis and fails nothing', as
   assert.deepEqual(keysOf(result), STANDING)
   assert.deepEqual(result.coverage.failed_channels, [])
   assert.equal(result.coverage.complete, true, JSON.stringify(result.coverage))
+})
+
+test("located guidance past what one part of a brief may hold is fitted to the axes analyst's brief, the last located left out and declared", async (t) => {
+  const line = 'REVIEW_RULE_TOKEN '.repeat(40)
+  const count = Math.ceil(PART_BYTES / (21 * Buffer.byteLength(line))) + 2
+  const lineOf = (i) => 15 + i * 30
+  const place = (i) => 'docs/REVIEW.md:' + lineOf(i) + ' '
+  const guide = Array.from({ length: lineOf(count) }, () => line).join('\n') + '\n'
+  const hits = Array.from({ length: count }, (_, i) => hitOf('docs/REVIEW.md', lineOf(i), 'guidance'))
+  const { script } = scriptFor(DOC, STANDING, { ...located(hits), axes: [{ output: axesOut([]) }] })
+  const { rig, result } = await probeIn(t, { files: { [ART]: DOC, 'docs/REVIEW.md': guide }, script })
+  const calls = callsOf(rig, 'axes')
+  assert.equal(calls.length, 1, 'the axes analyst is sent: ' + JSON.stringify(result.coverage.unreached))
+  assert.deepEqual(result.coverage.failed_channels, [])
+  assert.ok(calls[0].brief.includes(place(0)), 'the first located stays')
+  assert.ok(!calls[0].brief.includes(place(count - 1)), 'the last located gives way')
+  const said = result.coverage.declared.find((d) => d.includes("the axes analyst's brief"))
+  assert.ok(said && said.includes(place(count - 1)) && !said.includes(place(0)), JSON.stringify(result.coverage.declared))
 })
 
 // --- units and probers -------------------------------------------------------------------------

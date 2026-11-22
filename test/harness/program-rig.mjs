@@ -125,7 +125,7 @@ function buildExecution(repo, { spec, commands, files }) {
   rmSync(seed, { recursive: true, force: true })
   const base_sha = git(repo, 'rev-parse', 'HEAD').trim()
 
-  const opened = openEffort(repo, { slug: EFFORT, about: 'the rig', roots: ['src'], now: new Date(NOW()) })
+  const opened = openEffort(repo, { slug: EFFORT, title: 'The rig', about: 'the rig', roots: ['src'], now: new Date(NOW()) })
   if (!opened.ok) throw new Error('executionRig: ' + opened.error)
   const specs = typeof spec === 'string' ? { [ROOT_ID]: spec } : spec
   for (const [id, text] of Object.entries(specs)) {

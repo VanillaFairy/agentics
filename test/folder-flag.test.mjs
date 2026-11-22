@@ -23,7 +23,7 @@ const SPEC = ['# Add a console', '', '## Intent', '', 'A console.', '', '## Deci
 function world(t) {
   const repo = seededRepo('agentics-folder-flag-', { message: 'init', files: { 'a.txt': 'x\n' }, autocrlf: false })
   t.after(() => rmSync(repo, { recursive: true, force: true }))
-  assert.equal(openEffort(repo, { slug: E, about: 'a dev console', roots: '.' }).ok, true)
+  assert.equal(openEffort(repo, { slug: E, title: 'Dev console', about: 'a dev console', roots: '.' }).ok, true)
   writeFileSync(specPath(repo, E, '.'), SPEC)
   return repo
 }

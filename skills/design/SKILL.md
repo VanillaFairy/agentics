@@ -107,11 +107,11 @@ path from the root, `foundations/entities`), its effort, its approval state and 
 equal to the words is the match; otherwise every folder whose name or title contains them.
 **One match** resumes that folder. **Several**: ask which with `AskUserQuestion`. **None**: propose
 a new effort with a short name the user confirms or changes (`^[a-z0-9][a-z0-9-]*$`, no `--`, at
-most 120 characters), and open it, with `--about-file <file>` in place of `--about` when the change
-is longer than one line of 300 characters:
+most 120 characters), and open it with a title and description as the effort-store block says, with
+`--about-file <file>` in place of `--about` when the description is past one line of 300 characters:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" open . <name> --about "<the change, in the user's words>" --roots .
+node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" open . <name> --title "<title>" --about "<description>" --roots .
 ```
 
 A sub-effort's folder sits under its parent's and carries the name its parent's plan entry gives
@@ -298,11 +298,11 @@ open` validates it. `effort.mjs slug` turns the words into a first proposal of a
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" slug "<the change or question, in the user's words>"
-node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" open <repo> <name> --about "<the change or question>" --roots <roots>
+node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" open <repo> <name> --title "<title>" --about "<description>" --roots <roots>
 ```
 
-Opening is idempotent: a later phase adopts the identity the first one recorded.
-
+`--title` is the name a person picks it by from a list: a few words, at most 80 characters, never
+the request pasted; `--about` says what it delivers, in your words. A later opener adopts both.
 Free text here (the words, `--about`, `--gap`) is one line of at most 300 characters. Longer
 text goes in a file you write with Write, passed as `--about-file <path>` (`slug` takes it too) or
 `--gap-file <path>`.

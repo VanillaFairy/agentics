@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url'
 import { approvalState, recordApproval } from '../lib/approval.mjs'
 import {
   createSubEffortFolder, listEfforts, openEffort, readEffort, renameSubEffort,
-  safeSlug, slugFor, stampNow,
+  safeSlug, slugFor, stampNow, TITLE_MAX,
 } from '../lib/effort.mjs'
 import { append, readLog } from '../lib/ledger.mjs'
 import { SECTIONS, checkFolder, hashSpec, parseSpec } from '../lib/spec.mjs'
@@ -57,28 +57,42 @@ test('a slug that could climb out of the store, or blur a branch prefix, is refu
   assert.equal(safeSlug(''), null)
   assert.equal(safeSlug('a--b'), null)
   assert.equal(safeSlug('2026-09-04-ok'), '2026-09-04-ok')
-  assert.equal(openEffort(fresh(), { slug: 'a--b', about: 'x' }).ok, false)
+  assert.equal(openEffort(fresh(), { title: 'T', slug: 'a--b', about: 'x' }).ok, false)
 })
 
 test('opening is idempotent, and no identity file restates the directory name', () => {
   const repo = fresh()
-  const first = openEffort(repo, { slug: 'e1', about: 'the change', roots: 'a,b' })
+  const first = openEffort(repo, { title: 'T', slug: 'e1', about: 'the change', roots: 'a,b' })
   assert.equal(first.ok, true)
   assert.equal(first.created, true)
 
   const identity = JSON.parse(readFileSync(effortPath(repo, 'e1', 'effort.json'), 'utf8'))
-  assert.deepEqual(Object.keys(identity).sort(), ['about', 'opened_at', 'roots'])
+  assert.deepEqual(Object.keys(identity).sort(), ['about', 'opened_at', 'roots', 'title'])
   assert.deepEqual(identity.roots, ['a', 'b'])
 
-  const second = openEffort(repo, { slug: 'e1', about: 'something else entirely' })
+  const second = openEffort(repo, { title: 'T', slug: 'e1', about: 'something else entirely' })
   assert.equal(second.created, false)
   assert.equal(second.about, 'the change',
     'the second opener adopts what the first recorded rather than overwriting it')
 })
 
+test('an effort opens only with a title of one short line, which reads and lists back', () => {
+  const repo = fresh()
+  assert.equal(openEffort(repo, { slug: 'e1', about: 'the change' }).ok, false, 'no title')
+  assert.equal(openEffort(repo, { slug: 'e1', title: '  ', about: 'the change' }).ok, false, 'a blank title')
+  assert.equal(openEffort(repo, { slug: 'e1', title: 'x'.repeat(TITLE_MAX + 1), about: 'the change' }).ok, false, 'past the picker\'s line')
+  assert.equal(existsSync(effortPath(repo, 'e1')), false, 'nothing was opened')
+
+  const opened = openEffort(repo, { slug: 'e1', title: ' Portrait\n editor ', about: 'the change' })
+  assert.equal(opened.title, 'Portrait editor', 'whitespace runs fold to one space')
+  assert.equal(readEffort(repo, 'e1').identity.title, 'Portrait editor')
+  assert.equal(listEfforts(repo).efforts[0].title, 'Portrait editor')
+  assert.equal(openEffort(repo, { slug: 'e1', about: 'x' }).title, 'Portrait editor', 'a later opener adopts the title')
+})
+
 test('reading derives identity, node count and executions from disk', () => {
   const repo = fresh()
-  openEffort(repo, { slug: 'e1', about: 'the change', roots: ['src'] })
+  openEffort(repo, { title: 'T', slug: 'e1', about: 'the change', roots: ['src'] })
   append(repo, 'e1', 'nodes', [
     { kind: 'node', node: { id: '.', title: 'root', kind: 'composite' } },
     { kind: 'node', node: { id: 'a', title: 'a', kind: 'leaf' } },
@@ -114,8 +128,8 @@ test('listing a repository with no store says so instead of returning an empty s
 
 test('listing names each effort and its executions, newest name first', () => {
   const repo = fresh()
-  openEffort(repo, { slug: 'a1', about: 'first' })
-  openEffort(repo, { slug: 'b2', about: 'second' })
+  openEffort(repo, { title: 'T', slug: 'a1', about: 'first' })
+  openEffort(repo, { title: 'T', slug: 'b2', about: 'second' })
   mkdirSync(effortPath(repo, 'b2', 'executions', '20260904-130000'), { recursive: true })
 
   const out = listEfforts(repo)
@@ -127,15 +141,15 @@ test('listing names each effort and its executions, newest name first', () => {
 
 test('the CLI opens an effort, by positionals or by flags', () => {
   const repo = fresh()
-  assert.equal(run('open', repo, 'e1', '--about', 'the change', '--roots', repo).created, true)
+  assert.equal(run('open', '--title', 'T', repo, 'e1', '--about', 'the change', '--roots', repo).created, true)
   assert.equal(readEffort(repo, 'e1').exists, true)
-  assert.equal(run('open', '--repo', repo, '--effort', 'e2', '--about', 'another change').created, true)
+  assert.equal(run('open', '--title', 'T', '--repo', repo, '--effort', 'e2', '--about', 'another change').created, true)
   assert.deepEqual(listEfforts(repo).efforts.map((e) => e.effort).sort(), ['e1', 'e2'])
 })
 
 test('the CLI has no link, record, standing, read or list verb: evidence is lib/evidence.mjs\'s, and reads are in-process', () => {
   const repo = fresh()
-  assert.equal(openEffort(repo, { slug: 'e1', about: 'x', roots: repo }).ok, true)
+  assert.equal(openEffort(repo, { title: 'T', slug: 'e1', about: 'x', roots: repo }).ok, true)
   for (const args of [['link', repo, 'e1', 'run', '--value', 'x'], ...['record', 'standing', 'read', 'list'].map((verb) => [verb, repo, 'e1'])]) {
     assert.throws(() => execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8', stdio: 'pipe' }), args[0])
   }
@@ -384,7 +398,7 @@ function gitRepo() {
 
 test('the store ignores itself: an opened effort and its records leave git status clean', () => {
   const repo = gitRepo()
-  openEffort(repo, { slug: 'e1', about: 'x' })
+  openEffort(repo, { title: 'T', slug: 'e1', about: 'x' })
 
   assert.equal(git(repo, 'status', '--porcelain'), '', 'local state never shows up as a change to commit')
   assert.equal(readFileSync(join(repo, store.AGENTICS_DIR, '.gitignore'), 'utf8'), '*\n')
@@ -412,12 +426,12 @@ test('the effort CLI refuses a value that is not a handle, a free text past its 
   }
   const repo = fresh()
   assert.deepEqual(refusal('slug', 'one\ntwo'), [1, 'args_unreadable'])
-  assert.deepEqual(refusal('open', repo, 'e1', '--about', 'x'.repeat(301)), [1, 'args_unreadable'])
-  assert.deepEqual(refusal('open', repo, 'e1', '--about', 'the change', '--roots', 'src\nlib'), [1, 'args_unreadable'])
-  assert.deepEqual(refusal('open', repo, 'e1', '--about', 'the change', '--link', 'x'), [1, 'unknown_flag'])
+  assert.deepEqual(refusal('open', '--title', 'T', repo, 'e1', '--about', 'x'.repeat(301)), [1, 'args_unreadable'])
+  assert.deepEqual(refusal('open', '--title', 'T', repo, 'e1', '--about', 'the change', '--roots', 'src\nlib'), [1, 'args_unreadable'])
+  assert.deepEqual(refusal('open', '--title', 'T', repo, 'e1', '--about', 'the change', '--link', 'x'), [1, 'unknown_flag'])
   assert.equal(existsSync(effortPath(repo, 'e1')), false, 'nothing was opened')
   const about = 'the "loader", in the user\'s words — see `load()`'
-  assert.equal(run('open', repo, 'e1', '--about', about).created, true, 'a line of free text, quotes and all, is taken')
+  assert.equal(run('open', '--title', 'T', repo, 'e1', '--about', about).created, true, 'a line of free text, quotes and all, is taken')
 })
 
 // ------------------------------------------------------------------ free text longer than a line
@@ -445,13 +459,13 @@ const LONG = ['The request, in the user\'s words,', 'runs over several lines', '
 
 test('a request past one line is refused naming the file flag, and the file flag takes it whole', () => {
   const repo = fresh()
-  const [status, refusal] = printed('open', repo, 'e1', '--about', LONG.replace(/\n/g, ' '))
+  const [status, refusal] = printed('open', '--title', 'T', repo, 'e1', '--about', LONG.replace(/\n/g, ' '))
   assert.equal(status, 1)
   assert.match(refusal.error, /--about-file/)
   assert.equal(existsSync(effortPath(repo, 'e1')), false, 'nothing was opened')
 
   const file = written(LONG)
-  const [ok, out] = printed('open', repo, 'e1', '--about-file', file)
+  const [ok, out] = printed('open', '--title', 'T', repo, 'e1', '--about-file', file)
   assert.equal(ok, 0, JSON.stringify(out))
   assert.equal(out.about, LONG, 'the file\'s text is the description, not its path')
   assert.equal(readEffort(repo, 'e1').identity.about, LONG)
@@ -459,8 +473,8 @@ test('a request past one line is refused naming the file flag, and the file flag
 
 test('an effort is opened by --about or --about-file, not both, and by a file that exists', () => {
   const repo = fresh()
-  assert.equal(printed('open', repo, 'e1', '--about', 'x', '--about-file', written('y'))[1].kind, 'bad_args')
-  assert.equal(printed('open', repo, 'e1', '--about-file', join(repo, 'missing.txt'))[1].kind, 'unknown_file')
+  assert.equal(printed('open', '--title', 'T', repo, 'e1', '--about', 'x', '--about-file', written('y'))[1].kind, 'bad_args')
+  assert.equal(printed('open', '--title', 'T', repo, 'e1', '--about-file', join(repo, 'missing.txt'))[1].kind, 'unknown_file')
   assert.equal(existsSync(effortPath(repo, 'e1')), false, 'nothing was opened')
 })
 

@@ -1286,7 +1286,7 @@ nothing outside compile calls `addNodes`.
     DESIGN.md                     the root folder's spec
     <sub-effort>/DESIGN.md        one folder per sub-effort, nested as the plan nests them
     .state/
-      effort.json                 {about, roots, opened_at}, written once
+      effort.json                 {title, about, roots, opened_at}, written once
       nodes.jsonl                 node revisions, append-only
       events.jsonl                node events, append-only
       ledger.jsonl                approvals, preparations, compiles, dispositions, rulings
@@ -1309,6 +1309,11 @@ leaf recording from a linked worktree writes where the next session reads. A dir
 the top of a working tree is its own root. Names of efforts, folders and entries follow the
 segment rule: `^[a-z0-9][a-z0-9-]*$`, at most 120 characters, no `--`; so no file the store writes
 can pass for one. Worktrees live under `.claude/worktrees/`.
+
+An effort's identity names it twice for people: `title`, the few words a picker shows (one line, at
+most 80 characters; `openEffort` refuses an effort without one), and `about`, a description of what
+it delivers in the opener's words. **Why:** the name is a slug and the request is a paragraph;
+neither reads in a list of efforts.
 
 Every name minted from something that grows is bounded (`nameKey`). A node appears in a branch
 or file name as its **key**: its id with `/` spelled `.`, kept whole up to 40 characters
@@ -5407,6 +5412,12 @@ exits 1 for a store at any version but 1 or 2.
 
 The one-shots below predate the stamp and rewrite what a store's user must see or approve; each is
 run on its own, before or after `migrate-to-1`.
+
+`tools/migrate-effort-titles.mjs`, run once after upgrading to the release where an effort needs a
+`title` ([Storage](#storage)), writes the titles a session chose into each untitled effort's
+`effort.json`, given as `--titles <file>` (`{"<effort>": {title, about?}}`); an `about` given
+replaces a description that was the request pasted. It lists every untitled effort, refuses a blank
+title or one past 80 characters, keeps every other field, dry-runs by default and writes with `--yes`.
 
 `tools/migrate-design-cites.mjs`, run once after upgrading to the release where a task's `cites`
 declares what its brief carries of the Design ([Spec format](#spec-format)), writes `cites:` on each

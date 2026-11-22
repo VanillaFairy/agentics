@@ -190,11 +190,11 @@ open` validates it. `effort.mjs slug` turns the words into a first proposal of a
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" slug "<the change or question, in the user's words>"
-node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" open <repo> <name> --about "<the change or question>" --roots <roots>
+node "${CLAUDE_PLUGIN_ROOT}/lib/effort.mjs" open <repo> <name> --title "<title>" --about "<description>" --roots <roots>
 ```
 
-Opening is idempotent: a later phase adopts the identity the first one recorded.
-
+`--title` is the name a person picks it by from a list: a few words, at most 80 characters, never
+the request pasted; `--about` says what it delivers, in your words. A later opener adopts both.
 Free text here (the words, `--about`, `--gap`) is one line of at most 300 characters. Longer
 text goes in a file you write with Write, passed as `--about-file <path>` (`slug` takes it too) or
 `--gap-file <path>`.
@@ -224,8 +224,8 @@ The program decides what stands, never the session.
 
 Make sure `.claude/worktrees/` is gitignored; add the line yourself. `.agentics/` ignores itself.
 
-Open the effort as that block says, with `--about "<the request, in the user's words>" --roots .`,
-or `--about-file <file> --roots .` when the request is longer than one line of 300 characters.
+Open the effort as that block says, title and description included, with `--roots .`; pass
+`--about-file <file>` when the description is longer than one line of 300 characters.
 
 Write its root spec, `.agentics/<name>/DESIGN.md`. There is no Grill and no challenge here: a
 settled request is its own design, and the user approves the spec before anything is built.

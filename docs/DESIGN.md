@@ -3929,7 +3929,9 @@ Which checks run is the leaf's rigor (and, in a cycle, its role):
   base after its checkout and at the head again ([Gotchas](#gotchas)); a setup that fails or changes
   a file git sees stops the measurement on its own error kind before anything else runs.
 - A test that could not be launched at base is `test_unrunnable`; a suite failure that cannot be
-  placed against a test file raises `suite_failures_unnamed`.
+  placed against a test file raises `suite_failures_unnamed`. So does a mutation that names its test
+  by name where a leaf test file's run fails under it and its output names no failure in that file:
+  an unread run is not an observation that the named test held, so it is never "did not bite".
 - **A run that executed no test is unmeasured: neither a pass nor a failure, whatever it exited.**
   A runner told to pass with no tests exits 0 over a file it does not own, and one not told so exits
   non-zero. `ranNoTest` in `lib/verify.mjs` reads the runners' own reports, a closed list a line

@@ -66,3 +66,16 @@ test('a mutation naming its test by name runs the leaf\'s test files and places 
   assert.deepEqual(nowhere.failing_files, [])
   assert.equal(git(worktree, 'status', '--porcelain').stdout.trim(), '', 'no name reaches the shell, so nothing is written beside the tests')
 })
+
+test('a mutation naming its test by name, under a run that fails and names no failure, is unnamed rather than a net that does not bite', (t) => {
+  const { worktree, base, head } = order(t)
+  const payload = verify(options({ worktree, base, head, extra: [
+    '--rigor', 'tests-only',
+    // A reporter the failure scanner reads no marker in: the run exits 1 and names nothing.
+    '--test-one', 'node --test --test-reporter=junit {file}',
+    ...mutations([{ file: 'src/widget.mjs', find: "'hi'", replace: "'bye'", expect_failing: ['widget > the widget is labelled hi'] }]),
+  ] }))
+
+  assert.equal(payload.error && payload.error.kind, 'suite_failures_unnamed', 'an unread failure is not an observation that the test passed')
+  assert.equal(git(worktree, 'status', '--porcelain').stdout.trim(), '', 'the break is reverted before the measurement stops')
+})

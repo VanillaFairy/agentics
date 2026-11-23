@@ -798,7 +798,8 @@ lines its command's input. A producer that returns `blocked` after the host deni
 each denied line read against what the round was granted (`deniedClass` in `lib/permissions.mjs`):
 a project command no grant names, even bare of assignments and redirects, stops as
 `command_not_in_runs`, the lines and what the producer said its `detail` — its entry is missing a
-`runs`, a spec gap no retry clears; a line that is ad hoc — a file tool such as `cat`, `sed` or
+`runs`, a spec gap no retry clears, which is why the implementer's brief tells it to run each granted
+command as written and alone, never the same tool by another invocation; a line that is ad hoc — a file tool such as `cat`, `sed` or
 `git`, shell control such as `eval` or a loop, an inline script, or a granted command wrapped in a
 `cd`, an assignment or a redirect — goes back to the producer as a `failures` message (`source: the
 permission check`), and blocked on ad-hoc lines again, any lines, it stops as `blocked` with what it
@@ -888,7 +889,10 @@ the text of each file under the effort's store (`.agentics/<effort>/`, its `.sta
 excepted) that the leaf reads or its intent or context cites, read from the main checkout: the store
 is gitignored, so no worktree holds it, and the producer is confined to its worktree. Then its
 referenced evidence, the gotchas its role and expected
-files call for, how its rigor measures it, the established commands, its worktree, and the
+files call for, how its rigor measures it, the established commands — to an implementer with the
+rule that each of them and each criterion's check runs as its own call exactly as written, nothing
+piped, redirected or chained to it, no other invocation of the same tool, its output read from the
+result whole, and a command the work needs that none lists a `blocked` return (`RUN_ALONE`) — its worktree, and the
 repository's guidance — its `CLAUDE.md` files from the root to each directory its expected files sit
 in, and the files
 `.agentics/config.json` names in `guidance`. A thread's brief is its owner's, so the cycle's test

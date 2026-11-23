@@ -319,7 +319,19 @@ test('the established commands are listed, an absent one left out', (t) => {
   assert.ok(s.includes('- suite: `npm test`'))
   assert.ok(s.includes('- test_one: `node --test {file}`'))
   assert.ok(!s.includes('typecheck'))
-  assert.equal(sectionsOf(brief(repo).text).Commands, '## Commands\n\n(none established yet)')
+  assert.ok(sectionsOf(brief(repo).text).Commands.startsWith('## Commands\n\n(none established yet)'))
+})
+
+// A producer that pipes a known command into tail, or runs the linter by hand on a path, is denied a
+// line no grant admits, and the leaf escalates `command_not_in_runs` over a command it was granted.
+test("an implementer is told to run each command alone, as written; a producer with no shell is not", (t) => {
+  const repo = effort(t)
+  const commands = { lint: 'npm run lint', test_one: 'npx vitest run {file}' }
+  const told = (role) => sectionsOf(brief(repo, 'parse', { role, commands }).text).Commands
+  for (const rule of ['as its own Bash call exactly as written', 'no pipe, redirect, `;` or `&&`', 'never trim it with `tail`']) {
+    assert.ok(told('implementer').includes(rule), rule)
+    assert.ok(!told('test-author').includes(rule), rule)
+  }
 })
 
 test('an unknown node is refused', (t) => {

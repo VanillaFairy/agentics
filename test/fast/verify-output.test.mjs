@@ -111,6 +111,26 @@ test('vitest under a folder root: each failure is placed repo-relative, named on
   assert.deepEqual(found.failures, [{ file: 'viewer/test/app.test.ts', id: 'live flag reads exactly ended for an ended run' }])
 })
 
+test('a Playwright failure is placed in its spec under the runner\'s test dir and named by its title path, once', (t) => {
+  const worktree = tree(t, ['tests/e2e/portraits.spec.ts'])
+  const title = 'portraits › switching to another player and back finds the first one bare'
+  const output = [
+    'Running 2 tests using 1 worker', '',
+    '  ok 1 [tablet-landscape] › portraits.spec.ts:3:7 › portraits › stays (3ms)',
+    '  x  2 [tablet-landscape] › portraits.spec.ts:4:7 › ' + title + ' (2ms)', '', '',
+    '  \x1b[31m1) [tablet-landscape] › portraits.spec.ts:4:7 › ' + title + ' ───\x1b[39m', '',
+    '    Error: expect(received).toBe(expected) // Object.is equality', '',
+    '  1 failed',
+    '    [tablet-landscape] › portraits.spec.ts:4:7 › ' + title + ' ',
+    '  1 passed (367ms)',
+  ].join('\r\n')
+
+  const found = extractFailures(output, worktree, ['tests/e2e', ''])
+
+  assert.equal(found.unplaced, 0)
+  assert.deepEqual(found.failures, [{ file: 'tests/e2e/portraits.spec.ts', id: title }])
+})
+
 test('a lint finding the base reports is not new where its line, column or count moved; a second copy of it is', () => {
   const out = (...lines) => lines.join('\n') + '\n'
   const base = out('src/old.ts', '  4:10  error  Unexpected any  no-explicit-any', '', 'found 1 problem')

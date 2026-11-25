@@ -3312,8 +3312,11 @@ the planner writes it; one the user writes is parked `needs_design` by the tick 
 folder the planner wrote that its compile parked `spec_changed` (the park's `return`) is re-derived
 once per park: again only when this execution has no planner dispatch on that folder newer than
 that park. One the planner wrote whose spec is edited past its last `prepared` line while it is
-parked (but for `spec_changed` and `design_spend`), or whose latest stop is cleared (a `replanned`
-newer than it: a retry, an answer), is planned `spec_edited`: one plan per stop and clearing, its
+parked (but for `spec_changed` and `design_spend`), whose latest stop is cleared (a `replanned`
+newer than it: a retry, an answer), or which stands under no stop with no plan of it in flight (no
+planner dispatch on it newer than its latest `replanned {reason: compiled}`: the session's edit,
+such as the `runs` a leaf's `command_not_in_runs` asked for, which `rule` leaves to the run), is
+planned `spec_edited`: one plan per stop and clearing, its
 first step keyed by both (`editedPlanKey` in `lib/boundaries/execution.mjs`), so a relaunch resumes
 the plan a dead run left, whatever the text became under it. A plan that stops leaves a stop of its
 own, and one that prepares leaves nothing edited. A stale planner's folder

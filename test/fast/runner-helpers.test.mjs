@@ -85,8 +85,8 @@ test('no --mcp-config without a config', () => {
   assert.equal(buildArgs(call())[at(buildArgs(call()), '--tools') + 1], call().tools.join(','), 'host tools are passed as before')
 })
 
-test('allowed rules go on the command line, and only when there are some', () => {
-  const allowed = ['Bash(npm test:*)', 'Bash(git status:*)', 'Edit(/C:/w/src/**)']
+test('allowed path and tool rules go on the command line, and only when there are some', () => {
+  const allowed = ['Read', 'Edit(/src/**)', 'Write(/src/**)']
   const args = buildArgs(call({ allowed }))
   const a = at(args, '--allowedTools')
   assert.deepEqual(args.slice(a + 1, a + 1 + allowed.length), allowed)
@@ -96,9 +96,9 @@ test('allowed rules go on the command line, and only when there are some', () =>
   assert.equal(buildArgs(call()).indexOf('--allowedTools'), -1)
 })
 
-test('disallowed rules go on the command line, and only when there are some', () => {
-  const allowed = ['Bash(npm test:*)']
-  const disallowed = ['Read(/C:/w/src/green/**)', 'Bash(git push:*)']
+test('disallowed path rules go on the command line, and only when there are some', () => {
+  const allowed = ['Read']
+  const disallowed = ['Read(/src/green/**)', 'Write(/.agentics/**)']
   const args = buildArgs(call({ allowed, disallowed }))
   const d = at(args, '--disallowedTools')
   assert.deepEqual(args.slice(d + 1, d + 1 + disallowed.length), disallowed)
@@ -111,6 +111,21 @@ test('disallowed rules go on the command line, and only when there are some', ()
   assert.equal(buildArgs(call()).indexOf('--disallowedTools'), -1)
 })
 
+test('command rules reach the host whole, in one settings JSON, and only when there are some', () => {
+  // The host splits an --allowedTools value at a `)` followed by `; ` or `, `: this rule reached it as fragments.
+  const check = `node --input-type=module -e "const p = await import('./a.mjs'); process.exit(p.ok('x'), 1 ? 0 : 1)"`
+  const allowed = ['Bash(' + check + ':*)', 'Bash(npm test:*)', 'Edit(/src/**)']
+  const disallowed = ['Bash(git -C:*)', 'Read(/src/green/**)']
+  const settingsOf = (args) => (args.includes('--settings') ? JSON.parse(args[at(args, '--settings') + 1]).permissions : null)
+  const args = buildArgs(call({ allowed, disallowed }))
+  assert.deepEqual(settingsOf(args), { allow: allowed.slice(0, 2), deny: disallowed.slice(0, 1) })
+  assert.deepEqual(args.slice(at(args, '--allowedTools') + 1, at(args, '--disallowedTools')), ['Edit(/src/**)'], 'no command rule on the command line')
+  assert.ok(at(args, '--settings') < seqAt(args, PERMISSION_FLAGS), 'the rules precede the permission flags')
+  assert.deepEqual(settingsOf(buildArgs(call({ allowed: ['Bash'] }))), { allow: ['Bash'] })
+  assert.deepEqual(settingsOf(buildArgs(call({ disallowed: ['Bash(git -C:*)'] }))), { deny: ['Bash(git -C:*)'] })
+  assert.equal(settingsOf(buildArgs(call({ allowed: ['Read'] }))), null)
+})
+
 test('a call is confined and lean', () => {
   for (const [flag, value] of [['--permission-mode', 'dontAsk'], ['--permission-prompts', 'none']]) {
     assert.equal(PERMISSION_FLAGS[PERMISSION_FLAGS.indexOf(flag) + 1], value)
@@ -118,7 +133,7 @@ test('a call is confined and lean', () => {
   assert.equal(LEAN_FLAGS[LEAN_FLAGS.indexOf('--setting-sources') + 1], '')
   for (const f of ['--strict-mcp-config', '--disable-slash-commands']) assert.ok(LEAN_FLAGS.includes(f))
 
-  const args = buildArgs(call({ allowed: ['Bash(npm test:*)'], disallowed: ['Bash(git push:*)'], effort: 'high' }))
+  const args = buildArgs(call({ allowed: ['Edit(/**)'], disallowed: ['Edit(/.agentics/**)'], effort: 'high' }))
   for (const entry of [...PERMISSION_FLAGS, ...LEAN_FLAGS]) assert.ok(args.includes(entry), `${JSON.stringify(entry)} missing`)
   assert.equal(args[at(args, '--setting-sources') + 1], '')
   const p = seqAt(args, PERMISSION_FLAGS)

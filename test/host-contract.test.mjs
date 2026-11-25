@@ -277,6 +277,17 @@ test('a compound command is denied whole under a rule for its first command', { 
   assert.deepEqual(parsed.denials.map((d) => d.tool_name), ['Bash'], why)
 })
 
+test("a criterion's inline check holding `); ` runs under the rule its round is granted", { skip, timeout: 180000 }, async (t) => {
+  const dir = scratch(t)
+  writeFileSync(join(dir, 'a.mjs'), 'export const names = ["pixel"]\nexport const ok = (n) => n.endsWith(".png")\n')
+  const check = `node --input-type=module -e "const p = await import('./a.mjs'); process.exit(p.names.includes('pixel') && p.ok('b.png') ? 0 : 1)"`
+  const { allowed, disallowed } = rolePermissions({ commands: [check] })
+  const { parsed } = await call(dir, {
+    prompt: 'Use the Bash tool to run exactly this one command, verbatim, then return x = 1: ' + check, session: randomUUID(), tools: ['Bash'], allowed, disallowed,
+  })
+  assert.deepEqual(parsed.denials, [], 'denials: ' + JSON.stringify(parsed.denials))
+})
+
 // The git denials hold wherever the option stands: an allow rule for `git diff` is a prefix rule, so a deny rule that is
 // also a prefix rule misses `git diff HEAD --output=x`.
 for (const [name, command, file] of [

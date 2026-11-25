@@ -413,8 +413,7 @@ dispatched; what it found is printed by
 **b. Escalations** — `{id, reason, said}`: its text is on the node's card (step 0), read from the
 return `said` names. A stop with a mechanical cause is yours: settle it as the table says, note
 what you ruled (below) and name it in your report. Every other stop, and `review_not_converging`
-or `not_converging` always, goes to the user: a decision, not information. Once a cause is dealt with, clear the stop,
-then relaunch (step 3):
+or `not_converging` always, goes to the user: a decision, not information. Once a cause is dealt with, clear the stop, then relaunch (step 3):
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e> --node <id>
@@ -425,6 +424,7 @@ node "${CLAUDE_PLUGIN_ROOT}/lib/boundary.mjs" retry --repo . --effort <e> --node
 | `blocked`, `review_incomplete` | always — a transient, a judge's miss (a retry asks a fresh one): retry. A `detail` with shell lines (`cat`, `sed`, a script, a `cd`): note that it uses Read, Edit and Write and runs commands as one plain line, then retry |
 | `merge_no_progress` | a merge-batch was handed the same children at the same heads again after its whole outcome was taken up: read the leaf's records and the run's notes; a cause in the plugin goes to `self-improve`; then retry |
 | `command_not_in_runs` | always — the work runs a project command its entry's `runs` does not name (`detail`): add it there, have the edit ruled (`respec.md`), then retry; never retry first |
+| `session_write` | always — the leaf expects a file under `.claude/`, which the host keeps every agent from writing (`detail`): make it yourself on the branch in the worktree `detail` names, commit it, then retry |
 | `compile_refused`, `prepare_refused` | a planner-written folder's — retry: its planner is sent the refusals (`detail`) and revises, or returns `contract_changed`, which parks for the user. A problem in a spec the user wrote is a re-spec (`respec.md`) |
 | `unread_reference` | always — the producer could not read what `detail` names: when the node's brief now carries it, retry; else put the text in the entry or in a Design part its `cites` names, have the edit ruled (`respec.md`), then retry |
 | `fails_full_suite`, `verify_not_converging` | its failures are timeouts or load faults that pass alone: retry once; the same again is the user's |

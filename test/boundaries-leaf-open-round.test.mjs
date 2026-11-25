@@ -112,6 +112,23 @@ test('a verify leaf opens its worktree with no role, thread or tier', async (t) 
   await assert.rejects(leafOpen(xc, { node: '.', intelligence: 'normal' }), /no live leaf/, 'a folder is no leaf')
 })
 
+test('a leaf that expects a file under .claude/ stops for the session before any producer round, and is measured once the session made it', async (t) => {
+  const { r, xc } = setup(t, [leaf('s', { expects: ['.claude/skills/add/SKILL.md'] })])
+  const out = await leafOpen(xc, { node: 's', intelligence: 'normal' })
+  assert.equal(out.status, 'stopped')
+  const [stop] = xc.log.entries().filter((e) => e.kind === 'escalated' && e.node === 's')
+  assert.equal(stop.reason, 'session_write')
+  for (const named of ['.claude/skills/add/SKILL.md', branchOf(E, 's'), resolve(worktreeOf(r, E, 's'))]) assert.ok(stop.detail.includes(named), stop.detail)
+  const wt = worktreeOf(r, E, 's')
+  mkdirSync(join(wt, '.claude/skills/add'), { recursive: true })
+  writeFileSync(join(wt, '.claude/skills/add/SKILL.md'), '# Add\n')
+  git(wt, 'add', '-f', '.claude/skills/add/SKILL.md')
+  git(wt, 'commit', '-q', '-m', 'the session writes the recipe')
+  append(r, E, 'events', [{ kind: 'replanned', node: 's', execution: STAMP, reason: 'retry_escalated', by: 'session' }])
+  const again = await leafOpen(xc, { node: 's', intelligence: 'normal' })
+  assert.deepEqual([again.status, again.role, again.permissions], ['opened', '', null], 'no producer: its work is measured as it stands')
+})
+
 // ------------------------------------------------------------------ waits and refusals
 
 test('a full pool answers no_slot, naming the holder', async (t) => {

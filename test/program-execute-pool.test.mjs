@@ -22,12 +22,14 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { pauseRun, resumeRun } from '../lib/boundary.mjs'
 import { afterEnded } from '../lib/programs/execute.mjs'
+import { writeFileSync } from 'node:fs'
+import { commandsOf } from '../lib/gotchas.mjs'
 import { append } from '../lib/ledger.mjs'
 import { acquireAsync, releaseSlots } from '../lib/locks.mjs'
 import { dispatchKey } from '../lib/store.mjs'
 import {
   T, E, YIELD, leafEntry, specText, done, failed, claim, reviewed, rootReview, IMPL, work, world, entriesOf,
-  statusOf, callsOf, dispatchedOf, producerKey, idsOf, assertComplete, chainSpec,
+  statusOf, callsOf, dispatchedOf, producerKey, idsOf, assertComplete, chainSpec, commandsFile,
 } from './harness/execute-program-world.mjs'
 
 // leaf-close, merge-batch and the suite gate measure through `node --test` grandchildren, which
@@ -155,6 +157,22 @@ describe('the execute program', { concurrency: 4 }, () => {
     assertComplete(resumed.relaunched.result)
     assert.equal(statusOf(rig, 'b'), 'merged')
     assert.equal((await resumeRun(rig.repo, rig.run, { launchRun: async () => ({ ok: true }) })).resumed, 0, 'nothing stands to resume')
+  })
+
+  test('a resume hands the execution the commands file the session edited while it was paused', T, async (t) => {
+    const w = world(t, { spec: chainSpec('a', 'b') })
+    const { rig } = w
+    w.script({ [IMPL('a')]: [done()], [IMPL('b')]: [done()] }, rootReview(1, claim('D1 holds')))
+    const file = commandsFile(rig)
+    let paused = null
+    w.before.push((call) => { if (call.node === 'a' && !paused) paused = pauseRun(rig.repo, rig.run) })
+    const first = await w.start(['--effort', E, '--commands-file', file])
+    assert.equal(first.result.stopped, 'pause', 'the fixture: the run stopped for the pause')
+    const scoped = 'node --test {file}'
+    writeFileSync(file, JSON.stringify({ ...rig.envelope.commands, test_one: { 'test/e2e': scoped }, replace: ['test_one'] }))
+    const resumed = await resumeRun(rig.repo, rig.run, { launchRun: async () => ({ ok: true }) })
+    assert.equal(resumed.ok, true, JSON.stringify(resumed))
+    assert.equal(commandsOf(rig.repo, E).test_one_by_path['test/e2e'], scoped)
   })
 
   test('a resume that saw the run live before its end is read back once it ended: the run starts again, and a second start is refused', T, async (t) => {

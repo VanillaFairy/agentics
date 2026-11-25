@@ -4935,8 +4935,11 @@ the session's, called as CLIs:
   new is launched, a merge included, and the run ends `stopped: pause` once nothing runs, resumable.
   The pause stands over a relaunch until `resume`. Prints `{ok, paused, already, run, live}`
   (`paused` the event's seq) or `{ok: false, error}`: `unknown_run`, `not_an_execution`, `closed`.
-- **resume** — `resume --repo <r> --run <run>`: a `resumed` event after the standing pause
-  (`resumeExecution`; `resumed: 0` when none stands); a live run goes on at its next tick, and a
+- **resume** — `resume --repo <r> --run <run>`: first the commands file the run's run.json records,
+  when it is still there, handed to its execution as preflight hands one a resumed execution (what it
+  adds written, what its `replace` lists corrected; `commands_unreadable`, `commands_unwritable`), so
+  a file the session edited while the run was paused counts, live or not; then a `resumed` event after
+  the standing pause (`resumeExecution`; `resumed: 0` when none stands); a live run goes on at its next tick, and a
   run that is no longer live is started again, detached, with the arguments its run.json records
   but those that shape only a new execution or stop it (`relaunchRun`, `relaunchArgv`): `{ok, resumed, run,
   relaunched}`, `relaunched` what `run.mjs` prints for a start, or null for a live run. The resume

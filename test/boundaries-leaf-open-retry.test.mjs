@@ -165,6 +165,20 @@ test('a retry that cleared a park names the park\'s return as the reason', async
   assert.deepEqual(retriedOf(r).map((m) => m.payload), [{ reason: 'contract_drift', notes: [] }])
 })
 
+test('a relaunch past faults on a returned round tells the thread every fault since, with no retry', async (t) => {
+  const { r, xc } = setup(t, [leaf('a', { expects: ['src/a.mjs'] })])
+  await leafOpen(xc, { node: 'a', intelligence: 'normal' })
+  ran(xc, { node: 'a', round: 1, role: 'implementer', thread: 'producer:a', ret: { status: 'blocked' } })
+  xc.log.append('fault', { node: 'a', channel: 'program', detail: 'the host denied a granted check' })
+  note(r, 'a', 'after the first fault')
+  xc.log.append('fault', { node: 'a', channel: 'program', detail: 'the leaf unit threw' })
+  const relaunched = executionContext({ repo: r, effort: E, execution: STAMP, log: executionLog(r, E, STAMP) })
+  assert.equal((await leafOpen(relaunched, { node: 'a', intelligence: 'normal' })).round, 2)
+  const [m] = retriedOf(r)
+  assert.deepEqual(m.payload, { reason: 'the host denied a granted check / the leaf unit threw', notes: ['after the first fault'] })
+  assert.deepEqual(deliveryPlan(relaunched.log.entries(), 'producer:a'), { action: 'deliver', carries: [m.seq], prompt: renderMessage(m) })
+})
+
 test('a second retry after the retried round returned is told again, with the notes since the second stop', async (t) => {
   const { r, xc } = await blocked(t)
   note(r, 'a', 'first')

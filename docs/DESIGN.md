@@ -757,7 +757,9 @@ The runner records every renewal it makes as `thread_renewed {thread, gen, why}`
 generation. `dispatch` records it too when it starts a thread's next session itself: on a `fresh`
 call, and, for a call with `renewOnChange` (a search's), when the thread's last `dispatched` entry
 ran under another system prompt or cwd (`prompt_changed`, `cwd_changed`) — even over a started
-call, which then gets `cut_off` and its brief. A call's `mcpConfig` may be a function of the
+call, which then gets `cut_off` and its brief; and for a composed call that would resume a thread
+no message waits for and whose brief has not moved (`nothing_pending`): resumed, its session
+would be sent nothing. A call's `mcpConfig` may be a function of the
 session, which the runner calls with the session each CLI start runs under.
 
 **A return too large for one response** says so (`more: true`); the runner resumes the same
@@ -968,7 +970,7 @@ sent where is the routing table (`ROUTES`):
 | `needs_context` | a producer, as its status | the folder's planner session when the planner wrote the folder; otherwise the node parks for the user | a spec edit, checked, probed and prepared like any; the asker then receives `brief_changed` |
 | `rebase` | code, when the judge ruled a leaf's merge conflict resolvable ([The judge](#the-judge)) | the leaf's producer session | a round whose worktree holds the merge of the folder's head in progress: the conflict resolved and the merge concluded, then the work checked against what merged |
 | `brief_changed` | code, when a thread's brief no longer matches the records | the thread's session | the work goes on against the new brief, told what changed |
-| `retried` | code, when the user's `retry` cleared a leaf's stop after a round this execution dispatched on the thread | the thread's session | the round goes on from where its series stands, told the cleared reason and the text of each note left on the leaf since the stop or the thread's latest return, whichever is later |
+| `retried` | code, when the user's `retry` cleared a leaf's stop, or a relaunch its fault (a fault holds its node only in the run that recorded it), after a round this execution dispatched on the thread | the thread's session | the round goes on from where its series stands, told the cleared reason and the text of each note left on the leaf since the stop or the thread's latest return, whichever is later |
 | `predecessor_moved` | code, on a new round of a cycle member whose predecessor was approved again at another head since the member's latest round (`predecessorMoved`) | the member's thread | the round goes on against the predecessor's new head, which leaf-open merged into its branch, told the files between the two heads |
 | `notes` | code, on a new round of a thread this execution never dispatched | the thread's session | the round goes on, told the text of every note left on the leaf since the latest dispatch of any execution on it, the notes no session of it has seen |
 | `findings` of a probe | the autonomous review | the planner session that wrote the spec | dispositions |
@@ -4667,7 +4669,7 @@ cost_total, cost_usd, denials[]}` (`usage` the host's own figure for the call, `
 model turn's and `opened` its first's, `null` when unmeasured), one per call the runner made,
 written when the call ends; `host_stop {dispatch, cause, until}`; `checkout_changed {dispatch,
 paths[]}`; `thread_renewed {thread, gen, why: too_large | session_missing | context_exceeded |
-prompt_changed | cwd_changed | raised}`; `step {key,
+prompt_changed | cwd_changed | raised | nothing_pending}`; `step {key,
 value}` or `step {key, value_file, bytes}`; `batch {target, identity, merged[], head_sha, verified, failed_alone[], combination[], conflict}`,
 landing before the batch's `merged` events; `gate {target, head_sha, passed, checks}`, `checks` the digest of the criterion checks it ran, one per suite gate
 that ran; `checkpoint {reason, detail, executions?, gaps?, branches?, lost?}` (the lists the checkpoint found, `branches` the `[{branch, commits}]` of an `outside_work` one, `lost` the `[{branch, exists, node, merged_sha, reachable_from}]` of an `integration_lost` one;

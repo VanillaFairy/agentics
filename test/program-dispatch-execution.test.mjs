@@ -382,12 +382,13 @@ test('a resumed call given no brief is briefed with the waiting messages alone',
   assert.deepEqual(call.carries, [s1, s2])
 })
 
-test('a resumed call given no brief with nothing waiting throws', async (t) => {
+test("a later call given no brief with nothing waiting starts the thread's next session on the thread brief", async (t) => {
   const w = world(t, { script: { [K('a', 'plan')]: TWO } })
   await dispatch(w.ctx, spec({ round: 1 }))
-  await assert.rejects(dispatch(w.ctx, target({ round: 2 })))
-  assert.equal(w.calls.length, 1, 'no call is made')
-  assert.equal(dispatchedOf(w, keyOf({ round: 2 })).length, 0)
+  assert.equal((await dispatch(w.ctx, target({ round: 2 }))).status, 'returned')
+  const call = w.calls[1]
+  assert.deepEqual([call.resume, call.brief, call.thread.gen], [false, TB, 1])
+  assert.deepEqual(ofKind(w, 'thread_renewed').map((e) => e.why), ['nothing_pending'])
 })
 
 // --- two messages in one round ---------------------------------------------------------------

@@ -139,9 +139,9 @@ it), `deferred` and `dropped`. Names follow `^[a-z0-9][a-z0-9-]*$`. Every decisi
 entry realised reaches at least one entry here. A contract keeps the name the ancestors gave it; the task that builds one your folder's entry promises provides it too, at its paths or under them, as its yardstick.
 `dispatch` moves a stage off its default: producers run sonnet with effort scaled to difficulty, and a
 red, audit or contract-providing task's producer runs opus. `runs` names each project command the work
-runs beyond build, typecheck, tests and its checks (a codegen, asset or migration script); any other is
-denied. A folder that owns lockfiles, config roots or barrel files lists them in `shared` on the entry
-that plans it.
+runs beyond build, typecheck, tests and its checks (a codegen, asset or migration script; `node <script>`, bare,
+for a script its text runs or names); any other is denied. A folder that owns lockfiles,
+config roots or barrel files lists them in `shared` on the entry that plans it.
 
 **Groups.** Past a handful of tasks, gather the ones that belong together (one subsystem, one area
 of the code, work a reader would review side by side) under a group, so the tree reads by concern:

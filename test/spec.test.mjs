@@ -678,6 +678,24 @@ test("checkFolder refuses a task whose text or recipe names a project script its
     'the recipe is its first fenced script; prose and later lines are not asked for')
 })
 
+test("checkFolder refuses a task whose text runs or names a node script its runs does not grant bare", () => {
+  const swapped = (context, fields = '') => swap(ROOT, '  Each refusal names its line.', '  ' + context)
+    .replace('  · ground: docs/DESIGN.md#storage', '  · ground: docs/DESIGN.md#storage' + fields)
+  const runsOf = (text) => checkFolder(effortOnDisk({ '.': text }), 'e1', '.').problems.filter((p) => /which its runs does not list/.test(p.problem)).map((p) => p.problem)
+  const refusal = 'spec-parser runs `node scripts/pad.mjs` (named in its text), which its runs does not list: add `node scripts/pad.mjs` to runs, or its producer is denied it'
+  const checked = (context, check) => swapped(context).replace(/check: `[^`]+`/, 'check: `' + check + '`')
+
+  assert.deepEqual(runsOf(swapped('Pad each picture with `node scripts/pad.mjs <id>`.')), [refusal])
+  assert.deepEqual(runsOf(swapped('Pad each picture with `node ./scripts/pad.mjs <id>`.', '\n  · runs: node scripts/pad.mjs')), [], 'runs grants it bare')
+  assert.deepEqual(runsOf(checked('Add `pad.mjs`, which pads a picture.', 'node scripts/pad.mjs ui.gear --dry-run')), [refusal],
+    'named by its file, which its check runs with arguments: that grants the check alone')
+  assert.deepEqual(runsOf(checked('Add `pad.mjs`.', 'node scripts/pad.mjs')), [], 'a bare check grants the script it names')
+  assert.deepEqual(runsOf(checked('Pad each picture.', 'node scripts/pad.mjs ui.gear --dry-run')), [], 'a check alone is granted as it stands')
+  assert.deepEqual(runsOf(swapped('Read `scripts/lib/paths.mjs` and keep `paths.mjs` small.')), [], 'a file no line runs through node is no command')
+  const docs = swapped('Tell the recipe to pad with `node scripts/pad.mjs <id>`.').replace(/expects: [^\n·]+/, 'expects: .claude/skills/pad/SKILL.md ')
+  assert.deepEqual(runsOf(docs), [], 'a task that writes only Markdown documents the script')
+})
+
 test('contractDefinition is the providers and the declared part, or the whole Design when none is declared; it never narrows by what the text names', () => {
   const design = ({ den = 'A den is set up once.', other = 'Proximity is fed by the game.', part = ' "Den"', paths = 'src/den.ts' } = {}) => [
     '# Ports', '', '## Intent', '', 'Ports.', '', '## Decisions', '', '## Design', '', '### Ports', '',

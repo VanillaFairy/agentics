@@ -4537,7 +4537,11 @@ line that declares them. So is a task whose
 title or context names `npm run <script>`, or that reads a recipe (`.claude/skills/<x>/SKILL.md`, a
 `.claude/commands/` file) whose first fenced script is one, when its `runs` lists no such script and
 the effort's established commands and its own criterion checks do not run it (`runsProblems` in
-`lib/spec.mjs`): its producer would be denied the command.
+`lib/spec.mjs`): its producer would be denied the command. So is a task whose title or context
+runs `node <script>`, or names a script by its file alone (`` `x.mjs` ``) that a line of the spec runs
+through node, when no `runs` entry, check or established command is `node <script>` bare: a check
+that passes the script arguments grants that one line, and its producer runs the script on others. A
+task that writes only Markdown documents the scripts its text names, and is not read for them.
 
 A group:
 

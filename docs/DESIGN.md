@@ -3262,7 +3262,9 @@ again too, since what failed it may be the environment.
 leaf's own head, and the folder's head moves on after it merges. So the gate also runs, at the
 integration head, the `check:` of every criterion of the plan the composite's spec holds — its own
 tasks and its groups' (`criterionChecks` in `lib/boundaries/merge.mjs`), each command once — as
-named checks in the same measurement. A check that fails, other than for tests that fail at the base
+named checks in the same measurement. A red task's criteria are not among them: they describe the
+tree before its green lands (its new tests failing), which its discriminator measured at its own head
+and no integration head can hold. A check that fails, other than for tests that fail at the base
 too, fails the gate; with the suite passing, the composite escalates `fails_on_integration`. The
 `gate` line carries the checks' digest, so a passing gate stands only for the checks it ran. The
 integration reviewer is handed the results under `## Measured` and is told to leave those criteria

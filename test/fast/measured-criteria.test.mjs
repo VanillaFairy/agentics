@@ -26,6 +26,17 @@ test("the gate's checks are the criteria of the folder's own plan, its groups' t
   assert.deepEqual(criterionChecks(nodes, 'sub'), ['npx vitest run y'])
 })
 
+test("a red's criteria stay out of the gate: they hold only before its green, at the red's own head", () => {
+  const leaf = (id, role, acceptance) => [id, { id, kind: 'leaf', role, acceptance }]
+  const nodes = new Map([
+    node('.', 'composite'),
+    leaf('r', 'red', [crit('the new tests fail', '! npx vitest run t'), crit('it typechecks', 'npx tsc --noEmit')]),
+    leaf('gr', 'green', [crit('every test r wrote passes', 'npx vitest run t')]),
+    leaf('au', 'audit', [crit('the breaks bite', 'npx vitest run u')]),
+  ])
+  assert.deepEqual(criterionChecks(nodes, '.'), ['npx vitest run t', 'npx vitest run u'])
+})
+
 const SPAN = { base: 'b0', head: 'h1' }
 const WHOLE = { rule: [{ unit: 'spec', anchor: 's', was: null }], stand: [] }
 const MEASURED = [{ command: 'npm run build && npm run test:e2e -- --workers=1', status: 'passed' }]
